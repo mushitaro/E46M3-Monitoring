@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows10.0.26100.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>SgbdDump</AssemblyName>
+    <RootNamespace>SgbdDump</RootNamespace>
+  </PropertyGroup>
+
+  <!-- EdiabasLib の仮想ジョブ (_JOBS/_JOBCOMMENTS/_ARGUMENTS/_RESULTS) で
+       SGBD から「権威ある」ジョブ表を取得する（車両接続は不要）。
+       前提: C:\EC-APPS\ediabaslib を clone 済み、TFM は net8.0-windows に。 -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\ediabaslib\EdiabasLib\EdiabasLib\EdiabasLib.csproj"
+                      SetTargetFramework="TargetFramework=net8.0-windows10.0.26100.0" />
+    <!-- EdiabasLib は Windows-1252 を使う → CodePagesEncodingProvider が必要 -->
+    <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>

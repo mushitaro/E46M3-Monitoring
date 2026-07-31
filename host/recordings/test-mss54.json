@@ -1,0 +1,89 @@
+{
+  "ecu": "mss54",
+  "sgbd": "mock / MSS54DS0.prg",
+  "recordedAt": "2026-07-18 00:07:31",
+  "sourceBackend": "mock",
+  "ident": {
+    "zbNr": "7831387",
+    "hwNr": "14",
+    "swVersion": "041",
+    "date": "2703",
+    "note": "mock / MSS54DS0.prg"
+  },
+  "faults": {
+    "ok": true,
+    "faults": [
+      {
+        "code": "0x2003",
+        "desc": "吸気VANOS1ユニット早期にドリフト",
+        "present": true,
+        "sporadic": false,
+        "raw": "20 03 08"
+      },
+      {
+        "code": "0x200B",
+        "desc": "同期中断",
+        "present": false,
+        "sporadic": false,
+        "raw": "20 0b 02"
+      },
+      {
+        "code": "0x2017",
+        "desc": "Interfacefehler:フレームまたはパリティまたはタイムアウト",
+        "present": false,
+        "sporadic": true,
+        "raw": "20 17 02"
+      },
+      {
+        "code": "0x2028",
+        "desc": "吸気VANOSバンク2目標",
+        "present": false,
+        "sporadic": true,
+        "raw": "20 28 02"
+      }
+    ]
+  },
+  "live": {
+    "STAT_VL_EIN": {
+      "value": 10.7,
+      "unit": ""
+    },
+    "STATUS_VL_EIN": {
+      "value": 8.6,
+      "unit": ""
+    },
+    "STAT_TL_EIN": {
+      "value": 10.9,
+      "unit": ""
+    },
+    "STATUS_MOTORDREHZAHL_WERT": {
+      "value": 1025,
+      "unit": ""
+    },
+    "STAT_MOTORDREHZAHL_WERT": {
+      "value": 1024,
+      "unit": ""
+    },
+    "STAT_LAST_WERT": {
+      "value": 12,
+      "unit": ""
+    },
+    "STAT_GESCHWINDIGKEIT_WERT": {
+      "value": 0,
+      "unit": ""
+    },
+    "STATUS_GESCHWINDIGKEIT_WERT": {
+      "value": 0,
+      "unit": ""
+    },
+    "STAT_V_MAX_WERT": {
+      "value": 9.5,
+      "unit": ""
+    },
+    "STAT_N_MAX_WERT": {
+      "value": 9.9,
+      "unit": ""
+    }
+  },
+  "jobs": {}
+}

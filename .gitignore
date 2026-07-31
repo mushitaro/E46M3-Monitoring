@@ -1,0 +1,37 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# next.js — anchored to the repo root on purpose. An unanchored `out/` also
+# matches tools/SgbdDump/out/, which holds the authoritative SGBD dumps that
+# gen_from_dump.py reads. Those are inputs and must be committed.
+/.next/
+/out/
+/build/
+next-env.d.ts
+*.tsbuildinfo
+
+# .NET build-time tooling (host/ and tools/SgbdDump are data generators, not
+# runtime dependencies — their build output must never enter the repo)
+[Bb]in/
+[Oo]bj/
+
+# python
+__pycache__/
+*.py[cod]
+
+# EDIABAS interface traces. These contain real vehicle identifiers (ZB numbers,
+# fault history) and are large. Keep them out of version control entirely.
+*.trc
+trace/
+
+# local env
+.env*
+!.env.example
+
+# editors / os
+.DS_Store
+*.swp
+.vscode/
+.idea/

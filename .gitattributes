@@ -1,0 +1,14 @@
+* text=auto eol=lf
+
+# Generated ECU data is committed and must stay reviewable. It is written with
+# indent=1 by tools/gen_from_dump.py specifically so that a regeneration
+# produces a diff a human can read — the previous single-physical-line format
+# made a 166 KB file show up as one changed line.
+ecu-data/*.json text diff
+
+# Real captured vehicle sessions, used as test fixtures.
+recordings/*.json text diff
+
+*.png binary
+*.ico binary
+*.prg binary

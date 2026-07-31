@@ -75,3 +75,40 @@ export {
 } from './blockDecoder';
 
 export { Ds2Error, isDs2Error, type Ds2ErrorCode, type Ds2ErrorKind } from './errors';
+
+export {
+    WebSerialTransport,
+    RX_BUFFER_BYTES,
+    DS2_SERIAL_DEFAULTS,
+    type TransportOptions,
+} from './transport';
+
+export {
+    Ds2Link,
+    DS2_DEFAULT_TIMINGS,
+    type Ds2Timings,
+    type Ds2LinkOptions,
+    type RetryOptions,
+} from './link';
+
+export { isWebSerialSupported, getSerial } from './webSerialTypes';
+export type {
+    SerialPortLike,
+    SerialLike,
+    SerialOptions,
+    SerialOutputSignals,
+    SerialPortInfo,
+    SerialPortFilter,
+} from './webSerialTypes';
+
+export type { LinkTiming } from './timing';
+
+// Test-time only, but exported so the app's own integration tests can drive the
+// real stack too. Simulating the DEVICE beats mocking the link.
+export {
+    SimulatedSerialPort,
+    simulatedPort,
+    type ExchangeBehavior,
+    type SimulatedEcuOptions,
+    type TraceEntry,
+} from './simulator';

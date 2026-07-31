@@ -87,10 +87,20 @@ interface Catalog {
     hub_record: string;
     hub_stop: string;
     hub_recording: string;
-    viz_noData: string;
     viz_faults: string;
     viz_clean: string;
     riskMix: string;
+    pane_visualization: string;
+    /** Empty-state copy. Terse, uppercase-technical: what the instrument is
+     *  waiting for, not an apology for having nothing. */
+    awaiting_read: string;
+    awaiting_samples: string;
+    awaiting_catalog: string;
+    ident_note: (bytes: number) => string;
+    details: string;
+    /** The physical checklist for an electrical fault. Safety copy lives here,
+     *  in the reader's language — not as English literals at the call site. */
+    error_electrical_steps: string[];
 }
 
 const STORAGE_KEY = 'e46m3.lang';
@@ -180,10 +190,23 @@ const STRINGS: Record<Lang, Catalog> = {
         hub_record: '記録',
         hub_stop: '停止',
         hub_recording: '記録中',
-        viz_noData: 'データなし',
         viz_faults: '故障',
         viz_clean: '故障なし',
         riskMix: 'リスク内訳',
+        pane_visualization: '可視化と操作',
+        awaiting_read: '読取待機中…',
+        awaiting_samples: 'サンプル待機中…',
+        awaiting_catalog: 'カタログ未読込…',
+        ident_note: (b) =>
+            `${b} バイト — この応答のフィールド配置はまだ判明していません。EdiabasLib が解釈していた部分で、推測せず生値のまま表示しています。`,
+        details: '詳細',
+        error_electrical_steps: [
+            'エンジン停止時と稼働時で失敗率を比べてください。稼働時だけ不安定なら、非シールドケーブルへの点火系ノイズ（EMI）であってソフトウェアの問題ではありません。',
+            'OBD コネクタを挿し直し、接続したまま軽く動かして接触を確認してください。',
+            '別の USB ポートに、ハブを介さず直接挿してください。',
+            'ポートのグラウンドと電源を確認してください。',
+            'アダプタの VID/PID を控えてください。FTDI のクローンチップは非常に多く出回っています。',
+        ],
     },
     en: {
         appRole: 'DIAGNOSIS',
@@ -270,10 +293,23 @@ const STRINGS: Record<Lang, Catalog> = {
         hub_record: 'Record',
         hub_stop: 'Stop',
         hub_recording: 'Recording',
-        viz_noData: 'No data',
         viz_faults: 'faults',
         viz_clean: 'No faults',
         riskMix: 'Risk mix',
+        pane_visualization: 'Visualization & controls',
+        awaiting_read: 'AWAITING READ…',
+        awaiting_samples: 'AWAITING SAMPLES…',
+        awaiting_catalog: 'AWAITING CATALOG…',
+        ident_note: (b) =>
+            `${b} bytes — the field layout of this response is not known yet. EdiabasLib used to decode it; shown raw rather than guessed at.`,
+        details: 'Details',
+        error_electrical_steps: [
+            'Compare failure rates with the engine off vs running. If it only misbehaves while running, it is ignition/motor EMI on an unshielded cable — not the software.',
+            'Reseat the OBD connector, and wiggle-test it while connected.',
+            'Try a different USB port, with no hub in between.',
+            "Check the port's ground and supply.",
+            "Note the adapter's VID/PID — clone FTDI chips are common.",
+        ],
     },
 };
 
@@ -282,15 +318,28 @@ export type Strings = Catalog;
 let current: Lang = 'ja';
 const listeners = new Set<() => void>();
 
+/**
+ * An explicit choice wins; otherwise the browser decides.
+ *
+ * Falling back to 'ja' unconditionally handed a first-time English-speaking user
+ * a fully Japanese instrument — tabs, hub verbs, and the UNVERIFIED safety
+ * banner — with only a 20px `ja | en` pair in the header corner to escape it.
+ * A safety notice nobody can read is not a safety notice.
+ */
+function fromNavigator(): Lang {
+    if (typeof navigator === 'undefined') return 'ja';
+    return navigator.language?.toLowerCase().startsWith('ja') ? 'ja' : 'en';
+}
+
 function read(): Lang {
     try {
         const v = localStorage.getItem(STORAGE_KEY);
-        return v === 'en' || v === 'ja' ? v : 'ja';
+        if (v === 'en' || v === 'ja') return v;
     } catch {
-        // Private mode. Default rather than fail — the language is not a
-        // safety property, only the copy it selects is.
-        return 'ja';
+        // Private mode. Fall through — the language is not a safety property,
+        // only the copy it selects is.
     }
+    return fromNavigator();
 }
 
 if (typeof window !== 'undefined') current = read();

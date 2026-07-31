@@ -53,7 +53,12 @@ const TEXT: Record<Tone, string> = {
 export function TextButton({
     children,
     onClick,
-    tone = 'neutral',
+    // Primary by default: a text button is a CONTROL and has to look pressable
+    // at rest. At the previous slate-500 default, EXPORT CSV — the only thing
+    // you can do with a finished run — was the exact colour of the inactive tab
+    // labels beside it and read as a status word. `neutral` stays available for
+    // genuinely secondary actions like CANCEL.
+    tone = 'primary',
     Icon,
     disabled,
     title,
@@ -74,7 +79,7 @@ export function TextButton({
             onClick={disabled ? undefined : onClick}
             disabled={disabled}
             title={title}
-            className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[10px] font-bold uppercase tracking-widest transition-colors disabled:cursor-not-allowed disabled:text-slate-700 disabled:hover:text-slate-700 ${TEXT[tone]} ${className}`}
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[10px] font-bold uppercase tracking-widest transition-colors disabled:cursor-not-allowed disabled:text-slate-600 disabled:hover:text-slate-600 ${TEXT[tone]} ${className}`}
             {...rest}
         >
             {Icon && <Icon className="size-3 shrink-0" />}

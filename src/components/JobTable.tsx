@@ -35,13 +35,11 @@ export function JobTable({
     ledger,
     ecuId,
     connectedToVehicle,
-    emptyLabel,
 }: {
     jobs: CatalogJob[];
     ledger: Ledger;
     ecuId: string;
     connectedToVehicle: boolean;
-    emptyLabel: string;
 }) {
     const { lang, t } = useLang();
     const [query, setQuery] = useState('');
@@ -66,18 +64,30 @@ export function JobTable({
             });
     }, [jobs, ledger, ecuId, lang, query, riskFilter]);
 
-    if (jobs.length === 0) return <p className="text-xs text-slate-600">{emptyLabel}</p>;
+    if (jobs.length === 0) return <p className="py-2 font-mono text-xs uppercase text-slate-600">{t.awaiting_catalog}</p>;
 
     return (
         <>
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-                <SearchInput value={query} onChange={setQuery} placeholder={t.search} className="min-w-40 flex-1" />
-                {(['all', 'high', 'medium', 'low'] as const).map((r) => (
-                    <Chip key={r} active={riskFilter === r} onClick={() => setRiskFilter(r)}>
-                        {r === 'all' ? t.risk_all : r === 'high' ? t.risk_high : r === 'medium' ? t.risk_medium : t.risk_low}
-                    </Chip>
-                ))}
-                <span className="ml-auto font-mono text-[11px] text-slate-600">
+            {/* The field is capped, not stretched. Given a 900px column, flex-1
+                made it the single largest object on screen — a grey slab that
+                says nothing — while the filters it belongs with got pushed to
+                the far edge, half a metre from the text they filter. */}
+            <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+                <SearchInput value={query} onChange={setQuery} placeholder={t.search} className="w-full max-w-[340px]" />
+                <div className="flex items-center gap-1">
+                    {(['all', 'high', 'medium', 'low'] as const).map((r) => (
+                        <Chip key={r} active={riskFilter === r} onClick={() => setRiskFilter(r)}>
+                            {r === 'all'
+                                ? t.risk_all
+                                : r === 'high'
+                                  ? t.risk_high
+                                  : r === 'medium'
+                                    ? t.risk_medium
+                                    : t.risk_low}
+                        </Chip>
+                    ))}
+                </div>
+                <span className="ml-auto shrink-0 font-mono text-[11px] text-slate-600">
                     {rows.length} / {jobs.length}
                 </span>
             </div>
@@ -86,12 +96,14 @@ export function JobTable({
                 77 rows, an outline per row plus the pills and the run control
                 inside it stacks four frames deep and the eye stops resolving the
                 one thing that matters — which row is under the pointer. */}
-            {/* The negative margin is on the LIST, not the row: the hover band
-                has to be wider than the text, and if only the rows bleed out then
-                the list's own top rule stops 8px short of every divider below it. */}
-            <ul className="-mx-2 divide-y divide-slate-800/60 border-t border-slate-800/60">
+            {/* Flush with the pane's own padding. Bleeding the rows out by 8px
+                to widen the hover band left every divider sticking out past the
+                search field and the labels above them, which reads as broken
+                alignment — a worse cost than a hover band that stops at the
+                text. */}
+            <ul className="divide-y divide-slate-800/50 border-t border-slate-800/50">
                 {rows.map(({ job, risk, gate, d }) => (
-                    <li key={job.id} className="group px-2 py-2 transition-colors hover:bg-slate-800/40">
+                    <li key={job.id} className="group py-2 transition-colors hover:bg-slate-800/40">
                         <div className="flex items-baseline gap-x-3">
                             <RiskPill risk={risk} />
                             <span className="font-mono text-xs text-slate-200">{job.id}</span>
@@ -104,17 +116,22 @@ export function JobTable({
                             <GateBadge allowed={gate.allowed} reason={gate.reason} />
                         </div>
 
-                        {d.text && <p className="mt-1 text-[11px] text-slate-500">{d.text}</p>}
+                        {d.text && <p className="mt-1 text-[11px] text-slate-400">{d.text}</p>}
+                        {/* slate-500, not slate-700. slate-700 is #2A2A33 —
+                            1.48:1 on black, a BORDER colour. The German original
+                            is the one line this component's own docstring calls
+                            non-negotiable (at least one translation shipped
+                            wrong), and it was rendering as blank space. */}
                         {d.original && d.original !== d.text && (
-                            <p className="mt-0.5 font-mono text-[10px] text-slate-700">{d.original}</p>
+                            <p className="mt-0.5 font-mono text-[10px] text-slate-500">{d.original}</p>
                         )}
 
                         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-                            <span className="font-mono text-[10px] uppercase tracking-widest text-slate-700">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
                                 {execStyle(job)}
                             </span>
                             {jobPreconditions(job.id).map((c) => (
-                                <span key={c} className="font-mono text-[10px] text-slate-700">
+                                <span key={c} className="text-[10px] text-slate-500">
                                     {t[`precond_${c}` as keyof typeof t] as string}
                                 </span>
                             ))}

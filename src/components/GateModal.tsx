@@ -93,7 +93,10 @@ function GateDialog({
     const canRun = allChecked && !blockedReason;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+        <>
+            {/* Backdrop at 40, the floating card at 50 — the z ladder, not
+                invented values. */}
+            <div className="fixed inset-0 z-40 bg-slate-950/70 backdrop-blur-sm" onClick={onCancel} />
             <div
                 ref={dialogRef}
                 role="dialog"
@@ -102,7 +105,7 @@ function GateDialog({
                 // The ONE outline in here. A modal is detached from the page, so
                 // it earns an edge; nothing inside it does, and every inner block
                 // below is a surface instead.
-                className="flex max-h-[80vh] w-full max-w-xl flex-col rounded-lg border border-slate-700 bg-slate-900 shadow-2xl"
+                className="fixed left-1/2 top-1/2 z-50 flex max-h-[80vh] w-[560px] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-lg border border-slate-700 bg-slate-900 shadow-xl duration-200 animate-in fade-in zoom-in-95"
             >
                 <div className="flex h-[44px] shrink-0 items-center gap-2 border-b border-slate-800 px-4">
                     {risk === 'high' && <AlertTriangle className="size-4 shrink-0 text-red-400" />}
@@ -165,7 +168,9 @@ function GateDialog({
                 </div>
 
                 <div className="flex h-[52px] shrink-0 items-center justify-end gap-6 border-t border-slate-800 px-4">
-                    <TextButton onClick={onCancel}>{t.cancel}</TextButton>
+                    <TextButton onClick={onCancel} tone="neutral">
+                        {t.cancel}
+                    </TextButton>
                     {/* Red text, not a red box. The confirm in a gate dialog is
                         already the thing you came here to press; boxing it makes
                         it the brightest object on screen, which is the opposite
@@ -175,6 +180,6 @@ function GateDialog({
                     </TextButton>
                 </div>
             </div>
-        </div>
+        </>
     );
 }

@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { createPortal } from 'react-dom';
 import { Download, Terminal, Trash2, X } from 'lucide-react';
 import type { CommsLogLine } from '@/hooks/useDs2Link';
 import { useLang } from '@/lib/i18n';
@@ -54,14 +55,14 @@ export function LogPopover({
                 onClick={() => setOpen(!open)}
                 title={t.tab_log}
                 aria-expanded={open}
-                className={`relative flex items-center transition-colors ${
-                    open ? 'text-blue-400' : 'text-slate-500 hover:text-blue-400'
+                className={`relative rounded p-2 text-slate-400 transition-colors hover:text-blue-400 ${
+                    open ? 'bg-slate-800 text-blue-400' : 'hover:bg-slate-800'
                 }`}
             >
                 <Terminal className="size-4" />
                 {/* A count, not a dot: "3 errors" is actionable, a dot is not. */}
                 {errors > 0 && (
-                    <span className="absolute -right-1.5 -top-1.5 min-w-3 rounded-full bg-red-500 px-1 text-center font-mono text-[8px] leading-3 text-white">
+                    <span className="absolute right-0 top-0 min-w-3 rounded-full bg-red-500 px-1 text-center font-mono text-[8px] leading-3 text-red-100">
                         {errors}
                     </span>
                 )}
@@ -69,8 +70,8 @@ export function LogPopover({
 
             {open && (
                 <>
-                    <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-                    <div className="absolute right-0 top-10 z-50 flex h-[420px] w-[min(560px,90vw)] flex-col rounded-lg border border-slate-700 bg-slate-900 shadow-xl">
+                    <Backdrop onClick={() => setOpen(false)} />
+                    <div className="absolute right-0 top-10 z-50 flex h-[420px] w-[min(560px,90vw)] flex-col rounded-lg border border-slate-700 bg-slate-900 shadow-xl duration-200 animate-in fade-in zoom-in-95">
                         <div className="flex h-[44px] shrink-0 items-center gap-3 border-b border-slate-800 px-4">
                             <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                                 {t.tab_log}
@@ -91,7 +92,11 @@ export function LogPopover({
                                     onClick={onClear}
                                     disabled={log.length === 0}
                                     title={t.clearLog}
-                                    className="text-slate-500 transition-colors hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:text-slate-500"
+                                    // Muted below its harmless neighbour: danger
+                                    // shouldn't shout until you reach for it, and
+                                    // at the same brightness nothing separates
+                                    // "save this" from "destroy this".
+                                    className="text-slate-600 transition-colors hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:text-slate-600"
                                 >
                                     <Trash2 className="size-3.5" />
                                 </button>
@@ -112,7 +117,7 @@ export function LogPopover({
                                 <pre className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed">
                                     {log.map((l, i) => (
                                         <div key={i} className={LINE[l.kind]}>
-                                            <span className="text-slate-700">
+                                            <span className="text-slate-600">
                                                 {new Date(l.t).toLocaleTimeString(undefined, { hour12: false })}{' '}
                                             </span>
                                             {l.text}
@@ -126,6 +131,31 @@ export function LogPopover({
             )}
         </div>
     );
+}
+
+/**
+ * The click-outside catcher, PORTALLED to the body.
+ *
+ * It cannot be a plain child. This popover's trigger lives in the 44px bar, and
+ * the bar carries `backdrop-blur-sm` — a backdrop-filter makes an element a
+ * containing block for its `position: fixed` descendants, so `fixed inset-0`
+ * resolved against the bar instead of the viewport. Measured: the "full-screen"
+ * backdrop was 926x43. Click-outside-to-dismiss only ever worked if you clicked
+ * inside the tab bar; everywhere else the click fell through to whatever was
+ * under it — including the hub, so trying to close the log could drop the link.
+ *
+ * The panel itself stays in place: it is `absolute` against its own `relative`
+ * wrapper, which is the behaviour we want, and the bar's z-30 already carries it
+ * over the right column's z-20.
+ */
+function Backdrop({ onClick }: { onClick: () => void }) {
+    const mounted = useSyncExternalStore(
+        () => () => {},
+        () => true,
+        () => false,
+    );
+    if (!mounted) return null;
+    return createPortal(<div className="fixed inset-0 z-40" onClick={onClick} />, document.body);
 }
 
 const LINE: Record<CommsLogLine['kind'], string> = {

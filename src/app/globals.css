@@ -17,6 +17,11 @@
    --------------------------------------------------------------------------- */
 
 @import "tailwindcss";
+/* Supplies animate-in / fade-in / zoom-in-95. Without it Tailwind v4 emits no
+   rule at all for those class names, so every popover and modal in the app was
+   materialising instantly at full opacity — the markup looked right in review
+   and looked like a rendering glitch in use. */
+@import "tw-animate-css";
 
 :root {
   --background: #000000;
@@ -35,6 +40,18 @@
 }
 
 @theme {
+  /* Every remapped namespace is cleared to `initial` FIRST — including the
+     three brand ramps, which were missing it. Without the wildcard, a step this
+     file does not define (blue-700, red-950, indigo-200, ...) silently keeps
+     its stock Tailwind value and leaks a non-brand hue into the instrument. It
+     had already happened: `bg-red-950/40` on the electrical-fault banner was
+     painting stock oklch #460809 rather than anything this palette chose. An
+     undefined step must emit nothing, loudly. */
+  --color-slate-*: initial;
+  --color-blue-*: initial;
+  --color-red-*: initial;
+  --color-indigo-*: initial;
+
   /* Neutral ramp - pure-black anchor, cool charcoal (a whisper of blue) */
   --color-slate-950: #000000;
   --color-slate-900: #0A0A0D;

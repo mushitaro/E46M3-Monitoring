@@ -1,14 +1,30 @@
 'use client';
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CircleDot, Download, FlaskConical, PlugZap, Radio, Square, Unplug, Zap } from 'lucide-react';
+import {
+    Activity,
+    AlertTriangle,
+    CircleDot,
+    Cpu,
+    Download,
+    FlaskConical,
+    ListChecks,
+    Loader2,
+    PlugZap,
+    Radio,
+    RotateCcw,
+    ScanLine,
+    Square,
+    Unplug,
+    Zap,
+    type LucideIcon,
+} from 'lucide-react';
 import { MSS54_LIVE_BLOCKS, formatErrorCode, planBlockReads } from '@tsunagi/ds2-mss54';
 import { AppHeader } from '@/components/AppHeader';
-import { Hub, HubCluster, HubNotice, SubActions, type HubConfig } from '@/components/Hub';
+import { ElectricalFaultDialog } from '@/components/ElectricalFaultDialog';
+import { Hub, HubCluster, HubNotice, SubActions, type HubConfig, type NoticeTone } from '@/components/Hub';
 import { JobTable } from '@/components/JobTable';
-import { LinkError } from '@/components/LinkError';
 import { LogPopover } from '@/components/LogPopover';
-import { StatusLed } from '@/components/StatusLed';
 import { MicroLabel, SearchInput, TextButton, Well } from '@/components/ui';
 import { useDs2Link, type CommsLogLine, type LiveSample } from '@/hooks/useDs2Link';
 import { useLang, type Lang } from '@/lib/i18n';
@@ -83,24 +99,40 @@ export default function Home() {
 
     const connectedToVehicle = link.mode === 'vehicle' && link.state !== 'disconnected';
     const hub = useHubConfig(tab, link, datalog);
+    const [faultOpen, setFaultOpen] = useState(false);
+
+    // One notice line, one precedence: a link error outranks a catalog error
+    // outranks whatever the hub wanted to say about cost or progress. The hub's
+    // own notice is never urgent, so it always loses.
+    const notice: { text?: string; tone: NoticeTone } =
+        link.error ? { text: link.error, tone: 'error' }
+        : catalogError ? { text: catalogError, tone: 'warn' }
+        : { text: hub.notice, tone: 'info' };
 
     return (
         <div className="flex h-dvh flex-col overflow-hidden bg-slate-950">
-            <AppHeader ident={link.ident} />
+            <AppHeader
+                ident={link.ident}
+                state={link.state}
+                mode={link.mode}
+                hasError={!!link.error}
+            />
 
-            {/* A strip, not a card: it spans the full width and is separated by
-                its own bottom rule, the same way every other bar is. */}
-            {(link.error || catalogError) && (
-                <LinkError
-                    message={link.error ?? catalogError ?? ''}
-                    kind={link.errorKind}
-                    onRetry={link.error ? link.clearError : undefined}
-                />
-            )}
 
             <main className="flex min-h-0 flex-1 flex-col overflow-hidden min-[900px]:flex-row">
-                <section className="flex h-[38.2%] min-h-0 flex-col border-b border-slate-900 min-[900px]:h-full min-[900px]:w-[61.8%] min-[900px]:border-b-0 min-[900px]:border-r">
-                    <nav role="tablist" className={BAR}>
+                {/* Both columns carry a faint fill. Left at /40, right at /20 over
+                    the true-black base: without them the split is a single
+                    #0A0A0D hairline on #000000, which measures as a rule and
+                    reads as nothing — the whole app looks like one flat void with
+                    text floating in it. The surfaces are what make the regions
+                    legible now that they are no longer outlined. */}
+                {/* No z-index on this column. `relative` plus a numeric z makes
+                    it a stacking context, which re-bases the tab bar and the log
+                    popover INSIDE it — so the popover's z-40 dismiss backdrop
+                    could not cover the right column (z-20) and clicking the hub
+                    to dismiss the log fired the hub instead, dropping the link. */}
+                <section className="relative flex h-[38.2%] min-h-0 flex-col border-b border-slate-900 bg-slate-950/40 min-[900px]:h-full min-[900px]:w-[61.8%] min-[900px]:border-b-0 min-[900px]:border-r">
+                    <nav role="tablist" className={`${BAR} z-30`}>
                         <div className="no-scrollbar mr-auto flex h-full min-w-0 flex-1 gap-6 overflow-x-auto overflow-y-hidden">
                             {(
                                 [
@@ -135,7 +167,9 @@ export default function Home() {
                         </div>
                     </nav>
 
-                    <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
+                    {/* pt-2 pb-2 px-4 is the scroll-content padding from the
+                        spacing scale, not a free-hand value. */}
+                    <div className="min-h-0 flex-1 overflow-auto px-4 pb-2 pt-2">
                         {tab === 'diagnosis' && <DiagnosisPane link={link} catalog={catalog} />}
                         {tab === 'datalog' && <DatalogPane datalog={datalog} />}
                         {tab === 'calibration' && (
@@ -144,7 +178,6 @@ export default function Home() {
                                 ledger={ledger}
                                 ecuId={ecuId}
                                 connectedToVehicle={connectedToVehicle}
-                                emptyLabel="—"
                             />
                         )}
                         {tab === 'testjobs' && (
@@ -153,31 +186,36 @@ export default function Home() {
                                 ledger={ledger}
                                 ecuId={ecuId}
                                 connectedToVehicle={connectedToVehicle}
-                                emptyLabel="—"
                             />
                         )}
                     </div>
                 </section>
 
-                <aside className="flex min-h-0 flex-1 flex-col overflow-hidden min-[900px]:w-[38.2%] min-[900px]:flex-none">
+                <aside className="relative z-20 flex min-h-0 flex-1 flex-col overflow-hidden bg-slate-900/20 backdrop-blur-sm min-[900px]:w-[38.2%] min-[900px]:flex-none">
                     <div className={BAR}>
-                        <span className="truncate text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                            {catalog ? (lang === 'en' ? catalog.name_en : catalog.name) : '—'}
-                        </span>
-                        <span className="ml-4 flex h-full items-center border-l border-slate-800 pl-4">
-                            <StatusLed state={link.state} mode={link.mode} hasError={!!link.error} />
+                        <span className="truncate text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                            {t.pane_visualization}
                         </span>
                     </div>
 
-                    <div className="relative min-h-[140px] flex-1 overflow-hidden p-4">
+                    <div className="relative min-h-[140px] flex-1 overflow-hidden bg-gradient-to-b from-slate-900/10 to-transparent p-4">
                         <Viz tab={tab} link={link} catalog={catalog} datalog={datalog} />
                     </div>
 
                     {/* Controls take their natural height; the picture above
                         absorbs the slack. The reverse pins the picture and
-                        crushes the dial. */}
-                    <div className="flex-initial overflow-y-auto px-4 pb-4">
-                        <div className="flex h-[32px] items-center justify-center">
+                        crushes the dial. px-5 pt-4 pb-5 is the control-panel
+                        padding from the spacing scale. */}
+                    <div className="flex flex-initial flex-col overflow-y-auto px-5 pb-5 pt-4">
+                        {/* The status row states WHAT is being addressed on the
+                            left and offers its controls on the right — the same
+                            shape as the reference app's DME row. Centring a lone
+                            chip left the panel with no anchor and no label. */}
+                        <div className="flex h-[32px] items-center justify-between px-2">
+                            <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                                <Cpu className="size-3" />
+                                {t.module}
+                            </span>
                             <EcuSelect
                                 index={ecuIndex}
                                 value={ecuId}
@@ -189,11 +227,33 @@ export default function Home() {
                             />
                         </div>
 
-                        <HubNotice text={hub.notice} />
+                        {/* A failure is reported HERE, in the slot that is
+                            already reserved for it, next to the control that
+                            caused it — not as a strip between the header and the
+                            columns. That strip cost 26px of permanent dead space
+                            when empty and shoved the whole workspace down when
+                            full; this costs nothing and puts the message where
+                            the eye already is. */}
+                        <HubNotice text={notice.text} tone={notice.tone} />
                         <HubCluster>
                             <Hub config={hub} />
                         </HubCluster>
                         <SubActions>
+                            {/* The two failure kinds need OPPOSITE advice, so
+                                only one of these can ever appear: retry is the
+                                one action that cannot help an electrical fault,
+                                and the checklist is noise for a desync. */}
+                            {link.errorKind === 'electrical' ? (
+                                <TextButton onClick={() => setFaultOpen(true)} tone="destructive" Icon={AlertTriangle}>
+                                    {t.details}
+                                </TextButton>
+                            ) : (
+                                link.error && (
+                                    <TextButton onClick={link.clearError} tone="primary" Icon={RotateCcw}>
+                                        {t.retry}
+                                    </TextButton>
+                                )
+                            )}
                             {link.state === 'disconnected' ? (
                                 <TextButton onClick={() => void link.connect('practice')} tone="secondary" Icon={FlaskConical}>
                                     {t.practice}
@@ -214,6 +274,8 @@ export default function Home() {
             </main>
 
             <UnverifiedBanner />
+
+            {faultOpen && <ElectricalFaultDialog message={link.error ?? ''} onClose={() => setFaultOpen(false)} />}
         </div>
     );
 }
@@ -224,6 +286,7 @@ export default function Home() {
  */
 const BAR =
     'flex h-[44px] flex-none items-center border-b border-slate-900 bg-slate-900/50 px-4 backdrop-blur-sm';
+
 
 /**
  * The hub's config, derived on every render from the live state. Nothing is
@@ -241,11 +304,15 @@ function useHubConfig(tab: Tab, link: Link, datalog: ReturnType<typeof useDatalo
     if (link.state === 'disconnected') {
         return { label: t.hub_connect, Icon: PlugZap, tone: 'idle', onClick: () => void link.connect('vehicle') };
     }
+    // Loader2, not the state's own glyph. animate-spin rotates whatever it is
+    // given, and PlugZap and Zap both have an obvious "up" — spun end over end
+    // they read as a corrupt icon rather than as progress, at the two moments
+    // the user most needs to believe the tool is working.
     if (link.state === 'connecting') {
-        return { label: t.hub_connecting, Icon: PlugZap, tone: 'connecting', disabled: true, spin: true };
+        return { label: t.hub_connecting, Icon: Loader2, tone: 'connecting', disabled: true, spin: true };
     }
     if (link.state === 'busy') {
-        return { label: t.hub_reading, Icon: Zap, tone: 'busy', disabled: true, spin: true };
+        return { label: t.hub_reading, Icon: Loader2, tone: 'busy', disabled: true, spin: true };
     }
     if (link.state === 'logging') {
         return {
@@ -295,17 +362,27 @@ function Viz({
 
     if (tab === 'diagnosis') {
         const n = link.faults?.length;
+        // Nothing read yet is an EMPTY state, not a zero. Rendering "—" at
+        // text-6xl in slate-800 put a barely-visible dash in the middle of a
+        // 460px void; the canonical placeholder says what the instrument is
+        // waiting for.
+        if (n === undefined) return <Awaiting icon={ScanLine} label={t.awaiting_read} />;
+        // 22px is the ceiling — the size the reference app uses for its one
+        // hub-scale numeric readout. At text-6xl this was a 60px glyph, four
+        // times the largest type anywhere else and six times the chrome around
+        // it: a car with three faults read as an alarm poster rather than an
+        // instrument.
         return (
             <div className="flex h-full flex-col items-center justify-center">
                 <div
-                    className={`font-mono text-6xl ${
-                        n === undefined ? 'text-slate-800' : n === 0 ? 'text-emerald-400' : 'text-red-400'
+                    className={`font-mono text-[22px] font-bold leading-none tabular-nums ${
+                        n === 0 ? 'text-emerald-400' : 'text-red-400'
                     }`}
                 >
-                    {n ?? '—'}
+                    {n}
                 </div>
-                <div className="mt-1 text-[10px] uppercase tracking-widest text-slate-600">
-                    {n === undefined ? t.viz_noData : n === 0 ? t.viz_clean : t.viz_faults}
+                <div className="mt-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                    {n === 0 ? t.viz_clean : t.viz_faults}
                 </div>
             </div>
         );
@@ -314,29 +391,54 @@ function Viz({
     if (tab === 'datalog') return <Sparkline datalog={datalog} />;
 
     const jobs = tab === 'calibration' ? catalog?.actuators : catalog?.testJobs;
+    if (!jobs || jobs.length === 0) return <Awaiting icon={ListChecks} label={t.awaiting_catalog} />;
+
     const mix = { high: 0, medium: 0, low: 0 };
-    for (const j of jobs ?? []) mix[jobRisk(j.id)]++;
-    const total = (jobs ?? []).length || 1;
+    for (const j of jobs) mix[jobRisk(j.id)]++;
+    const total = jobs.length;
 
     return (
-        <div className="flex h-full flex-col justify-center gap-2">
-            <div className="text-[10px] uppercase tracking-widest text-slate-600">{t.riskMix}</div>
+        <div className="flex h-full flex-col justify-center gap-3">
+            <div className="flex items-baseline justify-between">
+                <span className="text-[9px] font-bold uppercase tracking-widest text-slate-600">{t.riskMix}</span>
+                <span className="font-mono text-[10px] text-slate-500">{total}</span>
+            </div>
             <div className="flex h-3 overflow-hidden rounded-sm bg-slate-800">
                 <div className="bg-red-500/70" style={{ width: `${(mix.high / total) * 100}%` }} />
                 <div className="bg-amber-500/70" style={{ width: `${(mix.medium / total) * 100}%` }} />
                 <div className="bg-slate-600" style={{ width: `${(mix.low / total) * 100}%` }} />
             </div>
-            <div className="flex justify-between font-mono text-[10px]">
-                <span className="text-red-400">
-                    {mix.high} {t.risk_high}
-                </span>
-                <span className="text-amber-400">
-                    {mix.medium} {t.risk_medium}
-                </span>
-                <span className="text-slate-500">
-                    {mix.low} {t.risk_low}
-                </span>
+            <div className="grid grid-cols-3 gap-x-2 font-mono">
+                <MixCell n={mix.high} label={t.risk_high} tone="text-red-400" />
+                <MixCell n={mix.medium} label={t.risk_medium} tone="text-amber-400" />
+                <MixCell n={mix.low} label={t.risk_low} tone="text-slate-400" />
             </div>
+        </div>
+    );
+}
+
+function MixCell({ n, label, tone }: { n: number; label: string; tone: string }) {
+    return (
+        <div className="flex flex-col leading-none">
+            <span className="text-[8px] uppercase tracking-wider text-slate-600">{label}</span>
+            <span className={`mt-1.5 text-[11px] font-bold tabular-nums ${tone}`}>{n}</span>
+        </div>
+    );
+}
+
+/**
+ * The canonical empty state: a dashed ring, a dimmed glyph, and terse mono
+ * uppercase copy. Calm and centred — an instrument awaiting input, never an
+ * error shout. This is the one placeholder shape; reuse it rather than
+ * inventing a per-view em-dash.
+ */
+function Awaiting({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
+    return (
+        <div className="flex h-full flex-col items-center justify-center text-slate-700">
+            <div className="mb-4 flex size-16 items-center justify-center rounded-full border-2 border-dashed border-slate-800 opacity-50">
+                <Icon className="size-6 opacity-50" />
+            </div>
+            <p className="font-mono text-xs uppercase opacity-50">{label}</p>
         </div>
     );
 }
@@ -364,13 +466,7 @@ function Sparkline({ datalog }: { datalog: ReturnType<typeof useDatalog> }) {
         };
     }, [datalog.samples, symbol]);
 
-    if (!points) {
-        return (
-            <div className="flex h-full items-center justify-center text-[10px] uppercase tracking-widest text-slate-700">
-                {t.viz_noData}
-            </div>
-        );
-    }
+    if (!points) return <Awaiting icon={Activity} label={t.awaiting_samples} />;
 
     return (
         <div className="flex h-full flex-col">
@@ -408,26 +504,23 @@ function DiagnosisPane({ link, catalog }: { link: Link; catalog: EcuCatalog | nu
     return (
         <>
             {link.ident && (
-                <Well className="mb-4">
+                <Well className="mb-4 max-w-[60ch]">
                     <MicroLabel>IDENT</MicroLabel>
                     <p className="mt-1 break-all font-mono text-xs text-slate-300">{link.ident.hex}</p>
-                    <p className="mt-1 text-[10px] text-slate-600">
-                        {link.ident.length} bytes — the field layout of this response is not yet known.
-                        EdiabasLib used to decode it; shown raw rather than guessed at.
-                    </p>
+                    <p className="mt-1 text-[10px] text-slate-600">{t.ident_note(link.ident.length)}</p>
                 </Well>
             )}
 
             {link.faults === null ? (
-                <p className="text-xs text-slate-600">—</p>
+                <p className="py-2 font-mono text-xs uppercase text-slate-600">{t.awaiting_read}</p>
             ) : link.faults.length === 0 ? (
-                <p className="text-xs text-emerald-400">{t.faults_none}</p>
+                <p className="py-2 text-xs text-emerald-400">{t.faults_none}</p>
             ) : (
-                <ul className="divide-y divide-slate-800/60">
+                <ul className="divide-y divide-slate-800/50">
                     {link.faults.map((f) => (
                         <li key={`${f.number}-${f.errorCode}`} className="py-3 first:pt-0">
                             <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-                                <span className="font-mono text-sm text-red-400">{formatErrorCode(f.errorCode)}</span>
+                                <span className="font-mono text-xs text-red-400">{formatErrorCode(f.errorCode)}</span>
                                 <Readout label={t.faults_type} value={formatErrorCode(f.errorType)} />
                                 <Readout label={t.faults_frequency} value={String(f.frequencyCounter)} />
                                 <Readout label={t.faults_logistics} value={String(f.logisticsCounter)} />
@@ -435,17 +528,23 @@ function DiagnosisPane({ link, catalog }: { link: Link; catalog: EcuCatalog | nu
                             <div className="mt-2">
                                 <MicroLabel>{t.faults_freezeFrames}</MicroLabel>
                             </div>
-                            <table className="mt-1 w-full font-mono text-[11px] text-slate-400">
+                            {/* w-auto, not w-full. Stretched to the pane the three
+                                columns fly apart — the index at the far left, the
+                                counter 800px away at the far right — and the table
+                                stops reading as one record. */}
+                            <table className="mt-1 w-auto font-mono text-[11px] text-slate-400">
                                 <tbody>
                                     {f.environmentSets.map((s, i) => (
                                         <tr key={i}>
-                                            <td className="py-0.5 pr-3 text-slate-600">#{i + 1}</td>
-                                            <td className="py-0.5 pr-3">
+                                            <td className="py-0.5 pr-4 text-slate-600">#{i + 1}</td>
+                                            <td className="py-0.5 pr-6">
                                                 {[s.condition1, s.condition2, s.condition3, s.condition4]
                                                     .map((b) => b.toString(16).padStart(2, '0'))
                                                     .join(' ')}
                                             </td>
-                                            <td className="py-0.5 text-slate-500">{s.counter}</td>
+                                            <td className="py-0.5 text-right tabular-nums text-slate-500">
+                                                {s.counter}
+                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -456,13 +555,16 @@ function DiagnosisPane({ link, catalog }: { link: Link; catalog: EcuCatalog | nu
             )}
 
             {catalog && (
-                <div className="mt-6 border-t border-slate-800/60 pt-4">
+                <div className="mt-6 border-t border-slate-800/50 pt-4">
                     <MicroLabel>
                         {t.faultRef} ({catalog.faultText.length})
                     </MicroLabel>
-                    <p className="mt-1 mb-2 text-[11px] text-slate-600">{t.faultRef_note}</p>
-                    <SearchInput value={query} onChange={setQuery} placeholder={t.search} className="w-full" />
-                    <ul className="mt-2 divide-y divide-slate-800/60">
+                    <p className="mb-2 mt-1 max-w-[60ch] text-[11px] text-slate-600">{t.faultRef_note}</p>
+                    {/* Capped. Stretched to a 900px column this was a grey slab
+                        the width of the pane, which is the largest object on the
+                        screen and says nothing. */}
+                    <SearchInput value={query} onChange={setQuery} placeholder={t.search} className="w-full max-w-[420px]" />
+                    <ul className="mt-2 divide-y divide-slate-800/50">
                         {hits.map((f, i) => (
                             <li key={i} className="py-1.5 first:pt-0">
                                 <div className="text-[11px] text-slate-300">{lang === 'en' ? f.en : f.ja}</div>
@@ -494,7 +596,7 @@ function DatalogPane({ datalog }: { datalog: ReturnType<typeof useDatalog> }) {
             </div>
 
             <table className="mb-6 w-full font-mono text-xs">
-                <tbody className="divide-y divide-slate-800/60">
+                <tbody className="divide-y divide-slate-800/50">
                     {datalog.selected.map((symbol) => (
                         <tr key={symbol}>
                             <td className="py-1 pr-4 text-slate-400">{symbol}</td>
@@ -527,7 +629,7 @@ const ChannelPicker = memo(function ChannelPicker({
     onToggle: (symbol: string, on: boolean) => void;
 }) {
     return (
-        <div className="divide-y divide-slate-800/60 border-t border-slate-800/60">
+        <div className="divide-y divide-slate-800/50 border-t border-slate-800/50">
             {MSS54_LIVE_BLOCKS.map((block) => (
                 <details key={block.selection}>
                     <summary className="cursor-pointer py-1.5 text-[11px] uppercase tracking-widest text-slate-400 hover:text-slate-200">
@@ -549,7 +651,7 @@ const ChannelPicker = memo(function ChannelPicker({
                                 />
                                 <span className="font-mono">{f.symbol}</span>
                                 <span className="truncate text-slate-600">{f.name}</span>
-                                {f.unit && <span className="ml-auto text-slate-700">{f.unit}</span>}
+                                {f.unit && <span className="ml-auto text-slate-500">{f.unit}</span>}
                             </label>
                         ))}
                     </div>
@@ -646,15 +748,16 @@ function EcuSelect({
     disabled: boolean;
     onChange: (id: string) => void;
 }) {
-    const { t } = useLang();
+    // No label inside the chip: the status row it sits in already says MODULE,
+    // and printing it twice on one 32px line is the sort of thing that makes a
+    // panel look unread.
     return (
-        <div className="flex items-center gap-1 rounded bg-slate-800 px-2 py-0.5">
-            <span className="text-[9px] uppercase text-slate-500">{t.module}</span>
+        <div className="flex items-center rounded bg-slate-800 px-2 py-0.5">
             <select
                 value={value}
                 disabled={disabled || index.length === 0}
                 onChange={(e) => onChange(e.target.value)}
-                className="max-w-44 cursor-pointer bg-transparent text-[10px] font-bold text-blue-400 outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                className="max-w-52 cursor-pointer bg-transparent text-[10px] font-bold text-blue-400 outline-none disabled:cursor-not-allowed disabled:opacity-60"
             >
                 {index.map((e) => (
                     <option key={e.id} value={e.id} className="bg-slate-900 text-slate-300">

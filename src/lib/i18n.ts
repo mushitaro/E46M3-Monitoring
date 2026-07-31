@@ -76,6 +76,21 @@ interface Catalog {
     faultRef: string;
     faultRef_note: string;
     catalog_jobs: (n: number) => string;
+    cancel: string;
+    gate_plan: string;
+    gate_preconditions: string;
+    hub_connect: string;
+    hub_connecting: string;
+    hub_connected: string;
+    hub_read: string;
+    hub_reading: string;
+    hub_record: string;
+    hub_stop: string;
+    hub_recording: string;
+    viz_noData: string;
+    viz_faults: string;
+    viz_clean: string;
+    riskMix: string;
 }
 
 const STORAGE_KEY = 'e46m3.lang';
@@ -154,6 +169,21 @@ const STRINGS: Record<Lang, Catalog> = {
         faultRef_note:
             'SGBD 由来の故障本文です。コードとの対応表は EdiabasLib が供給していたもので、まだ再構築できていません。検索用の参照として表示しています。',
         catalog_jobs: (n: number) => `${n} 件`,
+        cancel: 'キャンセル',
+        gate_plan: '送信内容',
+        gate_preconditions: '前提条件（すべて確認）',
+        hub_connect: '接続',
+        hub_connecting: '接続中',
+        hub_connected: '接続済み',
+        hub_read: '読取',
+        hub_reading: '読取中',
+        hub_record: '記録',
+        hub_stop: '停止',
+        hub_recording: '記録中',
+        viz_noData: 'データなし',
+        viz_faults: '故障',
+        viz_clean: '故障なし',
+        riskMix: 'リスク内訳',
     },
     en: {
         appRole: 'DIAGNOSIS',
@@ -229,6 +259,21 @@ const STRINGS: Record<Lang, Catalog> = {
         faultRef_note:
             'Fault texts from the SGBD. The code-to-text mapping was supplied by EdiabasLib and has not been rebuilt yet, so this is shown as a searchable reference rather than as decoded faults.',
         catalog_jobs: (n: number) => `${n} job${n === 1 ? '' : 's'}`,
+        cancel: 'Cancel',
+        gate_plan: 'What will be sent',
+        gate_preconditions: 'Preconditions (confirm all)',
+        hub_connect: 'Connect',
+        hub_connecting: 'Linking',
+        hub_connected: 'Linked',
+        hub_read: 'Read',
+        hub_reading: 'Reading',
+        hub_record: 'Record',
+        hub_stop: 'Stop',
+        hub_recording: 'Recording',
+        viz_noData: 'No data',
+        viz_faults: 'faults',
+        viz_clean: 'No faults',
+        riskMix: 'Risk mix',
     },
 };
 

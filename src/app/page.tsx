@@ -1,41 +1,52 @@
 'use client';
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { CircleDot, PlugZap, Radio, Square, Zap } from 'lucide-react';
 import { MSS54_LIVE_BLOCKS, formatErrorCode, planBlockReads } from '@tsunagi/ds2-mss54';
 import { AppHeader } from '@/components/AppHeader';
+import { Hub, HubCluster, HubNotice, SubActions, type HubConfig } from '@/components/Hub';
 import { JobTable } from '@/components/JobTable';
 import { LinkError } from '@/components/LinkError';
+import { LogPopover } from '@/components/LogPopover';
 import { StatusLed } from '@/components/StatusLed';
-import { useDs2Link, type LiveSample } from '@/hooks/useDs2Link';
-import { useLang, type Lang } from '@/lib/i18n';
-import {
-    loadEcuCatalog,
-    loadEcuIndex,
-    type EcuCatalog,
-    type EcuIndexEntry,
-} from '@/lib/ecuCatalog';
+import { useDs2Link, type CommsLogLine, type LiveSample } from '@/hooks/useDs2Link';
+import { useLang, type Lang, type Strings } from '@/lib/i18n';
+import { jobRisk, loadEcuCatalog, loadEcuIndex, type EcuCatalog, type EcuIndexEntry } from '@/lib/ecuCatalog';
 import { EMPTY_LEDGER, type Ledger } from '@/lib/ledger';
 
-type Tab = 'diagnosis' | 'datalog' | 'calibration' | 'testjobs' | 'log';
+type Tab = 'diagnosis' | 'datalog' | 'calibration' | 'testjobs';
+type Link = ReturnType<typeof useDs2Link>;
 
+/**
+ * The shell.
+ *
+ * Layout follows the ///M spatial system rather than being invented: a 48px app
+ * header whose bottom rule is the tricolor stripe, a 44px tab bar, and a phi
+ * (61.8 / 38.2) split whose right column is a fixed stack — pane title, a
+ * visualization region, then a control panel holding the status row, a RESERVED
+ * notice line, the hub cluster and a RESERVED sub-action row.
+ *
+ * The reserved slots are the part that is easy to skip and shouldn't be:
+ * transient text appears and disappears INSIDE them, so a state change
+ * recolours and relabels without reflowing anything. A panel that twitches
+ * every time the link state moves reads as untrustworthy on a tool that
+ * commands a car.
+ */
 export default function Home() {
     const { t, lang } = useLang();
     const link = useDs2Link();
     const [tab, setTab] = useState<Tab>('diagnosis');
 
-    // The module catalogue. Restored deliberately: the SGBD data for all three
-    // modules was already in the repo and going unused, and "we cannot execute
-    // these jobs yet" is a reason to gate them, not to hide that they exist.
     const [ecuIndex, setEcuIndex] = useState<EcuIndexEntry[]>([]);
     const [ecuId, setEcuId] = useState('mss54');
-    // Keyed by the module it belongs to, so switching modules makes the old
-    // catalogue stale by derivation rather than by a synchronous setState in an
-    // effect (which cascades a render, and which React now flags).
     const [loaded, setLoaded] = useState<{ id: string; catalog: EcuCatalog } | null>(null);
     const [catalogError, setCatalogError] = useState<string | null>(null);
     const catalog = loaded?.id === ecuId ? loaded.catalog : null;
-    // Nothing is verified yet, so this stays empty and every gate reads "blocked".
-    const ledger = EMPTY_LEDGER;
+    const ledger: Ledger = EMPTY_LEDGER;
+
+    // Datalog state lives here so the right column can visualise a run while
+    // the datalog tab is not the one on the left.
+    const datalog = useDatalog(link);
 
     useEffect(() => {
         loadEcuIndex().then(setEcuIndex).catch((e: Error) => setCatalogError(e.message));
@@ -56,29 +67,12 @@ export default function Home() {
     }, [ecuId]);
 
     const connectedToVehicle = link.mode === 'vehicle' && link.state !== 'disconnected';
+    const hub = useHubConfig(tab, link, datalog);
 
     return (
         <div className="flex h-dvh flex-col overflow-hidden bg-slate-950">
-            <AppHeader
-                right={
-                    <div className="flex items-center gap-4">
-                        <EcuSelect
-                            index={ecuIndex}
-                            value={ecuId}
-                            lang={lang}
-                            // Switching module mid-session would change the DS2
-                            // address under an open link, so it is locked while
-                            // connected — the same rule the old app had.
-                            disabled={link.state !== 'disconnected'}
-                            onChange={setEcuId}
-                        />
-                        <StatusLed state={link.state} mode={link.mode} hasError={!!link.error} />
-                        <ConnectionControls link={link} />
-                    </div>
-                }
-            />
+            <AppHeader ident={link.ident} />
 
-            {/* Tab bar — 44px, matching the content bars so their rules line up. */}
             <nav
                 role="tablist"
                 className="flex h-[44px] shrink-0 items-center gap-1 border-b border-slate-900 bg-slate-900/50 px-4 backdrop-blur-sm"
@@ -89,9 +83,8 @@ export default function Home() {
                         ['datalog', t.tab_datalog],
                         ['calibration', t.tab_calibration],
                         ['testjobs', t.tab_testjobs],
-                        ['log', t.tab_log],
                     ] as const
-                ).map(([id, label]) => (
+                ).map(([id, labelText]) => (
                     <button
                         key={id}
                         role="tab"
@@ -103,14 +96,19 @@ export default function Home() {
                                 : 'border-transparent text-slate-500 hover:text-slate-300'
                         }`}
                     >
-                        {label}
+                        {labelText}
                     </button>
                 ))}
+
+                {/* Tools right, fenced with a vertical rule. The comms log is a
+                    popover and not a tab: it has to be reachable WHILE doing the
+                    thing that is failing, not somewhere you navigate away to. */}
+                <div className="ml-auto flex items-center border-l border-slate-800 pl-4">
+                    <LogPopover log={link.log} onClear={link.clearLog} onExport={() => exportLog(link.log)} />
+                </div>
             </nav>
 
-            {/* Reserved slot: a transient error appears INSIDE it, so a failure
-                does not reflow the panes below. */}
-            <div className="min-h-[0px] shrink-0 px-4">
+            <div className="shrink-0 px-4">
                 {(link.error || catalogError) && (
                     <div className="pt-3">
                         <LinkError
@@ -123,29 +121,75 @@ export default function Home() {
             </div>
 
             <main className="flex min-h-0 flex-1 flex-col gap-4 p-4 min-[900px]:flex-row">
-                {tab === 'diagnosis' && <DiagnosisView link={link} catalog={catalog} />}
-                {tab === 'datalog' && <DatalogView link={link} />}
-                {tab === 'calibration' && (
-                    <JobsPane
-                        title={t.tab_calibration}
-                        jobs={catalog?.actuators ?? []}
-                        catalog={catalog}
-                        ecuId={ecuId}
-                        ledger={ledger}
-                        connectedToVehicle={connectedToVehicle}
-                    />
-                )}
-                {tab === 'testjobs' && (
-                    <JobsPane
-                        title={t.tab_testjobs}
-                        jobs={catalog?.testJobs ?? []}
-                        catalog={catalog}
-                        ecuId={ecuId}
-                        ledger={ledger}
-                        connectedToVehicle={connectedToVehicle}
-                    />
-                )}
-                {tab === 'log' && <CommsLogView link={link} />}
+                <section className="flex min-h-0 flex-1 flex-col border border-slate-800 bg-slate-900 min-[900px]:basis-[61.8%]">
+                    <PaneTitle>{tabTitle(t)[tab]}</PaneTitle>
+                    <div className="min-h-0 flex-1 overflow-auto p-3">
+                        {tab === 'diagnosis' && <DiagnosisPane link={link} catalog={catalog} />}
+                        {tab === 'datalog' && <DatalogPane datalog={datalog} />}
+                        {tab === 'calibration' && (
+                            <JobTable
+                                jobs={catalog?.actuators ?? []}
+                                ledger={ledger}
+                                ecuId={ecuId}
+                                connectedToVehicle={connectedToVehicle}
+                                emptyLabel="—"
+                            />
+                        )}
+                        {tab === 'testjobs' && (
+                            <JobTable
+                                jobs={catalog?.testJobs ?? []}
+                                ledger={ledger}
+                                ecuId={ecuId}
+                                connectedToVehicle={connectedToVehicle}
+                                emptyLabel="—"
+                            />
+                        )}
+                    </div>
+                </section>
+
+                <aside className="flex min-h-0 flex-col border border-slate-800 bg-slate-900 min-[900px]:basis-[38.2%]">
+                    <PaneTitle>{catalog ? (lang === 'en' ? catalog.name_en : catalog.name) : '—'}</PaneTitle>
+
+                    <div className="relative min-h-[140px] flex-1 overflow-hidden p-3">
+                        <Viz tab={tab} link={link} catalog={catalog} datalog={datalog} />
+                    </div>
+
+                    <div className="flex-initial overflow-y-auto px-5 pb-5 pt-4">
+                        <div className="flex h-[32px] items-center gap-3">
+                            <EcuSelect
+                                index={ecuIndex}
+                                value={ecuId}
+                                lang={lang}
+                                // The DS2 address is per module, so switching one
+                                // under an open link would silently retarget it.
+                                disabled={link.state !== 'disconnected'}
+                                onChange={setEcuId}
+                            />
+                            <span className="ml-auto">
+                                <StatusLed state={link.state} mode={link.mode} hasError={!!link.error} />
+                            </span>
+                        </div>
+
+                        <HubNotice text={hub.notice} />
+                        <HubCluster>
+                            <Hub config={hub} />
+                        </HubCluster>
+                        <SubActions>
+                            {link.state === 'disconnected' ? (
+                                <SubButton onClick={() => void link.connect('practice')} tone="indigo">
+                                    {t.practice}
+                                </SubButton>
+                            ) : (
+                                <SubButton onClick={() => void link.disconnect()} tone="danger">
+                                    {t.disconnect}
+                                </SubButton>
+                            )}
+                            {tab === 'datalog' && datalog.samples.length > 0 && (
+                                <SubButton onClick={datalog.exportCsv}>{t.exportCsv}</SubButton>
+                            )}
+                        </SubActions>
+                    </div>
+                </aside>
             </main>
 
             <UnverifiedBanner />
@@ -153,177 +197,376 @@ export default function Home() {
     );
 }
 
-type Link = ReturnType<typeof useDs2Link>;
+const tabTitle = (t: Strings): Record<Tab, string> => ({
+    diagnosis: t.tab_diagnosis,
+    datalog: t.tab_datalog,
+    calibration: t.tab_calibration,
+    testjobs: t.tab_testjobs,
+});
 
-function ConnectionControls({ link }: { link: Link }) {
-    const { t } = useLang();
-    const connected = link.state !== 'disconnected' && link.state !== 'connecting';
-    const busy = link.state === 'busy' || link.state === 'logging' || link.state === 'connecting';
-
-    if (connected) {
-        return (
-            <button
-                type="button"
-                onClick={() => void link.disconnect()}
-                disabled={busy}
-                className="border border-slate-700 bg-slate-800 px-3 py-1 font-mono text-[11px] uppercase tracking-widest text-slate-300 hover:border-red-500 hover:text-red-400 disabled:opacity-40"
-            >
-                {t.disconnect}
-            </button>
-        );
-    }
-
+function PaneTitle({ children }: { children: React.ReactNode }) {
     return (
-        <div className="flex items-center gap-2">
-            <button
-                type="button"
-                onClick={() => void link.connect('vehicle')}
-                disabled={busy || !link.webSerialSupported}
-                title={link.webSerialSupported ? undefined : t.notSupported_body}
-                className="border border-blue-600 bg-blue-600/10 px-3 py-1 font-mono text-[11px] uppercase tracking-widest text-blue-400 hover:bg-blue-600/20 disabled:opacity-40"
-            >
-                {t.connect}
-            </button>
-            <button
-                type="button"
-                onClick={() => void link.connect('practice')}
-                disabled={busy}
-                className="border border-indigo-500/60 bg-indigo-500/10 px-3 py-1 font-mono text-[11px] uppercase tracking-widest text-indigo-400 hover:bg-indigo-500/20 disabled:opacity-40"
-            >
-                {t.practice}
-            </button>
+        <div className="flex h-[44px] shrink-0 items-center border-b border-slate-800 px-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">
+            {children}
         </div>
     );
 }
 
-function Panel({ title, children, className = '' }: { title: string; children: React.ReactNode; className?: string }) {
-    return (
-        <section className={`flex min-h-0 flex-col border border-slate-800 bg-slate-900 ${className}`}>
-            <div className="flex h-[44px] shrink-0 items-center border-b border-slate-800 px-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">
-                {title}
-            </div>
-            <div className="min-h-0 flex-1 overflow-auto p-3">{children}</div>
-        </section>
-    );
+/**
+ * The hub's config, derived on every render from the live state. Nothing is
+ * stored — storing it and re-syncing by hand is the source of "the button says
+ * the wrong thing" bugs.
+ *
+ * The job tables deliberately contribute no config: they have dozens of
+ * independently-runnable rows, each with its own inline control, and routing
+ * those through one shared button would be an extra click and a re-derived
+ * label. They fall through to a passive connected state.
+ */
+function useHubConfig(tab: Tab, link: Link, datalog: ReturnType<typeof useDatalog>): HubConfig {
+    const { t } = useLang();
+
+    if (link.state === 'disconnected') {
+        return { label: t.hub_connect, Icon: PlugZap, tone: 'idle', onClick: () => void link.connect('vehicle') };
+    }
+    if (link.state === 'connecting') {
+        return { label: t.hub_connecting, Icon: PlugZap, tone: 'connecting', disabled: true, spin: true };
+    }
+    if (link.state === 'busy') {
+        return { label: t.hub_reading, Icon: Zap, tone: 'busy', disabled: true, spin: true };
+    }
+    if (link.state === 'logging') {
+        return {
+            label: t.hub_stop,
+            Icon: Square,
+            tone: 'armed',
+            onClick: datalog.stop,
+            notice: `${datalog.samples.length} ${t.samples}`,
+        };
+    }
+    if (tab === 'diagnosis') {
+        return {
+            label: t.hub_read,
+            Icon: Zap,
+            tone: 'ready',
+            onClick: () => void link.readIdent().then(() => link.readFaults()),
+        };
+    }
+    if (tab === 'datalog') {
+        return {
+            label: t.hub_record,
+            Icon: Radio,
+            tone: 'ready',
+            onClick: datalog.start,
+            notice: datalog.costNotice,
+        };
+    }
+    return { label: t.hub_connected, Icon: CircleDot, tone: 'idle', disabled: true };
 }
 
 /**
- * A bound on the in-memory run.
- *
- * The old PWA capped at 5000 and dropped the oldest silently, which at its
- * 250 ms interval was ~20 minutes. Here the rate is the round trip, so the cap
- * is stated in samples and the UI shows the count — a run that hits it is
- * visible rather than quietly lossy.
+ * The visualization region — per-view, and not decoration: each one answers the
+ * question the left pane is currently about, at a glance and from a distance.
  */
-const MAX_SAMPLES = 200_000;
-/** Samples reach React at most this often; the loop is never throttled by it. */
-const FLUSH_INTERVAL_MS = 500;
-
-/** φ: 61.8 / 38.2. Not 70/30 — the proportion is the system's, not a taste call. */
-const PHI_MAIN = 'min-[900px]:basis-[61.8%]';
-const PHI_SIDE = 'min-[900px]:basis-[38.2%]';
-
-function DiagnosisView({ link, catalog }: { link: Link; catalog: EcuCatalog | null }) {
+function Viz({
+    tab,
+    link,
+    catalog,
+    datalog,
+}: {
+    tab: Tab;
+    link: Link;
+    catalog: EcuCatalog | null;
+    datalog: ReturnType<typeof useDatalog>;
+}) {
     const { t } = useLang();
-    const idle = link.state === 'connected';
+
+    if (tab === 'diagnosis') {
+        const n = link.faults?.length;
+        return (
+            <div className="flex h-full flex-col items-center justify-center">
+                <div
+                    className={`font-mono text-6xl ${
+                        n === undefined ? 'text-slate-800' : n === 0 ? 'text-emerald-400' : 'text-red-400'
+                    }`}
+                >
+                    {n ?? '—'}
+                </div>
+                <div className="mt-1 text-[10px] uppercase tracking-widest text-slate-600">
+                    {n === undefined ? t.viz_noData : n === 0 ? t.viz_clean : t.viz_faults}
+                </div>
+            </div>
+        );
+    }
+
+    if (tab === 'datalog') return <Sparkline datalog={datalog} />;
+
+    const jobs = tab === 'calibration' ? catalog?.actuators : catalog?.testJobs;
+    const mix = { high: 0, medium: 0, low: 0 };
+    for (const j of jobs ?? []) mix[jobRisk(j.id)]++;
+    const total = (jobs ?? []).length || 1;
+
+    return (
+        <div className="flex h-full flex-col justify-center gap-2">
+            <div className="text-[10px] uppercase tracking-widest text-slate-600">{t.riskMix}</div>
+            <div className="flex h-3 overflow-hidden rounded-sm bg-slate-800">
+                <div className="bg-red-500/70" style={{ width: `${(mix.high / total) * 100}%` }} />
+                <div className="bg-amber-500/70" style={{ width: `${(mix.medium / total) * 100}%` }} />
+                <div className="bg-slate-600" style={{ width: `${(mix.low / total) * 100}%` }} />
+            </div>
+            <div className="flex justify-between font-mono text-[10px]">
+                <span className="text-red-400">
+                    {mix.high} {t.risk_high}
+                </span>
+                <span className="text-amber-400">
+                    {mix.medium} {t.risk_medium}
+                </span>
+                <span className="text-slate-500">
+                    {mix.low} {t.risk_low}
+                </span>
+            </div>
+        </div>
+    );
+}
+
+/** A single-channel trace. Enough to see the shape; the pane shows the numbers. */
+function Sparkline({ datalog }: { datalog: ReturnType<typeof useDatalog> }) {
+    const { t } = useLang();
+    const symbol = datalog.selected[0];
+    const points = useMemo(() => {
+        if (!symbol) return null;
+        const window = datalog.samples.slice(-240);
+        const values = window
+            .map((s) => s.values[symbol])
+            .filter((v): v is number => v !== null && v !== undefined);
+        if (values.length < 2) return null;
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        const span = max - min || 1;
+        return {
+            min,
+            max,
+            d: values
+                .map((v, i) => `${(i / (values.length - 1)) * 100},${100 - ((v - min) / span) * 100}`)
+                .join(' '),
+        };
+    }, [datalog.samples, symbol]);
+
+    if (!points) {
+        return (
+            <div className="flex h-full items-center justify-center text-[10px] uppercase tracking-widest text-slate-700">
+                {t.viz_noData}
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex h-full flex-col">
+            <div className="flex items-baseline justify-between font-mono text-[10px] text-slate-600">
+                <span className="text-slate-400">{symbol}</span>
+                <span>
+                    {points.min.toFixed(1)} – {points.max.toFixed(1)}
+                </span>
+            </div>
+            <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="min-h-0 w-full flex-1">
+                <polyline
+                    points={points.d}
+                    fill="none"
+                    stroke="#26AEE4"
+                    strokeWidth="1"
+                    vectorEffect="non-scaling-stroke"
+                />
+            </svg>
+        </div>
+    );
+}
+
+function DiagnosisPane({ link, catalog }: { link: Link; catalog: EcuCatalog | null }) {
+    const { lang, t } = useLang();
+    const [query, setQuery] = useState('');
+
+    const hits = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        if (!q || !catalog) return [];
+        return catalog.faultText
+            .filter((f) => [f.de, f.ja, f.en].some((s) => s.toLowerCase().includes(q)))
+            .slice(0, 40);
+    }, [catalog, query]);
 
     return (
         <>
-            <Panel title={t.tab_diagnosis} className={`flex-1 ${PHI_MAIN}`}>
-                <div className="mb-3 flex flex-wrap gap-2">
-                    <ActionButton onClick={() => void link.readIdent()} disabled={!idle}>
-                        {t.readIdent}
-                    </ActionButton>
-                    <ActionButton onClick={() => void link.readFaults()} disabled={!idle}>
-                        {t.readFaults}
-                    </ActionButton>
+            {link.ident && (
+                <div className="mb-3 border border-slate-800 p-2">
+                    <div className="text-[10px] uppercase tracking-widest text-slate-600">IDENT</div>
+                    <p className="break-all font-mono text-xs text-slate-300">{link.ident.hex}</p>
+                    <p className="mt-1 text-[10px] text-slate-600">
+                        {link.ident.length} bytes — the field layout of this response is not yet known.
+                        EdiabasLib used to decode it; shown raw rather than guessed at.
+                    </p>
                 </div>
+            )}
 
-                {link.faults === null ? (
-                    <p className="text-xs text-slate-600">—</p>
-                ) : link.faults.length === 0 ? (
-                    <p className="text-xs text-emerald-400">{t.faults_none}</p>
-                ) : (
-                    <>
-                        <p className="mb-2 text-xs text-slate-400">{t.faults_count(link.faults.length)}</p>
-                        <ul className="space-y-2">
-                            {link.faults.map((f) => (
-                                <li key={`${f.number}-${f.errorCode}`} className="border border-slate-800 p-2">
-                                    <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-                                        <span className="font-mono text-sm text-red-400">
-                                            {formatErrorCode(f.errorCode)}
-                                        </span>
-                                        <Readout label={t.faults_type} value={formatErrorCode(f.errorType)} />
-                                        <Readout label={t.faults_frequency} value={String(f.frequencyCounter)} />
-                                        <Readout label={t.faults_logistics} value={String(f.logisticsCounter)} />
-                                    </div>
-                                    <div className="mt-2">
-                                        <div className="text-[10px] uppercase tracking-widest text-slate-600">
-                                            {t.faults_freezeFrames}
-                                        </div>
-                                        <table className="mt-1 w-full font-mono text-[11px] text-slate-400">
-                                            <tbody>
-                                                {f.environmentSets.map((s, i) => (
-                                                    <tr key={i} className="border-t border-slate-800/60">
-                                                        <td className="py-0.5 pr-3 text-slate-600">#{i + 1}</td>
-                                                        <td className="py-0.5 pr-3">
-                                                            {[s.condition1, s.condition2, s.condition3, s.condition4]
-                                                                .map((b) => b.toString(16).padStart(2, '0'))
-                                                                .join(' ')}
-                                                        </td>
-                                                        <td className="py-0.5 text-slate-500">{s.counter}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </li>
-                            ))}
-                        </ul>
-                    </>
-                )}
-            </Panel>
+            {link.faults === null ? (
+                <p className="text-xs text-slate-600">—</p>
+            ) : link.faults.length === 0 ? (
+                <p className="text-xs text-emerald-400">{t.faults_none}</p>
+            ) : (
+                <ul className="space-y-2">
+                    {link.faults.map((f) => (
+                        <li key={`${f.number}-${f.errorCode}`} className="border border-slate-800 p-2">
+                            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                                <span className="font-mono text-sm text-red-400">{formatErrorCode(f.errorCode)}</span>
+                                <Readout label={t.faults_type} value={formatErrorCode(f.errorType)} />
+                                <Readout label={t.faults_frequency} value={String(f.frequencyCounter)} />
+                                <Readout label={t.faults_logistics} value={String(f.logisticsCounter)} />
+                            </div>
+                            <div className="mt-2 text-[10px] uppercase tracking-widest text-slate-600">
+                                {t.faults_freezeFrames}
+                            </div>
+                            <table className="mt-1 w-full font-mono text-[11px] text-slate-400">
+                                <tbody>
+                                    {f.environmentSets.map((s, i) => (
+                                        <tr key={i} className="border-t border-slate-800/60">
+                                            <td className="py-0.5 pr-3 text-slate-600">#{i + 1}</td>
+                                            <td className="py-0.5 pr-3">
+                                                {[s.condition1, s.condition2, s.condition3, s.condition4]
+                                                    .map((b) => b.toString(16).padStart(2, '0'))
+                                                    .join(' ')}
+                                            </td>
+                                            <td className="py-0.5 text-slate-500">{s.counter}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </li>
+                    ))}
+                </ul>
+            )}
 
-            <Panel title={`IDENT / ${t.faultRef}`} className={`flex-1 ${PHI_SIDE}`}>
-                {link.ident ? (
-                    <>
-                        <p className="break-all font-mono text-xs text-slate-300">{link.ident.hex}</p>
-                        <p className="mt-2 text-[11px] text-slate-600">
-                            {link.ident.length} bytes. The field layout of this response is not yet known —
-                            EdiabasLib used to decode it. Shown raw rather than guessed at.
-                        </p>
-                    </>
-                ) : (
-                    <p className="text-xs text-slate-600">—</p>
-                )}
-                {link.quickTest && (
-                    <div className="mt-4 border-t border-slate-800 pt-3">
-                        <Readout label="quicktest" value={formatErrorCode(link.quickTest.status)} />
-                        <Readout label="A" value={String(link.quickTest.counterA)} />
-                        <Readout label="B" value={String(link.quickTest.counterB)} />
+            {catalog && (
+                <div className="mt-4 border-t border-slate-800 pt-3">
+                    <div className="mb-1 text-[10px] uppercase tracking-widest text-slate-600">
+                        {t.faultRef} ({catalog.faultText.length})
                     </div>
-                )}
-                <FaultReference catalog={catalog} />
-            </Panel>
+                    <p className="mb-2 text-[11px] text-slate-600">{t.faultRef_note}</p>
+                    <input
+                        type="search"
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        placeholder={t.search}
+                        className="w-full border border-slate-700 bg-slate-800 px-2 py-1 font-mono text-xs text-slate-200 placeholder:text-slate-600 focus:border-blue-500 focus:outline-none"
+                    />
+                    <ul className="mt-2 space-y-1">
+                        {hits.map((f, i) => (
+                            <li key={i} className="border-b border-slate-800/60 pb-1">
+                                <div className="text-[11px] text-slate-300">{lang === 'en' ? f.en : f.ja}</div>
+                                <div className="font-mono text-[10px] text-slate-600">{f.de}</div>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
         </>
     );
 }
 
-function DatalogView({ link }: { link: Link }) {
+function DatalogPane({ datalog }: { datalog: ReturnType<typeof useDatalog> }) {
+    const { t } = useLang();
+    return (
+        <>
+            <div className="mb-3 flex flex-wrap items-center gap-4 font-mono text-[11px] text-slate-500">
+                <span>
+                    {t.samples} <span className="text-slate-300">{datalog.samples.length}</span>
+                </span>
+                <span>
+                    {t.rate}{' '}
+                    <span className="text-slate-300">
+                        {datalog.rateHz ? `${datalog.rateHz.toFixed(1)} Hz` : '—'}
+                    </span>
+                </span>
+                <span className="text-slate-600">{datalog.costNotice}</span>
+            </div>
+
+            <table className="mb-4 w-full font-mono text-xs">
+                <tbody>
+                    {datalog.selected.map((symbol) => (
+                        <tr key={symbol} className="border-t border-slate-800">
+                            <td className="py-1 pr-4 text-slate-400">{symbol}</td>
+                            <td className="py-1 text-right text-slate-200">
+                                {datalog.latest[symbol] == null ? '—' : datalog.latest[symbol]!.toFixed(2)}
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+
+            <ChannelPicker selected={datalog.selected} disabled={datalog.running} onToggle={datalog.toggle} />
+        </>
+    );
+}
+
+/**
+ * 213 checkboxes, memoized. Without this every sample flush re-rendered the
+ * whole picker, and against a synchronous simulator that starved the poll loop
+ * badly enough to report 1.0 Hz — the app measuring itself instead of the link,
+ * in the one view whose job is to report the link's real rate.
+ */
+const ChannelPicker = memo(function ChannelPicker({
+    selected,
+    disabled,
+    onToggle,
+}: {
+    selected: string[];
+    disabled: boolean;
+    onToggle: (symbol: string, on: boolean) => void;
+}) {
+    return (
+        <div className="space-y-2">
+            {MSS54_LIVE_BLOCKS.map((block) => (
+                <details key={block.selection} className="border border-slate-800">
+                    <summary className="cursor-pointer px-2 py-1 text-[11px] uppercase tracking-widest text-slate-400">
+                        <span className="font-mono text-slate-600">{block.selection}</span> {block.name}{' '}
+                        <span className="text-slate-600">({block.fields.length})</span>
+                    </summary>
+                    <div className="max-h-48 overflow-auto px-2 pb-2">
+                        {block.fields.map((f) => (
+                            <label
+                                key={`${block.selection}:${f.symbol}`}
+                                className="flex cursor-pointer items-center gap-2 py-0.5 text-[11px] text-slate-400 hover:text-slate-200"
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={selected.includes(f.symbol)}
+                                    disabled={disabled}
+                                    onChange={(e) => onToggle(f.symbol, e.target.checked)}
+                                    className="size-3 accent-blue-500"
+                                />
+                                <span className="font-mono">{f.symbol}</span>
+                                <span className="truncate text-slate-600">{f.name}</span>
+                                {f.unit && <span className="ml-auto text-slate-700">{f.unit}</span>}
+                            </label>
+                        ))}
+                    </div>
+                </details>
+            ))}
+        </div>
+    );
+});
+
+/** A bound on the in-memory run, stated rather than silent. */
+const MAX_SAMPLES = 200_000;
+const FLUSH_INTERVAL_MS = 500;
+
+function useDatalog(link: Link) {
     const { t } = useLang();
     const [selected, setSelected] = useState<string[]>(['n', 'tmot']);
     const [samples, setSamples] = useState<LiveSample[]>([]);
-    const samplesRef = useRef<LiveSample[]>([]);
     const [latest, setLatest] = useState<Record<string, number | null>>({});
+    const samplesRef = useRef<LiveSample[]>([]);
+    const flushAtRef = useRef(0);
 
     const plan = useMemo(() => planBlockReads(selected), [selected]);
-    const logging = link.state === 'logging';
+    const running = link.state === 'logging';
 
-    /**
-     * Measured, never assumed. The rate is the round-trip time, so it is a fact
-     * about the cable and the ECU, not a setting. Clocked off sample.time rather
-     * than Date.now() so it stays honest when the tab is backgrounded.
-     */
     const rateHz = useMemo(() => {
         const s = samples.slice(-24);
         if (s.length < 2) return null;
@@ -331,31 +574,17 @@ function DatalogView({ link }: { link: Link }) {
         return span > 0 ? (s.length - 1) / span : null;
     }, [samples]);
 
-    /**
-     * State batching is the caller's problem, not the loop's.
-     *
-     * Rendering per sample re-renders the 213-row channel picker with it, which
-     * measured 1.0 Hz against a simulator that answers instantly — the sample
-     * rate became a property of React rather than of the wire, which is exactly
-     * the number this view exists to report honestly. Samples accumulate in a
-     * ref and reach React at most every 500 ms; the measured rate is still
-     * computed from sample.time, so it stays a fact about the link.
-     */
-    const flushAtRef = useRef(0);
     const onSample = useCallback((sample: LiveSample) => {
-        // push, not concat. concat copies the whole array every sample, which is
-        // quadratic in the run length — invisible while each exchange cost 30 ms
-        // and fatal the moment it did not. It hung the renderer outright.
+        // push, not concat: concat copies the whole array every sample, which is
+        // quadratic in the run length and hung the renderer once the exchange
+        // got fast.
         const buf = samplesRef.current;
         buf.push(sample);
         if (buf.length > MAX_SAMPLES) buf.splice(0, buf.length - MAX_SAMPLES);
-
         const now = performance.now();
         if (now - flushAtRef.current < FLUSH_INTERVAL_MS) return;
         flushAtRef.current = now;
         setLatest(sample.values);
-        // A fresh array so React sees a change; the copy happens twice a second,
-        // not once per sample.
         setSamples(buf.slice());
     }, []);
 
@@ -363,11 +592,9 @@ function DatalogView({ link }: { link: Link }) {
         samplesRef.current.length = 0;
         flushAtRef.current = 0;
         setSamples([]);
-        // Both endings land here: the stop button and a link failure. A run that
-        // dies must not quietly leave the view looking like it is still going.
-        link.startLog(selected, onSample, () => {
-            setSamples(samplesRef.current.slice());
-        });
+        // Both endings land in the same place: the stop button and a link
+        // failure. A run that dies must not leave the view looking live.
+        link.startLog(selected, onSample, () => setSamples(samplesRef.current.slice()));
     }, [link, onSample, selected]);
 
     const toggle = useCallback((symbol: string, on: boolean) => {
@@ -384,161 +611,74 @@ function DatalogView({ link }: { link: Link }) {
         download(rows.join('\r\n'), 'text/csv', `e46m3-datalog-${stamp()}.csv`);
     }, [selected]);
 
-    return (
-        <>
-            <Panel title={t.tab_datalog} className={`flex-1 ${PHI_MAIN}`}>
-                <div className="mb-3 flex flex-wrap items-center gap-2">
-                    <ActionButton onClick={logging ? link.stopLog : start} disabled={link.state !== 'connected' && !logging}>
-                        {logging ? t.stopLog : t.startLog}
-                    </ActionButton>
-                    <ActionButton onClick={exportCsv} disabled={samples.length === 0}>
-                        {t.exportCsv}
-                    </ActionButton>
-                    <span className="ml-auto flex gap-4 font-mono text-[11px] text-slate-500">
-                        <span>
-                            {t.samples} {samples.length}
-                        </span>
-                        <span>
-                            {t.rate} {rateHz ? `${rateHz.toFixed(1)} Hz` : '—'}
-                        </span>
-                    </span>
-                </div>
-
-                {/* The cost model, stated: one round trip per BLOCK, not per channel. */}
-                <p className="mb-3 text-[11px] text-slate-500">
-                    {t.channels_selected(selected.length, plan.blocks.length)}
-                </p>
-
-                <table className="w-full font-mono text-xs">
-                    <tbody>
-                        {selected.map((symbol) => (
-                            <tr key={symbol} className="border-t border-slate-800">
-                                <td className="py-1 pr-4 text-slate-400">{symbol}</td>
-                                <td className="py-1 text-right text-slate-200">
-                                    {latest[symbol] === null || latest[symbol] === undefined
-                                        ? '—'
-                                        : latest[symbol]!.toFixed(2)}
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </Panel>
-
-            <Panel title={t.channels} className={`flex-1 ${PHI_SIDE}`}>
-                <ChannelPicker selected={selected} disabled={logging} onToggle={toggle} />
-            </Panel>
-        </>
-    );
+    return {
+        selected,
+        samples,
+        latest,
+        rateHz,
+        running,
+        start,
+        stop: link.stopLog,
+        toggle,
+        exportCsv,
+        // The cost model, stated: one round trip per BLOCK, not per channel.
+        costNotice: t.channels_selected(selected.length, plan.blocks.length),
+    };
 }
 
-/**
- * 213 checkboxes. Memoized because it is a sibling of the live readout: without
- * this, every sample flush re-rendered the whole picker, and on a synchronous
- * simulator that starved the poll loop badly enough to report 1.0 Hz — the app
- * measuring itself instead of the link, in the one view whose job is to report
- * the link's real rate.
- */
-const ChannelPicker = memo(function ChannelPicker({
-    selected,
+function EcuSelect({
+    index,
+    value,
+    lang,
     disabled,
-    onToggle,
+    onChange,
 }: {
-    selected: string[];
+    index: EcuIndexEntry[];
+    value: string;
+    lang: Lang;
     disabled: boolean;
-    onToggle: (symbol: string, on: boolean) => void;
+    onChange: (id: string) => void;
 }) {
-    return (
-                <div className="space-y-3">
-                    {MSS54_LIVE_BLOCKS.map((block) => (
-                        <details key={block.selection} className="border border-slate-800">
-                            <summary className="cursor-pointer px-2 py-1 text-[11px] uppercase tracking-widest text-slate-400">
-                                <span className="font-mono text-slate-600">{block.selection}</span> {block.name}{' '}
-                                <span className="text-slate-600">({block.fields.length})</span>
-                            </summary>
-                            <div className="max-h-48 overflow-auto px-2 pb-2">
-                                {block.fields.map((f) => (
-                                    <label
-                                        key={`${block.selection}:${f.symbol}`}
-                                        className="flex cursor-pointer items-center gap-2 py-0.5 text-[11px] text-slate-400 hover:text-slate-200"
-                                    >
-                                        <input
-                                            type="checkbox"
-                                            checked={selected.includes(f.symbol)}
-                                            disabled={disabled}
-                                            onChange={(e) => onToggle(f.symbol, e.target.checked)}
-                                            className="accent-blue-500"
-                                        />
-                                        <span className="font-mono">{f.symbol}</span>
-                                        <span className="truncate text-slate-600">{f.name}</span>
-                                        {f.unit && <span className="ml-auto text-slate-700">{f.unit}</span>}
-                                    </label>
-                                ))}
-                            </div>
-                        </details>
-                    ))}
-                </div>
-    );
-});
-
-function CommsLogView({ link }: { link: Link }) {
     const { t } = useLang();
-    const exportLog = useCallback(() => {
-        const text = link.log
-            .map((l) => `${new Date(l.t).toISOString()} ${l.kind.toUpperCase().padEnd(5)} ${l.text}`)
-            .join('\r\n');
-        download(text, 'text/plain', `e46m3-comms-${stamp()}.txt`);
-    }, [link.log]);
-
     return (
-        <Panel title={t.tab_log} className="flex-1">
-            <div className="mb-3 flex gap-2">
-                <ActionButton onClick={exportLog} disabled={link.log.length === 0}>
-                    {t.exportLog}
-                </ActionButton>
-                <ActionButton onClick={link.clearLog} disabled={link.log.length === 0}>
-                    {t.clearLog}
-                </ActionButton>
-            </div>
-            <pre className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed">
-                {link.log.map((l, i) => (
-                    <div
-                        key={i}
-                        className={
-                            l.kind === 'error'
-                                ? 'text-red-400'
-                                : l.kind === 'warn'
-                                  ? 'text-amber-400'
-                                  : l.kind === 'tx'
-                                    ? 'text-blue-400'
-                                    : l.kind === 'rx'
-                                      ? 'text-slate-300'
-                                      : 'text-slate-500'
-                        }
-                    >
-                        {new Date(l.t).toLocaleTimeString(undefined, { hour12: false })} {l.text}
-                    </div>
+        <div className="flex items-center gap-1 rounded bg-slate-800 px-2 py-0.5">
+            <span className="text-[9px] uppercase text-slate-500">{t.module}</span>
+            <select
+                value={value}
+                disabled={disabled || index.length === 0}
+                onChange={(e) => onChange(e.target.value)}
+                className="max-w-44 cursor-pointer bg-transparent text-[10px] font-bold text-blue-400 outline-none disabled:cursor-not-allowed disabled:opacity-60"
+            >
+                {index.map((e) => (
+                    <option key={e.id} value={e.id} className="bg-slate-900 text-slate-300">
+                        {lang === 'en' ? e.name_en : e.name}
+                    </option>
                 ))}
-            </pre>
-        </Panel>
+            </select>
+        </div>
     );
 }
 
-function ActionButton({
+function SubButton({
     children,
     onClick,
-    disabled,
+    tone = 'neutral',
 }: {
     children: React.ReactNode;
     onClick: () => void;
-    disabled?: boolean;
+    tone?: 'neutral' | 'danger' | 'indigo';
 }) {
+    const cls =
+        tone === 'danger'
+            ? 'border-slate-700 text-slate-300 hover:border-red-500 hover:text-red-400'
+            : tone === 'indigo'
+              ? 'border-indigo-500/60 text-indigo-400 hover:bg-indigo-500/10'
+              : 'border-slate-700 text-slate-300 hover:border-blue-500 hover:text-blue-400';
     return (
         <button
             type="button"
             onClick={onClick}
-            disabled={disabled}
-            className="border border-slate-700 bg-slate-800 px-3 py-1 font-mono text-[11px] uppercase tracking-widest text-slate-300 transition-colors hover:border-blue-500 hover:text-blue-400 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-slate-700 disabled:hover:text-slate-300"
+            className={`border bg-slate-800 px-3 py-1 font-mono text-[10px] uppercase tracking-widest transition-colors ${cls}`}
         >
             {children}
         </button>
@@ -555,10 +695,10 @@ function Readout({ label, value }: { label: string; value: string }) {
 }
 
 /**
- * Permanent, not dismissible. Every number this app can currently display comes
- * from a static scrape of SGBD bytecode or a decompiled catalog, and none of it
- * has been confirmed against a car. Hiding that behind a one-time dialog would
- * make the app's own uncertainty the thing users forget first.
+ * Permanent, not dismissible. Every number this app can display comes from a
+ * static scrape of SGBD bytecode or a decompiled catalog, and none of it has
+ * been confirmed against a car. Behind a one-time dialog, the app's own
+ * uncertainty is the first thing a user forgets.
  */
 function UnverifiedBanner() {
     const { t } = useLang();
@@ -567,6 +707,13 @@ function UnverifiedBanner() {
             <p className="text-[11px] text-amber-400">{t.unverified}</p>
         </footer>
     );
+}
+
+function exportLog(log: CommsLogLine[]) {
+    const text = log
+        .map((l) => `${new Date(l.t).toISOString()} ${l.kind.toUpperCase().padEnd(5)} ${l.text}`)
+        .join('\r\n');
+    download(text, 'text/plain', `e46m3-comms-${stamp()}.txt`);
 }
 
 function download(content: string, type: string, filename: string) {
@@ -582,126 +729,4 @@ function stamp() {
     const d = new Date();
     const p = (n: number) => String(n).padStart(2, '0');
     return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
-}
-
-
-/**
- * The SGBD fault-text table, as a searchable reference.
- *
- * 607 texts across the three modules were sitting unused in ecu-data. They are
- * NOT shown as decoded faults, because the code-to-text mapping is the piece
- * EdiabasLib used to supply (F_ORT_NR / F_ORT_TEXT) and it has not been rebuilt
- * — the generated table is a flat list with no codes attached. Presenting it as
- * a lookup would be inventing a correspondence; presenting it as a reference
- * gives the operator the vocabulary back without claiming more than is known.
- */
-function FaultReference({ catalog }: { catalog: EcuCatalog | null }) {
-    const { lang, t } = useLang();
-    const [query, setQuery] = useState('');
-
-    const hits = useMemo(() => {
-        const q = query.trim().toLowerCase();
-        if (!q || !catalog) return [];
-        return catalog.faultText
-            .filter(
-                (f) =>
-                    f.de.toLowerCase().includes(q) ||
-                    f.ja.toLowerCase().includes(q) ||
-                    f.en.toLowerCase().includes(q),
-            )
-            .slice(0, 40);
-    }, [catalog, query]);
-
-    if (!catalog) return null;
-
-    return (
-        <div className="mt-4 border-t border-slate-800 pt-3">
-            <div className="mb-1 text-[10px] uppercase tracking-widest text-slate-600">
-                {t.faultRef} ({catalog.faultText.length})
-            </div>
-            <p className="mb-2 text-[11px] text-slate-600">{t.faultRef_note}</p>
-            <input
-                type="search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={t.search}
-                className="w-full border border-slate-700 bg-slate-800 px-2 py-1 font-mono text-xs text-slate-200 placeholder:text-slate-600 focus:border-blue-500 focus:outline-none"
-            />
-            <ul className="mt-2 space-y-1">
-                {hits.map((f, i) => (
-                    <li key={i} className="border-b border-slate-800/60 pb-1">
-                        <div className="text-[11px] text-slate-300">{lang === 'en' ? f.en : f.ja}</div>
-                        <div className="font-mono text-[10px] text-slate-600">{f.de}</div>
-                    </li>
-                ))}
-            </ul>
-        </div>
-    );
-}
-
-/** Module selector. Locked while connected — the DS2 address is per module. */
-function EcuSelect({
-    index,
-    value,
-    lang,
-    disabled,
-    onChange,
-}: {
-    index: EcuIndexEntry[];
-    value: string;
-    lang: Lang;
-    disabled: boolean;
-    onChange: (id: string) => void;
-}) {
-    const { t } = useLang();
-    return (
-        <label className="flex items-center gap-2">
-            <span className="text-[10px] uppercase tracking-widest text-slate-600">{t.module}</span>
-            <select
-                value={value}
-                disabled={disabled || index.length === 0}
-                onChange={(e) => onChange(e.target.value)}
-                className="max-w-56 border border-slate-700 bg-slate-800 px-2 py-1 font-mono text-[11px] text-blue-400 disabled:opacity-50"
-            >
-                {index.map((e) => (
-                    <option key={e.id} value={e.id}>
-                        {lang === 'en' ? e.name_en : e.name}
-                    </option>
-                ))}
-            </select>
-        </label>
-    );
-}
-
-function JobsPane({
-    title,
-    jobs,
-    catalog,
-    ecuId,
-    ledger,
-    connectedToVehicle,
-}: {
-    title: string;
-    jobs: EcuCatalog['actuators'];
-    catalog: EcuCatalog | null;
-    ecuId: string;
-    ledger: Ledger;
-    connectedToVehicle: boolean;
-}) {
-    const { t } = useLang();
-    return (
-        <Panel title={`${title} — ${t.catalog_jobs(jobs.length)}`} className="flex-1">
-            {catalog === null ? (
-                <p className="text-xs text-slate-600">…</p>
-            ) : (
-                <JobTable
-                    jobs={jobs}
-                    ledger={ledger}
-                    ecuId={ecuId}
-                    connectedToVehicle={connectedToVehicle}
-                    emptyLabel="—"
-                />
-            )}
-        </Panel>
-    );
 }

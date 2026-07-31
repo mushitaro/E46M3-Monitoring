@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CircleDot, PlugZap, Radio, Square, Zap } from 'lucide-react';
+import { CircleDot, Download, FlaskConical, PlugZap, Radio, Square, Unplug, Zap } from 'lucide-react';
 import { MSS54_LIVE_BLOCKS, formatErrorCode, planBlockReads } from '@tsunagi/ds2-mss54';
 import { AppHeader } from '@/components/AppHeader';
 import { Hub, HubCluster, HubNotice, SubActions, type HubConfig } from '@/components/Hub';
@@ -9,8 +9,9 @@ import { JobTable } from '@/components/JobTable';
 import { LinkError } from '@/components/LinkError';
 import { LogPopover } from '@/components/LogPopover';
 import { StatusLed } from '@/components/StatusLed';
+import { MicroLabel, SearchInput, TextButton, Well } from '@/components/ui';
 import { useDs2Link, type CommsLogLine, type LiveSample } from '@/hooks/useDs2Link';
-import { useLang, type Lang, type Strings } from '@/lib/i18n';
+import { useLang, type Lang } from '@/lib/i18n';
 import { jobRisk, loadEcuCatalog, loadEcuIndex, type EcuCatalog, type EcuIndexEntry } from '@/lib/ecuCatalog';
 import { EMPTY_LEDGER, type Ledger } from '@/lib/ledger';
 
@@ -21,10 +22,24 @@ type Link = ReturnType<typeof useDs2Link>;
  * The shell.
  *
  * Layout follows the ///M spatial system rather than being invented: a 48px app
- * header whose bottom rule is the tricolor stripe, a 44px tab bar, and a phi
- * (61.8 / 38.2) split whose right column is a fixed stack — pane title, a
- * visualization region, then a control panel holding the status row, a RESERVED
- * notice line, the hub cluster and a RESERVED sub-action row.
+ * header whose bottom rule is the tricolor stripe, then a phi (61.8 / 38.2)
+ * split. Each column opens with its OWN 44px bar — tabs on the left, the module
+ * identity on the right — so the two rules meet and form one continuous line
+ * across the split. The right column then stacks a visualization region and a
+ * control panel holding the status row, a RESERVED notice line, the hub cluster
+ * and a RESERVED sub-action row.
+ *
+ * Two things this deliberately does NOT do, both of which it used to:
+ *
+ *   - It does not put a full-width tab bar above the split. That was a third
+ *     bar (48 + 44 + 44), and it pushed a pane title into each column to say
+ *     what the tab bar had just said.
+ *   - It does not OUTLINE the columns, or pad and gap them apart. The columns
+ *     are separated by one shared hairline, `border-r border-slate-900`, and
+ *     they run to the edges. Boxing each and floating them on a 16px gutter is
+ *     a card layout; this is an instrument, and the difference is entirely in
+ *     whether regions are ruled or framed. See `components/ui.tsx` for the rule
+ *     and the primitives that keep it.
  *
  * The reserved slots are the part that is easy to skip and shouldn't be:
  * transient text appears and disappears INSIDE them, so a state change
@@ -73,57 +88,54 @@ export default function Home() {
         <div className="flex h-dvh flex-col overflow-hidden bg-slate-950">
             <AppHeader ident={link.ident} />
 
-            <nav
-                role="tablist"
-                className="flex h-[44px] shrink-0 items-center gap-1 border-b border-slate-900 bg-slate-900/50 px-4 backdrop-blur-sm"
-            >
-                {(
-                    [
-                        ['diagnosis', t.tab_diagnosis],
-                        ['datalog', t.tab_datalog],
-                        ['calibration', t.tab_calibration],
-                        ['testjobs', t.tab_testjobs],
-                    ] as const
-                ).map(([id, labelText]) => (
-                    <button
-                        key={id}
-                        role="tab"
-                        aria-selected={tab === id}
-                        onClick={() => setTab(id)}
-                        className={`h-full border-b-2 px-3 text-xs font-semibold uppercase tracking-widest transition-colors ${
-                            tab === id
-                                ? 'border-blue-500 text-blue-400'
-                                : 'border-transparent text-slate-500 hover:text-slate-300'
-                        }`}
-                    >
-                        {labelText}
-                    </button>
-                ))}
+            {/* A strip, not a card: it spans the full width and is separated by
+                its own bottom rule, the same way every other bar is. */}
+            {(link.error || catalogError) && (
+                <LinkError
+                    message={link.error ?? catalogError ?? ''}
+                    kind={link.errorKind}
+                    onRetry={link.error ? link.clearError : undefined}
+                />
+            )}
 
-                {/* Tools right, fenced with a vertical rule. The comms log is a
-                    popover and not a tab: it has to be reachable WHILE doing the
-                    thing that is failing, not somewhere you navigate away to. */}
-                <div className="ml-auto flex items-center border-l border-slate-800 pl-4">
-                    <LogPopover log={link.log} onClear={link.clearLog} onExport={() => exportLog(link.log)} />
-                </div>
-            </nav>
+            <main className="flex min-h-0 flex-1 flex-col overflow-hidden min-[900px]:flex-row">
+                <section className="flex h-[38.2%] min-h-0 flex-col border-b border-slate-900 min-[900px]:h-full min-[900px]:w-[61.8%] min-[900px]:border-b-0 min-[900px]:border-r">
+                    <nav role="tablist" className={BAR}>
+                        <div className="no-scrollbar mr-auto flex h-full min-w-0 flex-1 gap-6 overflow-x-auto overflow-y-hidden">
+                            {(
+                                [
+                                    ['diagnosis', t.tab_diagnosis],
+                                    ['datalog', t.tab_datalog],
+                                    ['calibration', t.tab_calibration],
+                                    ['testjobs', t.tab_testjobs],
+                                ] as const
+                            ).map(([id, labelText]) => (
+                                <button
+                                    key={id}
+                                    role="tab"
+                                    aria-selected={tab === id}
+                                    onClick={() => setTab(id)}
+                                    className={`flex h-full shrink-0 items-center whitespace-nowrap border-b-2 text-[10px] font-bold uppercase tracking-widest transition-colors ${
+                                        tab === id
+                                            ? 'border-blue-400 text-blue-400'
+                                            : 'border-transparent text-slate-500 hover:text-slate-300'
+                                    }`}
+                                >
+                                    {labelText}
+                                </button>
+                            ))}
+                        </div>
 
-            <div className="shrink-0 px-4">
-                {(link.error || catalogError) && (
-                    <div className="pt-3">
-                        <LinkError
-                            message={link.error ?? catalogError ?? ''}
-                            kind={link.errorKind}
-                            onRetry={link.error ? link.clearError : undefined}
-                        />
-                    </div>
-                )}
-            </div>
+                        {/* Tools right, fenced with a vertical rule. The comms log
+                            is a popover and not a tab: it has to be reachable WHILE
+                            doing the thing that is failing, not somewhere you
+                            navigate away to. */}
+                        <div className="ml-4 flex h-full items-center border-l border-slate-800 pl-4">
+                            <LogPopover log={link.log} onClear={link.clearLog} onExport={() => exportLog(link.log)} />
+                        </div>
+                    </nav>
 
-            <main className="flex min-h-0 flex-1 flex-col gap-4 p-4 min-[900px]:flex-row">
-                <section className="flex min-h-0 flex-1 flex-col border border-slate-800 bg-slate-900 min-[900px]:basis-[61.8%]">
-                    <PaneTitle>{tabTitle(t)[tab]}</PaneTitle>
-                    <div className="min-h-0 flex-1 overflow-auto p-3">
+                    <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
                         {tab === 'diagnosis' && <DiagnosisPane link={link} catalog={catalog} />}
                         {tab === 'datalog' && <DatalogPane datalog={datalog} />}
                         {tab === 'calibration' && (
@@ -147,15 +159,25 @@ export default function Home() {
                     </div>
                 </section>
 
-                <aside className="flex min-h-0 flex-col border border-slate-800 bg-slate-900 min-[900px]:basis-[38.2%]">
-                    <PaneTitle>{catalog ? (lang === 'en' ? catalog.name_en : catalog.name) : '—'}</PaneTitle>
+                <aside className="flex min-h-0 flex-1 flex-col overflow-hidden min-[900px]:w-[38.2%] min-[900px]:flex-none">
+                    <div className={BAR}>
+                        <span className="truncate text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                            {catalog ? (lang === 'en' ? catalog.name_en : catalog.name) : '—'}
+                        </span>
+                        <span className="ml-4 flex h-full items-center border-l border-slate-800 pl-4">
+                            <StatusLed state={link.state} mode={link.mode} hasError={!!link.error} />
+                        </span>
+                    </div>
 
-                    <div className="relative min-h-[140px] flex-1 overflow-hidden p-3">
+                    <div className="relative min-h-[140px] flex-1 overflow-hidden p-4">
                         <Viz tab={tab} link={link} catalog={catalog} datalog={datalog} />
                     </div>
 
-                    <div className="flex-initial overflow-y-auto px-5 pb-5 pt-4">
-                        <div className="flex h-[32px] items-center gap-3">
+                    {/* Controls take their natural height; the picture above
+                        absorbs the slack. The reverse pins the picture and
+                        crushes the dial. */}
+                    <div className="flex-initial overflow-y-auto px-4 pb-4">
+                        <div className="flex h-[32px] items-center justify-center">
                             <EcuSelect
                                 index={ecuIndex}
                                 value={ecuId}
@@ -165,9 +187,6 @@ export default function Home() {
                                 disabled={link.state !== 'disconnected'}
                                 onChange={setEcuId}
                             />
-                            <span className="ml-auto">
-                                <StatusLed state={link.state} mode={link.mode} hasError={!!link.error} />
-                            </span>
                         </div>
 
                         <HubNotice text={hub.notice} />
@@ -176,16 +195,18 @@ export default function Home() {
                         </HubCluster>
                         <SubActions>
                             {link.state === 'disconnected' ? (
-                                <SubButton onClick={() => void link.connect('practice')} tone="indigo">
+                                <TextButton onClick={() => void link.connect('practice')} tone="secondary" Icon={FlaskConical}>
                                     {t.practice}
-                                </SubButton>
+                                </TextButton>
                             ) : (
-                                <SubButton onClick={() => void link.disconnect()} tone="danger">
+                                <TextButton onClick={() => void link.disconnect()} tone="danger" Icon={Unplug}>
                                     {t.disconnect}
-                                </SubButton>
+                                </TextButton>
                             )}
                             {tab === 'datalog' && datalog.samples.length > 0 && (
-                                <SubButton onClick={datalog.exportCsv}>{t.exportCsv}</SubButton>
+                                <TextButton onClick={datalog.exportCsv} Icon={Download}>
+                                    {t.exportCsv}
+                                </TextButton>
                             )}
                         </SubActions>
                     </div>
@@ -197,20 +218,12 @@ export default function Home() {
     );
 }
 
-const tabTitle = (t: Strings): Record<Tab, string> => ({
-    diagnosis: t.tab_diagnosis,
-    datalog: t.tab_datalog,
-    calibration: t.tab_calibration,
-    testjobs: t.tab_testjobs,
-});
-
-function PaneTitle({ children }: { children: React.ReactNode }) {
-    return (
-        <div className="flex h-[44px] shrink-0 items-center border-b border-slate-800 px-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">
-            {children}
-        </div>
-    );
-}
+/**
+ * The bar recipe, once. Both columns open with one, at the same height, so
+ * their bottom rules form a single line across the split.
+ */
+const BAR =
+    'flex h-[44px] flex-none items-center border-b border-slate-900 bg-slate-900/50 px-4 backdrop-blur-sm';
 
 /**
  * The hub's config, derived on every render from the live state. Nothing is
@@ -395,14 +408,14 @@ function DiagnosisPane({ link, catalog }: { link: Link; catalog: EcuCatalog | nu
     return (
         <>
             {link.ident && (
-                <div className="mb-3 border border-slate-800 p-2">
-                    <div className="text-[10px] uppercase tracking-widest text-slate-600">IDENT</div>
-                    <p className="break-all font-mono text-xs text-slate-300">{link.ident.hex}</p>
+                <Well className="mb-4">
+                    <MicroLabel>IDENT</MicroLabel>
+                    <p className="mt-1 break-all font-mono text-xs text-slate-300">{link.ident.hex}</p>
                     <p className="mt-1 text-[10px] text-slate-600">
                         {link.ident.length} bytes — the field layout of this response is not yet known.
                         EdiabasLib used to decode it; shown raw rather than guessed at.
                     </p>
-                </div>
+                </Well>
             )}
 
             {link.faults === null ? (
@@ -410,22 +423,22 @@ function DiagnosisPane({ link, catalog }: { link: Link; catalog: EcuCatalog | nu
             ) : link.faults.length === 0 ? (
                 <p className="text-xs text-emerald-400">{t.faults_none}</p>
             ) : (
-                <ul className="space-y-2">
+                <ul className="divide-y divide-slate-800/60">
                     {link.faults.map((f) => (
-                        <li key={`${f.number}-${f.errorCode}`} className="border border-slate-800 p-2">
+                        <li key={`${f.number}-${f.errorCode}`} className="py-3 first:pt-0">
                             <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
                                 <span className="font-mono text-sm text-red-400">{formatErrorCode(f.errorCode)}</span>
                                 <Readout label={t.faults_type} value={formatErrorCode(f.errorType)} />
                                 <Readout label={t.faults_frequency} value={String(f.frequencyCounter)} />
                                 <Readout label={t.faults_logistics} value={String(f.logisticsCounter)} />
                             </div>
-                            <div className="mt-2 text-[10px] uppercase tracking-widest text-slate-600">
-                                {t.faults_freezeFrames}
+                            <div className="mt-2">
+                                <MicroLabel>{t.faults_freezeFrames}</MicroLabel>
                             </div>
                             <table className="mt-1 w-full font-mono text-[11px] text-slate-400">
                                 <tbody>
                                     {f.environmentSets.map((s, i) => (
-                                        <tr key={i} className="border-t border-slate-800/60">
+                                        <tr key={i}>
                                             <td className="py-0.5 pr-3 text-slate-600">#{i + 1}</td>
                                             <td className="py-0.5 pr-3">
                                                 {[s.condition1, s.condition2, s.condition3, s.condition4]
@@ -443,21 +456,15 @@ function DiagnosisPane({ link, catalog }: { link: Link; catalog: EcuCatalog | nu
             )}
 
             {catalog && (
-                <div className="mt-4 border-t border-slate-800 pt-3">
-                    <div className="mb-1 text-[10px] uppercase tracking-widest text-slate-600">
+                <div className="mt-6 border-t border-slate-800/60 pt-4">
+                    <MicroLabel>
                         {t.faultRef} ({catalog.faultText.length})
-                    </div>
-                    <p className="mb-2 text-[11px] text-slate-600">{t.faultRef_note}</p>
-                    <input
-                        type="search"
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                        placeholder={t.search}
-                        className="w-full border border-slate-700 bg-slate-800 px-2 py-1 font-mono text-xs text-slate-200 placeholder:text-slate-600 focus:border-blue-500 focus:outline-none"
-                    />
-                    <ul className="mt-2 space-y-1">
+                    </MicroLabel>
+                    <p className="mt-1 mb-2 text-[11px] text-slate-600">{t.faultRef_note}</p>
+                    <SearchInput value={query} onChange={setQuery} placeholder={t.search} className="w-full" />
+                    <ul className="mt-2 divide-y divide-slate-800/60">
                         {hits.map((f, i) => (
-                            <li key={i} className="border-b border-slate-800/60 pb-1">
+                            <li key={i} className="py-1.5 first:pt-0">
                                 <div className="text-[11px] text-slate-300">{lang === 'en' ? f.en : f.ja}</div>
                                 <div className="font-mono text-[10px] text-slate-600">{f.de}</div>
                             </li>
@@ -486,10 +493,10 @@ function DatalogPane({ datalog }: { datalog: ReturnType<typeof useDatalog> }) {
                 <span className="text-slate-600">{datalog.costNotice}</span>
             </div>
 
-            <table className="mb-4 w-full font-mono text-xs">
-                <tbody>
+            <table className="mb-6 w-full font-mono text-xs">
+                <tbody className="divide-y divide-slate-800/60">
                     {datalog.selected.map((symbol) => (
-                        <tr key={symbol} className="border-t border-slate-800">
+                        <tr key={symbol}>
                             <td className="py-1 pr-4 text-slate-400">{symbol}</td>
                             <td className="py-1 text-right text-slate-200">
                                 {datalog.latest[symbol] == null ? '—' : datalog.latest[symbol]!.toFixed(2)}
@@ -520,14 +527,14 @@ const ChannelPicker = memo(function ChannelPicker({
     onToggle: (symbol: string, on: boolean) => void;
 }) {
     return (
-        <div className="space-y-2">
+        <div className="divide-y divide-slate-800/60 border-t border-slate-800/60">
             {MSS54_LIVE_BLOCKS.map((block) => (
-                <details key={block.selection} className="border border-slate-800">
-                    <summary className="cursor-pointer px-2 py-1 text-[11px] uppercase tracking-widest text-slate-400">
+                <details key={block.selection}>
+                    <summary className="cursor-pointer py-1.5 text-[11px] uppercase tracking-widest text-slate-400 hover:text-slate-200">
                         <span className="font-mono text-slate-600">{block.selection}</span> {block.name}{' '}
                         <span className="text-slate-600">({block.fields.length})</span>
                     </summary>
-                    <div className="max-h-48 overflow-auto px-2 pb-2">
+                    <div className="max-h-48 overflow-auto pb-2 pl-4">
                         {block.fields.map((f) => (
                             <label
                                 key={`${block.selection}:${f.symbol}`}
@@ -659,32 +666,6 @@ function EcuSelect({
     );
 }
 
-function SubButton({
-    children,
-    onClick,
-    tone = 'neutral',
-}: {
-    children: React.ReactNode;
-    onClick: () => void;
-    tone?: 'neutral' | 'danger' | 'indigo';
-}) {
-    const cls =
-        tone === 'danger'
-            ? 'border-slate-700 text-slate-300 hover:border-red-500 hover:text-red-400'
-            : tone === 'indigo'
-              ? 'border-indigo-500/60 text-indigo-400 hover:bg-indigo-500/10'
-              : 'border-slate-700 text-slate-300 hover:border-blue-500 hover:text-blue-400';
-    return (
-        <button
-            type="button"
-            onClick={onClick}
-            className={`border bg-slate-800 px-3 py-1 font-mono text-[10px] uppercase tracking-widest transition-colors ${cls}`}
-        >
-            {children}
-        </button>
-    );
-}
-
 function Readout({ label, value }: { label: string; value: string }) {
     return (
         <span className="flex items-baseline gap-1.5">
@@ -699,12 +680,16 @@ function Readout({ label, value }: { label: string; value: string }) {
  * static scrape of SGBD bytecode or a decompiled catalog, and none of it has
  * been confirmed against a car. Behind a one-time dialog, the app's own
  * uncertainty is the first thing a user forgets.
+ *
+ * Built as the 26px context bar rather than a tinted panel: it is a standing
+ * condition of the whole app, so it reads as chrome, and a permanent banner that
+ * shouts stops being read within a day.
  */
 function UnverifiedBanner() {
     const { t } = useLang();
     return (
-        <footer className="shrink-0 border-t border-amber-500/30 bg-amber-500/5 px-4 py-1.5">
-            <p className="text-[11px] text-amber-400">{t.unverified}</p>
+        <footer className="flex h-[26px] flex-none items-center border-t border-slate-900 bg-slate-950/60 px-4">
+            <p className="truncate text-[10px] tracking-wide text-amber-400/80">{t.unverified}</p>
         </footer>
     );
 }

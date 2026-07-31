@@ -1,6 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { Play } from 'lucide-react';
+import { Chip, Pill, SearchInput, TextButton } from '@/components/ui';
 import {
     description,
     execStyle,
@@ -69,48 +71,37 @@ export function JobTable({
     return (
         <>
             <div className="mb-3 flex flex-wrap items-center gap-2">
-                <input
-                    type="search"
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder={t.search}
-                    className="min-w-40 flex-1 border border-slate-700 bg-slate-800 px-2 py-1 font-mono text-xs text-slate-200 placeholder:text-slate-600 focus:border-blue-500 focus:outline-none"
-                />
+                <SearchInput value={query} onChange={setQuery} placeholder={t.search} className="min-w-40 flex-1" />
                 {(['all', 'high', 'medium', 'low'] as const).map((r) => (
-                    <button
-                        key={r}
-                        type="button"
-                        onClick={() => setRiskFilter(r)}
-                        aria-pressed={riskFilter === r}
-                        className={`border px-2 py-1 font-mono text-[10px] uppercase tracking-widest ${
-                            riskFilter === r
-                                ? 'border-blue-500 text-blue-400'
-                                : 'border-slate-700 text-slate-500 hover:text-slate-300'
-                        }`}
-                    >
+                    <Chip key={r} active={riskFilter === r} onClick={() => setRiskFilter(r)}>
                         {r === 'all' ? t.risk_all : r === 'high' ? t.risk_high : r === 'medium' ? t.risk_medium : t.risk_low}
-                    </button>
+                    </Chip>
                 ))}
                 <span className="ml-auto font-mono text-[11px] text-slate-600">
                     {rows.length} / {jobs.length}
                 </span>
             </div>
 
-            <ul className="space-y-1">
+            {/* Rows are separated by a hairline and hover, not by a box each. At
+                77 rows, an outline per row plus the pills and the run control
+                inside it stacks four frames deep and the eye stops resolving the
+                one thing that matters — which row is under the pointer. */}
+            {/* The negative margin is on the LIST, not the row: the hover band
+                has to be wider than the text, and if only the rows bleed out then
+                the list's own top rule stops 8px short of every divider below it. */}
+            <ul className="-mx-2 divide-y divide-slate-800/60 border-t border-slate-800/60">
                 {rows.map(({ job, risk, gate, d }) => (
-                    <li key={job.id} className="border border-slate-800 p-2">
-                        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <li key={job.id} className="group px-2 py-2 transition-colors hover:bg-slate-800/40">
+                        <div className="flex items-baseline gap-x-3">
                             <RiskPill risk={risk} />
                             <span className="font-mono text-xs text-slate-200">{job.id}</span>
-                            <span className="text-xs text-slate-400">{label(job, lang)}</span>
+                            <span className="min-w-0 flex-1 truncate text-xs text-slate-400">{label(job, lang)}</span>
                             {job.catJa && (
-                                <span className="text-[10px] uppercase tracking-widest text-slate-600">
+                                <span className="hidden shrink-0 text-[10px] uppercase tracking-widest text-slate-600 min-[1100px]:inline">
                                     {lang === 'en' ? job.catEn : job.catJa}
                                 </span>
                             )}
-                            <span className="ml-auto">
-                                <GateBadge allowed={gate.allowed} reason={gate.reason} />
-                            </span>
+                            <GateBadge allowed={gate.allowed} reason={gate.reason} />
                         </div>
 
                         {d.text && <p className="mt-1 text-[11px] text-slate-500">{d.text}</p>}
@@ -118,7 +109,7 @@ export function JobTable({
                             <p className="mt-0.5 font-mono text-[10px] text-slate-700">{d.original}</p>
                         )}
 
-                        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
                             <span className="font-mono text-[10px] uppercase tracking-widest text-slate-700">
                                 {execStyle(job)}
                             </span>
@@ -132,14 +123,16 @@ export function JobTable({
                                     {t.args_required((job.args ?? []).map((a) => a.name).join(', '))}
                                 </span>
                             )}
-                            <button
-                                type="button"
-                                disabled
-                                title={connectedToVehicle ? gate.reason : t.gate_practiceOnly}
-                                className="ml-auto cursor-not-allowed border border-slate-800 px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-slate-700"
-                            >
-                                {t.run}
-                            </button>
+                            <span className="ml-auto">
+                                <TextButton
+                                    disabled
+                                    tone={risk === 'high' ? 'danger' : 'primary'}
+                                    Icon={Play}
+                                    title={connectedToVehicle ? gate.reason : t.gate_practiceOnly}
+                                >
+                                    {t.run}
+                                </TextButton>
+                            </span>
                         </div>
                     </li>
                 ))}
@@ -150,16 +143,10 @@ export function JobTable({
 
 function RiskPill({ risk }: { risk: Risk }) {
     const { t } = useLang();
-    const cls =
-        risk === 'high'
-            ? 'border-red-500/50 text-red-400'
-            : risk === 'medium'
-              ? 'border-amber-500/50 text-amber-400'
-              : 'border-slate-700 text-slate-500';
     return (
-        <span className={`border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-widest ${cls}`}>
+        <Pill tone={risk === 'high' ? 'danger' : risk === 'medium' ? 'caution' : 'neutral'}>
             {risk === 'high' ? t.risk_high : risk === 'medium' ? t.risk_medium : t.risk_low}
-        </span>
+        </Pill>
     );
 }
 
@@ -170,17 +157,23 @@ function RiskPill({ risk }: { risk: Risk }) {
  * is the honest state and it is stronger than the old app's arrangement, which
  * hardcoded one boolean for all 131 jobs and could only ever be flipped for all
  * of them at once.
+ *
+ * Unverified is deliberately the QUIET one — plain muted text, no chip. It is
+ * the state of every row today, and a tint on all 77 of them would be a wall of
+ * colour saying nothing. Verified is what will stand out, once anything is.
  */
 function GateBadge({ allowed, reason }: { allowed: boolean; reason: string }) {
     const { t } = useLang();
+    if (!allowed) {
+        return (
+            <span title={reason} className="shrink-0 text-[9px] font-bold uppercase tracking-widest text-slate-600">
+                {t.gate_unverified}
+            </span>
+        );
+    }
     return (
-        <span
-            title={reason}
-            className={`border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-widest ${
-                allowed ? 'border-emerald-500/50 text-emerald-400' : 'border-slate-700 text-slate-600'
-            }`}
-        >
-            {allowed ? t.gate_verified : t.gate_unverified}
-        </span>
+        <Pill tone="ok" title={reason}>
+            {t.gate_verified}
+        </Pill>
     );
 }

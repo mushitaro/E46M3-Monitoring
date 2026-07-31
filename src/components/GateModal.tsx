@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, X } from 'lucide-react';
+import { AlertTriangle, Play, X } from 'lucide-react';
+import { MicroLabel, TextButton, Well } from '@/components/ui';
 import { useLang } from '@/lib/i18n';
 import type { Risk } from '@/lib/ecuCatalog';
 
@@ -98,46 +99,49 @@ function GateDialog({
                 role="dialog"
                 aria-modal="true"
                 aria-label={title}
-                className="flex max-h-[80vh] w-full max-w-xl flex-col border border-slate-700 bg-slate-900 shadow-2xl"
+                // The ONE outline in here. A modal is detached from the page, so
+                // it earns an edge; nothing inside it does, and every inner block
+                // below is a surface instead.
+                className="flex max-h-[80vh] w-full max-w-xl flex-col rounded-lg border border-slate-700 bg-slate-900 shadow-2xl"
             >
                 <div className="flex h-[44px] shrink-0 items-center gap-2 border-b border-slate-800 px-4">
-                    {risk === 'high' && <AlertTriangle className="size-4 text-red-400" />}
-                    <span className="font-mono text-xs text-slate-200">{title}</span>
+                    {risk === 'high' && <AlertTriangle className="size-4 shrink-0 text-red-400" />}
+                    <span className="truncate font-mono text-xs text-slate-200">{title}</span>
                     <button
                         ref={firstRef}
                         type="button"
                         onClick={onCancel}
-                        className="ml-auto rounded p-1 text-slate-500 hover:text-slate-300"
+                        className="ml-auto shrink-0 rounded p-1 text-slate-500 transition-colors hover:text-slate-300"
                         aria-label={t.cancel}
                     >
                         <X className="size-4" />
                     </button>
                 </div>
 
-                <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
-                    {subtitle && <p className="text-xs text-slate-300">{subtitle}</p>}
-                    {original && original !== subtitle && (
-                        <p className="mt-1 font-mono text-[10px] text-slate-600">{original}</p>
-                    )}
+                <div className="min-h-0 flex-1 space-y-4 overflow-auto px-4 py-4">
+                    <div>
+                        {subtitle && <p className="text-xs text-slate-300">{subtitle}</p>}
+                        {original && original !== subtitle && (
+                            <p className="mt-1 font-mono text-[10px] text-slate-600">{original}</p>
+                        )}
+                    </div>
 
                     {blockedReason && (
-                        <div className="mt-3 border border-slate-700 bg-slate-800/50 p-2">
+                        <Well>
                             <p className="text-[11px] text-amber-400">{blockedReason}</p>
-                        </div>
+                        </Well>
                     )}
 
-                    <div className="mt-3">
-                        <div className="text-[10px] uppercase tracking-widest text-slate-600">{t.gate_plan}</div>
-                        <code className="mt-1 block whitespace-pre-wrap break-all border border-slate-800 bg-slate-950 p-2 font-mono text-[11px] text-blue-400">
+                    <div>
+                        <MicroLabel>{t.gate_plan}</MicroLabel>
+                        <code className="mt-1.5 block whitespace-pre-wrap break-all rounded bg-slate-950 p-2 font-mono text-[11px] text-blue-400">
                             {plan}
                         </code>
                     </div>
 
-                    <div className="mt-3">
-                        <div className="text-[10px] uppercase tracking-widest text-slate-600">
-                            {t.gate_preconditions}
-                        </div>
-                        <div className="mt-1 space-y-1">
+                    <div>
+                        <MicroLabel>{t.gate_preconditions}</MicroLabel>
+                        <div className="mt-1.5 space-y-1.5">
                             {preconditions.map((c) => (
                                 <label key={c} className="flex cursor-pointer items-center gap-2 text-xs text-slate-300">
                                     <input
@@ -160,22 +164,15 @@ function GateDialog({
                     </div>
                 </div>
 
-                <div className="flex h-[52px] shrink-0 items-center justify-end gap-2 border-t border-slate-800 px-4">
-                    <button
-                        type="button"
-                        onClick={onCancel}
-                        className="border border-slate-700 bg-slate-800 px-3 py-1 font-mono text-[11px] uppercase tracking-widest text-slate-300 hover:text-slate-100"
-                    >
-                        {t.cancel}
-                    </button>
-                    <button
-                        type="button"
-                        onClick={onRun}
-                        disabled={!canRun}
-                        className="border border-red-600 bg-red-600/10 px-3 py-1 font-mono text-[11px] uppercase tracking-widest text-red-400 hover:bg-red-600/20 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-transparent disabled:text-slate-700"
-                    >
+                <div className="flex h-[52px] shrink-0 items-center justify-end gap-6 border-t border-slate-800 px-4">
+                    <TextButton onClick={onCancel}>{t.cancel}</TextButton>
+                    {/* Red text, not a red box. The confirm in a gate dialog is
+                        already the thing you came here to press; boxing it makes
+                        it the brightest object on screen, which is the opposite
+                        of what a destructive default should be. */}
+                    <TextButton onClick={onRun} disabled={!canRun} Icon={Play} tone="destructive">
                         {t.run}
-                    </button>
+                    </TextButton>
                 </div>
             </div>
         </div>

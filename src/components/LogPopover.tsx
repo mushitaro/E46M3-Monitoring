@@ -54,14 +54,14 @@ export function LogPopover({
                 onClick={() => setOpen(!open)}
                 title={t.tab_log}
                 aria-expanded={open}
-                className={`relative rounded p-2 transition-colors ${
-                    open ? 'bg-slate-800 text-blue-400' : 'text-slate-400 hover:bg-slate-800 hover:text-blue-400'
+                className={`relative flex items-center transition-colors ${
+                    open ? 'text-blue-400' : 'text-slate-500 hover:text-blue-400'
                 }`}
             >
                 <Terminal className="size-4" />
                 {/* A count, not a dot: "3 errors" is actionable, a dot is not. */}
                 {errors > 0 && (
-                    <span className="absolute -right-0.5 -top-0.5 min-w-3 rounded-full bg-red-500 px-1 text-center font-mono text-[8px] leading-3 text-white">
+                    <span className="absolute -right-1.5 -top-1.5 min-w-3 rounded-full bg-red-500 px-1 text-center font-mono text-[8px] leading-3 text-white">
                         {errors}
                     </span>
                 )}
@@ -71,39 +71,41 @@ export function LogPopover({
                 <>
                     <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
                     <div className="absolute right-0 top-10 z-50 flex h-[420px] w-[min(560px,90vw)] flex-col rounded-lg border border-slate-700 bg-slate-900 shadow-xl">
-                        <div className="flex h-[44px] shrink-0 items-center gap-2 border-b border-slate-800 px-3">
-                            <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
+                        <div className="flex h-[44px] shrink-0 items-center gap-3 border-b border-slate-800 px-4">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                                 {t.tab_log}
                             </span>
                             <span className="font-mono text-[10px] text-slate-600">{log.length}</span>
-                            <button
-                                type="button"
-                                onClick={onExport}
-                                disabled={log.length === 0}
-                                title={t.exportLog}
-                                className="ml-auto rounded p-1 text-slate-500 hover:text-blue-400 disabled:opacity-30"
-                            >
-                                <Download className="size-3.5" />
-                            </button>
-                            <button
-                                type="button"
-                                onClick={onClear}
-                                disabled={log.length === 0}
-                                title={t.clearLog}
-                                className="rounded p-1 text-slate-500 hover:text-red-400 disabled:opacity-30"
-                            >
-                                <Trash2 className="size-3.5" />
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setOpen(false)}
-                                className="rounded p-1 text-slate-500 hover:text-slate-300"
-                            >
-                                <X className="size-3.5" />
-                            </button>
+                            <span className="ml-auto flex items-center gap-4">
+                                <button
+                                    type="button"
+                                    onClick={onExport}
+                                    disabled={log.length === 0}
+                                    title={t.exportLog}
+                                    className="text-slate-500 transition-colors hover:text-blue-400 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:text-slate-500"
+                                >
+                                    <Download className="size-3.5" />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={onClear}
+                                    disabled={log.length === 0}
+                                    title={t.clearLog}
+                                    className="text-slate-500 transition-colors hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:text-slate-500"
+                                >
+                                    <Trash2 className="size-3.5" />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setOpen(false)}
+                                    className="text-slate-500 transition-colors hover:text-slate-300"
+                                >
+                                    <X className="size-3.5" />
+                                </button>
+                            </span>
                         </div>
 
-                        <div ref={bodyRef} className="min-h-0 flex-1 overflow-auto p-3">
+                        <div ref={bodyRef} className="min-h-0 flex-1 overflow-auto px-4 py-3">
                             {log.length === 0 ? (
                                 <p className="text-[11px] text-slate-600">—</p>
                             ) : (

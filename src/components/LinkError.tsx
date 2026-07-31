@@ -1,6 +1,8 @@
 'use client';
 
+import { RotateCcw } from 'lucide-react';
 import { ELECTRICAL_FAULT_CHECKLIST, type Ds2ErrorKind } from '@tsunagi/ds2-core';
+import { TextButton } from '@/components/ui';
 import { useLang } from '@/lib/i18n';
 
 /**
@@ -27,10 +29,13 @@ export function LinkError({
     const electrical = kind === 'electrical';
 
     return (
+        // A full-width strip separated by its own bottom rule, like every other
+        // bar — not a card floating on a gutter. Tint carries the severity; the
+        // outline it used to have carried nothing.
         <div
             role="alert"
-            className={`rounded-sm border p-3 ${
-                electrical ? 'border-red-500/40 bg-red-900/20' : 'border-slate-700 bg-slate-900'
+            className={`flex-none border-b border-slate-900 px-4 py-3 ${
+                electrical ? 'bg-red-950/40' : 'bg-slate-900/50'
             }`}
         >
             <p className={`text-xs font-semibold ${electrical ? 'text-red-400' : 'text-slate-300'}`}>
@@ -54,13 +59,11 @@ export function LinkError({
             {/* Retry is offered for everything EXCEPT an electrical fault, where
                 it is the one action that cannot help. */}
             {onRetry && !electrical && (
-                <button
-                    type="button"
-                    onClick={onRetry}
-                    className="mt-2 border border-slate-700 bg-slate-800 px-2 py-1 font-mono text-[11px] uppercase tracking-widest text-slate-300 hover:border-blue-500 hover:text-blue-400"
-                >
-                    {t.retry}
-                </button>
+                <div className="mt-2">
+                    <TextButton onClick={onRetry} tone="primary" Icon={RotateCcw}>
+                        {t.retry}
+                    </TextButton>
+                </div>
             )}
         </div>
     );

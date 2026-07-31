@@ -117,15 +117,24 @@ export function HubCluster({
  */
 export function HubNotice({ text }: { text?: string }) {
     return (
-        <div className="flex h-[14px] items-center justify-center text-[10px] uppercase tracking-widest text-slate-500">
+        // Fixed height AND a constant margin. The height reserves the slot; the
+        // margin is what stops the text from sitting flush against the hub's
+        // ring, which extends 4px past the button on every side.
+        <div className="mb-3 flex h-[14px] items-center justify-center text-[10px] uppercase tracking-widest text-slate-500">
             {text ?? ''}
         </div>
     );
 }
 
-/** Reserved sub-action row. Same rule: it keeps its slot when empty. */
+/**
+ * Reserved sub-action row. Same rule: it keeps its slot when empty.
+ *
+ * A ROW, and deliberately no `flex-wrap`. Wrapping is what puts the content over
+ * the reserved height — a second line costs ~15px more than the 36px left after
+ * padding — and the overflow then scrolls the whole control panel, moving the
+ * hub. `gap-x-6` because these are naked tracked-uppercase labels with no box to
+ * separate them; at gap-2 two of them read as one string.
+ */
 export function SubActions({ children }: { children?: React.ReactNode }) {
-    return (
-        <div className="flex h-[46px] flex-wrap items-center justify-center gap-2">{children}</div>
-    );
+    return <div className="flex h-[46px] items-center justify-center gap-x-6">{children}</div>;
 }

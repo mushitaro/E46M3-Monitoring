@@ -1,25 +1,77 @@
 'use client';
 
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MSS54_LIVE_BLOCKS, formatErrorCode, planBlockReads } from '@tsunagi/ds2-mss54';
 import { AppHeader } from '@/components/AppHeader';
+import { JobTable } from '@/components/JobTable';
 import { LinkError } from '@/components/LinkError';
 import { StatusLed } from '@/components/StatusLed';
 import { useDs2Link, type LiveSample } from '@/hooks/useDs2Link';
-import { useLang } from '@/lib/i18n';
+import { useLang, type Lang } from '@/lib/i18n';
+import {
+    loadEcuCatalog,
+    loadEcuIndex,
+    type EcuCatalog,
+    type EcuIndexEntry,
+} from '@/lib/ecuCatalog';
+import { EMPTY_LEDGER, type Ledger } from '@/lib/ledger';
 
-type Tab = 'diagnosis' | 'datalog' | 'log';
+type Tab = 'diagnosis' | 'datalog' | 'calibration' | 'testjobs' | 'log';
 
 export default function Home() {
-    const { t } = useLang();
+    const { t, lang } = useLang();
     const link = useDs2Link();
     const [tab, setTab] = useState<Tab>('diagnosis');
+
+    // The module catalogue. Restored deliberately: the SGBD data for all three
+    // modules was already in the repo and going unused, and "we cannot execute
+    // these jobs yet" is a reason to gate them, not to hide that they exist.
+    const [ecuIndex, setEcuIndex] = useState<EcuIndexEntry[]>([]);
+    const [ecuId, setEcuId] = useState('mss54');
+    // Keyed by the module it belongs to, so switching modules makes the old
+    // catalogue stale by derivation rather than by a synchronous setState in an
+    // effect (which cascades a render, and which React now flags).
+    const [loaded, setLoaded] = useState<{ id: string; catalog: EcuCatalog } | null>(null);
+    const [catalogError, setCatalogError] = useState<string | null>(null);
+    const catalog = loaded?.id === ecuId ? loaded.catalog : null;
+    // Nothing is verified yet, so this stays empty and every gate reads "blocked".
+    const ledger = EMPTY_LEDGER;
+
+    useEffect(() => {
+        loadEcuIndex().then(setEcuIndex).catch((e: Error) => setCatalogError(e.message));
+    }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+        loadEcuCatalog(ecuId)
+            .then((c) => {
+                if (!cancelled) setLoaded({ id: ecuId, catalog: c });
+            })
+            .catch((e: Error) => {
+                if (!cancelled) setCatalogError(e.message);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [ecuId]);
+
+    const connectedToVehicle = link.mode === 'vehicle' && link.state !== 'disconnected';
 
     return (
         <div className="flex h-dvh flex-col overflow-hidden bg-slate-950">
             <AppHeader
                 right={
                     <div className="flex items-center gap-4">
+                        <EcuSelect
+                            index={ecuIndex}
+                            value={ecuId}
+                            lang={lang}
+                            // Switching module mid-session would change the DS2
+                            // address under an open link, so it is locked while
+                            // connected — the same rule the old app had.
+                            disabled={link.state !== 'disconnected'}
+                            onChange={setEcuId}
+                        />
                         <StatusLed state={link.state} mode={link.mode} hasError={!!link.error} />
                         <ConnectionControls link={link} />
                     </div>
@@ -35,6 +87,8 @@ export default function Home() {
                     [
                         ['diagnosis', t.tab_diagnosis],
                         ['datalog', t.tab_datalog],
+                        ['calibration', t.tab_calibration],
+                        ['testjobs', t.tab_testjobs],
                         ['log', t.tab_log],
                     ] as const
                 ).map(([id, label]) => (
@@ -57,16 +111,40 @@ export default function Home() {
             {/* Reserved slot: a transient error appears INSIDE it, so a failure
                 does not reflow the panes below. */}
             <div className="min-h-[0px] shrink-0 px-4">
-                {link.error && (
+                {(link.error || catalogError) && (
                     <div className="pt-3">
-                        <LinkError message={link.error} kind={link.errorKind} onRetry={link.clearError} />
+                        <LinkError
+                            message={link.error ?? catalogError ?? ''}
+                            kind={link.errorKind}
+                            onRetry={link.error ? link.clearError : undefined}
+                        />
                     </div>
                 )}
             </div>
 
             <main className="flex min-h-0 flex-1 flex-col gap-4 p-4 min-[900px]:flex-row">
-                {tab === 'diagnosis' && <DiagnosisView link={link} />}
+                {tab === 'diagnosis' && <DiagnosisView link={link} catalog={catalog} />}
                 {tab === 'datalog' && <DatalogView link={link} />}
+                {tab === 'calibration' && (
+                    <JobsPane
+                        title={t.tab_calibration}
+                        jobs={catalog?.actuators ?? []}
+                        catalog={catalog}
+                        ecuId={ecuId}
+                        ledger={ledger}
+                        connectedToVehicle={connectedToVehicle}
+                    />
+                )}
+                {tab === 'testjobs' && (
+                    <JobsPane
+                        title={t.tab_testjobs}
+                        jobs={catalog?.testJobs ?? []}
+                        catalog={catalog}
+                        ecuId={ecuId}
+                        ledger={ledger}
+                        connectedToVehicle={connectedToVehicle}
+                    />
+                )}
                 {tab === 'log' && <CommsLogView link={link} />}
             </main>
 
@@ -145,7 +223,7 @@ const FLUSH_INTERVAL_MS = 500;
 const PHI_MAIN = 'min-[900px]:basis-[61.8%]';
 const PHI_SIDE = 'min-[900px]:basis-[38.2%]';
 
-function DiagnosisView({ link }: { link: Link }) {
+function DiagnosisView({ link, catalog }: { link: Link; catalog: EcuCatalog | null }) {
     const { t } = useLang();
     const idle = link.state === 'connected';
 
@@ -206,7 +284,7 @@ function DiagnosisView({ link }: { link: Link }) {
                 )}
             </Panel>
 
-            <Panel title="IDENT" className={`flex-1 ${PHI_SIDE}`}>
+            <Panel title={`IDENT / ${t.faultRef}`} className={`flex-1 ${PHI_SIDE}`}>
                 {link.ident ? (
                     <>
                         <p className="break-all font-mono text-xs text-slate-300">{link.ident.hex}</p>
@@ -225,6 +303,7 @@ function DiagnosisView({ link }: { link: Link }) {
                         <Readout label="B" value={String(link.quickTest.counterB)} />
                     </div>
                 )}
+                <FaultReference catalog={catalog} />
             </Panel>
         </>
     );
@@ -503,4 +582,126 @@ function stamp() {
     const d = new Date();
     const p = (n: number) => String(n).padStart(2, '0');
     return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
+
+
+/**
+ * The SGBD fault-text table, as a searchable reference.
+ *
+ * 607 texts across the three modules were sitting unused in ecu-data. They are
+ * NOT shown as decoded faults, because the code-to-text mapping is the piece
+ * EdiabasLib used to supply (F_ORT_NR / F_ORT_TEXT) and it has not been rebuilt
+ * — the generated table is a flat list with no codes attached. Presenting it as
+ * a lookup would be inventing a correspondence; presenting it as a reference
+ * gives the operator the vocabulary back without claiming more than is known.
+ */
+function FaultReference({ catalog }: { catalog: EcuCatalog | null }) {
+    const { lang, t } = useLang();
+    const [query, setQuery] = useState('');
+
+    const hits = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        if (!q || !catalog) return [];
+        return catalog.faultText
+            .filter(
+                (f) =>
+                    f.de.toLowerCase().includes(q) ||
+                    f.ja.toLowerCase().includes(q) ||
+                    f.en.toLowerCase().includes(q),
+            )
+            .slice(0, 40);
+    }, [catalog, query]);
+
+    if (!catalog) return null;
+
+    return (
+        <div className="mt-4 border-t border-slate-800 pt-3">
+            <div className="mb-1 text-[10px] uppercase tracking-widest text-slate-600">
+                {t.faultRef} ({catalog.faultText.length})
+            </div>
+            <p className="mb-2 text-[11px] text-slate-600">{t.faultRef_note}</p>
+            <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t.search}
+                className="w-full border border-slate-700 bg-slate-800 px-2 py-1 font-mono text-xs text-slate-200 placeholder:text-slate-600 focus:border-blue-500 focus:outline-none"
+            />
+            <ul className="mt-2 space-y-1">
+                {hits.map((f, i) => (
+                    <li key={i} className="border-b border-slate-800/60 pb-1">
+                        <div className="text-[11px] text-slate-300">{lang === 'en' ? f.en : f.ja}</div>
+                        <div className="font-mono text-[10px] text-slate-600">{f.de}</div>
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
+}
+
+/** Module selector. Locked while connected — the DS2 address is per module. */
+function EcuSelect({
+    index,
+    value,
+    lang,
+    disabled,
+    onChange,
+}: {
+    index: EcuIndexEntry[];
+    value: string;
+    lang: Lang;
+    disabled: boolean;
+    onChange: (id: string) => void;
+}) {
+    const { t } = useLang();
+    return (
+        <label className="flex items-center gap-2">
+            <span className="text-[10px] uppercase tracking-widest text-slate-600">{t.module}</span>
+            <select
+                value={value}
+                disabled={disabled || index.length === 0}
+                onChange={(e) => onChange(e.target.value)}
+                className="max-w-56 border border-slate-700 bg-slate-800 px-2 py-1 font-mono text-[11px] text-blue-400 disabled:opacity-50"
+            >
+                {index.map((e) => (
+                    <option key={e.id} value={e.id}>
+                        {lang === 'en' ? e.name_en : e.name}
+                    </option>
+                ))}
+            </select>
+        </label>
+    );
+}
+
+function JobsPane({
+    title,
+    jobs,
+    catalog,
+    ecuId,
+    ledger,
+    connectedToVehicle,
+}: {
+    title: string;
+    jobs: EcuCatalog['actuators'];
+    catalog: EcuCatalog | null;
+    ecuId: string;
+    ledger: Ledger;
+    connectedToVehicle: boolean;
+}) {
+    const { t } = useLang();
+    return (
+        <Panel title={`${title} — ${t.catalog_jobs(jobs.length)}`} className="flex-1">
+            {catalog === null ? (
+                <p className="text-xs text-slate-600">…</p>
+            ) : (
+                <JobTable
+                    jobs={jobs}
+                    ledger={ledger}
+                    ecuId={ecuId}
+                    connectedToVehicle={connectedToVehicle}
+                    emptyLabel="—"
+                />
+            )}
+        </Panel>
+    );
 }

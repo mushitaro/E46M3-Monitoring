@@ -57,6 +57,25 @@ interface Catalog {
     retry: string;
     unverified: string;
     provenance_title: string;
+    tab_calibration: string;
+    tab_testjobs: string;
+    search: string;
+    run: string;
+    risk_all: string;
+    risk_high: string;
+    risk_medium: string;
+    risk_low: string;
+    gate_verified: string;
+    gate_unverified: string;
+    gate_practiceOnly: string;
+    args_required: (names: string) => string;
+    precond_voltage_ok: string;
+    precond_stationary: string;
+    precond_engine_off: string;
+    module: string;
+    faultRef: string;
+    faultRef_note: string;
+    catalog_jobs: (n: number) => string;
 }
 
 const STORAGE_KEY = 'e46m3.lang';
@@ -115,6 +134,26 @@ const STRINGS: Record<Lang, Catalog> = {
         unverified:
             '未検証: このデータは実車で確認されていません。表示値は参考であり、診断の根拠にはできません。',
         provenance_title: 'データの出所',
+        tab_calibration: 'キャリブレーション',
+        tab_testjobs: 'アクチュエータテスト',
+        search: '検索（ジョブ名・ラベル・独語原文）',
+        run: '実行',
+        risk_all: 'すべて',
+        risk_high: '高',
+        risk_medium: '中',
+        risk_low: '低',
+        gate_verified: '検証済み',
+        gate_unverified: '未検証',
+        gate_practiceOnly: '未検証のため実行できません。実車で1件ずつ検証し台帳に記録してから解禁します。',
+        args_required: (names: string) => `引数: ${names}`,
+        precond_voltage_ok: '電圧',
+        precond_stationary: '停車',
+        precond_engine_off: 'エンジン停止',
+        module: 'モジュール',
+        faultRef: '故障本文リファレンス',
+        faultRef_note:
+            'SGBD 由来の故障本文です。コードとの対応表は EdiabasLib が供給していたもので、まだ再構築できていません。検索用の参照として表示しています。',
+        catalog_jobs: (n: number) => `${n} 件`,
     },
     en: {
         appRole: 'DIAGNOSIS',
@@ -169,6 +208,27 @@ const STRINGS: Record<Lang, Catalog> = {
         unverified:
             'UNVERIFIED: this data has not been confirmed on a vehicle. Treat displayed values as indicative, not as a basis for diagnosis.',
         provenance_title: 'Data provenance',
+        tab_calibration: 'Calibration',
+        tab_testjobs: 'Actuator test',
+        search: 'Search (job id, label, German original)',
+        run: 'Run',
+        risk_all: 'All',
+        risk_high: 'High',
+        risk_medium: 'Med',
+        risk_low: 'Low',
+        gate_verified: 'Verified',
+        gate_unverified: 'Unverified',
+        gate_practiceOnly:
+            'Blocked: not verified on a vehicle. Each job is unlocked individually once a car has confirmed it and the ledger records the evidence.',
+        args_required: (names: string) => `Args: ${names}`,
+        precond_voltage_ok: 'Voltage',
+        precond_stationary: 'Stationary',
+        precond_engine_off: 'Engine off',
+        module: 'Module',
+        faultRef: 'Fault text reference',
+        faultRef_note:
+            'Fault texts from the SGBD. The code-to-text mapping was supplied by EdiabasLib and has not been rebuilt yet, so this is shown as a searchable reference rather than as decoded faults.',
+        catalog_jobs: (n: number) => `${n} job${n === 1 ? '' : 's'}`,
     },
 };
 

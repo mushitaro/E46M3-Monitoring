@@ -9,6 +9,7 @@ export default defineConfig({
     resolve: {
         alias: {
             '@tsunagi/ds2-core': path.resolve(import.meta.dirname, 'packages/ds2-core/src/index.ts'),
+            '@tsunagi/ds2-mss54': path.resolve(import.meta.dirname, 'packages/ds2-mss54/src/index.ts'),
             '@': path.resolve(import.meta.dirname, 'src'),
         },
     },

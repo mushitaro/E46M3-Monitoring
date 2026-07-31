@@ -1,0 +1,16 @@
+{
+  "name": "@tsunagi/ds2-mss54",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "MSS54/MSS54HP-specific DS2 layer: live-measurement block tables, error memory decoding.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@tsunagi/ds2-core": "0.1.0"
+  }
+}

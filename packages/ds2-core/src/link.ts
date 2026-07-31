@@ -192,7 +192,7 @@ export class Ds2Link {
     // ---- exchanges ----------------------------------------------------------
 
     /** Gated single exchange. */
-    async exchange(control: number, payload = new Uint8Array(0), timeoutMs?: number): Promise<Ds2Frame> {
+    async exchange(control: number, payload: Uint8Array = new Uint8Array(0), timeoutMs?: number): Promise<Ds2Frame> {
         return this.withGate(() => this.exchangeInner(control, payload, timeoutMs));
     }
 
@@ -287,7 +287,7 @@ export class Ds2Link {
      */
     async exchangeWithRetry(
         control: number,
-        payload = new Uint8Array(0),
+        payload: Uint8Array = new Uint8Array(0),
         options: RetryOptions = {},
     ): Promise<Ds2Frame> {
         return this.withGate(() => this.exchangeWithRetryInner(control, payload, options));
@@ -304,8 +304,18 @@ export class Ds2Link {
 
         for (let attempt = 1; attempt <= attempts; attempt++) {
             try {
+                // Resync always — a purge is free and a latched pump must be
+                // recovered before we transmit. The SETTLE is different: it
+                // exists to give a disturbed line quiet after we cleared it, so
+                // paying it on a clean first attempt is pure loss.
+                //
+                // Measured: it put a 30 ms floor under every exchange, which is
+                // ~15% of a 197 ms bulk-read round trip but the DOMINANT cost of
+                // a small block poll. Skipped when there is nothing to settle
+                // from — first attempt, no latched error, nothing buffered.
+                const dirty = this.transport.hasReadError() || this.transport.bufferedLength() > 0;
                 await this.resyncInner();
-                await delay(this.timings.resyncSettleMs);
+                if (attempt > 1 || dirty) await delay(this.timings.resyncSettleMs);
                 let frame = await this.exchangeInner(control, payload, timeoutMs);
 
                 if (options.tolerateBusy) {

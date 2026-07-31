@@ -42,3 +42,10 @@ export {
     type ErrorMemorySource,
     type EnvironmentSet,
 } from './errorMemory';
+
+export {
+    IDENT_REQUEST,
+    ERROR_MEMORY_QUICKTEST,
+    ERROR_MEMORY_ENTRIES,
+    SHADOW_MEMORY_ENTRIES,
+} from './requests';

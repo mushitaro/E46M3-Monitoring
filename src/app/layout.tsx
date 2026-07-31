@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -16,9 +16,25 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "E46M3 /// DIAGNOSIS",
   description: "E46 M3 diagnostics over DS2 / K-line — MSS54, SMG II, DSC",
+  manifest: "/manifest.webmanifest",
+  // PNG first: Chrome's installability criteria and Android launchers want
+  // 192/512 PNGs, and iOS Safari does not read SVG manifest icons at all. The
+  // old app shipped a single 622-byte SVG and an apple-touch-icon pointing at
+  // it, which iOS silently ignores.
   icons: {
-    icon: "/icon.svg",
+    icon: [
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+    apple: [{ url: "/icon-192.png", sizes: "192x192", type: "image/png" }],
   },
+  robots: { index: false, follow: false },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#000000",
+  viewportFit: "cover",
 };
 
 // `lang` is set to the default UI language here and updated client-side when the

@@ -1,0 +1,21 @@
+{
+  "id": "/",
+  "name": "E46M3///Diagnosis",
+  "short_name": "E46M3 Diag",
+  "description": "E46 M3 diagnostics over DS2 / K-line — MSS54, SMG II, DSC. Web Serial, desktop Chromium only.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "lang": "ja",
+  "dir": "ltr",
+  "categories": ["utilities", "productivity"],
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

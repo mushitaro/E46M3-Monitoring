@@ -1,0 +1,4 @@
+# Not a public document. The deployment is intended to sit behind Cloudflare
+# Access; this is belt-and-braces for the window before that is switched on.
+User-agent: *
+Disallow: /

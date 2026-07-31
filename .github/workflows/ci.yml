@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # Order matters: typecheck and tests are cheap and catch the most, the
+      # build is the slowest. Nothing here needs a vehicle or a serial port —
+      # the device simulator drives the real transport and link.
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: static-export
+          path: out/
+          retention-days: 7
+
+  # The generated ECU tables are committed, so a regeneration that silently
+  # changes them must show up as a diff rather than as a surprise on someone's
+  # next pull. This only runs where the inputs are available.
+  data-pipeline:
+    runs-on: windows-latest
+    if: false # enable once C:\EDIABAS and the reference catalog are on a runner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python tools/gen_from_dump.py
+      - run: python tools/extract_telegrams.py
+      - run: python tools/gen_live_blocks.py
+      - name: Fail if the generated data drifted
+        run: git diff --exit-code -- ecu-data packages/ds2-mss54/src/liveValueBlocks.generated.ts

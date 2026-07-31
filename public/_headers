@@ -1,0 +1,25 @@
+# Cloudflare Pages headers.
+#
+# The app is a static export that talks only to a serial port. It makes NO
+# network requests of its own at runtime, which is what lets the policy below be
+# this tight: connect-src is 'self' purely so the page can fetch its own assets.
+#
+# If a feedback endpoint is added later (plan §8-1), connect-src gains exactly
+# that origin and nothing else — widening it to https: would give away the one
+# property that makes a diagnostic tool safe to leave open in a garage.
+
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  Cross-Origin-Opener-Policy: same-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+
+# The generated data is the part with a provenance question attached
+# (THIRD-PARTY-NOTICES.md §3). Keep it out of search indexes even while the
+# deployment itself is access-controlled.
+/*.json
+  X-Robots-Tag: noindex
+
+/ecu-data/*
+  X-Robots-Tag: noindex

@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "e46m3-diagnosis",
+  "compatibility_date": "2026-07-31",
+
+  // Static export only. There is no Worker and no server: the app talks to a
+  // serial port in the browser and to nothing else. `out/` is what `npm run
+  // build` produces.
+  //
+  // Deploy:  npx wrangler pages deploy out --project-name e46m3-diagnosis
+  //
+  // Before the first public deploy, turn on Cloudflare Access for the project.
+  // The repository being private does NOT protect the deployment — anything
+  // under out/ is fetchable by anyone with the URL, and that includes the
+  // generated ECU tables whose provenance is recorded in
+  // THIRD-PARTY-NOTICES.md §3.
+  "pages_build_output_dir": "out"
+}

@@ -83,7 +83,34 @@ but the route by which they were obtained is a decompilation.
 
 ---
 
-## 4. Shared code
+## 4. Dependency audit status
+
+`npm audit` reports **12 high-severity findings**. As of this writing none of them
+are reachable in this application, and the reasoning needs to be re-checked rather
+than inherited whenever dependencies move.
+
+**`next`** — every advisory in the list concerns a *server* feature: the Image
+Optimizer, Server Components, Server Actions, Middleware/Proxy, rewrites, PPR
+resume, RSC cache poisoning, the dev HMR websocket. This app is `output: 'export'`
+with `images.unoptimized`, so it ships no Next.js server at all — Cloudflare serves
+static files. There is currently **no patched stable release**: the advisory range
+extends to `16.3.0-preview.7` and the newest stable is `16.2.12`, so upgrading
+within 16.x would not clear the audit. The pin stays at 16.1.1, matching the CSL
+tuner, so the two apps share one framework version alongside the shared DS2
+package.
+
+**`brace-expansion` / `minimatch` / eslint chain** — a DoS in the linter's
+transitive dependencies. Development-only; nothing in the chain is bundled.
+`npm audit fix --force` wants to install `eslint@10`, a breaking change, to fix a
+tool that never runs in production. Not taken.
+
+Re-evaluate if any of these becomes true: the app gains a server or middleware,
+`images.unoptimized` is removed, or a stable Next.js release lands above the
+advisory range.
+
+---
+
+## 5. Shared code
 
 `packages/ds2-core` is extracted from the MSS54HP CSL Convert Tuner
 (`E46M3CSL_TuningTool`, MIT, same author). The DS2 conventions it encodes —

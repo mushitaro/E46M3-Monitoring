@@ -44,7 +44,7 @@ TSUNAGI ///M の計器系サブブランド。DS2 通信は
 - EdiabasLib は **GPLv3**。リンクしたホストを配布しつつリポジトリを非公開に保つのは無理がある
 
 いまは EdiabasLib を**ビルド時のデータ生成ツール**としてのみ使う（`tools/`, `host/`）。
-詳細は [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
+詳細は [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)（依存監査の評価も同ファイル §4）。
 
 ---
 

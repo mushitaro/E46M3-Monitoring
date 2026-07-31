@@ -1,4 +1,7 @@
+import { Ds2Address } from "@tsunagi/ds2-core";
 import { MMark } from "@/components/MMark";
+
+const hex = (n: number) => `0x${n.toString(16).toUpperCase()}`;
 
 // Scaffold shell. The real four-view instrument (診断 / データログ /
 // キャリブレーション / アクチュエータテスト) lands once packages/ds2-core is
@@ -27,7 +30,9 @@ export default function Home() {
         <dt className="text-slate-500 uppercase text-[11px] tracking-widest self-center">
           Addresses
         </dt>
-        <dd className="font-mono text-slate-200">0x12 · 0x32 · 0x56</dd>
+        <dd className="font-mono text-slate-200">
+          {[Ds2Address.DME, Ds2Address.SMG, Ds2Address.DSC].map(hex).join(" · ")}
+        </dd>
 
         <dt className="text-slate-500 uppercase text-[11px] tracking-widest self-center">
           Status

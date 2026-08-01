@@ -71,6 +71,46 @@ PROC = {
     ja="エンジン始動条件の確立", en="Establish engine-start conditions"),
 }
 
+# `readResults` が無い手順が、なぜ無いのか。
+#
+# 総称文を1本書いて全部に付ける誘惑があるが、理由は**手順ごとに違う**——
+# `0x0C` は何も書かない点検であり、`0x08` はどちらの適応ブロックにも属さない
+# センサオフセットを書く。同じ文で済ませるのは、いま全廃している定型文と
+# 同じ過ちである。無いものには、無い理由を個別に書く。
+READ_NOTE = {
+ "0x01": ("エア抜きは学習値を書きません。結果は油圧系の手応えとして現れます。",
+          "Bleeding writes no learned value. The result shows up as hydraulic feel, not as a number."),
+ "0x04": ("測定値はこの手順自身が返します（`STAT_INFO_STATUS2_WERT`）。適応ブロックには入りません。"
+          "SGBD の記載: 工場出荷の新品は測定対象外、整備基準は 29〜41 bar。",
+          "The measured value comes back from this procedure itself (`STAT_INFO_STATUS2_WERT`), not from an "
+          "adaptation block. The SGBD states: not to be measured when new; workshop band 29-41 bar."),
+ "0x05": ("エア抜きは学習値を書きません。16分かけて油圧系から空気を追い出すだけです。",
+          "Bleeding writes no learned value. It spends sixteen minutes driving air out of the hydraulics."),
+ "0x08": ("前後加速度センサのオフセットを書きますが、クラッチ／変速機どちらの適応ブロックにも"
+          "入りません。読み戻す手段が SGBD に見当たりません。",
+          "It writes the longitudinal accelerometer offset, but that value is in neither the clutch nor the "
+          "gearbox adaptation block, and the SGBD exposes no way to read it back."),
+ "0x0A": ("ギアを入れるだけの手順です。**何も学習しません。** 点検用であり、適応値は変わりません。",
+          "This engages a gear and **learns nothing**. It is for inspection; no adaptation value changes."),
+ "0x0C": ("点検専用で、**何も書きません。** 結果は結果コードそのものです。",
+          "A check that **writes nothing**. The result is the result code itself."),
+}
+
+# 手順そのものについて、SGBD の表からは読み取れない事実。
+PROC_NOTE = {
+ "0x07": ("引数はありません。1〜6速とRを**自動で順に**測定します（進行コードの"
+          "「1速を測定」〜「Rを測定」がその実体）。ギアを指定する手段はありません。",
+          "Takes no argument. It measures gears 1-6 and R **automatically, in order** - the activity codes "
+          "'Measuring gear 1' through 'Measuring reverse' are that sweep. There is no way to pick a gear."),
+ "0x0B": ("引数はありません。1〜6速とRを自動で順に測定します。`0x07` からセレクト角の2段を除いたものです。",
+          "Takes no argument. It sweeps gears 1-6 and R automatically. It is `0x07` minus the two "
+          "select-angle steps."),
+ "0x0A": ("SMG II で**ギアを指定できる唯一の手順**です。ただし投入するだけで学習はしません。"
+          "手動でギアを入れて個別に学習させるジョブは、SGBD の46ジョブ中に存在しません。",
+          "The **only procedure that takes a gear** on SMG II - but it only engages one, it does not learn. "
+          "There is no job among the SGBD's 46 that engages a gear manually and learns it individually."),
+}
+
 # 手順の補足説明（利用者向け・厳選）
 DESC = {
  "0x01": ("レリーズシリンダと油圧配管の空気を抜きます。所要約2分。",
@@ -168,6 +208,11 @@ def build():
         n = int(nr, 16)
         act = [{"code": r[0], **txt(r[1])} for r in rows(f"INFOTEXTE{n}A")]
         flt = [{"code": r[0], **txt(r[1])} for r in rows(f"INFOTEXTE{n}F")]
+        entry_notes = {}
+        if meta["read"] is None and nr in READ_NOTE:
+            entry_notes["readResultsNote"] = {"ja": READ_NOTE[nr][0], "en": READ_NOTE[nr][1]}
+        if nr in PROC_NOTE:
+            entry_notes["note"] = {"ja": PROC_NOTE[nr][0], "en": PROC_NOTE[nr][1]}
         procs.append({
             "id": nr, "testprg": nr, "cat": meta["cat"],
             "name": {"de": row[1], "ja": meta["ja"], "en": meta["en"]},
@@ -178,6 +223,7 @@ def build():
             "auswahl": meta["auswahl"], "readResults": meta["read"],
             "risk": "high" if meta["cat"] in ("total", "shift", "bleed") else "med",
             "prereq": prereqs(meta["engine"], meta["cat"]),
+            **entry_notes,
             "activity": act, "faults": flt,
         })
 

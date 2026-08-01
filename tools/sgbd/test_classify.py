@@ -136,7 +136,30 @@ for job in ("STEUERN_EV1", "STEUERN_ZS8", "STEUERN_START", "STEUERN_EKP"):
     check(v.risk == classify.RISK_HIGH, f"{job}: risk={v.risk}")
     check("engine_off" in v.preconditions, f"{job}: preconditions={v.preconditions}")
 
-# --- 11. 読取に前提条件も不可逆マークも付かないこと --------------------------
+# --- 11. 生ビットを直接叩くジョブは、その部分集合より緩く扱わない ------------
+# `STEUERN_DIGITAL` は 8 電磁弁＋ポンプ＋予圧ポンプを任意の組合せで駆動できる
+# のに medium/owner だった。その **真部分集合**（AVVL 1 本）しか叩かない
+# `DRUCKABBAU_VL` は high/technician。最も強力なものが最も緩かった。
+dig = c("DSC_E46", "STEUERN_DIGITAL")
+sub = c("DSC_E46", "DRUCKABBAU_VL")
+check(dig.risk == classify.RISK_HIGH, f"STEUERN_DIGITAL: risk={dig.risk}")
+check(dig.audience == classify.AUD_TECH, f"STEUERN_DIGITAL: audience={dig.audience}")
+check(dig.provenance == "sgbd-comment", f"STEUERN_DIGITAL: provenance={dig.provenance}")
+check("stationary" in dig.preconditions, f"STEUERN_DIGITAL: {dig.preconditions}")
+check((dig.risk, dig.audience) == (sub.risk, sub.audience),
+      f"superset {dig.risk}/{dig.audience} vs subset {sub.risk}/{sub.audience}")
+
+# 反例。`TRIG_SCHREIBEN` は同じ `ORTn` という引数名を使うが、中身は車輪アドレスと
+# トリガ閾値であって電磁弁ではない——油圧を一切駆動しない。引数名で判定していた
+# 版はここに「生ビットを直接駆動する」という嘘の注記を付けていた。判定できるのは
+# SGBD のコメントが弁を列挙しているか否かだけである。
+trig = c("DSC_E46", "TRIG_SCHREIBEN")
+check(trig.note is None or "raw actuator bits" not in trig.note,
+      f"TRIG_SCHREIBEN must not be called a direct actuation: {trig.note}")
+check(trig.audience == classify.AUD_OWNER,
+      f"TRIG_SCHREIBEN must keep its own audience, not the valve rule's: {trig.audience}")
+
+# --- 12. 読取に前提条件も不可逆マークも付かないこと --------------------------
 for (s, j), v in rows.items():
     if v.cls == classify.CLASS_READ:
         check(v.irreversible is None, f"{s}.{j}: a read is marked irreversible")

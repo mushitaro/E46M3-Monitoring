@@ -250,9 +250,18 @@ _RAW: list[tuple[str, str, str, str, str, str, str, str]] = [
      "ブレーキ油圧を抜きます。", "Bleeds brake pressure off.", "", ""),
     (r"DRUCKHALTEN", "druckhalten", "ブレーキ油圧の保持", "Brake pressure hold",
      "ブレーキ油圧をその場に保ちます。", "Holds brake pressure where it is.", "", ""),
+    # 出典の訂正: 「自動停止しない・最大60秒・100barでリリーフ弁」は **SMG II** の
+    # `STEUERN_STELLGLIED` / `ANSTEUERUNG_VORBEREITEN` の記述であって、DSC の
+    # SGBD には一切無い（ダンプ全体を検索して `Sekund`/`Stop`/`Abbruch`/
+    # `abschalt`/`_AUS` は 0 件、タイムアウトも最大時間も未記載）。
+    # 出典を土台にしているアプリで、他モジュールの警告を借りてくるのは捏造である。
+    # 危険が無いという意味ではない——SGBD が**何も言っていない**という意味であり、
+    # それはそれで述べるに値する事実なので、そう述べる。
     (r"PUMPENFOERDERLEISTUNG", "dsc_pump", "DSC ポンプ", "DSC pump",
-     "ブレーキ油圧を作る電動ポンプです。SGBD 自身が「自動停止しない・最大60秒・100barでリリーフ弁が開きポンプが劣化する」と警告しています。",
-     "The electric pump that generates brake pressure. The SGBD itself warns it does not stop by itself, is limited to 60 s, and that the relief valve opens at 100 bar and degrades the pump.",
+     "ブレーキ油圧を作る電動ポンプです。DSC の SGBD は、このポンプの最大駆動時間も"
+     "停止方法も述べていません。",
+     "The electric pump that generates brake pressure. The DSC SGBD states neither a "
+     "maximum run time for it nor any way to stop it.",
      "", ""),
     (r"NA_ENTLUEFTUNG|ENTLUEFTUNG_SERVICE", "brake_bleed", "ブレーキのエア抜き", "Brake bleeding",
      "ブレーキ配管から空気を抜くために、DSC のポンプと弁を動かします。",

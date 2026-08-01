@@ -239,13 +239,13 @@ def classify(sgbd: str, job: str, comment: str, args: list[str]) -> JobClassific
     if PROTOCOL_JOBS.match(n):
         c.cls, c.audience, c.kind, c.risk = CLASS_PROTOCOL, AUD_PROTOCOL, "read", RISK_LOW
         c.provenance = "name-heuristic"
-        return _apply_override(n, c)
+        return _apply_override(n, c, argset, de)
 
     # --- 書換系（WinKFP 領域）---------------------------------------------
     if re.match(r"^(FLASH|SPEICHER_SCHREIBEN|AIF_SCHREIBEN|PRUEFSTEMPEL|ZIF_BACKUP)", n):
         c.cls, c.audience, c.kind, c.risk = CLASS_PROGRAMMING, AUD_TECH, "write", RISK_HIGH
         c.irreversible = "irr_write"
-        return _apply_override(n, c)
+        return _apply_override(n, c, argset, de)
 
     # --- 故障メモリ。オーナーの入口なので専用に扱う ------------------------
     if n.startswith("FS_"):
@@ -257,7 +257,7 @@ def classify(sgbd: str, job: str, comment: str, args: list[str]) -> JobClassific
             c.preconditions = ["voltage_ok"]
         else:
             c.cls, c.kind, c.audience, c.risk = CLASS_READ, "read", AUD_OWNER, RISK_LOW
-        return _apply_override(n, c)
+        return _apply_override(n, c, argset, de)
 
     # --- 読取 --------------------------------------------------------------
     # `_LESEN$` だけでは `FS_LESEN_TEXT` / `FS_LESEN_KB90` を取り逃がす。
@@ -269,7 +269,7 @@ def classify(sgbd: str, job: str, comment: str, args: list[str]) -> JobClassific
         if "SYSTEMCHECK" in n:
             c.audience = AUD_OWNER
             c.result_delivery = DELIVER_INLINE
-        return _apply_override(n, c)
+        return _apply_override(n, c, argset, de)
 
     # --- SYSTEMCHECK 開始: 開始 → 別ジョブで結果 ---------------------------
     if n.startswith("START_SYSTEMCHECK"):
@@ -280,11 +280,11 @@ def classify(sgbd: str, job: str, comment: str, args: list[str]) -> JobClassific
         if c.stop_job:
             c.termination = TERM_COMPANION
         c.preconditions = ["voltage_ok"]
-        return _apply_override(n, c)
+        return _apply_override(n, c, argset, de)
     if n.startswith("STOP_SYSTEMCHECK"):
         c.cls, c.kind, c.audience, c.risk = CLASS_TEST, "pulse", AUD_OWNER, RISK_LOW
         c.stop_job = PAIRS.get(n)
-        return _apply_override(n, c)
+        return _apply_override(n, c, argset, de)
 
     # --- SMG II 試験プログラム --------------------------------------------
     if n == "TESTPRG_STARTEN":
@@ -295,11 +295,11 @@ def classify(sgbd: str, job: str, comment: str, args: list[str]) -> JobClassific
         c.ecu_timeout_sec = SMG2_ECU_TIMEOUT_SEC
         c.preconditions = ["voltage_ok", "stationary"]
         c.provenance = "sgbd-comment"
-        return _apply_override(n, c)
+        return _apply_override(n, c, argset, de)
     if n == "TESTPRG_STOP":
         c.cls, c.kind, c.audience, c.risk = CLASS_TEST, "pulse", AUD_OWNER, RISK_LOW
         c.stop_job = "TESTPRG_STARTEN"
-        return _apply_override(n, c)
+        return _apply_override(n, c, argset, de)
 
     # --- SMG II アクチュエータ（前段ジョブが必須と SGBD が明言）------------
     if sgbd.upper() == "SMG2" and n == "STEUERN_STELLGLIED":
@@ -310,11 +310,11 @@ def classify(sgbd: str, job: str, comment: str, args: list[str]) -> JobClassific
         c.ecu_timeout_sec, c.max_hold_sec = SMG2_ECU_TIMEOUT_SEC, SMG2_MAX_HOLD_SEC
         c.preconditions = ["voltage_ok", "stationary"]
         c.provenance = "sgbd-comment"
-        return _apply_override(n, c)
+        return _apply_override(n, c, argset, de)
     if n == "ANSTEUERUNG_VORBEREITEN":
         c.cls, c.kind, c.audience, c.risk = CLASS_PROTOCOL, "pulse", AUD_PROTOCOL, RISK_LOW
         c.provenance = "sgbd-comment"
-        return _apply_override(n, c)
+        return _apply_override(n, c, argset, de)
 
     # --- ラッチ: 作動して保持、解除ジョブ無し ------------------------------
     if n.startswith("DSC_SIM_"):
@@ -323,7 +323,7 @@ def classify(sgbd: str, job: str, comment: str, args: list[str]) -> JobClassific
         c.irreversible = "irr_latching"
         c.preconditions = ["voltage_ok", "stationary"]
         c.provenance = "sgbd-comment"
-        return _apply_override(n, c)
+        return _apply_override(n, c, argset, de)
 
     # --- DSC 油圧: ブレーキモジュレータを駆動する --------------------------
     if re.match(r"^(DRUCKABBAU|DRUCKAUFBAU|DRUCKHALTEN|PUMPENFOERDERLEISTUNG|"
@@ -332,7 +332,7 @@ def classify(sgbd: str, job: str, comment: str, args: list[str]) -> JobClassific
         c.actor, c.termination = ACTOR_ECU, TERM_SELF
         c.preconditions = ["voltage_ok", "stationary"]
         c.provenance = "sgbd-comment"
-        return _apply_override(n, c)
+        return _apply_override(n, c, argset, de)
 
     # --- コーディング ------------------------------------------------------
     if re.match(r"^(CODIERDATEN|CODIER|COD_)", n):
@@ -343,7 +343,7 @@ def classify(sgbd: str, job: str, comment: str, args: list[str]) -> JobClassific
         if write:
             c.irreversible = "irr_write"
             c.preconditions = ["voltage_ok", "engine_off"]
-        return _apply_override(n, c)
+        return _apply_override(n, c, argset, de)
 
     # --- 較正・適応の書換 ---------------------------------------------------
     if re.search(r"_SCHREIBEN$|_LOESCHEN$|^SG_RESET$|^EDIC_RESET$|^DDS_RESET$|"
@@ -353,7 +353,7 @@ def classify(sgbd: str, job: str, comment: str, args: list[str]) -> JobClassific
         c.preconditions = ["voltage_ok", "stationary"]
         if re.search(r"_SCHREIBEN$|^SG_RESET$", n):
             c.preconditions.append("engine_off")
-        return _apply_override(n, c)
+        return _apply_override(n, c, argset, de)
 
     # --- I/O ピン直接駆動 ---------------------------------------------------
     if "PIN_NUMMER" in argset:
@@ -361,16 +361,16 @@ def classify(sgbd: str, job: str, comment: str, args: list[str]) -> JobClassific
         c.actor, c.termination = ACTOR_APP, TERM_APP_STOP
         c.stop_job, c.irreversible = job, "irr_pin"
         c.preconditions = ["voltage_ok", "stationary"]
-        c.provenance = "sgbd-args"
-        return _apply_override(n, c)
+        c.provenance = "sgbd-comment"
+        return _apply_override(n, c, argset, de)
 
     # --- ON/OFF 引数を持つ保持型 -------------------------------------------
     if "SCHALTEN" in argset:
         c.cls, c.kind, c.audience = CLASS_TEST, "hold", AUD_OWNER
         c.actor, c.termination, c.stop_job = ACTOR_APP, TERM_APP_STOP, job
         c.preconditions = ["voltage_ok"]
-        c.provenance = "sgbd-args"
-        return _apply_override(n, c)
+        c.provenance = "sgbd-comment"
+        return _apply_override(n, c, argset, de)
 
     # --- 対ジョブ ----------------------------------------------------------
     if n in PAIRS:
@@ -378,7 +378,7 @@ def classify(sgbd: str, job: str, comment: str, args: list[str]) -> JobClassific
         c.actor, c.termination, c.stop_job = ACTOR_APP, TERM_COMPANION, PAIRS[n]
         c.preconditions = ["voltage_ok"]
         c.provenance = "sgbd-comment"
-        return _apply_override(n, c)
+        return _apply_override(n, c, argset, de)
 
     # --- 測定の起動: 「anstossen」= 起動して ECU が最後までやる -------------
     if "anstossen" in de or "durchfuehren" in de or "prueflauf" in de:
@@ -386,7 +386,7 @@ def classify(sgbd: str, job: str, comment: str, args: list[str]) -> JobClassific
         c.actor, c.termination, c.result_delivery = ACTOR_ECU, TERM_SELF, DELIVER_LIVE
         c.preconditions = ["voltage_ok"]
         c.provenance = "sgbd-comment"
-        return _apply_override(n, c)
+        return _apply_override(n, c, argset, de)
 
     # --- 単発作動 ----------------------------------------------------------
     if n.startswith("STEUERN") or "ansteuern" in de or "anfahren" in de:
@@ -394,12 +394,12 @@ def classify(sgbd: str, job: str, comment: str, args: list[str]) -> JobClassific
         c.actor, c.termination = ACTOR_ECU, TERM_SELF
         c.preconditions = ["voltage_ok"]
         c.provenance = "sgbd-comment" if de else "name-heuristic"
-        return _apply_override(n, c)
+        return _apply_override(n, c, argset, de)
 
     # --- ここに来たものは SGBD が何も言っていない --------------------------
     c.cls, c.kind, c.audience, c.risk = CLASS_READ, "unknown", AUD_TECH, RISK_MED
     c.provenance = "name-heuristic"
-    return _apply_override(n, c)
+    return _apply_override(n, c, argset, de)
 
 
 # インジェクタ・点火コイル・スタータ・燃料ポンプ。エンジン稼働中に叩くのと
@@ -411,8 +411,48 @@ def classify(sgbd: str, job: str, comment: str, args: list[str]) -> JobClassific
 # なっていた。開始と停止が別ジョブであることは、動かす対象の危険度とは無関係。
 _HAZARDOUS_ACTUATOR = re.compile(r"^STEUERN_(EV|ZS)\d|^STEUERN_START$|^STEUERN_EKP", re.I)
 
+_RAW_BIT_SLOT = re.compile(r"^ORT\d+$", re.I)
 
-def _apply_override(name: str, c: JobClassification) -> JobClassification:
+
+def _is_direct_actuation(comment: str, argset: set[str]) -> bool:
+    """このジョブは生のアクチュエータビットを直接叩くか。
+
+    **引数名では判定できない。** `STEUERN_DIGITAL`（電磁弁 15 枠）も
+    `TRIG_SCHREIBEN`（車輪アドレスと閾値コード）も同じ `ORTn` という名前を
+    使っており、後者は油圧を何一つ駆動しない。名前で判定すると、車輪速センサの
+    閾値を書くジョブに「生ビットを直接駆動する」という嘘の注記が付く。
+
+    判定できるのは SGBD 自身の記述である。`STEUERN_DIGITAL` のコメントは
+    `Parameterliste: E oder W,EVVL,AVVL,...` と**弁を列挙している**。
+    `TRIG_SCHREIBEN` のコメントは `TRIGGERSCHWELLEN SCHREIBEN DSC_E46` で、
+    何も列挙していない。
+    """
+    if not any(_RAW_BIT_SLOT.match(a) for a in argset):
+        return False
+    return "parameterliste" in comment.lower()
+
+
+def _apply_override(name: str, c: JobClassification, argset: set[str] | None = None,
+                    comment: str = "") -> JobClassification:
+    # 生ビットを直接叩けるジョブは、その部分集合しか駆動しないジョブより
+    # 低く格付けされてはならない。
+    #
+    # `STEUERN_DIGITAL` は 8 個の電磁弁とポンプと予圧ポンプを任意の組合せで
+    # 駆動でき、`medium / owner / pulse` だった。一方その**真部分集合**しか
+    # 叩かない `DRUCKABBAU_VL`（AVVL 1 本）は `high / technician`。
+    # 油圧系で最も強力なジョブが、最も緩い扱いを受けていたことになる。
+    # 名前の規則ではなく引数の形から出しているので provenance は sgbd-args。
+    if argset and _is_direct_actuation(comment, argset):
+        c.risk = RISK_HIGH
+        c.audience = AUD_TECH
+        c.provenance = "sgbd-comment"
+        for p in ("voltage_ok", "stationary"):
+            if p not in c.preconditions:
+                c.preconditions.append(p)
+        if not c.note:
+            c.note = ("drives raw actuator bits directly; a strict superset of what the "
+                      "named hydraulic jobs drive")
+
     if _HAZARDOUS_ACTUATOR.match(name):
         c.risk = RISK_HIGH
         for p in ("voltage_ok", "stationary", "engine_off"):

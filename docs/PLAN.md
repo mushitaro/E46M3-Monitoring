@@ -203,7 +203,7 @@ core に実装だけ用意し、送るかどうかはアプリ側の判断にす
 | 4-9 | バックアップ・読み戻し | 免責（`js/disclaimer.js:41`）は「純正データのバックアップを保管せよ」と言うが**アプリに手段が無い**。SMG II は `CODIERDATEN_SCHREIBEN`（書込）が露出しているのに `CODIERDATEN_LESEN`（読取）が露出していない（`gen_from_dump.py:77` のフィルタが書込だけ明示）。**tuner の作法**：`await onBackup(buffer)` を**ガードせずに await** し、拒否を catch しない — 「呼び出し側がこのバイト列を永続化できないなら、以下は何も走らせてはいけない」。しかも**消去を発行する層で強制する**（「バックアップが安全になるまでやらない」という規則は、それを実際に守れる層に置いて初めて意味を持つ） |
 | 4-12 | 機能フラグと段階的無効化 | tuner の `FLASH_COUNTER_RESET_ENABLED` パターン。危険な系統をコード側で一括無効化できる定数を持ち、無効化した理由と再有効化の根拠をその場に書き残す（§8-2 のキルスイッチはこれの遠隔版） |
 | 4-10 | 故障消去の格上げ | `js/diagnosis.js:90-97` `doClear()` は**実機で到達できる唯一の書込**なのに、確認モーダルだけで `verified` ゲートも `setBusy()` も try/catch も無い |
-| 4-11 | 個別判断が要る危険ジョブ | **DSC ブレーキ油圧系**（`DRUCK*`/`PUMPEN*`/`NA_ENTLUEFTUNG_*`/`DSC_SIM_*`）— SGBD 自身が「ポンプは自動停止しない（最大60秒/SG-Timeout 10秒）、100barでリリーフ弁が開きポンプが劣化」と警告。**出荷するかを先に決める**。`IO_STATUS_VORGEBEN`（任意ピン強制）も同様 |
+| 4-11 | 個別判断が要る危険ジョブ | **DSC ブレーキ油圧系**（`DRUCK*`/`PUMPEN*`/`NA_ENTLUEFTUNG_*`/`DSC_SIM_*`）— **DSC の SGBD は停止手段を一切述べていない**（ダンプ全体に `Stop`/`Abbruch`/`abschalt`/`_AUS` は0件、タイムアウトも最大時間も未記載）。`DSC_SIM_*` は「ansteueren u. halten」で解除ジョブ無し。**出荷するかを先に決める**。`IO_STATUS_VORGEBEN`（任意ピン強制）も同様。<br>※ 以前ここに書いていた「ポンプは自動停止しない／最大60秒／100barでリリーフ弁」は **SMG II** の `STEUERN_STELLGLIED`・`ANSTEUERUNG_VORBEREITEN` の記述であり、DSC のものではない。出典の取り違えとして訂正済み |
 
 ---
 

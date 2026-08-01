@@ -20,6 +20,7 @@
 # ============================================================================
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import json
 import os
@@ -210,31 +211,100 @@ def status_vocabularies(dump: model.SgbdDump, pool: TextPool) -> dict[str, list[
     return out
 
 
-def arg_options(dump: model.SgbdDump, arg_name: str) -> list[dict] | None:
-    """引数の選択肢を SGBD テーブルから引く。
+@dataclasses.dataclass(frozen=True)
+class ArgTable:
+    """引数 1 つと、その選択肢を供給する SGBD テーブルの結び付け。"""
 
-    自由入力欄の代わりに本物のコントロールを出せるのはこの3つだけ。
-    推測で選択肢を作ると、存在しないピンを叩ける UI になる。
+    table: str
+    value_col: str
+    note_col: str | None = None
+    #「この値までが有効」と SGBD 自身が述べている場合の上限。以降の行は落とし、
+    # 落としたことを生成物に記録する。黙って切らない。
+    max_value: str | None = None
+    # 除外する値（機能を持たないパディング行）。
+    drop_values: tuple[str, ...] = ()
+    # なぜこの表なのか。SGBD の文言を引く。
+    why: str = ""
+
+
+# 引数名 **だけ** で表を引くと壊れる。`TRIG_SCHREIBEN` の `ORT1`/`ORT2` は
+# 車輪アドレスと閾値コードで、`STEUERN_DIGITAL` の `ORT1..ORT15`（電磁弁）とは
+# 何の関係も無い。実際、名前だけで引いていたせいで、車輪アドレスを求める引数に
+# 「EVVL / Pumpe / V_Pumpe」という電磁弁一覧が出ていた。
+# よって **(ジョブ, 引数)** で引く。
+ARG_TABLES: dict[tuple[str, str], ArgTable] = {
+    ("TRIG_SCHREIBEN", "ORT1"): ArgTable(
+        "RAEDER", "RAD_NAME", "ADRESSE",
+        why="TRIG_SCHREIBEN は結果に RAD_ADRESSE『Adresse des betreffenden Rades』を返す"),
+    ("TRIG_SCHREIBEN", "ORT2"): ArgTable(
+        "TRIGGERSCHWELLE", "TRIG_WERT", "USS",
+        why="車輪速センサのトリガ閾値。USS 列が mV"),
+    # SGBD の逐語: "0 = Neutral, 1-6 = Gang 1-6, 7 = Rueckwaertsgang"。
+    # 表は 0x0F まで続くが、それはメーター表示用の値であって投入可能なギアではない。
+    ("TESTPRG_STARTEN", "AUSWAHLBYTE"): ArgTable(
+        "GANGANZEIGE", "WERT", "ANZEIGE_TEXT", max_value="0x07",
+        why="SGBD 逐語: 0 = Neutral, 1-6 = Gang 1-6, 7 = Rueckwaertsgang"),
+    ("TESTPRG_STARTEN", "TESTPRG_NR"): ArgTable(
+        "TESTPRG", "TESTPRG_NR", "TESTPRG_NAME",
+        why="SGBD 逐語: siehe table Testprg TESTPRG_NR TESTPRG_NAME"),
+    ("STEUERN_STELLGLIED", "STELLGL"): ArgTable(
+        "STELLGLIEDER", "PIN", "STELLGLIED",
+        why="SGBD 逐語: Anzusteuerndes Stellglied"),
+}
+
+# `STEUERN_DIGITAL` は ORT1..ORT15 の 15 スロットで電磁弁を直接指定する。
+# SGBD のパラメータ一覧はこの表の順そのもの。
+# `XYZ` の 2 行は BITWERT が 0x00 ——何も駆動しないパディングで、選択肢に出すと
+# 「何もしないビット」を 2 回選べる UI になる。
+_STEUERN_DIGITAL_ARG = ArgTable(
+    "STEUERN", "STEUER_I_O", None, drop_values=("XYZ",),
+    why="SGBD 逐語: Parameterliste: E oder W,EVVL,AVVL,EVVR,AVVR,EVHL,AVHL,EVHR,AVHR,"
+        "Pumpe,SV1,SV2,EUV1,EUV2,V_PUMPE")
+
+
+def arg_options(dump: model.SgbdDump, job_name: str, arg_name: str) -> tuple[list[dict], dict] | None:
+    """引数の選択肢を SGBD テーブルから引く。返り値は (選択肢, 由来)。
+
+    推測で選択肢を作らない——存在しないピンを叩ける UI になる。表が無ければ
+    自由入力欄のままにする方が、それらしい嘘の一覧より安全である。
     """
-    n = arg_name.upper()
-    if n in ("ORT1", "ORT2", "ORT3") or n.startswith("ORT"):
-        t = dump.table("STEUERN")           # DSC: 電磁弁のビット割当
-        if t:
-            return [{"value": r["STEUER_I_O"], "note": f"byte {r['BYTE']} bit {r['BITWERT']}"}
-                    for r in t.dicts() if r.get("STEUER_I_O")]
-    if n == "STELLGL":
-        t = dump.table("STELLGLIEDER")      # SMG2: アクチュエータのピン
-        if t:
-            col = t.columns
-            return [{"value": r[col[1]] if len(col) > 1 else "", "note": r[col[0]]}
-                    for r in t.dicts()][:40]
-    if n == "TESTPRG_NR":
-        t = dump.table("TESTPRG")           # SMG2: 試験プログラム番号
-        if t:
-            col = t.columns
-            return [{"value": r[col[0]], "note": r[col[1]] if len(col) > 1 else ""}
-                    for r in t.dicts()][:40]
-    return None
+    spec = ARG_TABLES.get((job_name.upper(), arg_name.upper()))
+    if spec is None and job_name.upper() == "STEUERN_DIGITAL" and arg_name.upper().startswith("ORT"):
+        spec = _STEUERN_DIGITAL_ARG
+    if spec is None:
+        return None
+    t = dump.table(spec.table)
+    if not t:
+        return None
+
+    opts: list[dict] = []
+    dropped: list[str] = []
+    past_max = False
+    for row in t.dicts():
+        value = (row.get(spec.value_col) or "").strip()
+        if not value:
+            continue
+        note = (row.get(spec.note_col) or "").strip() if spec.note_col else ""
+        label = f"{value} {note}".strip()
+        if value in spec.drop_values:
+            dropped.append(f"{label} (駆動対象なし)")
+            continue
+        if past_max:
+            dropped.append(label)
+            continue
+        # 電磁弁の表はビット割当そのものが注記になる。
+        if spec.table == "STEUERN":
+            note = f"byte {row.get('BYTE')} bit {row.get('BITWERT')}"
+        opts.append({"value": value, "note": note} if note else {"value": value})
+        if spec.max_value is not None and value == spec.max_value:
+            past_max = True
+
+    if not opts:
+        return None
+    origin = {"table": spec.table, "why": spec.why}
+    if dropped:
+        origin["dropped"] = dropped
+    return opts, origin
 
 
 def build(mid: str, dumpname: str, name: tuple[str, str], addr: int, prg: str) -> dict:
@@ -252,9 +322,9 @@ def build(mid: str, dumpname: str, name: tuple[str, str], addr: int, prg: str) -
             ref = pool.ref(a.comment)
             if ref is not None:
                 entry["comment"] = ref
-            opts = arg_options(d, a.name)
-            if opts:
-                entry["options"] = opts
+            picked = arg_options(d, j.name, a.name)
+            if picked:
+                entry["options"], entry["optionsFrom"] = picked
                 entry["kind"] = model.ARG_ENUM
             args_out.append(entry)
 

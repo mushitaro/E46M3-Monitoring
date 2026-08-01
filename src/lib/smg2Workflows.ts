@@ -125,6 +125,41 @@ export async function loadSmg2Workflows(): Promise<Smg2Workflows | null> {
     return cached;
 }
 
+/**
+ * Which adaptation block each `readResults` name means, and how to read it.
+ *
+ * This is the one line of glue the whole "show the values it recorded" feature
+ * needed and did not have. The SGBD names the blocks (`clutch`, `gearbox`) and
+ * names the job (`ADAPTIONSWERTE_LESEN`, argument `ADAPTION_LESEN` = 0 clutch /
+ * 1 gearbox / 2 gearbox data) and never connects the two. Nothing in the app
+ * connected them either, so the panel printed the literal string `gearbox` into
+ * a readout and stopped there.
+ *
+ * `provenance: 'inferred'` because the SGBD does not state the mapping — it is
+ * read off the result-name prefixes, and the UI says so.
+ */
+export const SMG2_RESULT_BLOCKS = {
+    clutch: { job: 'ADAPTIONSWERTE_LESEN', arg: 'ADAPTION_LESEN', value: '0' },
+    gearbox: { job: 'ADAPTIONSWERTE_LESEN', arg: 'ADAPTION_LESEN', value: '1' },
+} as const;
+
+export interface ResultBlockRef {
+    job: string;
+    arg: string;
+    value: string;
+    provenance: 'inferred';
+}
+
+/**
+ * Where to read what this procedure wrote — or null, in which case the procedure
+ * carries `readResultsNote` saying why, in its own words.
+ */
+export function readResultsFor(p: Smg2Procedure): ResultBlockRef | null {
+    const key = p.readResults as keyof typeof SMG2_RESULT_BLOCKS | null | undefined;
+    if (!key || !(key in SMG2_RESULT_BLOCKS)) return null;
+    return { ...SMG2_RESULT_BLOCKS[key], provenance: 'inferred' };
+}
+
 /** Look up a coded report. Unknown codes are reported AS unknown, never hidden. */
 export function decodeCode(table: CodedText[], code: string): CodedText | null {
     const want = code.toLowerCase();

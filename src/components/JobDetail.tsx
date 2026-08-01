@@ -31,6 +31,7 @@ import { AlertTriangle, ArrowRight } from 'lucide-react';
 import { LABEL, DataList, DataRow, Field, MicroLabel, Pill, Provenance, Section, humanName } from '@/components/ui';
 import {
     description,
+    jobIndex,
     jobRiskOf,
     label,
     resultsFor,
@@ -43,7 +44,8 @@ import {
 import { deliversResultElsewhere, hasStopControl, jobOperation, type OpKind } from '@/lib/jobOps';
 import { SLOTS, jobTextFor, resolve, type Confidence, type JobTextTable } from '@/lib/jobText';
 import { bestTelegram, telegramIsCertain, type TelegramTable } from '@/lib/telegrams';
-import type { Smg2Procedure, Smg2Sequence, Smg2Workflows } from '@/lib/smg2Workflows';
+import { readResultsFor, type ResultBlockRef, type Smg2Procedure, type Smg2Sequence, type Smg2Workflows } from '@/lib/smg2Workflows';
+import { GEARS, MEASURES, PASSES, gearWindows } from '@/lib/gearWindows';
 import { stepsFromActivity, stepsFromSequence } from '@/lib/procedureSteps';
 import { StepList } from '@/components/StepList';
 import { useLang } from '@/lib/i18n';
@@ -309,7 +311,7 @@ export function JobDetail({
                 )}
             </Section>
 
-            {procedure && <ProcedureDetail procedure={procedure} workflows={workflows} />}
+            {procedure && <ProcedureDetail profile={profile} procedure={procedure} workflows={workflows} />}
         </div>
     );
 }
@@ -588,19 +590,22 @@ function SpecTable({
  * reference table; they are the answer to "what happens when I press this".
  */
 function ProcedureDetail({
+    profile,
     procedure,
     workflows,
 }: {
+    profile: EcuProfile;
     procedure: Smg2Procedure;
     workflows: Smg2Workflows | null;
 }) {
     const { lang, t } = useLang();
     const pick = (x: { ja: string; en: string }) => (lang === 'en' ? x.en : x.ja);
     const plan = useMemo(() => stepsFromActivity(procedure, lang), [procedure, lang]);
+    const block = readResultsFor(procedure);
 
     return (
         <>
-            <div className="grid grid-cols-3 gap-x-3 border-t border-slate-800/50 pt-3">
+            <div className="grid grid-cols-2 gap-x-3 border-t border-slate-800/50 pt-3">
                 <Field label={t.proc_duration} value={procedure.durMax || '—'} stacked />
                 <Field
                     label={t.proc_engine}
@@ -608,7 +613,6 @@ function ProcedureDetail({
                     stacked
                     tone={procedure.engine === 'run' ? 'text-amber-400' : 'text-slate-300'}
                 />
-                <Field label={t.proc_results} value={procedure.readResults ?? '—'} stacked />
             </div>
 
             {/* A fact the SGBD tables do not carry — that 0x07/0x0B sweep every
@@ -620,6 +624,22 @@ function ProcedureDetail({
             <Section title={t.proc_steps}>
                 <StepList plan={plan} />
             </Section>
+
+            {/* What it wrote, and where to read it back. Six of the fourteen
+                procedures write nothing readable, and each says why in its own
+                words — the reasons genuinely differ, so a shared sentence would
+                be the templated text this rework exists to remove. */}
+            {block ? (
+                <RecordedValues profile={profile} block={block} />
+            ) : (
+                <Section title={t.proc_results}>
+                    <p className="text-[11px] leading-relaxed text-slate-500">
+                        {procedure.readResultsNote
+                            ? stripEmphasis(pick(procedure.readResultsNote))
+                            : t.det_noValues}
+                    </p>
+                </Section>
+            )}
 
             <Section title={t.gate_preconditions} count={procedure.prereq.length}>
                 <ul className="list-disc space-y-1 pl-4">
@@ -637,6 +657,85 @@ function ProcedureDetail({
             {workflows && <CodeTable label={t.proc_status} rows={workflows.testStatus} tone="neutral" />}
             <CodeTable label={t.proc_faults} rows={procedure.faults} tone="danger" germanFirst />
         </>
+    );
+}
+
+/**
+ * The values a procedure recorded, read back from the adaptation block it wrote.
+ *
+ * Two tables, because the block holds two genuinely different kinds of thing:
+ *
+ *   - the gate positions and offsets, which the SGBD gives factory defaults and
+ *     sometimes min/max for — ordinary `SpecTable`;
+ *   - the 42 per-gear measurement windows, which have NO stated limits at all
+ *     and are only comparable against each other and against a previous read.
+ *     Those become a 7-row gear grid, not 42 flat rows.
+ */
+function RecordedValues({ profile, block }: { profile: EcuProfile; block: ResultBlockRef }) {
+    const { t } = useLang();
+    const job = jobIndex(profile).get(block.job);
+    const rows = useMemo(
+        () => (job ? resultsFor(job, { [block.arg]: block.value }) : []),
+        [job, block.arg, block.value],
+    );
+    const grid = useMemo(() => gearWindows(rows), [rows]);
+
+    if (!job) {
+        return (
+            <Section title={t.proc_results}>
+                <p className="text-[11px] text-slate-500">{t.det_noValues}</p>
+            </Section>
+        );
+    }
+
+    return (
+        <Section
+            title={t.proc_results}
+            count={rows.length}
+            actions={
+                <Provenance title={t.det_blockInferred(block.job, block.arg, block.value)}>
+                    {t.det_inferred}
+                </Provenance>
+            }
+        >
+            <p className="mb-2 font-mono text-[10px] text-slate-500">
+                {block.job}（{block.arg} = {block.value}）
+            </p>
+
+            {grid.matched > 0 && (
+                <div className="mb-4">
+                    <MicroLabel>{t.gear_windows}</MicroLabel>
+                    {/* These 42 have no stated range. Saying so is the whole
+                        point — a verdict here would be invented. */}
+                    <p className="mb-1.5 mt-1 text-[11px] leading-relaxed text-slate-500">{t.gear_noSpec}</p>
+                    <DataList>
+                        {GEARS.map((g) => (
+                            <DataRow
+                                key={g}
+                                name={humanName(t.gear_name[g])}
+                                ident={`GANG${g}`}
+                                detail={
+                                    <div className="grid grid-cols-3 gap-x-3 gap-y-2">
+                                        {MEASURES.map((m) => (
+                                            <Field
+                                                key={m}
+                                                label={t.gear_measure[m]}
+                                                labelKind="data"
+                                                stacked
+                                                tone="text-slate-600"
+                                                value={PASSES.map((p) => (grid.cell(g, m, p) ? '—' : '·')).join(' / ')}
+                                            />
+                                        ))}
+                                    </div>
+                                }
+                            />
+                        ))}
+                    </DataList>
+                </div>
+            )}
+
+            <SpecTable profile={profile} job={job} results={grid.rest} />
+        </Section>
     );
 }
 

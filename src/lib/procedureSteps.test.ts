@@ -3,7 +3,9 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { stepsFromActivity, stepsFromSequence, stepsFromJobFamily } from './procedureSteps';
 import { humanName } from '@/components/ui';
-import type { Smg2Workflows } from './smg2Workflows';
+import { readResultsFor, type Smg2Workflows } from './smg2Workflows';
+import { GEARS, MEASURES, PASSES, gearWindows } from './gearWindows';
+import { jobIndex, resultsFor, type EcuProfile } from './ecuCatalog';
 
 /**
  * These run against the real `smg2-workflows.json`, not fixtures. A fixture and
@@ -163,5 +165,68 @@ describe('job families are sets, not sequences', () => {
         expect(plan.steps.every((s) => s.ordinal === 0)).toBe(true);
         expect(plan.steps[1].absence).toBeTruthy();
         expect(plan.steps[1].ref.kind).toBe('job');
+    });
+});
+
+describe('recorded values', () => {
+    // The one line of glue that did not exist: `readResults: "gearbox"` is a bare
+    // string, and nothing mapped it to ADAPTIONSWERTE_LESEN(ADAPTION_LESEN=1).
+    // The panel printed the literal word `gearbox` into a readout.
+    it('maps every readResults name to a job and an argument value', () => {
+        for (const p of W.procedures) {
+            const ref = readResultsFor(p);
+            if (!p.readResults) {
+                expect(ref).toBeNull();
+                // ...and says why, in its own words, because the reasons differ.
+                expect(p.readResultsNote?.ja).toBeTruthy();
+                continue;
+            }
+            expect(ref).not.toBeNull();
+            expect(ref!.job).toBe('ADAPTIONSWERTE_LESEN');
+            expect(['0', '1']).toContain(ref!.value);
+            expect(ref!.provenance).toBe('inferred');
+        }
+    });
+
+    it('splits the gearbox block into exactly the 42-cell grid, losing nothing', () => {
+        const smg2 = JSON.parse(
+            readFileSync(
+                path.resolve(import.meta.dirname, '..', '..', 'public', 'ecu-data', 'smg2.jobs.json'),
+                'utf-8',
+            ),
+        ) as EcuProfile;
+        const job = jobIndex(smg2).get('ADAPTIONSWERTE_LESEN')!;
+        const rows = resultsFor(job, { ADAPTION_LESEN: '1' });
+        const grid = gearWindows(rows);
+
+        expect(grid.matched).toBe(42); // 3 measures x 7 gears x 2 passes
+        expect(grid.matched + grid.rest.length).toBe(rows.length); // nothing dropped
+        for (const g of GEARS) {
+            for (const m of MEASURES) {
+                for (const p of PASSES) expect(grid.cell(g, m, p)).toBeDefined();
+            }
+        }
+        // Nothing gear-shaped escaped into `rest`.
+        expect(grid.rest.filter((r) => /_GANG[1-6R]_ROH[12]_WERT$/.test(r.name))).toHaveLength(0);
+    });
+
+    // Not one of the 42 carries a spec. Rendering a verdict for them would be
+    // inventing one, so the UI states the absence instead.
+    it('confirms the per-gear windows publish no limits at all', () => {
+        const smg2 = JSON.parse(
+            readFileSync(
+                path.resolve(import.meta.dirname, '..', '..', 'public', 'ecu-data', 'smg2.jobs.json'),
+                'utf-8',
+            ),
+        ) as EcuProfile;
+        const job = jobIndex(smg2).get('ADAPTIONSWERTE_LESEN')!;
+        const grid = gearWindows(resultsFor(job, { ADAPTION_LESEN: '1' }));
+        for (const g of GEARS) {
+            for (const m of MEASURES) {
+                for (const p of PASSES) expect(grid.cell(g, m, p)!.spec).toBeUndefined();
+            }
+        }
+        // ...while the gate positions in the same block DO, and go through SpecTable.
+        expect(grid.rest.some((r) => r.name.startsWith('WW_GASSE_') && r.spec)).toBe(true);
     });
 });

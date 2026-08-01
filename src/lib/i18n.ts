@@ -144,6 +144,11 @@ interface Catalog {
     proc_none: string;
     proc_steps: string;
     proc_germanOnly: string;
+    det_blockInferred: (job: string, arg: string, value: string) => string;
+    gear_windows: string;
+    gear_noSpec: string;
+    gear_name: Record<'1' | '2' | '3' | '4' | '5' | '6' | 'R', string>;
+    gear_measure: Record<'SW' | 'WW_TOUCH_L' | 'WW_TOUCH_R', string>;
     seq_title: string;
     seq_pickHint: string;
 
@@ -394,6 +399,13 @@ const STRINGS: Record<Lang, Catalog> = {
         proc_none: 'このモジュールにガイド手順はありません（SMG II のみ）',
         proc_steps: 'ECU が実行する手順',
         proc_germanOnly: 'この語彙の日本語訳は機械出力のままで読めないため、SGBD の独語原文を表示しています。',
+        det_blockInferred: (j, a, v) =>
+            `SGBD はこの対応を明示していません。結果名の接頭辞から ${j}（${a} = ${v}）と推定しています。`,
+        gear_windows: 'ギアごとの測定窓',
+        gear_noSpec:
+            'この42個に規定値はありません。SGBD が上限・下限を公表していないため、合否は判定できません。前回の読取値との比較、およびギア間の比較にのみ使えます。',
+        gear_name: { '1': '1速', '2': '2速', '3': '3速', '4': '4速', '5': '5速', '6': '6速', R: '後退（R）' },
+        gear_measure: { SW: 'シフト経路', WW_TOUCH_L: 'セレクト角 左端', WW_TOUCH_R: 'セレクト角 右端' },
         seq_title: '推奨シーケンス',
         seq_pickHint: 'ステップを押すとその手順を表示します',
 
@@ -750,6 +762,13 @@ const STRINGS: Record<Lang, Catalog> = {
         proc_none: 'This module has no guided procedures (SMG II only)',
         proc_steps: 'What the ECU does, step by step',
         proc_germanOnly: "This vocabulary's Japanese is raw machine output and not readable, so the SGBD German original is shown instead.",
+        det_blockInferred: (j, a, v) =>
+            `The SGBD does not state this mapping. It is inferred from the result-name prefixes as ${j} (${a} = ${v}).`,
+        gear_windows: 'Per-gear measurement windows',
+        gear_noSpec:
+            'None of these 42 has a stated range — the SGBD publishes no limits for them, so there is no pass or fail to give. They are comparable against a previous read and against each other.',
+        gear_name: { '1': '1st', '2': '2nd', '3': '3rd', '4': '4th', '5': '5th', '6': '6th', R: 'Reverse' },
+        gear_measure: { SW: 'Shift travel', WW_TOUCH_L: 'Gate stop, left', WW_TOUCH_R: 'Gate stop, right' },
         seq_title: 'Suggested sequences',
         seq_pickHint: 'Press a step to show that procedure',
 

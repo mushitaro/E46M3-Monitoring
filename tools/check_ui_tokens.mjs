@@ -1,0 +1,127 @@
+#!/usr/bin/env node
+// ============================================================================
+//  check_ui_tokens.mjs — the ///M token rules, enforced instead of remembered
+// ----------------------------------------------------------------------------
+//  These four rules were all agreed before and all broken anyway, because a
+//  convention that lives in a docstring is a convention you lose one busy edit
+//  at a time. Micro-labels reached FOUR sizes (8/9/10/11px) across four element
+//  types; the border rule was re-stated in three files and violated in two.
+//
+//  Run: node tools/check_ui_tokens.mjs
+// ============================================================================
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import path from 'node:path';
+
+const ROOT = path.resolve(import.meta.dirname, '..', 'src');
+const UI = path.join(ROOT, 'components', 'ui.tsx');
+
+/**
+ * Arbitrary type sizes. There are two steps and both live in ui.tsx.
+ *
+ * `text-[22px]` is the one exception and it is a single documented value: the
+ * hub-scale numeric readout, the largest type the reference app uses anywhere.
+ * Naming it here is what stops it becoming "well, 18px is nearly the same".
+ */
+const BAD_SIZE = /text-\[(?!10px|11px|22px)\d+px\]/g;
+
+/**
+ * The label recipe. Written once, in `LABEL`. Six call sites had spelled it out
+ * by hand and three of them had drifted to a different size.
+ */
+const HAND_LABEL = /font-bold uppercase tracking-widest/g;
+
+/**
+ * Outlines. `border-b` / `border-t` / `border-r` / `border-l` are RULES BETWEEN
+ * REGIONS and always fine. A bare `border` or `border-2` is an OUTLINE AROUND A
+ * THING, which the system does not have — except for the four documented cases,
+ * which are listed by file so a fifth cannot be added quietly.
+ */
+const OUTLINE = /(?:^|[\s"'`{])border(?:-2)?(?![-\w])/g;
+const OUTLINE_ALLOWED = new Set([
+    // The canonical empty state's dashed ring — a drop-target-style area, which
+    // the rule allows.
+    'app/page.tsx',
+    // Floating surfaces get exactly one outline each: they are detached from the
+    // page and need an edge.
+    'components/LogPopover.tsx',
+    'components/GateModal.tsx',
+    'components/ElectricalFaultDialog.tsx',
+    // The hub ring is a STATE indicator, not a frame. Named here so a second
+    // ring cannot appear without this list changing.
+    'components/Hub.tsx',
+]);
+
+/** Row padding. One list, one row height. */
+const BAD_PY = /\bpy-(?!0\.5\b|1\b|1\.5\b|2\b|3\b|4\b|5\b)[\w.[\]]+/g;
+
+function* files(dir) {
+    for (const name of readdirSync(dir)) {
+        const p = path.join(dir, name);
+        if (statSync(p).isDirectory()) yield* files(p);
+        else if (/\.tsx?$/.test(name)) yield p;
+    }
+}
+
+let failures = 0;
+function fail(rel, line, msg) {
+    console.error(`  ${rel}:${line}  ${msg}`);
+    failures++;
+}
+
+for (const file of files(ROOT)) {
+    const rel = path.relative(ROOT, file).replaceAll('\\', '/');
+    const isUi = file === UI;
+    const lines = readFileSync(file, 'utf-8').split(/\r?\n/);
+
+    // Comments explain the rules; they must not trip them. `/* */` state is
+    // tracked across lines because the rule docs are block comments, and a
+    // docstring that says "never `border`" is not a violation of itself.
+    let inBlock = false;
+
+    lines.forEach((raw, i) => {
+        const n = i + 1;
+        let text = raw;
+        if (inBlock) {
+            const end = text.indexOf('*/');
+            if (end === -1) return;
+            text = text.slice(end + 2);
+            inBlock = false;
+        }
+        const open = text.indexOf('/*');
+        if (open !== -1) {
+            const close = text.indexOf('*/', open + 2);
+            if (close === -1) {
+                inBlock = true;
+                text = text.slice(0, open);
+            } else {
+                text = text.slice(0, open) + text.slice(close + 2);
+            }
+        }
+        text = text.replace(/\/\/.*$/, '');
+        if (!text.trim()) return;
+        for (const m of text.matchAll(BAD_SIZE)) {
+            fail(rel, n, `${m[0]} — the ramp is text-[10px] (label) and text-[11px] (data). See ui.tsx LABEL.`);
+        }
+        if (!isUi) {
+            for (const m of text.matchAll(HAND_LABEL)) {
+                void m;
+                fail(rel, n, `hand-written label recipe — import LABEL or MicroLabel from ui.tsx`);
+            }
+        }
+        if (!OUTLINE_ALLOWED.has(rel)) {
+            for (const m of text.matchAll(OUTLINE)) {
+                void m;
+                fail(rel, n, `outline border — the system rules BETWEEN regions (border-b/-t/-l/-r) and never around a thing`);
+            }
+        }
+        for (const m of text.matchAll(BAD_PY)) {
+            fail(rel, n, `${m[0]} — row padding comes from DataRow; the allowed scale is py-0.5|1|1.5|2|3|4|5`);
+        }
+    });
+}
+
+if (failures) {
+    console.error(`\n[FAIL] ${failures} token violation(s).`);
+    process.exit(1);
+}
+console.log('ok - ui tokens');

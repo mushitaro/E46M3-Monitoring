@@ -24,13 +24,7 @@
  */
 
 import { decodeField, minPayloadLength, type FieldDef } from '@tsunagi/ds2-core';
-import {
-    MSS54_ADAPTATION_BLOCKS,
-    MSS54_ADAPTATION_DIVERGENCES,
-    MSS54_ADAPTATION_UNREADABLE,
-    type AdaptationBlock,
-    type AdaptationField,
-} from './adaptationBlocks.generated';
+import { MSS54_ADAPTATION_BLOCKS, type AdaptationBlock } from './adaptationBlocks.generated';
 
 export {
     MSS54_ADAPTATION_BLOCKS,

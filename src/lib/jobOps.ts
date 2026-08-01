@@ -7,37 +7,36 @@
  * instrument. These jobs are not interchangeable one-shots: some are reads, some
  * energise a coil until you stop them, one latches with no release job in the
  * SGBD at all, several are multi-step processes the ECU runs by itself and
- * reports progress on, and two modules require a specific job to be sent FIRST
- * or the ECU refuses. Pressing the same button for all of those would be a lie
- * about the machine.
+ * reports progress on, four start a test whose ANSWER ARRIVES FROM A DIFFERENT
+ * JOB, and two modules require a specific job to be sent FIRST or the ECU
+ * refuses. Pressing the same button for all of those would be a lie about the
+ * machine.
  *
- * ## Everything here is derived from the SGBD, not invented
+ * ## This file no longer classifies. It reads.
  *
- * The classifications below come from three sources, in order of authority:
+ * It used to re-derive the shape from the job's name and German comment, with
+ * regexes that duplicated — and contradicted — the ones in the generator.
+ * `ABGLEICHWERTE_LESEN` came out as a `read` here and a "persistent write" there.
  *
- *   1. The job's own German comment. The SGBD states the protocol outright —
- *      SMG II's ANSTEUERUNG_VORBEREITEN says "For starter release, hydraulic
- *      pump, fault indicator and shift lock, this job must be sent beforehand!
- *      (ECU timeout: 10s!) ... actuation remains active for max. 60s", and
- *      TESTPRG_STOP says "Must be sent BEFORE TESTPRG_STARTEN!". Those are not
- *      guesses.
- *   2. The argument signature. `SCHALTEN` is an on/off switch, so the job holds.
- *      `PIN_NUMMER / TASTVERHAELTNIS / PERIODENDAUER` is a direct pin drive with
- *      a duty cycle, so it holds. `AUSWAHL` selects which block or gear.
- *   3. The name, as a last resort — `_LESEN` reads, `_SCHREIBEN` writes,
- *      `anstossen` ("trigger") starts a measurement that finishes on its own.
+ * Classification now happens once, in `tools/sgbd/classify.py`, from the SGBD's
+ * own comments and argument signatures, and is baked into `<module>.jobs.json`
+ * with a `provenance` saying how it was reached. What remains here is the part
+ * that is genuinely a UI concern: turning that data into an ordered plan, and
+ * answering the two questions the controls need — does this need a STOP, and
+ * does it report progress.
  *
- * Where the SGBD does not say, this says so rather than picking a default. An
- * `unknown` shape is a fact about our knowledge, and the UI prints it.
+ * The one thing still built rather than read is the SMG II guided procedure,
+ * because those are adapted from `smg2-workflows.json` and are not SGBD jobs at
+ * all.
  */
 
-import type { CatalogJob } from './ecuCatalog';
+import type { Actor, CatalogJob, JobOperationData, ResultDelivery, Termination } from './ecuCatalog';
 
 /**
  * The operation shapes, and why each is distinct.
  *
- * These are not styling variants. Each one implies a different control surface,
- * a different failure mode, and a different obligation on the operator.
+ * These are not styling variants. Each implies a different control surface, a
+ * different failure mode, and a different obligation on the operator.
  */
 export type OpKind =
     /** One exchange, returns data, changes nothing. Safe to repeat. */
@@ -56,6 +55,16 @@ export type OpKind =
     | 'compound'
     /** A multi-step program the ECU runs, reporting progress; abortable. */
     | 'procedure'
+    /**
+     * Starts a test and returns nothing useful. The verdict is read LATER, by a
+     * named companion job.
+     *
+     * This shape did not exist before, and its absence is why the four
+     * SYSTEMCHECK tests — secondary air, tank leak, DMTL, purge valve, i.e. the
+     * emissions checks an owner actually gets failed on — were invisible. Showing
+     * the START without the READ is not a partial feature; it is a trap.
+     */
+    | 'deferred'
     /** Writes persistent state — coding, adaptations, calibration values. */
     | 'write'
     /** The SGBD does not say, and neither will we. */
@@ -64,13 +73,10 @@ export type OpKind =
 /**
  * Why a step exists — as a KEY, not as prose.
  *
- * These sentences are safety copy: they are what tells an operator that a step
- * is mandatory, that an output will stay live, or that the ECU will drop the
- * session in ten seconds. Safety copy is written in the reader's language, so it
- * lives in the copy module and this file emits keys into it. Returning English
- * strings from here is the same mistake the electrical-fault checklist made —
- * five English sentences under a Japanese heading, on the one screen whose whole
- * job is to stop someone doing the wrong thing.
+ * These sentences are safety copy: they are what tells an operator that a step is
+ * mandatory, that an output will stay live, or that the ECU will drop the session
+ * in ten seconds. Safety copy is written in the reader's language, so it lives in
+ * the copy module and this file emits keys into it.
  */
 export type WhyKey =
     | 'why_read'
@@ -79,22 +85,24 @@ export type WhyKey =
     | 'why_measure'
     | 'why_latching'
     | 'why_multiOutput'
-    | 'why_driveAndReset'
     | 'why_switchOn'
     | 'why_switchOff'
     | 'why_pinDrive'
     | 'why_pairStart'
     | 'why_pairStop'
     | 'why_prepare'
+    | 'why_prerequisite'
     | 'why_driveActuator'
     | 'why_keepAlive'
     | 'why_testprgStop'
     | 'why_testprgStart'
     | 'why_testprgPoll'
+    | 'why_deferredStart'
+    | 'why_readResult'
     | 'why_unknown';
 
 /** Why an operation cannot be taken back. Also safety copy, also a key. */
-export type IrreversibleKey = 'irr_latching' | 'irr_pin' | 'irr_write';
+export type IrreversibleKey = 'irr_latching' | 'irr_pin' | 'irr_write' | 'irr_eeprom';
 
 /** One step in the plan, in the order it goes out on the wire. */
 export interface OpStep {
@@ -108,10 +116,15 @@ export interface OpStep {
 
 export interface JobOperation {
     kind: OpKind;
+    actor: Actor;
+    termination: Termination;
+    resultDelivery: ResultDelivery;
     /** The ordered plan. Always at least one step. */
     steps: OpStep[];
     /** The job that ends this one, when a named counterpart exists. */
     stopJob?: string;
+    /** The job that carries the answer, when this one does not. */
+    resultJob?: string;
     /**
      * The ECU's own diagnostic-session timeout, in seconds. Miss it and the
      * actuation drops — which is a SAFETY PROPERTY, not a nuisance: it is what
@@ -126,230 +139,163 @@ export interface JobOperation {
     irreversible?: IrreversibleKey;
 }
 
-/** Jobs whose German comment names an explicit counterpart. Pairs, both ways. */
-const PAIRS: Record<string, string> = {
-    // "Kraftstoffpumpenrelais ansteuern" / "Kraftstoffpumpe (Relais) ausschalten"
-    STEUERN_EKP: 'STEUERN_EKP_AUS',
-    STEUERN_EKP_AUS: 'STEUERN_EKP',
-    // "Anstossen der automatischen Einzeldrosselklappenkorrektur (Prueflauf)" /
-    // "Unterbrechen der ... (Prueflauf)"
-    STEUERN_TI_ABGLEICH_STARTEN: 'STEUERN_TI_ABGLEICH_STOPPEN',
-    STEUERN_TI_ABGLEICH_STOPPEN: 'STEUERN_TI_ABGLEICH_STARTEN',
-    // "Stop a running test program / Must be sent BEFORE TESTPRG_STARTEN!"
-    TESTPRG_STARTEN: 'TESTPRG_STOP',
-    TESTPRG_STOP: 'TESTPRG_STARTEN',
-};
-
 /**
- * SMG II: the jobs the SGBD says need ANSTEUERUNG_VORBEREITEN sent first.
- *
- * Quoted: "For starter release, hydraulic pump, fault indicator, and shift lock,
- * this job must be sent beforehand!" STEUERN_STELLGLIED can address any of those
- * through its STELLGL argument, so the prepare step is required for the job as a
- * whole — we cannot know which pin the operator will pick.
- */
-const NEEDS_PREPARE = new Set(['STEUERN_STELLGLIED']);
-
-/** The SMG II actuation window, from the SGBD comment on ANSTEUERUNG_VORBEREITEN. */
-const SMG2_ECU_TIMEOUT_SEC = 10;
-const SMG2_MAX_HOLD_SEC = 60;
-
-/**
- * Marks a job adapted from an SMG II test program rather than read from the
- * SGBD job table. Kept here beside the classifier that has to recognise it.
+ * Marks a job adapted from an SMG II test program rather than read from the SGBD
+ * job table. Kept here beside the builder that has to recognise it.
  */
 export const PROCEDURE_PREFIX = 'TESTPRG:';
 
-export function jobOperation(job: CatalogJob, moduleId: string): JobOperation {
-    // An adapted SMG II test program. Its shape is not guessable from its id,
-    // and it must never fall through to `unknown` — a 16-minute gearbox
-    // adaptation described as "the SGBD does not say" would be worse than no
-    // description at all.
-    if (job.id.startsWith(PROCEDURE_PREFIX)) {
-        return {
-            kind: 'procedure',
-            steps: [
-                {
-                    job: 'TESTPRG_STOP',
-                    why: 'why_testprgStop',
-                    required: true,
-                },
-                {
-                    job: 'TESTPRG_STARTEN',
-                    why: 'why_testprgStart',
-                    required: true,
-                },
-                {
-                    job: 'STATUS_TESTPRG',
-                    why: 'why_testprgPoll',
-                    required: true,
-                },
-                {
-                    job: 'DIAGNOSE_ERHALTEN',
-                    why: 'why_keepAlive',
-                    required: true,
-                },
-            ],
-            stopJob: 'TESTPRG_STOP',
-            ecuTimeoutSec: SMG2_ECU_TIMEOUT_SEC,
-            needsArgs: (job.args ?? []).length > 0,
-        };
+/** The SMG II actuation window, from the SGBD comment on ANSTEUERUNG_VORBEREITEN. */
+const SMG2_ECU_TIMEOUT_SEC = 10;
+
+/** Prerequisites the SGBD names, and the sentence that explains each one. */
+const PREREQ_WHY: Record<string, WhyKey> = {
+    TESTPRG_STOP: 'why_testprgStop',
+    ANSTEUERUNG_VORBEREITEN: 'why_prepare',
+};
+
+function primaryWhy(op: JobOperationData, jobId: string): WhyKey {
+    switch (op.kind) {
+        case 'read':
+            return 'why_read';
+        case 'pulse':
+            return 'why_pulse';
+        case 'hold':
+            return op.irreversible === 'irr_pin' ? 'why_pinDrive' : 'why_switchOn';
+        case 'paired':
+            // This chooses WORDING, never behaviour: whether to call this end of
+            // the pair "starts it" or "stops it". The pairing itself is data.
+            return /(_AUS|_STOPPEN|_STOP)$/.test(jobId.toUpperCase()) ? 'why_pairStop' : 'why_pairStart';
+        case 'measurement':
+            return 'why_measure';
+        case 'latching':
+            return 'why_latching';
+        case 'compound':
+            return 'why_multiOutput';
+        case 'procedure':
+            return 'why_testprgStart';
+        case 'deferred':
+            return 'why_deferredStart';
+        case 'write':
+            return 'why_write';
+        default:
+            return 'why_unknown';
+    }
+}
+
+/**
+ * The ordered plan for a job, built from its stated operation data.
+ *
+ * Everything here is derivable from `job.op`, which is the point: a plan that
+ * disagrees with the classification cannot happen, because there is only one
+ * source for both.
+ */
+export function jobOperation(job: CatalogJob): JobOperation {
+    const op = job.op;
+    const steps: OpStep[] = [];
+
+    for (const p of op.prerequisiteJobs ?? []) {
+        steps.push({ job: p, why: PREREQ_WHY[p] ?? 'why_prerequisite', required: true });
     }
 
-    const id = job.id.toUpperCase();
-    const args = job.args ?? [];
-    const argNames = args.map((a) => (a.name ?? '').toUpperCase());
-    const de = (job.desc?.de ?? '').toLowerCase();
-    const needsArgs = args.length > 0;
+    steps.push({ job: job.id, why: primaryWhy(op, job.id), required: true });
 
-    const one = (why: WhyKey): OpStep[] => [{ job: job.id, why, required: true }];
-
-    // --- Reads. Nothing changes, so nothing needs stopping. -----------------
-    if (/_LESEN$/.test(id) || id.startsWith('STATUS_') || /^GETRIEBEDATEN_LESEN$/.test(id)) {
-        return { kind: 'read', steps: one('why_read'), needsArgs };
+    // A hold driven by its own job's on/off argument sends the SAME job again to
+    // release. Naming the step twice is not redundancy — the second send is a
+    // separate obligation, and it is the one people forget.
+    if (op.termination === 'app-stop' && op.stopJob === job.id) {
+        steps.push({ job: job.id, why: 'why_switchOff', required: true });
     }
 
-    // --- SMG II test programs. The SGBD spells the protocol out. ------------
-    if (id === 'TESTPRG_STARTEN') {
-        return {
-            kind: 'procedure',
-            steps: [
-                {
-                    job: 'TESTPRG_STOP',
-                    why: 'why_testprgStop',
-                    required: true,
-                },
-                { job: 'TESTPRG_STARTEN', why: 'why_testprgStart', required: true },
-                { job: 'STATUS_TESTPRG', why: 'why_testprgPoll', required: true },
-            ],
-            stopJob: 'TESTPRG_STOP',
-            ecuTimeoutSec: SMG2_ECU_TIMEOUT_SEC,
-            needsArgs,
-        };
+    if (op.resultJob) {
+        steps.push({
+            job: op.resultJob,
+            why: op.kind === 'procedure' ? 'why_testprgPoll' : 'why_readResult',
+            required: true,
+        });
     }
 
-    // Scoped to SMG II. The prepare requirement is stated in SMG2.prg's own
-    // comment; another module could ship a job of the same name with no such
-    // rule, and asserting one it does not have is as wrong as missing one it
-    // does.
-    if (moduleId === 'smg2' && NEEDS_PREPARE.has(id)) {
-        return {
-            kind: 'hold',
-            steps: [
-                {
-                    job: 'ANSTEUERUNG_VORBEREITEN',
-                    why: 'why_prepare',
-                    required: true,
-                },
-                { job: job.id, why: 'why_driveActuator', required: true },
-                {
-                    job: 'DIAGNOSE_ERHALTEN',
-                    why: 'why_keepAlive',
-                    required: true,
-                },
-            ],
-            stopJob: 'INAKTIV',
-            ecuTimeoutSec: SMG2_ECU_TIMEOUT_SEC,
-            maxHoldSec: SMG2_MAX_HOLD_SEC,
-            needsArgs,
-        };
+    // The keep-alive is not optional where the ECU states a timeout: SMG II drops
+    // the session after 10 s, and a full gearbox adaptation runs for 960.
+    if (op.ecuTimeoutSec !== undefined) {
+        steps.push({ job: 'DIAGNOSE_ERHALTEN', why: 'why_keepAlive', required: true });
     }
 
-    // --- Latching. DSC_SIM_* actuates and holds, and the SGBD exposes no ----
-    // release job at all. The UI must not imply this can be undone.
-    if (id.startsWith('DSC_SIM_')) {
-        return {
-            kind: 'latching',
-            steps: one('why_latching'),
-            needsArgs,
-            irreversible: 'irr_latching',
-        };
-    }
+    return {
+        kind: op.kind,
+        actor: op.actor,
+        termination: op.termination,
+        resultDelivery: op.resultDelivery,
+        steps,
+        stopJob: op.stopJob,
+        resultJob: op.resultJob,
+        ecuTimeoutSec: op.ecuTimeoutSec,
+        maxHoldSec: op.maxHoldSec,
+        needsArgs: job.args.length > 0,
+        irreversible: op.irreversible as IrreversibleKey | undefined,
+    };
+}
 
-    // --- Compound. The SGBD job drives several outputs itself. --------------
-    if (de.includes('mehrere digitale ausg') || id === 'ABS_REGELSIMULATION') {
-        return { kind: 'compound', steps: one('why_multiOutput'), needsArgs };
-    }
-    if (de.includes('ansteuern und ruecksetzen') || de.includes('drive and reset')) {
-        return {
-            kind: 'compound',
-            steps: one('why_driveAndReset'),
-            needsArgs,
-        };
-    }
+/**
+ * The plan for an SMG II guided procedure.
+ *
+ * These are adapted from `smg2-workflows.json`, not from the SGBD job table, so
+ * there is no `job.op` to read. The protocol is quoted in
+ * `SMG2_PROCEDURE_PROTOCOL` and is identical for every program number — what
+ * differs is the duration, the preconditions, and the vocabularies, none of which
+ * belong here.
+ *
+ * It must never fall through to `unknown`: a sixteen-minute gearbox adaptation
+ * described as "the SGBD does not say" would be worse than no description at all.
+ */
+export function procedureOperation(id: string, needsArgs: boolean): JobOperation {
+    return {
+        kind: 'procedure',
+        actor: 'ecu',
+        termination: 'companion-job',
+        resultDelivery: 'companion-job',
+        steps: [
+            { job: 'TESTPRG_STOP', why: 'why_testprgStop', required: true },
+            { job: 'TESTPRG_STARTEN', why: 'why_testprgStart', required: true },
+            { job: 'STATUS_TESTPRG', why: 'why_testprgPoll', required: true },
+            { job: 'DIAGNOSE_ERHALTEN', why: 'why_keepAlive', required: true },
+        ],
+        stopJob: 'TESTPRG_STOP',
+        resultJob: 'STATUS_TESTPRG',
+        ecuTimeoutSec: SMG2_ECU_TIMEOUT_SEC,
+        needsArgs,
+    };
+}
 
-    // --- Held outputs, identified by their arguments. -----------------------
-    if (argNames.includes('SCHALTEN')) {
-        return {
-            kind: 'hold',
-            steps: [
-                { job: job.id, why: 'why_switchOn', required: true },
-                { job: job.id, why: 'why_switchOff', required: true },
-            ],
-            stopJob: job.id,
-            needsArgs,
-        };
-    }
-    if (argNames.includes('PIN_NUMMER')) {
-        return {
-            kind: 'hold',
-            steps: one('why_pinDrive'),
-            stopJob: job.id,
-            needsArgs,
-            irreversible: 'irr_pin',
-        };
-    }
-
-    // --- Named counterparts. ------------------------------------------------
-    const partner = PAIRS[id];
-    if (partner) {
-        const starts = /STARTEN$/.test(id) || (!/(_AUS|_STOPPEN|_STOP)$/.test(id) && true);
-        return {
-            kind: 'paired',
-            steps: one(starts ? 'why_pairStart' : 'why_pairStop'),
-            stopJob: partner,
-            needsArgs,
-        };
-    }
-
-    // --- Measurements. "anstossen" = trigger; the ECU finishes on its own. ---
-    if (de.includes('anstossen') || de.includes('durchfuehren') || de.includes('prueflauf')) {
-        return {
-            kind: 'measurement',
-            steps: one('why_measure'),
-            needsArgs,
-        };
-    }
-
-    // --- Persistent writes. -------------------------------------------------
-    if (/_SCHREIBEN$|_LOESCHEN$|^SG_RESET$|^EDIC_RESET$|^INITIALISIER|^CODIERDATEN|^ADAPT/.test(id)) {
-        return {
-            kind: 'write',
-            steps: one('why_write'),
-            needsArgs,
-            irreversible: 'irr_write',
-        };
-    }
-
-    // --- Plain one-shot actuation. "ansteuern" without a switch argument. ----
-    if (de.includes('ansteuern') || de.includes('anfahren') || id.startsWith('STEUERN_')) {
-        return { kind: 'pulse', steps: one('why_pulse'), needsArgs };
-    }
-
-    return { kind: 'unknown', steps: one('why_unknown'), needsArgs };
+/** Is this id one of the adapted SMG II procedures? */
+export function isProcedureId(id: string): boolean {
+    return id.startsWith(PROCEDURE_PREFIX);
 }
 
 /**
  * Does this operation need a STOP control on screen?
  *
- * `latching` deliberately returns false. It cannot be stopped, and offering a
- * disabled STOP would suggest one exists.
+ * Read off `termination`, not off a list of kinds. `latching` has termination
+ * `none` and therefore gets no STOP — it cannot be stopped, and offering a
+ * disabled one would suggest otherwise. A `deferred` SYSTEMCHECK that the SGBD
+ * gives no stop job for gets none either, which is why this is data and not a
+ * kind whitelist: two jobs of the same kind genuinely differ here.
  */
 export function hasStopControl(op: JobOperation): boolean {
-    return op.kind === 'hold' || op.kind === 'paired' || op.kind === 'procedure';
+    return op.termination === 'app-stop' || op.termination === 'companion-job';
 }
 
 /** Does the ECU report progress while this runs? Only procedures do. */
 export function reportsProgress(op: JobOperation): boolean {
     return op.kind === 'procedure';
+}
+
+/**
+ * Is the answer somewhere other than this job's own response?
+ *
+ * When true the UI must show the companion READ next to the START. Half of a
+ * two-job test is not a feature.
+ */
+export function deliversResultElsewhere(op: JobOperation): boolean {
+    return op.resultDelivery === 'companion-job' || op.resultDelivery === 'live-block';
 }

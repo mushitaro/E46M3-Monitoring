@@ -11,6 +11,9 @@
  */
 
 import { useSyncExternalStore } from 'react';
+import type { Audience, JobClass, ResultDelivery, ResultRole, Actor, Termination, Risk } from './ecuCatalog';
+import type { IrreversibleKey, OpKind, WhyKey } from './jobOps';
+import type { Confidence, TextKey } from './jobText';
 
 export type Lang = 'ja' | 'en';
 
@@ -116,8 +119,8 @@ interface Catalog {
     plan_telegram: string;
     plan_noTelegram: string;
     plan_selectHint: string;
-    opKind: Record<OpKindKey, string>;
-    opKindNote: Record<OpKindKey, string>;
+    opKind: Record<OpKind, string>;
+    opKindNote: Record<OpKind, string>;
     confidence: Record<'single' | 'multiple' | 'shared', string>;
     confidenceNote: Record<'single' | 'multiple' | 'shared', string>;
 
@@ -146,43 +149,67 @@ interface Catalog {
     /** Why each plan step exists. Safety copy — see jobOps.ts WhyKey. */
     op_why: Record<WhyKey, string>;
     /** Why an operation cannot be taken back. */
-    op_irreversible: Record<IrrKey, string>;
+    op_irreversible: Record<IrreversibleKey, string>;
+
+    // --- The merged JOBS pane ---------------------------------------------
+    tab_jobs: string;
+    /** The facet axes. Named, because a filter whose axis is unlabelled is a mystery toggle. */
+    facet_purpose: string;
+    facet_audience: string;
+    facet_system: string;
+    facet_all: string;
+    facet_hidden: (n: number) => string;
+    jobClass: Record<JobClass, string>;
+    /** One line saying what the class IS — the answer to "what is different
+     *  between the jobs under CALIBRATION and the ones under ACTUATOR TEST". */
+    jobClassNote: Record<JobClass, string>;
+    audience: Record<Audience, string>;
+    audienceNote: Record<Audience, string>;
+    system: Record<string, string>;
+
+    // --- The operation shape, in four independent axes ---------------------
+    op_actor: string;
+    op_termination: string;
+    op_delivery: string;
+    op_prerequisites: string;
+    actor: Record<Actor, string>;
+    termination: Record<Termination, string>;
+    delivery: Record<ResultDelivery, string>;
+    /** Where the answer to a companion-job test is read. */
+    op_resultJob: (job: string) => string;
+
+    // --- The owner-facing explanation --------------------------------------
+    jt: Record<TextKey, string>;
+    jt_confidence: Record<Confidence, string>;
+    jt_confidenceNote: Record<Confidence, string>;
+    jt_missing: string;
+    jt_germanOnly: string;
+
+    // --- The job's contents -------------------------------------------------
+    det_results: string;
+    det_resultCount: (n: number) => string;
+    det_results_note: string;
+    det_args: string;
+    det_values: string;
+    det_noValues: string;
+    det_whenArg: (arg: string, values: string) => string;
+    det_inferred: string;
+    resultRole: Record<ResultRole, string>;
+
+    // --- Calibration values -------------------------------------------------
+    spec_current: string;
+    spec_min: string;
+    spec_max: string;
+    spec_default: string;
+    spec_always: string;
+    /** The correction that matters most: Default is the FACTORY value, not a target. */
+    spec_defaultNote: string;
+    spec_verdict: Record<'in-range' | 'out-of-range' | 'unknown', string>;
+    spec_needsRun: string;
+    spec_crossField: (a: string, b: string) => string;
+    risk_label: Record<Risk, string>;
+    provenance: Record<'sgbd-comment' | 'sgbd-args' | 'name-heuristic' | 'authored' | 'inferred', string>;
 }
-
-type WhyKey =
-    | 'why_read'
-    | 'why_pulse'
-    | 'why_write'
-    | 'why_measure'
-    | 'why_latching'
-    | 'why_multiOutput'
-    | 'why_driveAndReset'
-    | 'why_switchOn'
-    | 'why_switchOff'
-    | 'why_pinDrive'
-    | 'why_pairStart'
-    | 'why_pairStop'
-    | 'why_prepare'
-    | 'why_driveActuator'
-    | 'why_keepAlive'
-    | 'why_testprgStop'
-    | 'why_testprgStart'
-    | 'why_testprgPoll'
-    | 'why_unknown';
-
-type IrrKey = 'irr_latching' | 'irr_pin' | 'irr_write';
-
-type OpKindKey =
-    | 'read'
-    | 'pulse'
-    | 'hold'
-    | 'paired'
-    | 'measurement'
-    | 'latching'
-    | 'compound'
-    | 'procedure'
-    | 'write'
-    | 'unknown';
 
 const STORAGE_KEY = 'e46m3.lang';
 
@@ -258,7 +285,7 @@ const STRINGS: Record<Lang, Catalog> = {
         module: 'モジュール',
         faultRef: '故障本文リファレンス',
         faultRef_note:
-            'SGBD 由来の故障本文です。コードとの対応表は EdiabasLib が供給していたもので、まだ再構築できていません。検索用の参照として表示しています。',
+            'SGBD の FORTTEXTE 表そのものです。故障コードと本文の対応が付いているので、読み取った故障には本文が直接付きます。ここはコード・訳文・独語原文のいずれでも引ける検索用の一覧です。',
         catalog_jobs: (n: number) => `${n} 件`,
         cancel: 'キャンセル',
         gate_plan: '送信内容',
@@ -308,6 +335,7 @@ const STRINGS: Record<Lang, Catalog> = {
             latching: 'ラッチ',
             compound: '複合',
             procedure: '自動プログラム',
+            deferred: '別ジョブで結果',
             write: '書込',
             unknown: '不明',
         },
@@ -320,6 +348,7 @@ const STRINGS: Record<Lang, Catalog> = {
             latching: '作動後ラッチします。SGBD に解除ジョブが存在せず、このアプリからは戻せません。',
             compound: 'SGBD ジョブ自体が複数の出力を順に駆動します。単一の操作ではありません。',
             procedure: 'ECU が複数ステップの試験プログラムを自走させ、進行状況と結果コードを報告します。中断可能です。',
+            deferred: '試験を開始しますが、このジョブ自身は結果を返しません。判定は別名のジョブで読み出します。開始だけでは何も分かりません。',
             write: '永続的な状態を書き換えます。元の値を読み戻す手段がないため、取り消せません。',
             unknown: 'SGBD のコメントに記述がなく、動作を確定できていません。',
         },
@@ -357,12 +386,14 @@ const STRINGS: Record<Lang, Catalog> = {
             why_measure: '測定を開始します。ECU が最後まで実行し、結果はライブ値ブロックに現れます。',
             why_latching: 'デジタル制御で作動させ、そのまま保持します。',
             why_multiOutput: '複数のデジタル出力を順に駆動します。',
-            why_driveAndReset: 'STEUERN_DIGITAL を駆動し、続けてリセットします。ECU が自ら行う2段階のジョブです。',
             why_switchOn: '出力を ON にします。',
             why_switchOff: '同じジョブを SCHALTEN の逆値で送り、OFF に戻します。',
             why_pinDrive: '指定ピンを、指定のデューティ比・周期で直接駆動します。',
             why_pairStart: '開始します。対になるジョブを送るまで作動し続けます。',
             why_pairStop: '対になるジョブが開始した動作を終了させます。',
+            why_prerequisite: 'SGBD がこのジョブを先に送ることを要求しています。省くと ECU が拒否します。',
+            why_deferredStart: '試験を開始します。このジョブ自身は判定を返しません。',
+            why_readResult: '判定を読み出します。開始したジョブとは別名のジョブで、これを送らないと結果は分かりません。',
             why_prepare: 'SGBD の要求：スタータ解除・油圧ポンプ・故障表示・シフトロックではこのジョブを先に送る必要があります。ECU の時間カウンタもここでゼロに戻ります。',
             why_driveActuator: '選択したアクチュエータを駆動します。',
             why_keepAlive: 'セッションを維持します。ECU のタイムアウトは 10 秒、実行は最長 960 秒に及びます。',
@@ -375,6 +406,140 @@ const STRINGS: Record<Lang, Catalog> = {
             irr_latching: 'DSC_SIM_* には SGBD 上に解除ジョブが存在しません。一度作動させると作動したままになり、復帰はコマンドではなくイグニッションサイクルです。',
             irr_pin: '任意の出力ピンを強制駆動します。SGBD 側にピンの制約が無いため、無害なピンと破損させうるピンをこのアプリでは区別できません。',
             irr_write: 'イグニッションサイクルをまたいで残る状態を書き換えます。事前に元の値を読み戻す手段がこのアプリには無いため、取り消せません。',
+            irr_eeprom: 'RAM 上の値を EEPROM へ確定書込します。ここまでは書き戻せましたが、この操作以降は戻せません。',
+        },
+
+        tab_jobs: 'JOBS',
+        facet_purpose: '用途',
+        facet_audience: '対象',
+        facet_system: '系統',
+        facet_all: 'すべて',
+        facet_hidden: (n) => `絞り込みにより ${n} 件を非表示`,
+        jobClass: {
+            read: '読取',
+            test: '作動テスト',
+            calibration: '較正・学習値',
+            coding: 'コーディング',
+            programming: '書換（非対応）',
+            protocol: '手順の部品',
+        },
+        jobClassNote: {
+            read: '値を読み出すだけです。車両の状態は変わらず、何度実行しても構いません。',
+            test: '部品を一時的に動かして確かめます。終われば元の状態に戻ります（ラッチするものだけは戻りません。個別に明示しています）。',
+            calibration: '学習値・調整値を書き換えます。イグニッションを切っても残り、元の値に戻す手段はありません。',
+            coding: '車両の装備構成を書き換えます。他の ECU との整合が崩れると警告灯や機能停止につながります。',
+            programming: 'ECU のプログラム領域そのものを扱います。**このアプリからは実行しません。** 失敗した ECU は起動しなくなり、復旧はベンチ作業か交換です（WinKFP の領域）。',
+            protocol: '他のジョブの手順の一部です。単体で実行しても意味がありません。',
+        },
+        audience: { owner: 'オーナー', technician: '整備者', protocol: 'プロトコル内部' },
+        audienceNote: {
+            owner: '車両オーナーが意味を判断できる操作です。',
+            technician: '整備の知識と、失敗したときの復旧手段を前提とする操作です。',
+            protocol: '他ジョブの内部で使われるもので、単体では実行対象になりません。',
+        },
+        system: {
+            faults: '故障メモリ',
+            vanos: 'VANOS（可変バルブタイミング）',
+            fuel: '燃料・噴射',
+            emissions: '排ガス・触媒・O2センサ',
+            air: '吸気・スロットル・ペダル',
+            ignition: '点火・ノック',
+            cooling: '冷却・オイル',
+            clutch: 'クラッチ',
+            gearbox: '変速機',
+            brakes: 'ブレーキ油圧',
+            tyres: 'タイヤ空気圧',
+            stability: '走行安定制御',
+            steering: 'ステアリング',
+            sensors: 'センサ',
+            electrical: '電源・リレー・入出力',
+            ecu: 'ECU 本体・識別',
+            engine: 'エンジン制御',
+            unknown: '不明',
+        },
+
+        op_actor: '誰が進めるか',
+        op_termination: '終わり方',
+        op_delivery: '結果の出どころ',
+        op_prerequisites: '先に送るジョブ',
+        actor: {
+            ecu: 'ECU が自動で進めます',
+            app: 'アプリが送り続ける必要があります',
+            operator: '人が手を動かす必要があります',
+            driver: '走行が必要です',
+        },
+        termination: {
+            self: '自動で終わります',
+            'app-stop': 'アプリが止めます',
+            'companion-job': '別名のジョブが止めます',
+            none: '止まりません（ラッチ）',
+        },
+        delivery: {
+            inline: 'このジョブの応答に入っています',
+            'companion-job': '別のジョブで読み出します',
+            'live-block': 'ライブ値ブロックに現れます',
+            none: '結果はありません',
+        },
+        op_resultJob: (job) => `判定は ${job} で読み出します`,
+
+        jt: {
+            does: '何が行われるか',
+            observe: '車で何が起きるか',
+            pass: 'どうなれば問題ないか',
+            fail: 'そうならなかったら何を疑うか',
+            after: '実行後に何が残るか',
+            caution: '押す前に',
+        },
+        jt_confidence: {
+            authored: '個別記述',
+            template: '定型',
+            'template-thin': '定型（情報不足）',
+            missing: '未作成',
+        },
+        jt_confidenceNote: {
+            authored: 'このジョブについて個別に書かれた説明です。',
+            template: '部品名と動作種別から組み立てた定型文です。このジョブ固有の事情は含みません。',
+            'template-thin': '定型文ですが、部品辞書にこの部品の説明が無く、内容が薄くなっています。',
+            missing: '平易な説明はまだ作成されていません。SGBD の独語原文をそのまま表示しています。',
+        },
+        jt_missing: '平易な説明は未作成です',
+        jt_germanOnly: 'SGBD の独語原文のみ',
+
+        det_results: 'このジョブが返す内容',
+        det_resultCount: (n) => `返り値 ${n}`,
+        det_results_note:
+            'SGBD が宣言している結果です。値・単位・平文の三つ組は1行にまとめています。実行しないと現在値は入りません。',
+        det_args: '指定が必要な引数',
+        det_values: '調整値・規定値',
+        det_noValues: 'このジョブに規定値の公表はありません。SGBD にも復元元にも下限・上限が存在しないためで、「まだ調べていない」ではありません。',
+        det_whenArg: (arg, values) => `${arg} が ${values} のときだけ返ります`,
+        det_inferred: '推定',
+        resultRole: {
+            value: '値',
+            unit: '単位',
+            text: '平文',
+            status: 'ジョブ状態',
+            telegram: 'テレグラム',
+            raw: '生データ',
+        },
+
+        spec_current: '現在値',
+        spec_min: '下限',
+        spec_max: '上限',
+        spec_default: '出荷既定',
+        spec_always: '固定値',
+        spec_defaultNote:
+            '「出荷既定」は工場出荷時の値であって、目標値ではありません。学習値がここから離れているのは正常です。判定するのは上限・下限の範囲内かどうかだけです。',
+        spec_verdict: { 'in-range': '範囲内', 'out-of-range': '範囲外', unknown: '判定不能' },
+        spec_needsRun: '現在値の取得には実行が必要です。実行面は未解禁のため、ここでは範囲と既定値のみ表示しています。',
+        spec_crossField: (a, b) => `${a} と ${b} の差に対する制約`,
+        risk_label: { low: '低', medium: '中', high: '高' },
+        provenance: {
+            'sgbd-comment': 'SGBD 記述',
+            'sgbd-args': 'SGBD 引数',
+            'name-heuristic': '名称からの推定',
+            authored: '個別記述',
+            inferred: '推定',
         },
     },
     en: {
@@ -449,7 +614,7 @@ const STRINGS: Record<Lang, Catalog> = {
         module: 'Module',
         faultRef: 'Fault text reference',
         faultRef_note:
-            'Fault texts from the SGBD. The code-to-text mapping was supplied by EdiabasLib and has not been rebuilt yet, so this is shown as a searchable reference rather than as decoded faults.',
+            "The SGBD's own FORTTEXTE table. It is keyed by fault code, so a fault that is read gets its text directly; this list is the searchable reference, by code, translation or German original.",
         catalog_jobs: (n: number) => `${n} job${n === 1 ? '' : 's'}`,
         cancel: 'Cancel',
         gate_plan: 'What will be sent',
@@ -500,6 +665,7 @@ const STRINGS: Record<Lang, Catalog> = {
             latching: 'Latching',
             compound: 'Compound',
             procedure: 'Program',
+            deferred: 'Result elsewhere',
             write: 'Write',
             unknown: 'Unknown',
         },
@@ -512,6 +678,8 @@ const STRINGS: Record<Lang, Catalog> = {
             latching: 'Actuates and latches. The SGBD exposes no release job, so this cannot be undone from here.',
             compound: 'The SGBD job itself drives several outputs in sequence. This is not a single action.',
             procedure: 'A multi-step program the ECU runs by itself, reporting progress and a result code. Abortable.',
+            deferred:
+                'Starts a test but returns no verdict of its own. The answer is read by a differently-named job; starting it alone tells you nothing.',
             write: 'Writes persistent state. Nothing here can read the previous value back, so there is no undo.',
             unknown: 'The SGBD comment does not state what this does, so neither will this panel.',
         },
@@ -551,12 +719,15 @@ const STRINGS: Record<Lang, Catalog> = {
             why_measure: 'triggers a measurement the ECU runs to completion; the result appears in the live blocks',
             why_latching: 'actuates and HOLDS via digital control',
             why_multiOutput: 'drives several digital outputs in sequence',
-            why_driveAndReset: 'drives, then resets, STEUERN_DIGITAL — a two-phase job the ECU runs itself',
             why_switchOn: 'switches the output ON',
             why_switchOff: 'switches it OFF again — same job, opposite SCHALTEN value',
             why_pinDrive: 'drives the chosen pin directly at the given duty cycle and period',
             why_pairStart: 'starts, and stays active until its counterpart is sent',
             why_pairStop: 'ends the operation its counterpart started',
+            why_prerequisite: 'the SGBD requires this to be sent first; skip it and the ECU refuses',
+            why_deferredStart: 'starts the test; this job returns no verdict of its own',
+            why_readResult:
+                'reads the verdict — a differently-named job, and without it the test tells you nothing',
             why_prepare:
                 'the SGBD requires it for the starter release, hydraulic pump, fault indicator and shift lock, and it resets the ECU time counter',
             why_driveActuator: 'drives the selected actuator',
@@ -573,6 +744,147 @@ const STRINGS: Record<Lang, Catalog> = {
                 'Forces an arbitrary output pin. Nothing in the SGBD constrains which pin, so nothing here can tell a harmless one from a damaging one.',
             irr_write:
                 'Writes state that survives an ignition cycle. Nothing in this app can read the previous value back first, so there is no undo.',
+            irr_eeprom:
+                'Commits the RAM value into EEPROM. Everything up to here could be written back; from here it cannot.',
+        },
+
+        tab_jobs: 'JOBS',
+        facet_purpose: 'Purpose',
+        facet_audience: 'For',
+        facet_system: 'System',
+        facet_all: 'All',
+        facet_hidden: (n) => `${n} hidden by the current filter`,
+        jobClass: {
+            read: 'Read',
+            test: 'Actuator test',
+            calibration: 'Calibration',
+            coding: 'Coding',
+            programming: 'Programming (not run here)',
+            protocol: 'Procedure step',
+        },
+        jobClassNote: {
+            read: 'Reads a value. Nothing about the car changes, and it is safe to repeat.',
+            test: 'Moves a part temporarily to check it. When it ends the car is as it was — except for the few that latch, which say so individually.',
+            calibration:
+                'Rewrites a learned or adjusted value. It survives an ignition cycle and there is no way back to the old value.',
+            coding: "Rewrites the car's equipment configuration. Getting it out of step with other modules means warning lights or lost functions.",
+            programming:
+                "Operates on the ECU's own program area. **This app does not run these.** An ECU whose write fails will not boot; recovery is bench work or replacement. WinKFP territory.",
+            protocol: "A step inside another job's procedure. Running it on its own means nothing.",
+        },
+        audience: { owner: 'Owner', technician: 'Technician', protocol: 'Protocol' },
+        audienceNote: {
+            owner: 'A car owner can judge what this means.',
+            technician: 'Assumes the knowledge — and the recovery route — that goes with doing this for a living.',
+            protocol: 'Used inside other jobs. Not something you run.',
+        },
+        system: {
+            faults: 'Fault memory',
+            vanos: 'VANOS (variable valve timing)',
+            fuel: 'Fuel and injection',
+            emissions: 'Emissions, catalyst, O2 sensors',
+            air: 'Intake, throttle, pedal',
+            ignition: 'Ignition and knock',
+            cooling: 'Cooling and oil',
+            clutch: 'Clutch',
+            gearbox: 'Gearbox',
+            brakes: 'Brake hydraulics',
+            tyres: 'Tyre pressure',
+            stability: 'Stability control',
+            steering: 'Steering',
+            sensors: 'Sensors',
+            electrical: 'Power, relays, I/O',
+            ecu: 'ECU identity',
+            engine: 'Engine control',
+            unknown: 'Unknown',
+        },
+
+        op_actor: 'Who carries it',
+        op_termination: 'How it ends',
+        op_delivery: 'Where the answer is',
+        op_prerequisites: 'Sent first',
+        actor: {
+            ecu: 'The ECU runs it by itself',
+            app: 'This app must keep sending',
+            operator: 'A person has to do something',
+            driver: 'The car has to be driven',
+        },
+        termination: {
+            self: 'Ends by itself',
+            'app-stop': 'This app stops it',
+            'companion-job': 'A differently-named job stops it',
+            none: 'It does not stop (latching)',
+        },
+        delivery: {
+            inline: "In this job's own response",
+            'companion-job': 'Read by another job',
+            'live-block': 'Appears in the live blocks',
+            none: 'No result',
+        },
+        op_resultJob: (job) => `The verdict is read with ${job}`,
+
+        jt: {
+            does: 'What it does',
+            observe: 'What happens on the car',
+            pass: 'How you know it is OK',
+            fail: 'What to suspect if it is not',
+            after: 'What it leaves behind',
+            caution: 'Before you press it',
+        },
+        jt_confidence: {
+            authored: 'Written',
+            template: 'Generated',
+            'template-thin': 'Generated (thin)',
+            missing: 'Not written',
+        },
+        jt_confidenceNote: {
+            authored: 'Written about this job specifically.',
+            template:
+                'Assembled from the component and action dictionaries. It carries nothing specific to this job.',
+            'template-thin':
+                'Generated, but the component dictionary has no description for this part, so it is thin.',
+            missing: 'No plain-language version has been written. The SGBD German original is shown instead.',
+        },
+        jt_missing: 'No plain-language explanation written',
+        jt_germanOnly: 'SGBD German original only',
+
+        det_results: 'What this job returns',
+        det_resultCount: (n) => `${n} result${n === 1 ? '' : 's'}`,
+        det_results_note:
+            'The results the SGBD declares. Value, unit and plain text are folded into one row. Current values need a run.',
+        det_args: 'Arguments you must supply',
+        det_values: 'Adjustment values',
+        det_noValues:
+            'No published limits for this job. Neither the SGBD nor the decompiled source states a minimum or maximum — that is a fact, not a gap we have yet to fill.',
+        det_whenArg: (arg, values) => `Returned only when ${arg} is ${values}`,
+        det_inferred: 'inferred',
+        resultRole: {
+            value: 'value',
+            unit: 'unit',
+            text: 'text',
+            status: 'job status',
+            telegram: 'telegram',
+            raw: 'raw',
+        },
+
+        spec_current: 'Current',
+        spec_min: 'Min',
+        spec_max: 'Max',
+        spec_default: 'Factory default',
+        spec_always: 'Fixed',
+        spec_defaultNote:
+            'The factory default is the value it left the factory with, NOT a target. A learned value sitting away from it is normal. The only verdict here is whether it is inside the stated range.',
+        spec_verdict: { 'in-range': 'In range', 'out-of-range': 'Out of range', unknown: 'No verdict' },
+        spec_needsRun:
+            'Reading the current value needs a run, and running is not unlocked yet — so this shows the range and the factory default only.',
+        spec_crossField: (a, b) => `A constraint on the difference between ${a} and ${b}`,
+        risk_label: { low: 'Low', medium: 'Med', high: 'High' },
+        provenance: {
+            'sgbd-comment': 'stated by the SGBD',
+            'sgbd-args': 'from the argument signature',
+            'name-heuristic': 'guessed from the name',
+            authored: 'written by hand',
+            inferred: 'inferred',
         },
     },
 };

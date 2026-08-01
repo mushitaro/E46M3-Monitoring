@@ -28,6 +28,23 @@ import type { LucideIcon } from 'lucide-react';
  * discipline of whoever writes the next call site. Reach for them first.
  */
 
+/**
+ * ## The type ramp, and why there are only two steps
+ *
+ * Micro-labels shipped at 8, 9, 10 and 11px, bold and not, in slate-400/500/600,
+ * as `div`, `span`, `summary` and `p`. Four sizes cannot encode three levels of
+ * importance; they encode "four people wrote this". So:
+ *
+ *   LABEL — 10px, bold, uppercase, tracked. Chrome: headings, buttons, pills,
+ *           tabs, facet chips. Everything that names a thing.
+ *   DATA  — 11px / 12px, mono where it came from a machine. The thing itself.
+ *
+ * There is no third size. If something needs to recede, it changes COLOUR
+ * (slate-500 → slate-600), because a size step and a colour step doing the same
+ * job is how you get eight of them.
+ */
+export const LABEL = 'text-[10px] font-bold uppercase tracking-widest';
+
 type Tone = 'neutral' | 'primary' | 'danger' | 'destructive' | 'caution' | 'secondary' | 'ok';
 
 const TEXT: Record<Tone, string> = {
@@ -79,7 +96,7 @@ export function TextButton({
             onClick={disabled ? undefined : onClick}
             disabled={disabled}
             title={title}
-            className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[10px] font-bold uppercase tracking-widest transition-colors disabled:cursor-not-allowed disabled:text-slate-600 disabled:hover:text-slate-600 ${TEXT[tone]} ${className}`}
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap ${LABEL} transition-colors disabled:cursor-not-allowed disabled:text-slate-600 disabled:hover:text-slate-600 ${TEXT[tone]} ${className}`}
             {...rest}
         >
             {Icon && <Icon className="size-3 shrink-0" />}
@@ -104,33 +121,50 @@ export function Pill({ children, tone = 'neutral', title }: { children: React.Re
     return (
         <span
             title={title}
-            className={`inline-block shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest ${FILL[tone]}`}
+            className={`inline-block shrink-0 rounded px-1.5 py-0.5 ${LABEL} ${FILL[tone]}`}
         >
             {children}
         </span>
     );
 }
 
-/** A filter chip: same tint language as Pill, but pressable. */
+/**
+ * A filter chip: same tint language as Pill, but pressable.
+ *
+ * `count` is not decoration. With 323 jobs behind a default filter, the number
+ * beside a facet is the only thing that tells a reader there is more here than
+ * they are being shown — and it counts the WHOLE catalogue, not the filtered
+ * view, or hidden things would be hidden twice.
+ */
 export function Chip({
     children,
     active,
+    count,
     onClick,
+    title,
 }: {
     children: React.ReactNode;
     active: boolean;
+    count?: number;
     onClick: () => void;
+    title?: string;
 }) {
     return (
         <button
             type="button"
             onClick={onClick}
             aria-pressed={active}
-            className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest transition-colors ${
+            title={title}
+            className={`shrink-0 rounded px-2 py-0.5 ${LABEL} transition-colors ${
                 active ? 'bg-blue-500/15 text-blue-400' : 'text-slate-500 hover:bg-slate-800 hover:text-slate-300'
             }`}
         >
             {children}
+            {count !== undefined && (
+                <span className={`ml-1.5 font-mono tabular-nums ${active ? 'text-blue-400/60' : 'text-slate-600'}`}>
+                    {count}
+                </span>
+            )}
         </button>
     );
 }
@@ -161,12 +195,198 @@ export function SearchInput({
 
 /** The micro-label above a block. Sits on its own line; no rule under it — the
  *  size and colour step is already the separation. */
-export function MicroLabel({ children }: { children: React.ReactNode }) {
-    return <div className="text-[9px] font-bold uppercase tracking-widest text-slate-600">{children}</div>;
+export function MicroLabel({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+    return <div className={`${LABEL} text-slate-500 ${className}`}>{children}</div>;
 }
 
 /** A recessed block for machine output (raw idents, planned telegrams). Surface,
  *  not outline. */
 export function Well({ children, className = '' }: { children: React.ReactNode; className?: string }) {
     return <div className={`rounded bg-slate-800/40 p-2 ${className}`}>{children}</div>;
+}
+
+/**
+ * A titled block, with its count and its own actions.
+ *
+ * There were eight hand-built versions of this shape across two files, spaced
+ * mb-3 / mb-4 / mb-6 / mt-6+pt-4 and titled four different ways. The spacing
+ * belongs to the CONTAINER — a `flex flex-col gap-6` column — so this component
+ * deliberately carries no outer margin: a block that spaces itself cannot be
+ * rearranged without re-tuning every neighbour.
+ */
+export function Section({
+    title,
+    count,
+    actions,
+    note,
+    children,
+}: {
+    title: React.ReactNode;
+    count?: number;
+    actions?: React.ReactNode;
+    /** One line under the title, for a caveat about the whole block. */
+    note?: React.ReactNode;
+    children: React.ReactNode;
+}) {
+    return (
+        <section>
+            <div className="flex min-h-[20px] items-baseline justify-between gap-3">
+                <MicroLabel>{title}</MicroLabel>
+                <div className="flex shrink-0 items-baseline gap-3">
+                    {actions}
+                    {count !== undefined && (
+                        <span className="font-mono text-[11px] tabular-nums text-slate-600">{count}</span>
+                    )}
+                </div>
+            </div>
+            {note && <p className="mt-1 max-w-[70ch] text-[11px] leading-relaxed text-slate-500">{note}</p>}
+            <div className="mt-1.5">{children}</div>
+        </section>
+    );
+}
+
+/**
+ * The one list. Rows are separated by a hairline and by hover, never by a box
+ * each — at 77 rows an outline per row plus its pills stacks four frames deep and
+ * the eye stops resolving the only thing that matters, which row is under the
+ * pointer.
+ */
+export function DataList({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+    return (
+        <ul className={`divide-y divide-slate-800/50 border-t border-slate-800/50 ${className}`}>{children}</ul>
+    );
+}
+
+/**
+ * The one row: one dimension, one hover, one selection expression.
+ *
+ * `onSelect` optional on purpose — a non-selectable row is a `li`, not a button
+ * with a dead click. The job list, the procedure list, the channel picker and the
+ * datalog value table were four different row shapes doing this, and only one of
+ * them showed selection at all.
+ */
+export function DataRow({
+    selected = false,
+    onSelect,
+    leading,
+    title,
+    subtitle,
+    trailing,
+    detail,
+}: {
+    selected?: boolean;
+    onSelect?: () => void;
+    /** Pill or checkbox. Baseline-aligned with the title. */
+    leading?: React.ReactNode;
+    title: React.ReactNode;
+    /** The elastic middle. Truncates; everything else is shrink-0. */
+    subtitle?: React.ReactNode;
+    trailing?: React.ReactNode;
+    /** Extra lines under the row. Indented to the title, not to the pill. */
+    detail?: React.ReactNode;
+}) {
+    const body = (
+        <>
+            <div className="flex items-baseline gap-x-3">
+                {leading}
+                <span className={`shrink-0 font-mono text-xs ${selected ? 'text-blue-300' : 'text-slate-200'}`}>
+                    {title}
+                </span>
+                {subtitle !== undefined && (
+                    <span className="min-w-0 flex-1 truncate text-xs text-slate-400">{subtitle}</span>
+                )}
+                {subtitle === undefined && <span className="min-w-0 flex-1" />}
+                {trailing}
+            </div>
+            {detail && <div className="mt-1 space-y-1">{detail}</div>}
+        </>
+    );
+
+    if (!onSelect) return <li className="px-2 py-2">{body}</li>;
+    return (
+        <li>
+            <button
+                type="button"
+                onClick={onSelect}
+                aria-pressed={selected}
+                className={`w-full px-2 py-2 text-left transition-colors ${
+                    selected ? 'bg-blue-500/10' : 'hover:bg-slate-800/40'
+                }`}
+            >
+                {body}
+            </button>
+        </li>
+    );
+}
+
+/**
+ * A label and its value — the ///M readout atom.
+ *
+ * `JobPlan::Stat`, `page::MixCell` and `page::Readout` were three copies of this
+ * with three different label sizes and two different stack directions.
+ */
+export function Field({
+    label,
+    value,
+    unit,
+    tone = 'text-slate-200',
+    stacked = false,
+    labelKind = 'chrome',
+    title,
+}: {
+    label: React.ReactNode;
+    value: React.ReactNode;
+    unit?: string;
+    /** A text colour class. Semantic only — a verdict, never decoration. */
+    tone?: string;
+    /** Stacked for a grid of readouts; inline for a run of metadata. */
+    stacked?: boolean;
+    /**
+     * `chrome` is a name WE chose and gets the uppercase label treatment.
+     * `data` is a name the ECU supplied — a freeze-frame field, a result — and
+     * must not be uppercased: the system's own rule is sans for chrome, and a
+     * machine-supplied string is not chrome. Uppercasing it also turns an
+     * untranslated German fallback into shouting, which is how
+     * `Versorgungsspannung HR` appeared as VERSORGUNGSSPANNUNG HR.
+     */
+    labelKind?: 'chrome' | 'data';
+    title?: string;
+}) {
+    const labelCls = labelKind === 'chrome' ? `${LABEL} text-slate-600` : 'text-[11px] text-slate-500';
+    if (stacked) {
+        return (
+            <div className="flex flex-col leading-none" title={title}>
+                <span className={labelCls}>{label}</span>
+                <span className={`mt-1.5 font-mono text-[11px] font-bold tabular-nums ${tone}`}>
+                    {value}
+                    {unit && <span className="ml-1 font-normal text-slate-500">{unit}</span>}
+                </span>
+            </div>
+        );
+    }
+    return (
+        <span className="flex items-baseline gap-1.5" title={title}>
+            <span className={labelCls}>{label}</span>
+            <span className={`font-mono text-xs tabular-nums ${tone}`}>
+                {value}
+                {unit && <span className="ml-1 text-slate-500">{unit}</span>}
+            </span>
+        </span>
+    );
+}
+
+/**
+ * Where a statement came from, said in the statement's own margin.
+ *
+ * Rendered as quiet text rather than a pill: on a panel where most lines carry
+ * one, a tint per line is a wall of colour. It is the ones that say `name-heuristic`
+ * that need to be findable, and they are findable because everything else says
+ * something better.
+ */
+export function Provenance({ children, title }: { children: React.ReactNode; title?: string }) {
+    return (
+        <span title={title} className={`shrink-0 ${LABEL} text-slate-600`}>
+            {children}
+        </span>
+    );
 }

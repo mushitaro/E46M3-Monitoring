@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
+import { LABEL } from './ui';
 import { useLang } from '@/lib/i18n';
 
 /**
@@ -47,7 +48,7 @@ export function ElectricalFaultDialog({ message, onClose }: { message: string; o
             >
                 <div className="mb-4 flex shrink-0 items-center gap-2 border-b border-slate-800 pb-2">
                     <AlertTriangle className="size-4 shrink-0 text-red-400" />
-                    <h3 className="text-xs font-bold uppercase tracking-widest text-slate-300">
+                    <h3 className={`${LABEL} text-slate-300`}>
                         {t.error_electrical_title}
                     </h3>
                     <button

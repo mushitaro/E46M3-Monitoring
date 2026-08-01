@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { Download, Terminal, Trash2, X } from 'lucide-react';
+import { LABEL } from './ui';
 import type { CommsLogLine } from '@/hooks/useDs2Link';
 import { useLang } from '@/lib/i18n';
 
@@ -62,7 +63,7 @@ export function LogPopover({
                 <Terminal className="size-4" />
                 {/* A count, not a dot: "3 errors" is actionable, a dot is not. */}
                 {errors > 0 && (
-                    <span className="absolute right-0 top-0 min-w-3 rounded-full bg-red-500 px-1 text-center font-mono text-[8px] leading-3 text-red-100">
+                    <span className="absolute right-0 top-0 min-w-3 rounded-full bg-red-500 px-1 text-center font-mono text-[10px] leading-3 text-red-100">
                         {errors}
                     </span>
                 )}
@@ -73,7 +74,7 @@ export function LogPopover({
                     <Backdrop onClick={() => setOpen(false)} />
                     <div className="absolute right-0 top-10 z-50 flex h-[420px] w-[min(560px,90vw)] flex-col rounded-lg border border-slate-700 bg-slate-900 shadow-xl duration-200 animate-in fade-in zoom-in-95">
                         <div className="flex h-[44px] shrink-0 items-center gap-3 border-b border-slate-800 px-4">
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                            <span className={`${LABEL} text-slate-400`}>
                                 {t.tab_log}
                             </span>
                             <span className="font-mono text-[10px] text-slate-600">{log.length}</span>

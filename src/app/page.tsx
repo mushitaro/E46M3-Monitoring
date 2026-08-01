@@ -24,26 +24,37 @@ import { MSS54_LIVE_BLOCKS, formatErrorCode, planBlockReads } from '@tsunagi/ds2
 import { AppHeader } from '@/components/AppHeader';
 import { ElectricalFaultDialog } from '@/components/ElectricalFaultDialog';
 import { Hub, HubCluster, HubNotice, SubActions, type HubConfig, type NoticeTone } from '@/components/Hub';
-import { JobPlan, SequenceCard } from '@/components/JobPlan';
-import { JobTable } from '@/components/JobTable';
+import { JobDetail, SequenceCard } from '@/components/JobDetail';
+import { JobsPane } from '@/components/JobsPane';
 import { LogPopover } from '@/components/LogPopover';
-import { MicroLabel, Pill, SearchInput, TextButton, Well } from '@/components/ui';
+import { LABEL, DataList, DataRow, Field, MicroLabel, Pill, SearchInput, Section, TextButton, Well } from '@/components/ui';
 import { useDs2Link, type CommsLogLine, type LiveSample } from '@/hooks/useDs2Link';
 import { useLang, type Lang } from '@/lib/i18n';
 import {
+    facetCounts,
     jobRiskOf,
     loadEcuCatalog,
     loadEcuIndex,
+    text as resolveText,
     type CatalogJob,
-    type EcuCatalog,
     type EcuIndexEntry,
+    type EcuProfile,
 } from '@/lib/ecuCatalog';
-import { PROCEDURE_PREFIX, hasStopControl, jobOperation } from '@/lib/jobOps';
+import { PROCEDURE_PREFIX, hasStopControl, jobOperation, procedureOperation } from '@/lib/jobOps';
+import { loadJobText, type JobTextTable } from '@/lib/jobText';
 import { EMPTY_LEDGER, type Ledger } from '@/lib/ledger';
 import { loadSmg2Workflows, type Smg2Procedure, type Smg2Workflows } from '@/lib/smg2Workflows';
 import { bestTelegram, loadTelegrams, telegramIsCertain, type TelegramTable } from '@/lib/telegrams';
 
-type Tab = 'diagnosis' | 'datalog' | 'calibration' | 'testjobs';
+/**
+ * Three tabs, not four.
+ *
+ * Merging CALIBRATION and ACTUATOR TEST is not only about the split being wrong.
+ * It also removes a leak: the selection was keyed on `ecuId` alone, so a
+ * procedure picked under CALIBRATION stayed selected — and stayed in the right
+ * column's viz — after switching to ACTUATOR TEST, where its row did not exist.
+ */
+type Tab = 'diagnosis' | 'datalog' | 'jobs';
 type Link = ReturnType<typeof useDs2Link>;
 
 /**
@@ -82,7 +93,7 @@ export default function Home() {
 
     const [ecuIndex, setEcuIndex] = useState<EcuIndexEntry[]>([]);
     const [ecuId, setEcuId] = useState('mss54');
-    const [loaded, setLoaded] = useState<{ id: string; catalog: EcuCatalog } | null>(null);
+    const [loaded, setLoaded] = useState<{ id: string; catalog: EcuProfile } | null>(null);
     const [catalogError, setCatalogError] = useState<string | null>(null);
     const catalog = loaded?.id === ecuId ? loaded.catalog : null;
     const ledger: Ledger = EMPTY_LEDGER;
@@ -128,10 +139,12 @@ export default function Home() {
     const selectJob = useCallback((job: CatalogJob) => setSelection({ ecuId, job }), [ecuId]);
 
     const [telegrams, setTelegrams] = useState<TelegramTable | null>(null);
+    const [jobText, setJobText] = useState<JobTextTable | null>(null);
     const [workflows, setWorkflows] = useState<Smg2Workflows | null>(null);
 
     useEffect(() => {
         void loadTelegrams(ecuId).then(setTelegrams);
+        void loadJobText(ecuId).then(setJobText);
     }, [ecuId]);
 
     useEffect(() => {
@@ -139,7 +152,7 @@ export default function Home() {
     }, []);
 
     const connectedToVehicle = link.mode === 'vehicle' && link.state !== 'disconnected';
-    const jobTab = tab === 'calibration' || tab === 'testjobs';
+    const jobTab = tab === 'jobs';
     // PRACTICE is a MODE the hub then connects in, not a second connect button.
     // As a button beside CONNECT it was a fork with no stated default; as a
     // checkbox the hub reads CONNECT either way and the box says which link you
@@ -194,8 +207,7 @@ export default function Home() {
                                 [
                                     ['diagnosis', t.tab_diagnosis],
                                     ['datalog', t.tab_datalog],
-                                    ['calibration', t.tab_calibration],
-                                    ['testjobs', t.tab_testjobs],
+                                    ['jobs', t.tab_jobs],
                                 ] as const
                             ).map(([id, labelText]) => (
                                 <button
@@ -203,7 +215,7 @@ export default function Home() {
                                     role="tab"
                                     aria-selected={tab === id}
                                     onClick={() => setTab(id)}
-                                    className={`flex h-full shrink-0 items-center whitespace-nowrap border-b-2 text-[10px] font-bold uppercase tracking-widest transition-colors ${
+                                    className={`flex h-full shrink-0 items-center whitespace-nowrap border-b-2 ${LABEL} transition-colors ${
                                         tab === id
                                             ? 'border-blue-400 text-blue-400'
                                             : 'border-transparent text-slate-500 hover:text-slate-300'
@@ -228,44 +240,35 @@ export default function Home() {
                     <div className="min-h-0 flex-1 overflow-auto px-4 pb-2 pt-2">
                         {tab === 'diagnosis' && <DiagnosisPane link={link} catalog={catalog} />}
                         {tab === 'datalog' && <DatalogPane datalog={datalog} />}
-                        {tab === 'calibration' && (
-                            <>
-                                {/* SMG II's guided procedures sit above its
-                                    calibration jobs because that is what they
-                                    are: the gearbox controller's own adaptation
-                                    programs. The other two modules genuinely
-                                    have none, and the section says so rather
-                                    than disappearing without explanation. */}
-                                <ProcedureSection
-                                    ecuId={ecuId}
-                                    workflows={workflows}
-                                    selectedId={selectedJob?.id ?? null}
-                                    onSelect={selectJob}
-                                />
-                                <JobTable
-                                    jobs={catalog?.actuators ?? []}
+                        {tab === 'jobs' &&
+                            (catalog ? (
+                                <JobsPane
+                                    profile={catalog}
                                     ledger={ledger}
-                                    ecuId={ecuId}
                                     selectedId={selectedJob?.id ?? null}
                                     onSelect={selectJob}
-                                />
-                            </>
-                        )}
-                        {tab === 'testjobs' && (
-                            <JobTable
-                                jobs={catalog?.testJobs ?? []}
-                                ledger={ledger}
-                                ecuId={ecuId}
-                                selectedId={selectedJob?.id ?? null}
-                                onSelect={selectJob}
-                            />
-                        )}
+                                >
+                                    {/* SMG II's guided procedures sit above the
+                                        job list because that is what they are:
+                                        the gearbox controller's own adaptation
+                                        programs, and not SGBD jobs. The other two
+                                        modules genuinely have none. */}
+                                    <ProcedureSection
+                                        ecuId={ecuId}
+                                        workflows={workflows}
+                                        selectedId={selectedJob?.id ?? null}
+                                        onSelect={selectJob}
+                                    />
+                                </JobsPane>
+                            ) : (
+                                <p className="py-2 font-mono text-xs uppercase text-slate-600">{t.awaiting_catalog}</p>
+                            ))}
                     </div>
                 </section>
 
                 <aside className="relative z-20 flex min-h-0 flex-1 flex-col overflow-hidden bg-slate-900/20 backdrop-blur-sm min-[900px]:w-[38.2%] min-[900px]:flex-none">
                     <div className={BAR}>
-                        <span className="truncate text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                        <span className={`truncate ${LABEL} text-slate-500`}>
                             {t.pane_visualization}
                         </span>
                     </div>
@@ -277,8 +280,8 @@ export default function Home() {
                             catalog={catalog}
                             datalog={datalog}
                             selectedJob={jobTab ? selectedJob : null}
-                            ecuId={ecuId}
                             telegrams={telegrams}
+                            jobText={jobText}
                             workflows={workflows}
                         />
                     </div>
@@ -293,7 +296,7 @@ export default function Home() {
                             shape as the reference app's DME row. Centring a lone
                             chip left the panel with no anchor and no label. */}
                         <div className="flex h-[32px] items-center justify-between gap-3 px-2">
-                            <span className="flex shrink-0 items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                            <span className={`flex shrink-0 items-center gap-1.5 ${LABEL} text-slate-500`}>
                                 <Cpu className="size-3" />
                                 {t.module}
                             </span>
@@ -361,9 +364,9 @@ export default function Home() {
                                 ends up pressing start twice. `latching` gets none
                                 — it has no release job, and a disabled STOP would
                                 imply one exists. */}
-                            {jobTab && selectedJob && hasStopControl(jobOperation(selectedJob, ecuId)) && (
+                            {jobTab && selectedJob && hasStopControl(opFor(selectedJob)) && (
                                 <TextButton disabled tone="destructive" Icon={Square} title={t.gate_practiceOnly}>
-                                    {jobOperation(selectedJob, ecuId).kind === 'procedure' ? t.op_abort : t.op_stop}
+                                    {opFor(selectedJob).kind === 'procedure' ? t.op_abort : t.op_stop}
                                 </TextButton>
                             )}
                         </SubActions>
@@ -411,7 +414,7 @@ function PracticeToggle({
     const { t } = useLang();
     return (
         <label
-            className={`flex shrink-0 items-center gap-1.5 font-mono text-[9px] uppercase tracking-wider ${
+            className={`flex shrink-0 items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider ${
                 disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'
             } ${checked && !disabled ? 'text-indigo-400' : 'text-slate-500'}`}
             title={t.mode_practice}
@@ -457,53 +460,50 @@ function ProcedureSection({
     if (!workflows) return null;
 
     return (
-        <section className="mb-6">
-            <div className="flex items-baseline justify-between">
-                <MicroLabel>{t.proc_title}</MicroLabel>
-                <span className="font-mono text-[11px] text-slate-600">{workflows.procedures.length}</span>
-            </div>
-
-            <ul className="mt-1.5 divide-y divide-slate-800/50 border-t border-slate-800/50">
-                {workflows.procedures.map((p) => {
-                    const job = procedureAsJob(p);
-                    const selected = job.id === selectedId;
-                    return (
-                        <li key={p.id}>
-                            <button
-                                type="button"
-                                onClick={() => onSelect(job)}
-                                aria-pressed={selected}
-                                className={`w-full px-2 py-2 text-left transition-colors ${
-                                    selected ? 'bg-blue-500/10' : 'hover:bg-slate-800/40'
-                                }`}
-                            >
-                                <div className="flex items-baseline gap-x-3">
+        <div className="flex flex-col gap-6">
+            <Section title={t.proc_title} count={workflows.procedures.length}>
+                <DataList>
+                    {workflows.procedures.map((p) => {
+                        const job = procedureAsJob(p);
+                        return (
+                            <DataRow
+                                key={p.id}
+                                selected={job.id === selectedId}
+                                onSelect={() => onSelect(job)}
+                                leading={
                                     <Pill tone={p.risk === 'high' ? 'danger' : 'caution'}>
                                         {p.risk === 'high' ? t.risk_high : t.risk_medium}
                                     </Pill>
-                                    <span className="font-mono text-xs text-slate-300">{p.id}</span>
-                                    <span className="min-w-0 flex-1 truncate text-xs text-slate-400">
-                                        {lang === 'en' ? p.name.en : p.name.ja}
-                                    </span>
-                                    <span className="shrink-0 font-mono text-[10px] text-slate-500">{p.durMax}</span>
-                                    <span
-                                        className={`shrink-0 text-[9px] font-bold uppercase tracking-widest ${
-                                            p.engine === 'run' ? 'text-amber-400' : 'text-slate-600'
-                                        }`}
-                                    >
-                                        {p.engine === 'run' ? t.proc_engineRun : t.proc_engineOff}
-                                    </span>
-                                </div>
-                                <p className="mt-1 text-[11px] text-slate-500">{lang === 'en' ? p.desc.en : p.desc.ja}</p>
-                            </button>
-                        </li>
-                    );
-                })}
-            </ul>
+                                }
+                                title={p.id}
+                                subtitle={lang === 'en' ? p.name.en : p.name.ja}
+                                trailing={
+                                    <>
+                                        <span className="shrink-0 font-mono text-[10px] text-slate-500">
+                                            {p.durMax}
+                                        </span>
+                                        <span
+                                            className={`shrink-0 ${LABEL} ${
+                                                p.engine === 'run' ? 'text-amber-400' : 'text-slate-600'
+                                            }`}
+                                        >
+                                            {p.engine === 'run' ? t.proc_engineRun : t.proc_engineOff}
+                                        </span>
+                                    </>
+                                }
+                                detail={
+                                    <p className="text-[11px] text-slate-500">
+                                        {lang === 'en' ? p.desc.en : p.desc.ja}
+                                    </p>
+                                }
+                            />
+                        );
+                    })}
+                </DataList>
+            </Section>
 
-            <div className="mt-4">
-                <MicroLabel>{t.seq_title}</MicroLabel>
-                <div className="mt-1.5 divide-y divide-slate-800/50 border-t border-slate-800/50">
+            <Section title={t.seq_title} count={workflows.sequences.length}>
+                <div className="divide-y divide-slate-800/50 border-t border-slate-800/50">
                     {workflows.sequences.map((s) => (
                         <SequenceCard
                             key={s.id}
@@ -516,8 +516,8 @@ function ProcedureSection({
                         />
                     ))}
                 </div>
-            </div>
-        </section>
+            </Section>
+        </div>
     );
 }
 
@@ -533,18 +533,38 @@ function procedureAsJob(p: Smg2Procedure): CatalogJob {
         id: `${PROCEDURE_PREFIX}${p.id}`,
         ja: p.name.ja,
         en: p.name.en,
-        desc: { de: p.name.de, ja: p.desc.ja, en: p.desc.en },
+        class: 'calibration',
+        audience: 'owner',
+        system: 'gearbox',
+        // The SGBD-derived table states this; do not let a name heuristic
+        // downgrade a 3-minute full gearbox adaptation to "medium".
+        risk: p.risk === 'high' ? 'high' : p.risk === 'low' ? 'low' : 'medium',
+        riskProvenance: 'sgbd-comment',
+        op: {
+            kind: 'procedure',
+            actor: 'ecu',
+            termination: 'companion-job',
+            resultDelivery: 'companion-job',
+            prerequisiteJobs: ['TESTPRG_STOP'],
+            stopJob: 'TESTPRG_STOP',
+            resultJob: 'STATUS_TESTPRG',
+            ecuTimeoutSec: 10,
+            provenance: 'sgbd-comment',
+        },
+        // The engine state is the procedure's own, from the SGBD table. Asserting
+        // `engine_off` for a program that requires the engine RUNNING would be a
+        // precondition that makes the job impossible.
+        preconditions: p.engine === 'run' ? ['voltage_ok', 'stationary'] : ['voltage_ok', 'stationary', 'engine_off'],
         // Both arguments TESTPRG_STARTEN takes. AUSWAHLBYTE only where the
         // procedure actually selects something — 0x0A "engage arbitrary gear"
         // is the one that does.
         args: p.auswahl
-            ? [{ name: 'TESTPRG_NR' }, { name: 'AUSWAHLBYTE' }]
-            : [{ name: 'TESTPRG_NR' }],
-        catJa: p.cat,
-        catEn: p.cat,
-        // The SGBD-derived table states this; do not let the name heuristic
-        // downgrade a 3-minute full gearbox adaptation to "medium".
-        risk: p.risk === 'high' ? 'high' : p.risk === 'low' ? 'low' : 'medium',
+            ? [
+                  { name: 'TESTPRG_NR', type: 'int', kind: 'enum' },
+                  { name: 'AUSWAHLBYTE', type: 'int', kind: 'enum' },
+              ]
+            : [{ name: 'TESTPRG_NR', type: 'int', kind: 'enum' }],
+        results: [],
     };
 }
 
@@ -552,6 +572,18 @@ function procedureForJob(job: CatalogJob, workflows: Smg2Workflows | null): Smg2
     if (!job.id.startsWith(PROCEDURE_PREFIX)) return null;
     const id = job.id.slice(PROCEDURE_PREFIX.length);
     return workflows?.procedures.find((p) => p.id === id) ?? null;
+}
+
+/**
+ * The operation for a selected row.
+ *
+ * An adapted procedure is not an SGBD job and has no classification to read, so
+ * it takes the one builder in jobOps. Everything else reads `job.op`.
+ */
+function opFor(job: CatalogJob) {
+    return job.id.startsWith(PROCEDURE_PREFIX)
+        ? procedureOperation(job.id, job.args.length > 0)
+        : jobOperation(job);
 }
 
 
@@ -630,26 +662,32 @@ function useHubConfig(
         };
     }
 
-    // The job tabs. With nothing selected the hub has no job to name, and says
-    // so rather than offering a verb with no object.
-    if (tab === 'calibration' || tab === 'testjobs') {
+    // The job tab. With nothing selected the hub has no job to name, and says so
+    // rather than offering a verb with no object.
+    if (tab === 'jobs') {
         if (!selectedJob) {
             return { label: t.hub_connected, Icon: CircleDot, tone: 'idle', disabled: true, notice: t.plan_selectHint };
         }
-        const op = jobOperation(selectedJob, ecuId);
+        const op = opFor(selectedJob);
         const tel = bestTelegram(telegrams, selectedJob.id);
         const risk = jobRiskOf(selectedJob);
 
-        // Three independent gates, and the notice names whichever bites first,
+        // Four independent gates, and the notice names whichever bites first,
         // cheapest-to-fix first: PRACTICE is a checkbox away, an argument is
-        // something the operator can supply, an unrecovered telegram is neither.
-        const blocked = !onVehicle
-            ? t.op_blocked_practice
-            : op.needsArgs
-              ? t.op_blocked_args
-              : !telegramIsCertain(tel)
-                ? t.op_blocked_telegram
-                : undefined;
+        // something the operator can supply, an unrecovered telegram is neither —
+        // and a programming job gets NO run control at all, which is why it is
+        // checked first and phrased as a property of the job rather than of the
+        // session.
+        const blocked =
+            selectedJob.class === 'programming'
+                ? t.jobClass.programming
+                : !onVehicle
+                  ? t.op_blocked_practice
+                  : op.needsArgs
+                    ? t.op_blocked_args
+                    : !telegramIsCertain(tel)
+                      ? t.op_blocked_telegram
+                      : undefined;
 
         return {
             label: op.kind === 'procedure' ? t.op_start : t.op_run,
@@ -676,17 +714,17 @@ function Viz({
     catalog,
     datalog,
     selectedJob,
-    ecuId,
     telegrams,
+    jobText,
     workflows,
 }: {
     tab: Tab;
     link: Link;
-    catalog: EcuCatalog | null;
+    catalog: EcuProfile | null;
     datalog: ReturnType<typeof useDatalog>;
     selectedJob: CatalogJob | null;
-    ecuId: string;
     telegrams: TelegramTable | null;
+    jobText: JobTextTable | null;
     workflows: Smg2Workflows | null;
 }) {
     const { t } = useLang();
@@ -712,7 +750,7 @@ function Viz({
                 >
                     {n}
                 </div>
-                <div className="mt-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                <div className={`mt-2 ${LABEL} text-slate-500`}>
                     {n === 0 ? t.viz_clean : t.viz_faults}
                 </div>
             </div>
@@ -723,11 +761,12 @@ function Viz({
 
     // A job is selected: the question is no longer "what is in this list" but
     // "what happens if I press the button", so answer that instead.
-    if (selectedJob) {
+    if (selectedJob && catalog) {
         return (
-            <JobPlan
+            <JobDetail
+                profile={catalog}
                 job={selectedJob}
-                moduleId={ecuId}
+                jobText={jobText}
                 telegrams={telegrams}
                 workflows={workflows}
                 procedure={procedureForJob(selectedJob, workflows)}
@@ -735,38 +774,42 @@ function Viz({
         );
     }
 
-    const jobs = tab === 'calibration' ? catalog?.actuators : catalog?.testJobs;
-    if (!jobs || jobs.length === 0) return <Awaiting icon={ListChecks} label={t.awaiting_catalog} />;
+    if (!catalog || catalog.jobs.length === 0) return <Awaiting icon={ListChecks} label={t.awaiting_catalog} />;
 
     const mix = { high: 0, medium: 0, low: 0 };
-    for (const j of jobs) mix[jobRiskOf(j)]++;
-    const total = jobs.length;
+    for (const j of catalog.jobs) mix[jobRiskOf(j)]++;
+    const total = catalog.jobs.length;
+    // The class breakdown is the answer to "what IS this module", and it is the
+    // fact the two-tab split was silently asserting without ever showing.
+    const byClass = facetCounts(catalog.jobs, (j) => j.class).slice(0, 4);
 
     return (
-        <div className="flex h-full flex-col justify-center gap-3">
-            <div className="flex items-baseline justify-between">
-                <span className="text-[9px] font-bold uppercase tracking-widest text-slate-600">{t.riskMix}</span>
-                <span className="font-mono text-[10px] text-slate-500">{total}</span>
+        <div className="flex h-full flex-col justify-center gap-4">
+            <div>
+                <div className="flex items-baseline justify-between">
+                    <MicroLabel>{t.riskMix}</MicroLabel>
+                    <span className="font-mono text-[11px] tabular-nums text-slate-500">{total}</span>
+                </div>
+                <div className="mt-1.5 flex h-3 overflow-hidden rounded-sm bg-slate-800">
+                    <div className="bg-red-500/70" style={{ width: `${(mix.high / total) * 100}%` }} />
+                    <div className="bg-amber-500/70" style={{ width: `${(mix.medium / total) * 100}%` }} />
+                    <div className="bg-slate-600" style={{ width: `${(mix.low / total) * 100}%` }} />
+                </div>
+                <div className="mt-2 grid grid-cols-3 gap-x-2">
+                    <Field label={t.risk_high} value={mix.high} stacked tone="text-red-400" />
+                    <Field label={t.risk_medium} value={mix.medium} stacked tone="text-amber-400" />
+                    <Field label={t.risk_low} value={mix.low} stacked tone="text-slate-400" />
+                </div>
             </div>
-            <div className="flex h-3 overflow-hidden rounded-sm bg-slate-800">
-                <div className="bg-red-500/70" style={{ width: `${(mix.high / total) * 100}%` }} />
-                <div className="bg-amber-500/70" style={{ width: `${(mix.medium / total) * 100}%` }} />
-                <div className="bg-slate-600" style={{ width: `${(mix.low / total) * 100}%` }} />
-            </div>
-            <div className="grid grid-cols-3 gap-x-2 font-mono">
-                <MixCell n={mix.high} label={t.risk_high} tone="text-red-400" />
-                <MixCell n={mix.medium} label={t.risk_medium} tone="text-amber-400" />
-                <MixCell n={mix.low} label={t.risk_low} tone="text-slate-400" />
-            </div>
-        </div>
-    );
-}
 
-function MixCell({ n, label, tone }: { n: number; label: string; tone: string }) {
-    return (
-        <div className="flex flex-col leading-none">
-            <span className="text-[8px] uppercase tracking-wider text-slate-600">{label}</span>
-            <span className={`mt-1.5 text-[11px] font-bold tabular-nums ${tone}`}>{n}</span>
+            <div>
+                <MicroLabel>{t.facet_purpose}</MicroLabel>
+                <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-3">
+                    {byClass.map(({ key, count }) => (
+                        <Field key={key} label={t.jobClass[key]} value={count} stacked title={t.jobClassNote[key]} />
+                    ))}
+                </div>
+            </div>
         </div>
     );
 }
@@ -834,15 +877,44 @@ function Sparkline({ datalog }: { datalog: ReturnType<typeof useDatalog> }) {
     );
 }
 
-function DiagnosisPane({ link, catalog }: { link: Link; catalog: EcuCatalog | null }) {
+/**
+ * Normalise a fault / freeze-frame code for lookup.
+ *
+ * NOT `toUpperCase()`. The table writes `0x2A` and `formatErrorCode` produces
+ * `0x2A`, but `"0x2A".toUpperCase()` is `"0X2A"` — the `x` uppercases too — so a
+ * map keyed that way misses every single code while looking perfectly correct.
+ * That is precisely how the freeze frames kept rendering as raw bytes with a
+ * decode table sitting right there.
+ */
+function normCode(s: string): string {
+    return s.trim().toLowerCase();
+}
+
+function DiagnosisPane({ link, catalog }: { link: Link; catalog: EcuProfile | null }) {
     const { lang, t } = useLang();
     const [query, setQuery] = useState('');
+
+    // Code-keyed now. The old table was an unindexed bag of strings scraped by
+    // XOR-ing the .prg and truncated at exactly 250, so a fault could be looked
+    // up only by reading German. FORTTEXTE is the SGBD's real mapping.
+    const faultByCode = useMemo(
+        () => new Map((catalog?.faultText ?? []).map((f) => [normCode(f.code), f])),
+        [catalog],
+    );
+    const envByCode = useMemo(
+        () => new Map((catalog?.envFields ?? []).map((e) => [normCode(e.code), e])),
+        [catalog],
+    );
 
     const hits = useMemo(() => {
         const q = query.trim().toLowerCase();
         if (!q || !catalog) return [];
         return catalog.faultText
-            .filter((f) => [f.de, f.ja, f.en].some((s) => s.toLowerCase().includes(q)))
+            .filter((f) => {
+                if (f.code.toLowerCase().includes(q)) return true;
+                const x = catalog.texts[f.text];
+                return !!x && [x.de, x.ja, x.en].some((s) => s.toLowerCase().includes(q));
+            })
             .slice(0, 40);
     }, [catalog, query]);
 
@@ -861,65 +933,144 @@ function DiagnosisPane({ link, catalog }: { link: Link; catalog: EcuCatalog | nu
             ) : link.faults.length === 0 ? (
                 <p className="py-2 text-xs text-emerald-400">{t.faults_none}</p>
             ) : (
-                <ul className="divide-y divide-slate-800/50">
-                    {link.faults.map((f) => (
-                        <li key={`${f.number}-${f.errorCode}`} className="py-3 first:pt-0">
-                            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-                                <span className="font-mono text-xs text-red-400">{formatErrorCode(f.errorCode)}</span>
-                                <Readout label={t.faults_type} value={formatErrorCode(f.errorType)} />
-                                <Readout label={t.faults_frequency} value={String(f.frequencyCounter)} />
-                                <Readout label={t.faults_logistics} value={String(f.logisticsCounter)} />
-                            </div>
-                            <div className="mt-2">
-                                <MicroLabel>{t.faults_freezeFrames}</MicroLabel>
-                            </div>
-                            {/* w-auto, not w-full. Stretched to the pane the three
-                                columns fly apart — the index at the far left, the
-                                counter 800px away at the far right — and the table
-                                stops reading as one record. */}
-                            <table className="mt-1 w-auto font-mono text-[11px] text-slate-400">
-                                <tbody>
-                                    {f.environmentSets.map((s, i) => (
-                                        <tr key={i}>
-                                            <td className="py-0.5 pr-4 text-slate-600">#{i + 1}</td>
-                                            <td className="py-0.5 pr-6">
-                                                {[s.condition1, s.condition2, s.condition3, s.condition4]
-                                                    .map((b) => b.toString(16).padStart(2, '0'))
-                                                    .join(' ')}
-                                            </td>
-                                            <td className="py-0.5 text-right tabular-nums text-slate-500">
-                                                {s.counter}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </li>
-                    ))}
-                </ul>
+                <DataList>
+                    {link.faults.map((f) => {
+                        const code = formatErrorCode(f.errorCode);
+                        const known = faultByCode.get(normCode(code));
+                        const meaning = known && catalog ? resolveText(catalog, known.text, lang) : null;
+                        return (
+                            <DataRow
+                                key={`${f.number}-${f.errorCode}`}
+                                title={<span className="text-red-400">{code}</span>}
+                                subtitle={meaning?.text}
+                                trailing={
+                                    <span className="shrink-0 font-mono text-[10px] text-slate-600">
+                                        {formatErrorCode(f.errorType)}
+                                    </span>
+                                }
+                                detail={
+                                    <>
+                                        {meaning?.original && meaning.original !== meaning.text && (
+                                            <p className="font-mono text-[10px] text-slate-500">{meaning.original}</p>
+                                        )}
+                                        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                                            <Field label={t.faults_frequency} value={f.frequencyCounter} />
+                                            <Field label={t.faults_logistics} value={f.logisticsCounter} />
+                                        </div>
+                                        <MicroLabel>{t.faults_freezeFrames}</MicroLabel>
+                                        {f.environmentSets.map((s, i) => (
+                                            <FreezeFrame
+                                                key={i}
+                                                index={i}
+                                                bytes={[s.condition1, s.condition2, s.condition3, s.condition4]}
+                                                counter={s.counter}
+                                                codes={known?.env}
+                                                envByCode={envByCode}
+                                                profile={catalog}
+                                                lang={lang}
+                                            />
+                                        ))}
+                                    </>
+                                }
+                            />
+                        );
+                    })}
+                </DataList>
             )}
 
             {catalog && (
-                <div className="mt-6 border-t border-slate-800/50 pt-4">
-                    <MicroLabel>
-                        {t.faultRef} ({catalog.faultText.length})
-                    </MicroLabel>
-                    <p className="mb-2 mt-1 max-w-[60ch] text-[11px] text-slate-600">{t.faultRef_note}</p>
-                    {/* Capped. Stretched to a 900px column this was a grey slab
-                        the width of the pane, which is the largest object on the
-                        screen and says nothing. */}
-                    <SearchInput value={query} onChange={setQuery} placeholder={t.search} className="w-full max-w-[420px]" />
-                    <ul className="mt-2 divide-y divide-slate-800/50">
-                        {hits.map((f, i) => (
-                            <li key={i} className="py-1.5 first:pt-0">
-                                <div className="text-[11px] text-slate-300">{lang === 'en' ? f.en : f.ja}</div>
-                                <div className="font-mono text-[10px] text-slate-600">{f.de}</div>
-                            </li>
-                        ))}
-                    </ul>
+                <div className="mt-6">
+                    <Section title={t.faultRef} count={catalog.faultText.length} note={t.faultRef_note}>
+                        {/* Capped. Stretched to a 900px column this was a grey
+                            slab the width of the pane, which is the largest
+                            object on the screen and says nothing. */}
+                        <SearchInput
+                            value={query}
+                            onChange={setQuery}
+                            placeholder={t.search}
+                            className="w-full max-w-[420px]"
+                        />
+                        <DataList className="mt-2">
+                            {hits.map((f) => {
+                                const x = resolveText(catalog, f.text, lang);
+                                return (
+                                    <DataRow
+                                        key={f.code}
+                                        title={f.code}
+                                        subtitle={x.text}
+                                        detail={
+                                            x.original !== x.text ? (
+                                                <p className="font-mono text-[10px] text-slate-500">{x.original}</p>
+                                            ) : undefined
+                                        }
+                                    />
+                                );
+                            })}
+                        </DataList>
+                    </Section>
                 </div>
             )}
         </>
+    );
+}
+
+/**
+ * A freeze frame, decoded.
+ *
+ * This used to print `20 40 60 80` — four raw bytes with no names and no units,
+ * because the decode table was not in the dump. `FUMWELTTEXTE` carries the field
+ * name, the unit and the arithmetic, and `FORTTEXTE.UW_1..UW_4` says WHICH four
+ * fields this particular fault stored. Both arrived with the Phase 0 re-dump.
+ *
+ * Where the fault does not name its fields, the raw bytes are still shown. A
+ * missing table means "we cannot name these", not "there was nothing here".
+ */
+function FreezeFrame({
+    index,
+    bytes,
+    counter,
+    codes,
+    envByCode,
+    profile,
+    lang,
+}: {
+    index: number;
+    bytes: number[];
+    counter: number;
+    codes?: string[];
+    envByCode: Map<string, NonNullable<EcuProfile['envFields']>[number]>;
+    profile: EcuProfile | null;
+    lang: Lang;
+}) {
+    const hex = bytes.map((b) => b.toString(16).padStart(2, '0')).join(' ');
+    const decoded =
+        codes && profile
+            ? bytes.map((b, i) => {
+                  const e = codes[i] ? envByCode.get(normCode(codes[i])) : undefined;
+                  if (!e) return null;
+                  const value = b * (e.scale ?? 1) + (e.add ?? 0);
+                  return { name: resolveText(profile, e.text, lang).text, value, unit: e.unit };
+              })
+            : null;
+
+    return (
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+            <span className="font-mono text-[10px] text-slate-600">
+                #{index + 1} {hex} ×{counter}
+            </span>
+            {decoded?.map(
+                (d, i) =>
+                    d && (
+                        <Field
+                            key={i}
+                            label={d.name}
+                            labelKind="data"
+                            value={Number.isInteger(d.value) ? d.value : d.value.toFixed(1)}
+                            unit={d.unit}
+                        />
+                    ),
+            )}
+        </div>
     );
 }
 
@@ -940,20 +1091,25 @@ function DatalogPane({ datalog }: { datalog: ReturnType<typeof useDatalog> }) {
                 <span className="text-slate-600">{datalog.costNotice}</span>
             </div>
 
-            <table className="mb-6 w-full font-mono text-xs">
-                <tbody className="divide-y divide-slate-800/50">
-                    {datalog.selected.map((symbol) => (
-                        <tr key={symbol}>
-                            <td className="py-1 pr-4 text-slate-400">{symbol}</td>
-                            <td className="py-1 text-right text-slate-200">
-                                {datalog.latest[symbol] == null ? '—' : datalog.latest[symbol]!.toFixed(2)}
-                            </td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
+            <div className="flex flex-col gap-6">
+                <Section title={t.channels} count={datalog.selected.length}>
+                    <DataList>
+                        {datalog.selected.map((symbol) => (
+                            <DataRow
+                                key={symbol}
+                                title={symbol}
+                                trailing={
+                                    <span className="shrink-0 font-mono text-xs tabular-nums text-slate-200">
+                                        {datalog.latest[symbol] == null ? '—' : datalog.latest[symbol]!.toFixed(2)}
+                                    </span>
+                                }
+                            />
+                        ))}
+                    </DataList>
+                </Section>
 
-            <ChannelPicker selected={datalog.selected} disabled={datalog.running} onToggle={datalog.toggle} />
+                <ChannelPicker selected={datalog.selected} disabled={datalog.running} onToggle={datalog.toggle} />
+            </div>
         </>
     );
 }
@@ -981,7 +1137,11 @@ const ChannelPicker = memo(function ChannelPicker({
                         <span className="font-mono text-slate-600">{block.selection}</span> {block.name}{' '}
                         <span className="text-slate-600">({block.fields.length})</span>
                     </summary>
-                    <div className="max-h-48 overflow-auto pb-2 pl-4">
+                    {/* No max-h / overflow-auto here. The pane is already the
+                        scroller; a second one inside it means the wheel does
+                        nothing until the inner list bottoms out, and the picker
+                        was the only place in the app that did that. */}
+                    <div className="pb-2 pl-4">
                         {block.fields.map((f) => (
                             <label
                                 key={`${block.selection}:${f.symbol}`}
@@ -1111,15 +1271,6 @@ function EcuSelect({
                 ))}
             </select>
         </div>
-    );
-}
-
-function Readout({ label, value }: { label: string; value: string }) {
-    return (
-        <span className="flex items-baseline gap-1.5">
-            <span className="text-[10px] uppercase tracking-widest text-slate-600">{label}</span>
-            <span className="font-mono text-xs text-slate-300">{value}</span>
-        </span>
     );
 }
 

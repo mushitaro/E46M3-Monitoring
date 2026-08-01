@@ -32,11 +32,15 @@ import {
     ERROR_MEMORY_ENTRIES,
     ERROR_MEMORY_QUICKTEST,
     IDENT_REQUEST,
+    MSS54_ADAPTATION_BLOCKS,
+    adaptationBlockMinLength,
+    decodeAdaptationBlock,
     decodeLiveBlock,
     liveBlockRequest,
     parseErrorMemoryEntries,
     parseQuickTest,
     planBlockReads,
+    type DecodedAdaptation,
     type ErrorMemoryEntry,
     type ErrorMemoryQuickTest,
 } from '@tsunagi/ds2-mss54';
@@ -91,6 +95,24 @@ export interface LiveSample {
 }
 
 /**
+ * One adaptation block, read or not read.
+ *
+ * `error` and `short` are separate states because they are separate facts: the
+ * ECU refusing to answer and the ECU answering with fewer bytes than the field
+ * table needs are different problems with different fixes, and collapsing them
+ * into "no data" would hide which one happened.
+ */
+export interface AdaptationRead {
+    selection: number;
+    name: string;
+    values: DecodedAdaptation[];
+    payloadLength: number;
+    requiredLength: number;
+    short: boolean;
+    error: string | null;
+}
+
+/**
  * The comms log is a ring buffer, not an unbounded array and not a DOM node.
  * The old app kept it only in the DOM, trimmed at 400 lines and lost it on
  * every reload — including the reloads its own service worker triggered — so
@@ -126,6 +148,7 @@ export function useDs2Link() {
     const [ident, setIdent] = useState<{ hex: string; length: number } | null>(null);
     const [faults, setFaults] = useState<ErrorMemoryEntry[] | null>(null);
     const [quickTest, setQuickTest] = useState<ErrorMemoryQuickTest | null>(null);
+    const [adaptations, setAdaptations] = useState<AdaptationRead[] | null>(null);
 
     const webSerialSupported = useWebSerialSupported();
 
@@ -266,6 +289,69 @@ export function useDs2Link() {
     );
 
     /**
+     * The learned values: lambda trim, throttle and pedal zeroes, crank-wheel
+     * segment deviation and knock adaptation per cylinder, lifetime misfire
+     * counters, highest RPM and speed ever seen.
+     *
+     * Same control byte as a live block (0x0B) and the same decoder — the only
+     * difference is which selections and which field table, which is exactly why
+     * this is one loop and not a second protocol.
+     *
+     * Two honesty properties this deliberately keeps:
+     *
+     *   - a block whose payload is SHORTER than its field table needs is
+     *     recorded as `short`, and its out-of-range fields decode to null rather
+     *     than to a plausible number from adjacent bytes. Block 6 declares
+     *     `ExpectedLength = 83` while its own fields reach offset 92, so this is
+     *     not hypothetical.
+     *   - one failing block does not abandon the rest. Reading four of five and
+     *     saying which one failed beats reading none, and the per-block error is
+     *     kept beside the block instead of being flattened into the link error.
+     */
+    const readAdaptations = useCallback(
+        () =>
+            run('Read adaptations', async (link) => {
+                const out: AdaptationRead[] = [];
+                for (const block of MSS54_ADAPTATION_BLOCKS) {
+                    const req = liveBlockRequest(block.selection);
+                    append('tx', `Adaptation block ${block.selection} (control 0x${req.control.toString(16)})`);
+                    try {
+                        const frame = await link.exchangeWithRetry(req.control, req.payload);
+                        link.assertPositive(frame, `Adaptation block ${block.selection}`);
+                        const need = adaptationBlockMinLength(block);
+                        const short = frame.payload.length < need;
+                        if (short) append('warn', `block ${block.selection}: ${frame.payload.length} bytes, needs ${need}`);
+                        else append('rx', `${frame.payload.length} bytes`);
+                        out.push({
+                            selection: block.selection,
+                            name: block.name,
+                            values: decodeAdaptationBlock(block, frame.payload),
+                            payloadLength: frame.payload.length,
+                            requiredLength: need,
+                            short,
+                            error: null,
+                        });
+                    } catch (e) {
+                        const message = e instanceof Error ? e.message : String(e);
+                        append('warn', `block ${block.selection} failed: ${message}`);
+                        out.push({
+                            selection: block.selection,
+                            name: block.name,
+                            values: [],
+                            payloadLength: 0,
+                            requiredLength: adaptationBlockMinLength(block),
+                            short: false,
+                            error: message,
+                        });
+                    }
+                }
+                setAdaptations(out);
+                return out;
+            }),
+        [append, run],
+    );
+
+    /**
      * Telemetry.
      *
      * No interval. Requests are awaited back to back, so the sample rate IS the
@@ -379,11 +465,13 @@ export function useDs2Link() {
         ident,
         faults,
         quickTest,
+        adaptations,
         webSerialSupported,
         connect,
         disconnect,
         readIdent,
         readFaults,
+        readAdaptations,
         startLog,
         stopLog,
         clearLog,

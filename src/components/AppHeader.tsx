@@ -1,5 +1,6 @@
 'use client';
 
+import { LABEL } from './ui';
 import { MMark } from './MMark';
 import { StatusLed } from './StatusLed';
 import { APP_VERSION } from '@/lib/version';
@@ -53,18 +54,18 @@ export function AppHeader({
             <div className="flex min-w-0 flex-1 items-center gap-3">
                 <StatusLed state={state} mode={mode} hasError={hasError} showLabel={false} />
 
-                <h1 className="shrink-0 whitespace-nowrap text-sm font-bold uppercase tracking-widest text-slate-200">
+                <h1 className={`shrink-0 whitespace-nowrap ${LABEL} text-slate-200`}>
                     E46M3
                     <MMark className="mx-1.5" />
                     {t.appRole}
                 </h1>
 
-                <span className="shrink-0 whitespace-nowrap font-mono text-[9px] text-slate-500">{APP_VERSION}</span>
+                <span className="shrink-0 whitespace-nowrap font-mono text-[10px] text-slate-500">{APP_VERSION}</span>
 
                 {/* Identity readouts, fenced off with a rule. Mono, because this
                     is data read off a machine — the split from the sans chrome is
                     a core identity cue, not a font preference. */}
-                <div className="ml-8 flex min-w-0 flex-1 items-center gap-4 overflow-hidden whitespace-nowrap border-l border-slate-800 pl-8 font-mono text-[9px] text-slate-500">
+                <div className="ml-8 flex min-w-0 flex-1 items-center gap-4 overflow-hidden whitespace-nowrap border-l border-slate-800 pl-8 font-mono text-[10px] text-slate-500">
                     <Readout label="IDENT" value={ident ? truncate(ident.hex, 26) : '—'} />
                     <Readout label="LEN" value={ident ? String(ident.length) : '—'} />
                 </div>
@@ -77,7 +78,7 @@ export function AppHeader({
                         type="button"
                         onClick={() => setLang(l)}
                         aria-pressed={lang === l}
-                        className={`px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-widest transition-colors ${
+                        className={`px-1.5 py-0.5 ${LABEL} transition-colors ${
                             lang === l ? 'text-blue-400' : 'text-slate-600 hover:text-slate-400'
                         }`}
                     >

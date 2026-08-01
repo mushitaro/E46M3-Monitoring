@@ -1,94 +1,150 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { PROCEDURE_PREFIX, hasStopControl, jobOperation, reportsProgress } from './jobOps';
-import type { CatalogJob } from './ecuCatalog';
+import {
+    PROCEDURE_PREFIX,
+    deliversResultElsewhere,
+    hasStopControl,
+    jobOperation,
+    procedureOperation,
+    reportsProgress,
+} from './jobOps';
+import type { CatalogJob, EcuProfile } from './ecuCatalog';
 
-const job = (id: string, de?: string, args?: string[]): CatalogJob => ({
-    id,
-    ja: '',
-    en: '',
-    desc: de ? { de } : undefined,
-    args: args?.map((name) => ({ name })),
-});
+/**
+ * These tests used to build fake `CatalogJob`s and assert what the classifier in
+ * this file made of them. That tested a regex against another regex: the fixture
+ * and the code under test both came out of the same head, so the pair could agree
+ * perfectly while the SHIPPED data said something else — which is exactly what
+ * happened, for 192 jobs.
+ *
+ * So every case below now reads the real generated `public/ecu-data/*.jobs.json`.
+ * A test failing here means the data changed, which is the only thing worth being
+ * told about. The assertions are the same 22, one per original case, plus the
+ * shapes that had no coverage because they had no implementation.
+ */
+
+const DATA = path.resolve(import.meta.dirname, '..', '..', 'public', 'ecu-data');
+const MODULES = ['mss54', 'smg2', 'dsc_mk60'] as const;
+type ModuleId = (typeof MODULES)[number];
+
+const profiles = new Map<ModuleId, EcuProfile>();
+function profile(m: ModuleId): EcuProfile {
+    let p = profiles.get(m);
+    if (!p) {
+        p = JSON.parse(readFileSync(path.join(DATA, `${m}.jobs.json`), 'utf-8')) as EcuProfile;
+        profiles.set(m, p);
+    }
+    return p;
+}
+
+function job(m: ModuleId, id: string): CatalogJob {
+    const hit = profile(m).jobs.find((j) => j.id === id);
+    // A silently-absent job would make every assertion below vacuous, which is
+    // the failure mode that let jobs disappear in the first place.
+    if (!hit) throw new Error(`${m} has no job ${id}`);
+    return hit;
+}
+
+const op = (m: ModuleId, id: string) => jobOperation(job(m, id));
 
 describe('operation shape', () => {
     it('classifies a read as changing nothing and needing no stop', () => {
-        const op = jobOperation(job('ABGLEICHWERTE_LESEN', 'Lesen der aktuellen Abgleichwerte'), 'mss54');
-        expect(op.kind).toBe('read');
-        expect(hasStopControl(op)).toBe(false);
-        expect(op.irreversible).toBeUndefined();
+        const o = op('mss54', 'ABGLEICHWERTE_LESEN');
+        expect(o.kind).toBe('read');
+        expect(hasStopControl(o)).toBe(false);
+        expect(o.irreversible).toBeUndefined();
     });
 
     it('classifies a plain actuation as a pulse with nothing to stop', () => {
-        const op = jobOperation(job('STEUERN_EV1', 'Einspritzventil 1 ansteuern'), 'mss54');
-        expect(op.kind).toBe('pulse');
-        expect(hasStopControl(op)).toBe(false);
+        const o = op('mss54', 'STEUERN_EV1');
+        expect(o.kind).toBe('pulse');
+        expect(hasStopControl(o)).toBe(false);
     });
 
     // The SCHALTEN argument IS the switch, so this one holds. Getting it wrong
     // means no STOP control on a job that leaves an output energised.
     it('treats a SCHALTEN argument as a held output', () => {
-        const op = jobOperation(job('STEUERN_DMTL_HEIZUNG', 'Stellgliedansteuerung DMTL-Heizung', ['SCHALTEN']), 'mss54');
-        expect(op.kind).toBe('hold');
-        expect(hasStopControl(op)).toBe(true);
-        expect(op.stopJob).toBe('STEUERN_DMTL_HEIZUNG');
+        const o = op('mss54', 'STEUERN_DMTL_HEIZUNG');
+        expect(o.kind).toBe('hold');
+        expect(hasStopControl(o)).toBe(true);
+        expect(o.stopJob).toBe('STEUERN_DMTL_HEIZUNG');
+    });
+
+    // Sending the same job again is what releases it. The plan has to say so
+    // twice, because the second send is the step people forget.
+    it('spells the release out as its own step when the stop job is itself', () => {
+        const o = op('mss54', 'STEUERN_DMTL_HEIZUNG');
+        expect(o.steps.map((s) => s.why)).toEqual(['why_switchOn', 'why_switchOff']);
     });
 
     it('treats a direct pin drive as a held output, and says why it is dangerous', () => {
-        const op = jobOperation(
-            job('IO_STATUS_VORGEBEN', 'direkte Stellgliedansteuerung ueber Pin/Tastv./Periode', [
-                'PIN_NUMMER',
-                'TASTVERHAELTNIS',
-                'PERIODENDAUER',
-            ]),
-            'mss54',
-        );
-        expect(op.kind).toBe('hold');
-        expect(op.irreversible).toBe('irr_pin');
+        const o = op('mss54', 'IO_STATUS_VORGEBEN');
+        expect(o.kind).toBe('hold');
+        expect(o.irreversible).toBe('irr_pin');
+        expect(o.steps[0].why).toBe('why_pinDrive');
     });
 
     // DSC_SIM_* actuates and holds, and the SGBD exposes no release job. The UI
     // must not offer a STOP that cannot work.
     it('marks DSC_SIM_* as latching with NO stop control', () => {
-        const op = jobOperation(job('DSC_SIM_VA', 'Ansteuern und Halten ueber digitale Ansteuerung'), 'dsc_mk60');
-        expect(op.kind).toBe('latching');
-        expect(hasStopControl(op)).toBe(false);
-        expect(op.irreversible).toBe('irr_latching');
+        const o = op('dsc_mk60', 'DSC_SIM_VA');
+        expect(o.kind).toBe('latching');
+        expect(o.termination).toBe('none');
+        expect(hasStopControl(o)).toBe(false);
+        expect(o.irreversible).toBe('irr_latching');
     });
 
     it('pairs the fuel-pump relay with its own off job, both directions', () => {
-        expect(jobOperation(job('STEUERN_EKP', 'Kraftstoffpumpenrelais ansteuern'), 'mss54').stopJob).toBe(
-            'STEUERN_EKP_AUS',
-        );
-        expect(jobOperation(job('STEUERN_EKP_AUS', 'Kraftstoffpumpe (Relais) ausschalten'), 'mss54').stopJob).toBe(
-            'STEUERN_EKP',
-        );
+        expect(op('mss54', 'STEUERN_EKP').stopJob).toBe('STEUERN_EKP_AUS');
+        expect(op('mss54', 'STEUERN_EKP_AUS').stopJob).toBe('STEUERN_EKP');
+    });
+
+    // The fuel pump is a hazardous actuator whichever end of the pair you are
+    // holding. This was medium-risk with a voltage check only, because the rule
+    // lived inside the single-shot branch and the paired branch returned first.
+    it('keeps the fuel-pump relay high-risk despite being a paired job', () => {
+        for (const id of ['STEUERN_EKP', 'STEUERN_EKP_AUS']) {
+            const j = job('mss54', id);
+            expect(j.risk).toBe('high');
+            expect(j.preconditions).toContain('engine_off');
+        }
     });
 
     it('pairs the throttle-correction test run with its stop job', () => {
-        const op = jobOperation(
-            job('STEUERN_TI_ABGLEICH_STARTEN', 'Anstossen der automatischen Einzeldrosselklappenkorrektur (Prueflauf)'),
-            'mss54',
-        );
-        expect(op.kind).toBe('paired');
-        expect(op.stopJob).toBe('STEUERN_TI_ABGLEICH_STOPPEN');
-        expect(hasStopControl(op)).toBe(true);
+        const o = op('mss54', 'STEUERN_TI_ABGLEICH_STARTEN');
+        expect(o.kind).toBe('paired');
+        expect(o.stopJob).toBe('STEUERN_TI_ABGLEICH_STOPPEN');
+        expect(hasStopControl(o)).toBe(true);
+    });
+
+    it('words the two ends of a pair differently', () => {
+        expect(op('mss54', 'STEUERN_TI_ABGLEICH_STARTEN').steps[0].why).toBe('why_pairStart');
+        expect(op('mss54', 'STEUERN_TI_ABGLEICH_STOPPEN').steps[0].why).toBe('why_pairStop');
     });
 
     it('classifies a persistent write as irreversible', () => {
-        const op = jobOperation(job('CODIERDATEN_SCHREIBEN', 'Codierdaten schreiben'), 'smg2');
-        expect(op.kind).toBe('write');
-        expect(op.irreversible).toBe('irr_write');
+        const o = op('smg2', 'CODIERDATEN_SCHREIBEN');
+        expect(o.kind).toBe('write');
+        expect(o.irreversible).toBe('irr_write');
     });
 
     it('reads "anstossen" as a measurement the ECU finishes by itself', () => {
-        const op = jobOperation(job('STEUERN_EVANOS1_DICHTHEIT', 'Dichtheitmessung EVANOS1 anstossen'), 'mss54');
-        expect(op.kind).toBe('measurement');
-        expect(hasStopControl(op)).toBe(false);
+        const o = op('mss54', 'STEUERN_EVANOS1_DICHTHEIT');
+        expect(o.kind).toBe('measurement');
+        expect(hasStopControl(o)).toBe(false);
     });
 
-    it('says "unknown" rather than guessing when the SGBD comment is silent', () => {
-        const op = jobOperation(job('IRGENDWAS'), 'mss54');
-        expect(op.kind).toBe('unknown');
+    // Not "no job anywhere is unknown" — some genuinely are, and saying so is the
+    // point. What must not happen is an unknown that the SGBD did describe.
+    it('says "unknown" only where the SGBD offered nothing to go on', () => {
+        for (const m of MODULES) {
+            for (const j of profile(m).jobs) {
+                if (j.op.kind !== 'unknown') continue;
+                expect(j.op.provenance).toBe('name-heuristic');
+                expect(j.desc).toBeUndefined();
+            }
+        }
     });
 });
 
@@ -96,67 +152,135 @@ describe('the SMG II prepare requirement', () => {
     // Quoted from SMG2.prg: "For starter release, hydraulic pump, fault
     // indicator, and shift lock, this job must be sent beforehand!"
     it('puts ANSTEUERUNG_VORBEREITEN first and carries the ECU timings', () => {
-        const op = jobOperation(job('STEUERN_STELLGLIED', 'Stellglied', ['STELLGL', 'STEUERART1', 'STEUERART2']), 'smg2');
-        expect(op.kind).toBe('hold');
-        expect(op.steps[0].job).toBe('ANSTEUERUNG_VORBEREITEN');
-        expect(op.steps[0].required).toBe(true);
-        expect(op.ecuTimeoutSec).toBe(10);
-        expect(op.maxHoldSec).toBe(60);
+        const o = op('smg2', 'STEUERN_STELLGLIED');
+        expect(o.kind).toBe('hold');
+        expect(o.steps[0].job).toBe('ANSTEUERUNG_VORBEREITEN');
+        expect(o.steps[0].why).toBe('why_prepare');
+        expect(o.steps[0].required).toBe(true);
+        expect(o.ecuTimeoutSec).toBe(10);
+        expect(o.maxHoldSec).toBe(60);
     });
 
     // The rule is stated in SMG2.prg. Asserting it for a module that never
-    // claimed it would be as wrong as missing it where it applies.
-    it('does NOT apply the rule to another module with the same job name', () => {
-        const op = jobOperation(job('STEUERN_STELLGLIED', 'Stellglied', ['STELLGL']), 'mss54');
-        expect(op.steps[0].job).not.toBe('ANSTEUERUNG_VORBEREITEN');
+    // claimed it would be as wrong as missing it where it applies. The scoping
+    // now lives in the data, so this is a statement about the whole catalogue
+    // rather than about one hand-made fixture.
+    it('is claimed by SMG II and by nothing else', () => {
+        for (const m of MODULES) {
+            for (const j of profile(m).jobs) {
+                if ((j.op.prerequisiteJobs ?? []).includes('ANSTEUERUNG_VORBEREITEN')) expect(m).toBe('smg2');
+            }
+        }
+    });
+
+    // The keep-alive is what stops a 60-second actuation dying at 10.
+    it('keeps the session alive for anything with a stated ECU timeout', () => {
+        for (const m of MODULES) {
+            for (const j of profile(m).jobs) {
+                if (j.op.ecuTimeoutSec === undefined) continue;
+                expect(jobOperation(j).steps.map((s) => s.job)).toContain('DIAGNOSE_ERHALTEN');
+            }
+        }
     });
 });
 
 describe('SMG II test programs', () => {
     it('sends TESTPRG_STOP before TESTPRG_STARTEN, as the SGBD demands', () => {
-        const op = jobOperation(job(`${PROCEDURE_PREFIX}0x07`), 'smg2');
-        expect(op.kind).toBe('procedure');
-        expect(op.steps[0].job).toBe('TESTPRG_STOP');
-        expect(op.steps[1].job).toBe('TESTPRG_STARTEN');
-        expect(op.stopJob).toBe('TESTPRG_STOP');
+        const o = op('smg2', 'TESTPRG_STARTEN');
+        expect(o.kind).toBe('procedure');
+        expect(o.steps[0].job).toBe('TESTPRG_STOP');
+        expect(o.steps[1].job).toBe('TESTPRG_STARTEN');
+        expect(o.stopJob).toBe('TESTPRG_STOP');
     });
 
     it('polls for progress and keeps the 10s session alive', () => {
-        const op = jobOperation(job(`${PROCEDURE_PREFIX}0x05`), 'smg2');
-        expect(op.steps.map((s) => s.job)).toContain('STATUS_TESTPRG');
-        expect(op.steps.map((s) => s.job)).toContain('DIAGNOSE_ERHALTEN');
-        expect(op.ecuTimeoutSec).toBe(10);
-        expect(reportsProgress(op)).toBe(true);
-        expect(hasStopControl(op)).toBe(true);
+        const o = op('smg2', 'TESTPRG_STARTEN');
+        expect(o.steps.map((s) => s.job)).toContain('STATUS_TESTPRG');
+        expect(o.steps.map((s) => s.job)).toContain('DIAGNOSE_ERHALTEN');
+        expect(o.ecuTimeoutSec).toBe(10);
+        expect(reportsProgress(o)).toBe(true);
+        expect(hasStopControl(o)).toBe(true);
     });
 
     // A 16-minute gearbox adaptation described as "the SGBD does not say" would
-    // be worse than no description at all.
+    // be worse than no description at all. These ids are adapted from
+    // smg2-workflows.json and are deliberately NOT SGBD jobs, so they take the
+    // one builder in the module rather than reading data that does not exist.
     it('never falls through to unknown, whatever the program number', () => {
         for (const id of ['0x01', '0x0A', '0x15', '0xZZ']) {
-            expect(jobOperation(job(`${PROCEDURE_PREFIX}${id}`), 'smg2').kind).toBe('procedure');
+            const o = procedureOperation(`${PROCEDURE_PREFIX}${id}`, false);
+            expect(o.kind).toBe('procedure');
+            expect(o.steps[0].job).toBe('TESTPRG_STOP');
+            expect(hasStopControl(o)).toBe(true);
         }
     });
 });
 
-describe('only shapes that can genuinely be stopped offer a stop', () => {
-    const stoppable: Array<[string, string | undefined, string[] | undefined]> = [
-        ['STEUERN_DMTL_HEIZUNG', 'x', ['SCHALTEN']],
-        ['STEUERN_EKP', 'Kraftstoffpumpenrelais ansteuern', undefined],
-        [`${PROCEDURE_PREFIX}0x01`, undefined, undefined],
-    ];
-    const notStoppable: Array<[string, string | undefined]> = [
-        ['STEUERN_EV1', 'Einspritzventil 1 ansteuern'],
-        ['DSC_SIM_VA', 'halten'],
-        ['ABGLEICHWERTE_LESEN', 'Lesen'],
-        ['SG_RESET', 'Software-Reset'],
-    ];
+describe('deferred tests: the answer arrives from a different job', () => {
+    // These four are the emissions checks an owner actually gets failed on, and
+    // all four were invisible before: the shape did not exist, so the generator
+    // dropped them. Showing the START without the READ would be worse than not
+    // showing them at all.
+    const deferred = [
+        ['START_SYSTEMCHECK_SEK_LUFT', 'LESEN_SYSTEMCHECK_SEK_LUFT'],
+        ['START_SYSTEMCHECK_TANK_LECK', 'LESEN_SYSTEMCHECK_TANK_LECK'],
+        ['START_SYSTEMCHECK_DMTL', 'LESEN_SYSTEMCHECK_DMTL'],
+        ['START_SYSTEMCHECK_TEV_FUNC', 'LESEN_SYSTEMCHECK_TEV_FUNC'],
+    ] as const;
 
-    it.each(stoppable)('%s offers a stop', (id, de, args) => {
-        expect(hasStopControl(jobOperation(job(id, de, args), 'smg2'))).toBe(true);
+    it.each(deferred)('%s names %s as where the verdict comes from', (start, read) => {
+        const o = op('mss54', start);
+        expect(o.kind).toBe('deferred');
+        expect(o.resultJob).toBe(read);
+        expect(deliversResultElsewhere(o)).toBe(true);
+        expect(o.steps.map((s) => s.job)).toContain(read);
+        // The reader has to exist, or the pair is a dead end.
+        expect(() => job('mss54', read)).not.toThrow();
     });
 
-    it.each(notStoppable)('%s does not', (id, de) => {
-        expect(hasStopControl(jobOperation(job(id, de), 'mss54'))).toBe(false);
+    // Only secondary air has a STOP in the SGBD. Two jobs of the same kind
+    // differing here is why the stop control reads `termination`, not `kind`.
+    it('offers a stop for secondary air and for none of the others', () => {
+        expect(hasStopControl(op('mss54', 'START_SYSTEMCHECK_SEK_LUFT'))).toBe(true);
+        for (const [start] of deferred.slice(1)) expect(hasStopControl(op('mss54', start))).toBe(false);
+    });
+});
+
+describe('only shapes that can genuinely be stopped offer a stop', () => {
+    const stoppable: Array<[ModuleId, string]> = [
+        ['mss54', 'STEUERN_DMTL_HEIZUNG'],
+        ['mss54', 'STEUERN_EKP'],
+        ['smg2', 'TESTPRG_STARTEN'],
+        ['smg2', 'STEUERN_STELLGLIED'],
+    ];
+    const notStoppable: Array<[ModuleId, string]> = [
+        ['mss54', 'STEUERN_EV1'],
+        ['dsc_mk60', 'DSC_SIM_VA'],
+        ['mss54', 'ABGLEICHWERTE_LESEN'],
+        ['mss54', 'SG_RESET'],
+    ];
+
+    it.each(stoppable)('%s %s offers a stop', (m, id) => {
+        expect(hasStopControl(op(m, id))).toBe(true);
+    });
+
+    it.each(notStoppable)('%s %s does not', (m, id) => {
+        expect(hasStopControl(op(m, id))).toBe(false);
+    });
+
+    // The invariant behind both lists: a stop control is offered exactly when
+    // something can end the operation, and never otherwise.
+    it('holds across all 323 jobs', () => {
+        let seen = 0;
+        for (const m of MODULES) {
+            for (const j of profile(m).jobs) {
+                seen++;
+                const o = jobOperation(j);
+                expect(o.steps.length).toBeGreaterThan(0);
+                if (o.termination === 'none' || o.termination === 'self') expect(hasStopControl(o)).toBe(false);
+                else expect(o.stopJob ?? o.resultJob).toBeTruthy();
+            }
+        }
+        expect(seen).toBe(323);
     });
 });

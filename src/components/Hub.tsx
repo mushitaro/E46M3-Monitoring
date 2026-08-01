@@ -1,6 +1,7 @@
 'use client';
 
 import type { LucideIcon } from 'lucide-react';
+import { LABEL } from './ui';
 
 /**
  * The hub — a state-machine action ring.
@@ -94,7 +95,7 @@ export function Hub({ config }: { config: HubConfig }) {
                 }`}
             >
                 <Icon className={`size-5 stroke-[1.5] ${spin ? 'animate-spin' : ''}`} />
-                <span className="text-[8px] font-bold uppercase tracking-widest">{label}</span>
+                <span className={`${LABEL}`}>{label}</span>
             </button>
         </div>
     );

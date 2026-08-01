@@ -11,9 +11,24 @@
 
   <!-- EdiabasLib の仮想ジョブ (_JOBS/_JOBCOMMENTS/_ARGUMENTS/_RESULTS) で
        SGBD から「権威ある」ジョブ表を取得する（車両接続は不要）。
-       前提: C:\EC-APPS\ediabaslib を clone 済み、TFM は net8.0-windows に。 -->
+       前提: C:\EC-APPS\ediabaslib を clone 済み、TFM は net8.0-windows に。
+
+       パスは EdiabasLibPath プロパティ経由。相対 `..\..\..\` はリポジトリが
+       C:\EC-APPS\OldBMW-Diag-PWA から C:\Users\kazuh\E46M3-Diagnosis へ移った時点で
+       C:\Users\ediabaslib を指すようになり、ビルドが CS0246 で落ちていた。
+       EdiabasLib は GPLv3 のためこのリポジトリに取り込めず、外部 clone を参照するしかない。
+       別の場所に置いている場合は -p:EdiabasLibPath=<path> で上書きする。 -->
+  <PropertyGroup>
+    <EdiabasLibPath Condition="'$(EdiabasLibPath)' == ''">C:\EC-APPS\ediabaslib</EdiabasLibPath>
+  </PropertyGroup>
+
+  <Target Name="CheckEdiabasLib" BeforeTargets="PrepareForBuild">
+    <Error Condition="!Exists('$(EdiabasLibPath)\EdiabasLib\EdiabasLib\EdiabasLib.csproj')"
+           Text="EdiabasLib not found at $(EdiabasLibPath). Clone https://github.com/uholeschak/ediabaslib there, or pass -p:EdiabasLibPath=&lt;path&gt;." />
+  </Target>
+
   <ItemGroup>
-    <ProjectReference Include="..\..\..\ediabaslib\EdiabasLib\EdiabasLib\EdiabasLib.csproj"
+    <ProjectReference Include="$(EdiabasLibPath)\EdiabasLib\EdiabasLib\EdiabasLib.csproj"
                       SetTargetFramework="TargetFramework=net8.0-windows10.0.26100.0" />
     <!-- EdiabasLib は Windows-1252 を使う → CodePagesEncodingProvider が必要 -->
     <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />

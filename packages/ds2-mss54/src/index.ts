@@ -49,3 +49,21 @@ export {
     ERROR_MEMORY_ENTRIES,
     SHADOW_MEMORY_ENTRIES,
 } from './requests';
+
+// Adaptations are a separate export from live values on purpose — see the note
+// in adaptations.ts about why a lifetime misfire counter must not turn up in
+// the datalog channel picker.
+export {
+    MSS54_ADAPTATION_BLOCKS,
+    MSS54_ADAPTATION_DIVERGENCES,
+    MSS54_ADAPTATION_UNREADABLE,
+    MSS54_ADAPTATION_FIELD_COUNT,
+    adaptationBlockBySelection,
+    adaptationBlockMinLength,
+    decodeAdaptationBlock,
+    type AdaptationBlock,
+    type AdaptationField,
+    type AdaptationDivergence,
+    type DecodedAdaptation,
+    type UnreadableAdaptationBlock,
+} from './adaptations';

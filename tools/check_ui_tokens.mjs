@@ -75,6 +75,42 @@ const HAND_LIST = /divide-y/g;
  */
 const NESTED_SCROLL = /\bmax-h-\d+\b[^"'`]*\boverflow-(auto|y-auto|scroll)\b|\boverflow-(auto|y-auto|scroll)\b[^"'`]*\bmax-h-\d+\b/g;
 
+/**
+ * Every `<DataRow>` must name the thing it shows.
+ *
+ * The primary slot is for the HUMAN NAME. Eight of the app's ten row types once
+ * had the SGBD identifier there instead — in the bright monospace slot that
+ * never truncates — with the translated name demoted to the slot that truncates
+ * first. `HumanName` makes that a type error; this makes the older spelling a
+ * clearer one, and catches a `name` that was simply forgotten.
+ *
+ * Scans attribute text between `<DataRow` and the matching `>`, tracking `{}`
+ * depth so a nested `<DataRow>` inside a `detail={...}` does not confuse it.
+ */
+function checkDataRows(text, relFile, startLine, fail) {
+    for (const m of text.matchAll(/<DataRow\b/g)) {
+        let depth = 0;
+        let i = m.index + m[0].length;
+        let attrs = '';
+        for (; i < text.length; i++) {
+            const ch = text[i];
+            if (ch === '{') depth++;
+            else if (ch === '}') depth--;
+            else if (ch === '>' && depth === 0) break;
+            if (depth === 0) attrs += ch;
+        }
+        const at = startLine + text.slice(0, m.index).split('\n').length - 1;
+        for (const dead of ['title', 'subtitle']) {
+            if (new RegExp(`\\b${dead}\\s*=`).test(attrs)) {
+                fail(relFile, at, `<DataRow ${dead}=> — renamed: name (HumanName) / ident / code. See ui.tsx DataRow.`);
+            }
+        }
+        if (!/\bname\s*=/.test(attrs)) {
+            fail(relFile, at, `<DataRow> without name= — every row must say what the thing is called`);
+        }
+    }
+}
+
 function* files(dir) {
     for (const name of readdirSync(dir)) {
         const p = path.join(dir, name);
@@ -92,7 +128,10 @@ function fail(rel, line, msg) {
 for (const file of files(ROOT)) {
     const rel = path.relative(ROOT, file).replaceAll('\\', '/');
     const isUi = file === UI;
-    const lines = readFileSync(file, 'utf-8').split(/\r?\n/);
+    const source = readFileSync(file, 'utf-8');
+    const lines = source.split(/\r?\n/);
+
+    if (!isUi) checkDataRows(source, rel, 1, fail);
 
     // Comments explain the rules; they must not trip them. `/* */` state is
     // tracked across lines because the rule docs are block comments, and a

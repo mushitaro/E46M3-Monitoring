@@ -45,6 +45,27 @@ import type { LucideIcon } from 'lucide-react';
  */
 export const LABEL = 'text-[10px] font-bold uppercase tracking-widest';
 
+/**
+ * Text a person can read, resolved for the current language.
+ *
+ * This is a brand, not a description. `DataRow`'s primary slot takes only a
+ * `HumanName`, so an SGBD identifier cannot drift into it — putting one there
+ * requires calling `humanName()` explicitly, which is a single greppable
+ * assertion rather than a mistake anyone can make in passing.
+ *
+ * The mistake was not hypothetical: eight of the app's ten row types had the
+ * identifier in the bright monospace slot that never truncates, and the
+ * translated name in the dim one that truncates first.
+ *
+ * Minted here and by the catalogue resolvers (`label()`, `text()` in
+ * `lib/ecuCatalog.ts`) — nowhere else.
+ */
+export type HumanName = string & { readonly __human: unique symbol };
+
+export function humanName(s: string): HumanName {
+    return s as HumanName;
+}
+
 type Tone = 'neutral' | 'primary' | 'danger' | 'destructive' | 'caution' | 'secondary' | 'ok';
 
 const TEXT: Record<Tone, string> = {
@@ -329,45 +350,94 @@ export function DataList({ children, className = '' }: { children: React.ReactNo
     );
 }
 
+const CODE_TONE = {
+    neutral: 'text-slate-600',
+    primary: 'text-blue-400',
+    danger: 'text-red-400',
+} as const;
+
 /**
- * The one row: one dimension, one hover, one selection expression.
+ * The one row: one dimension, one hover, one selection expression, and one
+ * answer to what belongs where.
  *
- * `onSelect` optional on purpose — a non-selectable row is a `li`, not a button
- * with a dead click. The job list, the procedure list, the channel picker and the
- * datalog value table were four different row shapes doing this, and only one of
- * them showed selection at all.
+ * ## The hierarchy, and why it is three named slots
+ *
+ * A row shows a thing. The reader is a person, so **the thing's NAME is the
+ * primary text** — the Japanese or English one. The SGBD identifier is
+ * provenance: useful, secondary, and the first thing that should give way when
+ * the column narrows. A raw code (`0x2A`, a block number) is an index, not a
+ * name; it goes in a fixed-width gutter or nowhere.
+ *
+ * This was exactly inverted in eight of the ten rows in the app. `title` was
+ * `shrink-0 font-mono text-slate-200` — brightest, monospace, guaranteed full
+ * width — and every call site put `job.id` in it, while `label(job, lang)` went
+ * into `subtitle`, which is the slot that truncates first. So the identifier was
+ * promoted to the name's position and the name was cut off to make room for it.
+ *
+ * ## Why `name` is a branded type
+ *
+ * Renaming the props is necessary and not sufficient: nothing stops
+ * `name={job.id}`. `HumanName` is minted only by `humanName()` and by the
+ * catalogue's own resolvers (`label()`, `text()`), so putting an identifier in
+ * the primary slot requires an explicit, greppable assertion rather than a
+ * typo. The system has only two type sizes, so the hierarchy is carried by
+ * colour, font family, and — the load-bearing one — which slot is allowed to
+ * shrink.
  */
 export function DataRow({
     selected = false,
     onSelect,
     leading,
-    title,
-    subtitle,
+    name,
+    ident,
+    code,
+    codeTone = 'neutral',
     trailing,
     detail,
 }: {
     selected?: boolean;
     onSelect?: () => void;
-    /** Pill or checkbox. Baseline-aligned with the title. */
+    /** Pill or checkbox. Baseline-aligned with the name. */
     leading?: React.ReactNode;
-    title: React.ReactNode;
-    /** The elastic middle. Truncates; everything else is shrink-0. */
-    subtitle?: React.ReactNode;
+    /**
+     * The primary text: what this thing is called, in the reader's language.
+     * May be empty — see the fallback below — but never an identifier.
+     */
+    name: HumanName;
+    /** The SGBD identifier. Provenance, and the first thing to truncate. */
+    ident?: string;
+    /** A raw code. A fixed-width index column, not a name. */
+    code?: string;
+    /** Closed set, not a className: a code's colour is a verdict, never decoration. */
+    codeTone?: keyof typeof CODE_TONE;
     trailing?: React.ReactNode;
-    /** Extra lines under the row. Indented to the title, not to the pill. */
+    /** Extra lines under the row. */
     detail?: React.ReactNode;
 }) {
+    // No human name exists for this row — some SGBD results genuinely have no
+    // comment. Promote the identifier, but keep it looking like what it is.
+    // A blank primary slot would read as "this thing has no name", which is a
+    // different claim from "nobody has written one".
+    const nameless = !name;
     const body = (
         <>
             <div className="flex items-baseline gap-x-3">
                 {leading}
-                <span className={`shrink-0 font-mono text-xs ${selected ? 'text-blue-300' : 'text-slate-200'}`}>
-                    {title}
-                </span>
-                {subtitle !== undefined && (
-                    <span className="min-w-0 flex-1 truncate text-xs text-slate-400">{subtitle}</span>
+                {code !== undefined && (
+                    <span className={`w-10 shrink-0 text-right font-mono text-[11px] tabular-nums ${CODE_TONE[codeTone]}`}>
+                        {code}
+                    </span>
                 )}
-                {subtitle === undefined && <span className="min-w-0 flex-1" />}
+                <span
+                    className={`min-w-0 flex-1 truncate text-xs ${
+                        nameless ? 'font-mono text-slate-400' : selected ? 'text-blue-300' : 'text-slate-200'
+                    }`}
+                >
+                    {nameless ? ident : name}
+                </span>
+                {ident !== undefined && !nameless && (
+                    <span className="min-w-0 shrink truncate font-mono text-[11px] text-slate-500">{ident}</span>
+                )}
                 {trailing}
             </div>
             {detail && <div className="mt-1 space-y-1">{detail}</div>}

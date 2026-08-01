@@ -28,7 +28,7 @@
 
 import { useMemo, useState } from 'react';
 import { AlertTriangle, ArrowRight } from 'lucide-react';
-import { LABEL, DataList, DataRow, Field, MicroLabel, Pill, Provenance, Section } from '@/components/ui';
+import { LABEL, DataList, DataRow, Field, MicroLabel, Pill, Provenance, Section, humanName } from '@/components/ui';
 import {
     description,
     jobRiskOf,
@@ -96,13 +96,17 @@ export function JobDetail({
     return (
         <div className="flex h-full flex-col gap-5 overflow-y-auto pr-1">
             <header>
+                {/* Name first, identifier second — the same rule the rows follow.
+                    This is the panel's headline, and it was the loudest instance
+                    of the inversion: `job.id` in bright monospace with the name
+                    demoted to a smaller line underneath it. */}
                 <div className="flex items-baseline gap-2">
                     <Pill tone={risk === 'high' ? 'danger' : risk === 'medium' ? 'caution' : 'neutral'}>
                         {t.risk_label[risk]}
                     </Pill>
-                    <span className="min-w-0 flex-1 truncate font-mono text-xs text-slate-200">{job.id}</span>
+                    <span className="min-w-0 flex-1 text-xs text-slate-200">{label(job, lang)}</span>
                 </div>
-                <p className="mt-1 text-[11px] text-slate-300">{label(job, lang)}</p>
+                <p className="mt-1 font-mono text-[11px] text-slate-500">{job.id}</p>
                 {procedure && (
                     <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
                         {lang === 'en' ? procedure.desc.en : procedure.desc.ja}
@@ -206,11 +210,24 @@ export function JobDetail({
                             const c = resolveText(profile, a.comment, lang);
                             return (
                                 <div key={a.name}>
-                                    <div className="flex items-baseline gap-2">
+                                    {/* What it asks for, then what it is called. */}
+                                    <div className="text-xs text-slate-200">{c.text || a.name}</div>
+                                    <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
                                         <span className="font-mono text-[11px] text-amber-400">{a.name}</span>
                                         <span className="font-mono text-[10px] text-slate-600">{a.type}</span>
+                                        {/* Where the choices came from — and, when the SGBD
+                                            itself bounds them, which rows we dropped and why.
+                                            A truncated option list that does not say it is
+                                            truncated is the 192-jobs mistake in miniature. */}
+                                        {a.optionsFrom && (
+                                            <Provenance title={a.optionsFrom.why}>{a.optionsFrom.table}</Provenance>
+                                        )}
                                     </div>
-                                    {c.text && <p className="mt-0.5 text-[11px] text-slate-500">{c.text}</p>}
+                                    {a.optionsFrom?.dropped && (
+                                        <p className="mt-0.5 text-[10px] leading-relaxed text-slate-500">
+                                            {t.det_optionsDropped(a.optionsFrom.dropped.join(' / '))}
+                                        </p>
+                                    )}
                                     {a.options ? (
                                         <select
                                             value={argValues[a.name] ?? ''}
@@ -404,8 +421,8 @@ function ResultList({
                     return (
                         <DataRow
                             key={r.name}
-                            title={r.name}
-                            subtitle={c.text || undefined}
+                            name={c.text}
+                            ident={r.name}
                             trailing={
                                 <span className="shrink-0 font-mono text-[10px] text-slate-600">
                                     {t.resultRole[r.role]}
@@ -481,7 +498,12 @@ function SpecTable({
                     return (
                         <DataRow
                             key={r.name}
-                            title={r.name}
+                            // ResultList two hundred lines up already resolves this
+                            // comment; SpecTable simply never did, so the one table
+                            // whose whole subject is a value shipped with nothing
+                            // but `STAT_WDK1_NORM_WERT` to name it.
+                            name={resolveText(profile, r.comment, lang).text}
+                            ident={r.name}
                             trailing={
                                 <Pill tone="neutral">{t.spec_verdict[verdictFor(s, undefined)]}</Pill>
                             }
@@ -524,12 +546,10 @@ function SpecTable({
                     return (
                         <DataRow
                             key={`cross-${i}`}
-                            title={c.between.join(' − ')}
+                            name={humanName(t.spec_crossField(c.between[0], c.between[1]))}
+                            ident={c.between.join(' − ')}
                             detail={
                                 <>
-                                    <p className="text-[11px] text-slate-400">
-                                        {t.spec_crossField(c.between[0], c.between[1])}
-                                    </p>
                                     <div className="grid grid-cols-4 gap-x-2">
                                         <Field label={t.spec_current} value="—" stacked tone="text-slate-600" />
                                         <Field label={t.spec_min} value={c.min ?? '—'} stacked tone="text-slate-300" />
@@ -594,14 +614,14 @@ function ProcedureDetail({
                 </ul>
             </Section>
 
-            {workflows && <CodeTable label={t.proc_status} rows={workflows.testStatus} tone="text-slate-400" />}
+            {workflows && <CodeTable label={t.proc_status} rows={workflows.testStatus} tone="neutral" />}
             {/* 21 activity codes for a full gearbox adaptation. A progress bar
                 cannot carry that, and without it the operator watches a number
                 climb for three minutes. */}
-            <CodeTable label={t.proc_activity} rows={procedure.activity} tone="text-blue-400" />
+            <CodeTable label={t.proc_activity} rows={procedure.activity} tone="primary" />
             {/* 38 result codes. This is the feedback that decides whether the car
                 is finished or on a flatbed. */}
-            <CodeTable label={t.proc_faults} rows={procedure.faults} tone="text-red-400" />
+            <CodeTable label={t.proc_faults} rows={procedure.faults} tone="danger" />
         </>
     );
 }
@@ -614,7 +634,7 @@ function CodeTable({
 }: {
     label: string;
     rows: Array<{ code: string; ja: string; en: string; de?: string }>;
-    tone: string;
+    tone: 'neutral' | 'primary' | 'danger';
 }) {
     const { lang } = useLang();
     return (
@@ -627,8 +647,9 @@ function CodeTable({
                 {rows.map((r) => (
                     <DataRow
                         key={r.code}
-                        title={<span className={tone}>{r.code}</span>}
-                        subtitle={lang === 'en' ? r.en : r.ja}
+                        code={r.code}
+                        codeTone={tone}
+                        name={humanName(lang === 'en' ? r.en : r.ja)}
                     />
                 ))}
             </DataList>

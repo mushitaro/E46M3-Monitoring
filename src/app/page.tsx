@@ -41,6 +41,7 @@ import {
     Section,
     TextButton,
     Well,
+    humanName,
 } from '@/components/ui';
 import { useDs2Link, type CommsLogLine, type LiveSample } from '@/hooks/useDs2Link';
 import { useLang, type Lang } from '@/lib/i18n';
@@ -489,8 +490,8 @@ function ProcedureSection({
                                         {p.risk === 'high' ? t.risk_high : t.risk_medium}
                                     </Pill>
                                 }
-                                title={p.id}
-                                subtitle={lang === 'en' ? p.name.en : p.name.ja}
+                                code={p.id}
+                                name={humanName(lang === 'en' ? p.name.en : p.name.ja)}
                                 trailing={
                                     <>
                                         <span className="shrink-0 font-mono text-[10px] text-slate-500">
@@ -959,8 +960,9 @@ function DiagnosisPane({ link, catalog }: { link: Link; catalog: EcuProfile | nu
                         return (
                             <DataRow
                                 key={`${f.number}-${f.errorCode}`}
-                                title={<span className="text-red-400">{code}</span>}
-                                subtitle={meaning?.text}
+                                code={code}
+                                codeTone="danger"
+                                name={meaning?.text ?? humanName('')}
                                 trailing={
                                     <span className="shrink-0 font-mono text-[10px] text-slate-600">
                                         {formatErrorCode(f.errorType)}
@@ -1012,8 +1014,8 @@ function DiagnosisPane({ link, catalog }: { link: Link; catalog: EcuProfile | nu
                             return (
                                 <DataRow
                                     key={f.code}
-                                    title={f.code}
-                                    subtitle={x.text}
+                                    code={f.code}
+                                    name={x.text}
                                     detail={
                                         x.original !== x.text ? (
                                             <p className="font-mono text-[10px] text-slate-500">{x.original}</p>
@@ -1111,8 +1113,8 @@ function DatalogPane({ datalog }: { datalog: ReturnType<typeof useDatalog> }) {
                     {datalog.selected.map((symbol) => (
                         <DataRow
                             key={symbol}
-                            title={symbol}
-                            subtitle={MSS54_CHANNEL_NAMES.get(symbol)}
+                            name={humanName(MSS54_CHANNEL_NAMES.get(symbol) ?? '')}
+                            ident={symbol}
                             trailing={
                                 <span className="shrink-0 font-mono text-xs tabular-nums text-slate-200">
                                     {datalog.latest[symbol] == null ? '—' : datalog.latest[symbol]!.toFixed(2)}
@@ -1223,8 +1225,8 @@ const ChannelPicker = memo(function ChannelPicker({
                                     className="size-3 shrink-0 accent-blue-500"
                                 />
                             }
-                            title={f.symbol}
-                            subtitle={f.name}
+                            name={humanName(f.name)}
+                            ident={f.symbol}
                             trailing={
                                 <>
                                     {f.unit && (

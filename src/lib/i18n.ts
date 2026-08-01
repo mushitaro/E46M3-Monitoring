@@ -201,6 +201,7 @@ interface Catalog {
     det_noValues: string;
     det_whenArg: (arg: string, values: string) => string;
     det_inferred: string;
+    det_optionsDropped: (list: string) => string;
     resultRole: Record<ResultRole, string>;
 
     // --- Calibration values -------------------------------------------------
@@ -528,6 +529,7 @@ const STRINGS: Record<Lang, Catalog> = {
         det_noValues: 'このジョブに規定値の公表はありません。SGBD にも復元元にも下限・上限が存在しないためで、「まだ調べていない」ではありません。',
         det_whenArg: (arg, values) => `${arg} が ${values} のときだけ返ります`,
         det_inferred: '推定',
+        det_optionsDropped: (l) => `SGBD の記述により除外: ${l}`,
         resultRole: {
             value: '値',
             unit: '単位',
@@ -879,6 +881,7 @@ const STRINGS: Record<Lang, Catalog> = {
             'No published limits for this job. Neither the SGBD nor the decompiled source states a minimum or maximum — that is a fact, not a gap we have yet to fill.',
         det_whenArg: (arg, values) => `Returned only when ${arg} is ${values}`,
         det_inferred: 'inferred',
+        det_optionsDropped: (l) => `Excluded per the SGBD: ${l}`,
         resultRole: {
             value: 'value',
             unit: 'unit',

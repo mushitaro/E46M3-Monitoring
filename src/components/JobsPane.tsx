@@ -182,8 +182,8 @@ export function JobsPane({
                                 selected={job.id === selectedId}
                                 onSelect={() => onSelect(job)}
                                 leading={<RiskPill risk={job.risk} />}
-                                title={job.id}
-                                subtitle={label(job, lang)}
+                                name={label(job, lang)}
+                                ident={job.id}
                                 trailing={
                                     <>
                                         <OpBadge kind={jobOperation(job).kind} />

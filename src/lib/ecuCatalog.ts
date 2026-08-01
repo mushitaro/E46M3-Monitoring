@@ -40,6 +40,10 @@
  * not shown is a made-up correspondence between them.
  */
 
+import { humanName, type HumanName } from '@/components/ui';
+
+export type { HumanName };
+
 // ---------------------------------------------------------------------------
 // The vocabularies. These mirror tools/sgbd/classify.py exactly — if one side
 // gains a member the other must too, which is what `assertKnownVocabulary` is
@@ -203,6 +207,12 @@ export interface CatalogArg {
     comment?: TextRef;
     /** Real choices from an SGBD table. Absent means free entry — never invent options. */
     options?: Array<{ value: string; note?: string }>;
+    /**
+     * Which table the choices came from, and what the SGBD said that made it the
+     * right table. `dropped` lists rows deliberately not offered, with the reason
+     * — a list that is silently shorter than its source is how things disappear.
+     */
+    optionsFrom?: { table: string; why: string; dropped?: string[] };
 }
 
 export interface CatalogResult {
@@ -383,8 +393,8 @@ function assertLoadable(p: EcuProfile): void {
 // Reading
 // ---------------------------------------------------------------------------
 
-export function label(item: { ja: string; en: string }, lang: 'ja' | 'en'): string {
-    return (lang === 'en' ? item.en : item.ja) || item.ja || item.en;
+export function label(item: { ja: string; en: string }, lang: 'ja' | 'en'): HumanName {
+    return humanName((lang === 'en' ? item.en : item.ja) || item.ja || item.en);
 }
 
 /**
@@ -397,11 +407,12 @@ export function text(
     p: EcuProfile,
     ref: TextRef | undefined,
     lang: 'ja' | 'en',
-): { text: string; original: string } {
-    if (ref === undefined) return { text: '', original: '' };
+): { text: HumanName; original: string } {
+    const none = { text: humanName(''), original: '' };
+    if (ref === undefined) return none;
     const t = p.texts[ref];
-    if (!t) return { text: '', original: '' };
-    return { text: (lang === 'en' ? t.en : t.ja) || t.de, original: t.de };
+    if (!t) return none;
+    return { text: humanName((lang === 'en' ? t.en : t.ja) || t.de), original: t.de };
 }
 
 /** The job's own description, resolved. */

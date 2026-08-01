@@ -24,7 +24,7 @@ import { MSS54_LIVE_BLOCKS, formatErrorCode, planBlockReads } from '@tsunagi/ds2
 import { AppHeader } from '@/components/AppHeader';
 import { ElectricalFaultDialog } from '@/components/ElectricalFaultDialog';
 import { Hub, HubCluster, HubNotice, SubActions, type HubConfig, type NoticeTone } from '@/components/Hub';
-import { JobDetail, SequenceCard } from '@/components/JobDetail';
+import { JobDetail, SequenceView } from '@/components/JobDetail';
 import { JobsPane } from '@/components/JobsPane';
 import { LogPopover } from '@/components/LogPopover';
 import {
@@ -517,21 +517,20 @@ function ProcedureSection({
                 </DataList>
             </Section>
 
-            <Section title={t.seq_title} count={workflows.sequences.length}>
-                <DataList>
-                    {workflows.sequences.map((s) => (
-                        <SequenceCard
-                            key={s.id}
-                            sequence={s}
-                            procedures={workflows.procedures}
-                            onPick={(id) => {
-                                const p = workflows.procedures.find((x) => x.id === id);
-                                if (p) onSelect(procedureAsJob(p));
-                            }}
-                        />
-                    ))}
-                </DataList>
-            </Section>
+            {/* The sequences ARE the answer to "what do I do after clutch work".
+                They used to render as a row of hex chips whose meaning lived in a
+                title= attribute; now each is a named, numbered step list. */}
+            {workflows.sequences.map((s) => (
+                <SequenceView
+                    key={s.id}
+                    sequence={s}
+                    procedures={workflows.procedures}
+                    onPick={(id) => {
+                        const p = workflows.procedures.find((x) => x.id === id);
+                        if (p) onSelect(procedureAsJob(p));
+                    }}
+                />
+            ))}
         </Pane>
     );
 }

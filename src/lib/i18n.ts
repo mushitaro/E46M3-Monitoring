@@ -142,6 +142,8 @@ interface Catalog {
     proc_activity: string;
     proc_faults: string;
     proc_none: string;
+    proc_steps: string;
+    proc_germanOnly: string;
     seq_title: string;
     seq_pickHint: string;
 
@@ -157,6 +159,12 @@ interface Catalog {
     op_why: Record<WhyKey, string>;
     /** Why an operation cannot be taken back. */
     op_irreversible: Record<IrreversibleKey, string>;
+
+    // --- Steps -------------------------------------------------------------
+    step_order: Record<'ecu-defined' | 'app-recommended' | 'unordered-set', string>;
+    step_orderNote: Record<'ecu-defined' | 'app-recommended' | 'unordered-set', string>;
+    step_state: Record<'running' | 'passed' | 'done' | 'failed' | 'unknown', string>;
+    step_meta: Record<string, string>;
 
     // --- The merged JOBS pane ---------------------------------------------
     tab_jobs: string;
@@ -384,6 +392,8 @@ const STRINGS: Record<Lang, Catalog> = {
         proc_activity: '進行状況コード',
         proc_faults: '結果コード',
         proc_none: 'このモジュールにガイド手順はありません（SMG II のみ）',
+        proc_steps: 'ECU が実行する手順',
+        proc_germanOnly: 'この語彙の日本語訳は機械出力のままで読めないため、SGBD の独語原文を表示しています。',
         seq_title: '推奨シーケンス',
         seq_pickHint: 'ステップを押すとその手順を表示します',
 
@@ -423,6 +433,19 @@ const STRINGS: Record<Lang, Catalog> = {
             irr_write: 'イグニッションサイクルをまたいで残る状態を書き換えます。事前に元の値を読み戻す手段がこのアプリには無いため、取り消せません。',
             irr_eeprom: 'RAM 上の値を EEPROM へ確定書込します。ここまでは書き戻せましたが、この操作以降は戻せません。',
         },
+
+        step_order: {
+            'ecu-defined': 'ECU が定める順序',
+            'app-recommended': '推奨順序（SGBD に順序定義なし）',
+            'unordered-set': '順序なし・選んで実行',
+        },
+        step_orderNote: {
+            'ecu-defined': 'この順序は ECU 自身が報告するものです。番号順ではなく実行順に並んでいます。',
+            'app-recommended': 'SGBD のテーブルに順序の定義はありません。各手順の依存関係と整備実務から組んだ推奨です。',
+            'unordered-set': '互いに代替となる操作の集合です。順番はありません。',
+        },
+        step_state: { running: '実行中', passed: '通過', done: '完了', failed: '失敗', unknown: '不明' },
+        step_meta: { duration: '所要', engine: 'エンジン', valves: '駆動' },
 
         tab_jobs: 'JOBS',
         facet_purpose: '用途',
@@ -725,6 +748,8 @@ const STRINGS: Record<Lang, Catalog> = {
         proc_activity: 'Activity codes',
         proc_faults: 'Result codes',
         proc_none: 'This module has no guided procedures (SMG II only)',
+        proc_steps: 'What the ECU does, step by step',
+        proc_germanOnly: "This vocabulary's Japanese is raw machine output and not readable, so the SGBD German original is shown instead.",
         seq_title: 'Suggested sequences',
         seq_pickHint: 'Press a step to show that procedure',
 
@@ -770,6 +795,19 @@ const STRINGS: Record<Lang, Catalog> = {
             irr_eeprom:
                 'Commits the RAM value into EEPROM. Everything up to here could be written back; from here it cannot.',
         },
+
+        step_order: {
+            'ecu-defined': 'The ECU defines this order',
+            'app-recommended': 'Recommended order (the SGBD defines none)',
+            'unordered-set': 'No order - pick one',
+        },
+        step_orderNote: {
+            'ecu-defined': "This order is what the ECU itself reports. It is execution order, not numeric order.",
+            'app-recommended': 'The SGBD tables define no order. This is built from inter-step dependencies and service practice.',
+            'unordered-set': 'A set of alternatives. There is no sequence.',
+        },
+        step_state: { running: 'Running', passed: 'Passed', done: 'Done', failed: 'Failed', unknown: 'Unknown' },
+        step_meta: { duration: 'Takes', engine: 'Engine', valves: 'Drives' },
 
         tab_jobs: 'JOBS',
         facet_purpose: 'Purpose',

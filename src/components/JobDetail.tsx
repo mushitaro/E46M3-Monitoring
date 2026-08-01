@@ -26,7 +26,7 @@
  * `det_noValues` says it as a first-class state rather than as a blank table.
  */
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { AlertTriangle, ArrowRight } from 'lucide-react';
 import { LABEL, DataList, DataRow, Field, MicroLabel, Pill, Provenance, Section, humanName } from '@/components/ui';
 import {
@@ -43,7 +43,9 @@ import {
 import { deliversResultElsewhere, hasStopControl, jobOperation, type OpKind } from '@/lib/jobOps';
 import { SLOTS, jobTextFor, resolve, type Confidence, type JobTextTable } from '@/lib/jobText';
 import { bestTelegram, telegramIsCertain, type TelegramTable } from '@/lib/telegrams';
-import type { Smg2Procedure, Smg2Workflows } from '@/lib/smg2Workflows';
+import type { Smg2Procedure, Smg2Sequence, Smg2Workflows } from '@/lib/smg2Workflows';
+import { stepsFromActivity, stepsFromSequence } from '@/lib/procedureSteps';
+import { StepList } from '@/components/StepList';
 import { useLang } from '@/lib/i18n';
 
 const KIND_TONE: Record<OpKind, 'neutral' | 'primary' | 'caution' | 'danger' | 'secondary'> = {
@@ -578,8 +580,12 @@ function SpecTable({
 }
 
 /**
- * The SMG II extras: how long, what state the engine must be in, and — the part
- * that matters — the two code vocabularies the ECU reports through.
+ * An SMG II procedure: what it will actually do, step by step.
+ *
+ * The 21 activity codes of a complete gearbox adaptation ARE the procedure —
+ * `Waehlwinkeloffsetstromadaption`, then `Gang 1 ausmessen` through
+ * `Gang R ausmessen`, then `In NV-RAM schreiben`. They were a collapsed
+ * reference table; they are the answer to "what happens when I press this".
  */
 function ProcedureDetail({
     procedure,
@@ -590,11 +596,12 @@ function ProcedureDetail({
 }) {
     const { lang, t } = useLang();
     const pick = (x: { ja: string; en: string }) => (lang === 'en' ? x.en : x.ja);
+    const plan = useMemo(() => stepsFromActivity(procedure, lang), [procedure, lang]);
 
     return (
         <>
             <div className="grid grid-cols-3 gap-x-3 border-t border-slate-800/50 pt-3">
-                <Field label={t.proc_duration} value={procedure.durMax} stacked />
+                <Field label={t.proc_duration} value={procedure.durMax || '—'} stacked />
                 <Field
                     label={t.proc_engine}
                     value={procedure.engine === 'run' ? t.proc_engineRun : t.proc_engineOff}
@@ -603,6 +610,16 @@ function ProcedureDetail({
                 />
                 <Field label={t.proc_results} value={procedure.readResults ?? '—'} stacked />
             </div>
+
+            {/* A fact the SGBD tables do not carry — that 0x07/0x0B sweep every
+                gear automatically, that 0x0A engages one and learns nothing. */}
+            {procedure.note && (
+                <p className="text-[11px] leading-relaxed text-slate-300">{stripEmphasis(pick(procedure.note))}</p>
+            )}
+
+            <Section title={t.proc_steps}>
+                <StepList plan={plan} />
+            </Section>
 
             <Section title={t.gate_preconditions} count={procedure.prereq.length}>
                 <ul className="list-disc space-y-1 pl-4">
@@ -614,42 +631,54 @@ function ProcedureDetail({
                 </ul>
             </Section>
 
+            {/* Reference, not an operating surface: you look a code up when the
+                ECU reports one. Collapsed, and the German leads on the faults —
+                their `ja` is machine-mangled and the `de` is clean. */}
             {workflows && <CodeTable label={t.proc_status} rows={workflows.testStatus} tone="neutral" />}
-            {/* 21 activity codes for a full gearbox adaptation. A progress bar
-                cannot carry that, and without it the operator watches a number
-                climb for three minutes. */}
-            <CodeTable label={t.proc_activity} rows={procedure.activity} tone="primary" />
-            {/* 38 result codes. This is the feedback that decides whether the car
-                is finished or on a flatbed. */}
-            <CodeTable label={t.proc_faults} rows={procedure.faults} tone="danger" />
+            <CodeTable label={t.proc_faults} rows={procedure.faults} tone="danger" germanFirst />
         </>
     );
 }
 
-/** A code vocabulary, collapsed. Reference: you look a code up when the ECU reports one. */
+/**
+ * A code vocabulary, collapsed. Reference: you look a code up when the ECU
+ * reports one.
+ *
+ * `germanFirst` exists because the SMG II FAULT texts' Japanese is machine
+ * output and largely unreadable — `Schaltwegendstellungen・geraden・Gaenge・
+ * sind・過・unterschiedlich`. The German is always clean. Until the phrase table
+ * covers them, the German leads and the mangled translation is not shown at all:
+ * this vocabulary is what decides "finished or on a flatbed", and a garbled
+ * sentence under a Japanese heading is worse than a German one.
+ */
 function CodeTable({
     label: heading,
     rows,
     tone,
+    germanFirst = false,
 }: {
     label: string;
     rows: Array<{ code: string; ja: string; en: string; de?: string }>;
     tone: 'neutral' | 'primary' | 'danger';
+    germanFirst?: boolean;
 }) {
-    const { lang } = useLang();
+    const { lang, t } = useLang();
     return (
         <details>
             <summary className={`flex cursor-pointer items-baseline justify-between ${LABEL} text-slate-500 hover:text-slate-300`}>
                 {heading}
                 <span className="font-mono tabular-nums text-slate-600">{rows.length}</span>
             </summary>
+            {germanFirst && (
+                <p className="mt-1 text-[10px] leading-relaxed text-slate-500">{t.proc_germanOnly}</p>
+            )}
             <DataList className="mt-1.5">
                 {rows.map((r) => (
                     <DataRow
                         key={r.code}
                         code={r.code}
                         codeTone={tone}
-                        name={humanName(lang === 'en' ? r.en : r.ja)}
+                        name={humanName(germanFirst ? (r.de ?? r.en) : lang === 'en' ? r.en : r.ja)}
                     />
                 ))}
             </DataList>
@@ -666,47 +695,27 @@ function CodeTable({
  * confirm against TIS" is a materially different claim from "run these in this
  * order", and on a gearbox adaptation the difference is expensive.
  */
-export function SequenceCard({
+export function SequenceView({
     sequence,
     procedures,
     onPick,
 }: {
-    sequence: { id: string; name: { ja: string; en: string }; note: { ja: string; en: string }; steps: string[] };
+    sequence: Smg2Sequence;
     procedures: Smg2Procedure[];
     onPick: (testprg: string) => void;
 }) {
     const { lang, t } = useLang();
-    const pick = (x: { ja: string; en: string }) => (lang === 'en' ? x.en : x.ja);
-
+    const engineText = useCallback(
+        (e: string) => (e === 'run' ? t.proc_engineRun : t.proc_engineOff),
+        [t],
+    );
+    const plan = useMemo(
+        () => stepsFromSequence(sequence, procedures, lang, onPick, engineText),
+        [sequence, procedures, lang, onPick, engineText],
+    );
     return (
-        <li className="px-2 py-2">
-            <div className="flex items-baseline gap-2">
-                <span className="text-[11px] font-bold text-slate-200">{pick(sequence.name)}</span>
-                <span className="font-mono text-[10px] tabular-nums text-slate-600">{sequence.steps.length}</span>
-            </div>
-            <p className="mt-1 flex items-start gap-1.5 text-[11px] leading-relaxed text-amber-400/90">
-                <AlertTriangle className="mt-0.5 size-3 shrink-0" />
-                {pick(sequence.note)}
-            </p>
-            <ol className="mt-2 flex flex-wrap items-center gap-1">
-                {sequence.steps.map((step, i) => {
-                    const p = procedures.find((x) => x.id === step);
-                    return (
-                        <li key={`${step}-${i}`} className="flex items-center gap-1">
-                            {i > 0 && <ArrowRight className="size-3 shrink-0 text-slate-700" />}
-                            <button
-                                type="button"
-                                onClick={() => onPick(step)}
-                                title={p ? pick(p.name) : step}
-                                className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-blue-400 transition-colors hover:bg-slate-700"
-                            >
-                                {step}
-                            </button>
-                        </li>
-                    );
-                })}
-            </ol>
-            <p className={`mt-1.5 ${LABEL} text-slate-600`}>{t.seq_pickHint}</p>
-        </li>
+        <Section title={lang === 'en' ? sequence.name.en : sequence.name.ja} count={sequence.steps.length}>
+            <StepList plan={plan} />
+        </Section>
     );
 }

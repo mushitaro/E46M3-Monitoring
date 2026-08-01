@@ -56,8 +56,18 @@ export interface Smg2Procedure {
     needsPrepare: boolean;
     /** True when TESTPRG_STARTEN's AUSWAHLBYTE selects something (e.g. which gear). */
     auswahl: boolean;
-    /** Which result block to read when it finishes, if any. */
-    readResults: string | null;
+    /**
+     * Which adaptation block holds what this procedure wrote, if any.
+     *
+     * `null` OR ABSENT — the generator omits the key rather than emitting null on
+     * six of the fourteen. `readResultsNote` then says why, per procedure, because
+     * the reasons differ: 0x0C writes nothing at all, 0x04 returns its measurement
+     * inline, 0x08 writes an offset that is in neither block.
+     */
+    readResults?: string | null;
+    readResultsNote?: { ja: string; en: string };
+    /** A fact about this procedure the SGBD tables do not carry. */
+    note?: { ja: string; en: string };
     risk: string;
     prereq: Array<{ ja: string; en: string }>;
     /** The progress vocabulary: what the ECU says it is doing. */

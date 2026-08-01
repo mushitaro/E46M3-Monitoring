@@ -66,16 +66,30 @@ def result_role(name: str) -> str:
     return ROLE_VALUE
 
 
-def value_of(name: str) -> str | None:
-    """`_EINH` / `_TEXT` が修飾している値結果の名前。
+def value_of(name: str, siblings: set[str]) -> str | None:
+    """`_EINH` / `_TEXT` が修飾している値結果を、同じジョブの結果名から解決する。
 
-    `STAT_X_WERT_EINH` → `STAT_X_WERT`。単純な語尾落としで、SGBD もこの規則で
-    命名している。対応する値が実在するかは呼び出し側（verify）が検査する。
+    語尾を落とすだけでは足りない。実データの分布（全2311結果を走査）:
+
+        _EINH -> _WERT   414    RAM_LESEN_EINH      -> RAM_LESEN_WERT
+        _TEXT -> _WERT   101    F_UW1_TEXT          -> F_UW1_WERT
+        _EINH -> bare     35    EVAN_VERSTELLZEIT_FRUEH_EINH -> ..._FRUEH
+        _TEXT -> _NR      28    F_ORT_TEXT          -> F_ORT_NR
+        _TEXT -> bare      1
+        対応なし          11
+
+    `F_ORT_TEXT` の値は `F_ORT` ではなく `F_ORT_NR` である。語尾落としだけで
+    決め打ちすると 554 件が存在しない相手を指す。
     """
-    n = name.upper()
+    n = name
     for suffix in ("_EINH", "_TEXT"):
-        if n.endswith(suffix):
-            return name[: -len(suffix)]
+        if not n.upper().endswith(suffix):
+            continue
+        base = n[: -len(suffix)]
+        for cand in (base + "_WERT", base + "_NR", base):
+            if cand != n and cand in siblings:
+                return cand
+        return None
     return None
 
 
@@ -127,10 +141,15 @@ def arg_kind(name: str, type_: str, comment: str) -> str:
 # 推測であることは provenance で明示し、UI に出す。
 _ARG_PARTITIONS: dict[tuple[str, str], dict[str, list[str]]] = {
     ("SMG2", "ADAPTIONSWERTE_LESEN"): {
-        "0": [r"^(KUPPL|I_NULL_VENT_KUPPL|POS_EINKUP|POS_AUSKUP|NULLPUNKT_KUPPL|"
-              r"ADAPT_K\d|ADAPT_P\d|M_KUPPL|T_KL1\d|OFF_A_LONG)"],
-        "1": [r"^(SW_|WW_|ANSCHLAG_SW|POS_SW|OFF_I_WW|OFF_WWSPUR|KORR_WW|"
-              r"ADAPT_G|GANG|ANZ_RENNSTART)"],
+        # 0 = クラッチ。弁の零電流特性(ADAPT_SMIN/SMAX/IMIN/IMAX)、過負荷回数、
+        #     食いつき点、位置、キャリブレーション曲線 K1..K10 / 位置制御 P0..P5。
+        "0": [r"^(KUPPL|I_NULL_VENT_KUPPL|UEBERDECKUNG_VENT_KUPPL|ZAHL_KUPPL|"
+              r"POS_EINKUP|POS_AUSKUP|NULLPUNKT_KUPPL|"
+              r"ADAPT_K\d|ADAPT_P\d|ADAPT_[SI](MIN|MAX)|M_KUPPL|T_KL1\d|OFF_A_LONG)"],
+        # 1 = 変速機。シフト経路・セレクト角・各ギア窓・最大シフト力での変速回数、
+        #     および軸速度差。
+        "1": [r"^(SW_|WW_|ANSCHLAG_SW|POS_SW|OFF_I_WW|OFF_WWSPUR|OFF_SCHALTWEGSPUR|"
+              r"KORR_WW|KORR_SW|ANZ_SCHALT|DIFF_V_ACHS|ADAPT_G|GANG|ANZ_RENNSTART)"],
         "2": [r"^(HEX_GETRIEBEDATEN|GETRIEBE)"],
     },
 }
@@ -236,16 +255,25 @@ def load(dump_dir: str, sgbd: str) -> SgbdDump:
             )
             for a in (j.get("args") or [])
         ]
+        raw_results = j.get("results") or []
+        siblings = {r["name"] for r in raw_results}
         results = []
-        for r in j.get("results") or []:
+        for r in raw_results:
             role = result_role(r["name"])
+            target = value_of(r["name"], siblings) if role in (ROLE_UNIT, ROLE_TEXT) else None
+            # 修飾すべき値が同じジョブに無い `_TEXT` は、付属物ではなく **それ自体が値**。
+            # `FS_LESEN_TEXT.F_ORT_TEXT`（故障箇所の名前だけを返すジョブ）や
+            # `STATUS_SYNC_MODE_TEXT` がそれで、ECU が返す平文そのものが答えになる。
+            # 付属物として扱うと、そのジョブの唯一の中身が「単位欄」に落ちる。
+            if role == ROLE_TEXT and target is None:
+                role = ROLE_VALUE
             results.append(
                 SgbdResult(
                     name=r["name"],
                     type=r.get("type", ""),
                     comment=r.get("comment", ""),
                     role=role,
-                    value_of=value_of(r["name"]) if role in (ROLE_UNIT, ROLE_TEXT) else None,
+                    value_of=target,
                     when_arg=partition_for(sgbd, j["job"], r["name"]),
                 )
             )

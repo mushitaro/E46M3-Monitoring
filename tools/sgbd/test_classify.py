@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""classify.py の網羅性と、既知の誤分類が再発しないことの検査。
+
+`python tools/sgbd/test_classify.py`
+"""
+from __future__ import annotations
+
+import collections
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from sgbd import classify, model  # noqa: E402
+
+DUMP = os.path.join(os.path.dirname(__file__), "..", "SgbdDump", "out")
+SGBDS = ("MSS54DS0", "SMG2", "DSC_E46")
+FAILS: list[str] = []
+
+
+def check(cond: bool, msg: str) -> None:
+    if not cond:
+        FAILS.append(msg)
+
+
+dumps = {s: model.load(DUMP, s) for s in SGBDS}
+rows: dict[tuple[str, str], classify.JobClassification] = {}
+for sgbd, d in dumps.items():
+    for j in d.jobs:
+        rows[(sgbd, j.name)] = classify.classify(sgbd, j.name, j.comment, [a.name for a in j.args])
+
+
+def c(sgbd: str, job: str) -> classify.JobClassification:
+    return rows[(sgbd, job)]
+
+
+# --- 1. 全ジョブが分類され、各ファセットの合計が総数に一致する ---------------
+# 192 件が消えたのは、分類できないものを黙って落としたから。落とさず
+# `unknown` に入れる方針なので、合計は必ず一致しなければならない。
+TOTAL = 323
+check(len(rows) == TOTAL, f"expected {TOTAL} jobs, classified {len(rows)}")
+for label, key in (("class", "cls"), ("audience", "audience"), ("system", "system"), ("kind", "kind")):
+    ctr = collections.Counter(getattr(v, key) for v in rows.values())
+    check(sum(ctr.values()) == TOTAL, f"{label} facet sums to {sum(ctr.values())}, not {TOTAL}")
+
+# --- 2. `unknown` を無制限に許さない ----------------------------------------
+# 不明であること自体は事実だが、増えたら気付く必要がある。
+unknown_sys = [f"{s}.{j}" for (s, j), v in rows.items() if v.system == "unknown"]
+unknown_kind = [f"{s}.{j}" for (s, j), v in rows.items() if v.kind == "unknown"]
+check(not unknown_sys, f"jobs with no system: {unknown_sys}")
+check(not unknown_kind, f"jobs with no operation kind: {unknown_kind}")
+
+# --- 3. 旧生成器の誤分類が再発しないこと ------------------------------------
+# 読取ジョブが「永続書込」側に置かれていた 5 件。
+for sgbd, job in (
+    ("MSS54DS0", "ABGLEICHWERTE_LESEN"),
+    ("MSS54DS0", "ABGLEICHFLAG_LESEN"),
+    ("SMG2", "GETRIEBEDATEN_LESEN"),
+    ("SMG2", "ADAPTIONSWERTE_LESEN"),
+    ("DSC_E46", "ABGLEICHWERTE_LESEN"),
+):
+    v = c(sgbd, job)
+    check(v.cls == classify.CLASS_READ, f"{sgbd}.{job}: cls={v.cls}, expected read")
+    check(v.kind == "read", f"{sgbd}.{job}: kind={v.kind}, expected read")
+    check(v.risk == classify.RISK_LOW, f"{sgbd}.{job}: risk={v.risk}, expected low")
+    check(v.irreversible is None, f"{sgbd}.{job}: a read must not be marked irreversible")
+
+# 検査スタンプ書込は、同じ操作が PRUEFSTEMPEL_SCHREIBEN として除外されていた
+# 一方で ID_SCHREIBEN として較正扱いで露出していた。
+v = c("DSC_E46", "ID_SCHREIBEN")
+check(v.cls == classify.CLASS_PROGRAMMING, f"ID_SCHREIBEN: cls={v.cls}, expected programming")
+
+# 較正のためのセッション解錠。それ自体は較正しない。
+v = c("MSS54DS0", "ABGLEICH_LOGIN_REQUEST")
+check(v.cls == classify.CLASS_PROTOCOL, f"ABGLEICH_LOGIN_REQUEST: cls={v.cls}")
+
+# --- 4. ラッチは止められない。STOP を出す根拠を与えてはいけない -------------
+for job in ("DSC_SIM_VA", "DSC_SIM_HA", "DSC_SIM_VA3"):
+    v = c("DSC_E46", job)
+    check(v.kind == "latching", f"{job}: kind={v.kind}")
+    check(v.termination == classify.TERM_NONE, f"{job}: termination={v.termination}")
+    check(v.irreversible == "irr_latching", f"{job}: irreversible={v.irreversible}")
+    check(v.stop_job is None, f"{job}: has a stop_job, but the SGBD exposes no release job")
+
+# --- 5. SYSTEMCHECK は「開始 → 別ジョブで結果」------------------------------
+# 対応は一様ではない。DMTL_ECOS には読み手が無く、LAUFUNRUHE には開始役が無い。
+v = c("MSS54DS0", "START_SYSTEMCHECK_DMTL")
+check(v.kind == "deferred", f"START_SYSTEMCHECK_DMTL: kind={v.kind}")
+check(v.result_delivery == classify.DELIVER_COMPANION, f"...: delivery={v.result_delivery}")
+check(v.result_job == "LESEN_SYSTEMCHECK_DMTL", f"...: result_job={v.result_job}")
+check(c("MSS54DS0", "START_SYSTEMCHECK_DMTL_ECOS").result_job is None,
+      "DMTL_ECOS has no reader in the SGBD; inventing one would send the wrong read")
+check(c("MSS54DS0", "START_SYSTEMCHECK_SEK_LUFT").stop_job == "STOP_SYSTEMCHECK_SEK_LUFT",
+      "SEK_LUFT is the only systemcheck with a stop job")
+
+# --- 6. SMG II 試験プログラムの前提と停止 ------------------------------------
+v = c("SMG2", "TESTPRG_STARTEN")
+check(v.kind == "procedure", f"TESTPRG_STARTEN: kind={v.kind}")
+check(v.prerequisite_jobs == ["TESTPRG_STOP"], f"...: prerequisites={v.prerequisite_jobs}")
+check(v.stop_job == "TESTPRG_STOP" and v.result_job == "STATUS_TESTPRG", f"...: {v.stop_job}/{v.result_job}")
+check(v.ecu_timeout_sec == 10, f"...: ecu timeout={v.ecu_timeout_sec}")
+
+# SGBD が前段ジョブを明言しているのは SMG2 だけ。他モジュールの同名ジョブに
+# 規則を主張してはいけない。
+v = c("SMG2", "STEUERN_STELLGLIED")
+check(v.prerequisite_jobs == ["ANSTEUERUNG_VORBEREITEN"], f"SMG2 STEUERN_STELLGLIED: {v.prerequisite_jobs}")
+check((v.ecu_timeout_sec, v.max_hold_sec) == (10, 60), f"...: {v.ecu_timeout_sec}/{v.max_hold_sec}")
+
+# --- 7. リンク自身を壊すジョブに実行制御を与えない --------------------------
+for sgbd, job in (("SMG2", "BAUDRATEN_UMSTELLUNG"), ("SMG2", "SET_EDIC_BAUDRATE")):
+    v = c(sgbd, job)
+    check(v.cls == classify.CLASS_PROGRAMMING, f"{job}: cls={v.cls}")
+    check(v.audience == classify.AUD_PROTOCOL, f"{job}: audience={v.audience}")
+
+# --- 8. 故障メモリ ----------------------------------------------------------
+# 消去は書込。旧アプリが実車で到達できた唯一の書込がこれ。
+v = c("MSS54DS0", "FS_LOESCHEN")
+check(v.cls == classify.CLASS_CALIBRATION and v.kind == "write", f"FS_LOESCHEN: {v.cls}/{v.kind}")
+check(v.risk == classify.RISK_HIGH and v.audience == classify.AUD_OWNER, f"FS_LOESCHEN: {v.risk}/{v.audience}")
+check(c("MSS54DS0", "FS_LESEN").kind == "read", "FS_LESEN must be a read")
+check(c("MSS54DS0", "FS_LESEN_TEXT").kind == "read", "FS_LESEN_TEXT must be a read")
+check(c("DSC_E46", "FS_LESEN_KB90").kind == "read", "FS_LESEN_KB90 must be a read")
+check(all(v.system == "faults" for (s, j), v in rows.items() if j.startswith("FS_")),
+      "every FS_* job belongs to the faults system")
+
+# --- 9. RAM 書換と EEPROM 書換を同じ扱いにしない ----------------------------
+check(c("MSS54DS0", "CO_EINZELABGLEICH_VERSTELLEN").cls == classify.CLASS_CALIBRATION,
+      "CO_EINZELABGLEICH_VERSTELLEN writes RAM only")
+v = c("MSS54DS0", "CO_EINZELABGLEICH_PROGRAMMIEREN")
+check(v.cls == classify.CLASS_PROGRAMMING and v.irreversible == "irr_eeprom",
+      f"CO_EINZELABGLEICH_PROGRAMMIEREN: {v.cls}/{v.irreversible}")
+
+# --- 10. インジェクタ・点火コイル・スタータ・燃料ポンプはエンジン停止が要る --
+for job in ("STEUERN_EV1", "STEUERN_ZS8", "STEUERN_START", "STEUERN_EKP"):
+    v = c("MSS54DS0", job)
+    check(v.risk == classify.RISK_HIGH, f"{job}: risk={v.risk}")
+    check("engine_off" in v.preconditions, f"{job}: preconditions={v.preconditions}")
+
+# --- 11. 読取に前提条件も不可逆マークも付かないこと --------------------------
+for (s, j), v in rows.items():
+    if v.cls == classify.CLASS_READ:
+        check(v.irreversible is None, f"{s}.{j}: a read is marked irreversible")
+        check(v.termination == classify.TERM_SELF, f"{s}.{j}: a read must terminate by itself")
+
+if FAILS:
+    print(f"FAIL ({len(FAILS)})")
+    for f in FAILS:
+        print("  -", f)
+    sys.exit(1)
+
+by_class = collections.Counter(v.cls for v in rows.values())
+by_aud = collections.Counter(v.audience for v in rows.values())
+print(f"ok - {len(rows)} jobs, no unknowns")
+print(f"   class:    {dict(by_class.most_common())}")
+print(f"   audience: {dict(by_aud.most_common())}")

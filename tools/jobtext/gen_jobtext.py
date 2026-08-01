@@ -1,19 +1,29 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # ============================================================================
-#  gen_jobtext.py — オーナー向けジョブ説明 → public/ecu-data/<module>.jobtext.json
+#  gen_jobtext.py — 押す前の注意文 → public/ecu-data/<module>.jobtext.json
 # ----------------------------------------------------------------------------
-#  部品辞書 × 動作辞書 でテンプレート生成し、overrides/ の手書きで上書きする。
+#  以前ここは5スロット（何が行われるか／車で何が起きるか／どうなれば問題ないか／
+#  そうならなかったら何を疑うか／実行後に何が残るか）を 1640 フィールド生成して
+#  いた。うち 1315 が定型文で、操作画面には見出しが5つ並び、ほぼ同じ文が出ていた。
+#  SMG II の14手順に至っては、全部が `TESTPRG_STARTEN` の同じ文を継承していた。
 #
-#  confidence は **フィールド単位**で記録する。1つのジョブに手書きの `does` と
-#  テンプレートの `fail` が同居するのは普通で、読む側はどちらを読んでいるのか
-#  知る権利がある。
+#  それらが答えようとしていたことは、UI 側がもっと正確に答える:
+#      何が行われるか  → 手順リスト（ECU 自身の進行語彙、またはジョブの送信計画）
+#      どうなれば正常  → 結果一覧と、記録された値
+#      何が残るか      → 前後の数値と、元からある不可逆バナー
+#
+#  残るのは「押す前に知らないと困ること」1本だけである。
+#
+#  ゲート: risk=high または不可逆のジョブは注意文を持たねばならない。無ければ
+#  非ゼロ終了。旧ゲート（較正/書換に定型 fail/after があれば失敗）が守っていた
+#  性質——危険な操作が総称文のまま出荷されない——を、スロットが消えた後も
+#  守り続けるための置き換えである。
 #
 #  実行: python tools/jobtext/gen_jobtext.py
 # ============================================================================
 from __future__ import annotations
 
-import collections
 import json
 import os
 import sys
@@ -21,113 +31,67 @@ import sys
 HERE = os.path.dirname(__file__)
 sys.path.insert(0, os.path.join(HERE, ".."))
 
-from jobtext import actions, components   # noqa: E402
-from jobtext.overrides import OVERRIDES   # noqa: E402
+from jobtext import cautions                 # noqa: E402
+from jobtext.overrides import OVERRIDES      # noqa: E402
 
 DATA = os.path.join(HERE, "..", "..", "public", "ecu-data")
 MODULES = ("mss54", "smg2", "dsc_mk60")
-SLOTS = ("does", "observe", "pass", "fail", "after")
+SCHEMA = 2
 
-# 手書きが必須のクラス。ここにテンプレートの `fail` / `after` を出してはいけない
-# ——「失敗したら何を疑うか」が総称文なら、それは説明ではなく体裁である。
-MUST_AUTHOR = {"calibration", "programming"}
+# 注意文が必須なジョブ。押した結果が残る、あるいは戻せないもの。
+def needs_caution(job: dict) -> bool:
+    return job["risk"] == "high" or bool(job["op"].get("irreversible"))
 
 
-def build(module: str) -> tuple[dict, collections.Counter, list[str]]:
+def build(module: str) -> tuple[dict, list[str], int]:
     profile = json.load(open(os.path.join(DATA, f"{module}.jobs.json"), encoding="utf-8"))
-    conf = collections.Counter()
+    out: list[dict] = []
     gaps: list[str] = []
-    out = []
+    required = 0
 
     for job in profile["jobs"]:
         jid = job["id"]
-        comp = components.match(jid)
-        act = actions.for_kind(job["op"]["kind"], job["class"])
-        ov = OVERRIDES.get(module, {}).get(jid, {})
+        # 個体の上書きが最優先。次に族の注意文。
+        ov = OVERRIDES.get(module, {}).get(jid)
+        text = ov or cautions.caution_for(jid)
+        if text:
+            out.append({"id": jid, "caution": {"ja": text[0], "en": text[1]}})
+        if needs_caution(job):
+            required += 1
+            if not text:
+                gaps.append(f"{module}.{jid} ({job['risk']}"
+                            f"{'/' + job['op']['irreversible'] if job['op'].get('irreversible') else ''})")
 
-        if comp is None and not ov:
-            gaps.append(f"{module}.{jid}: no component match and no override")
-            continue
-        if act is None and not ov:
-            gaps.append(f"{module}.{jid}: no action template for kind={job['op']['kind']}")
-            continue
-
-        text: dict[str, dict[str, str]] = {}
-        confidence: dict[str, str] = {}
-        for slot in SLOTS:
-            if slot in ov:
-                text[slot] = {"ja": ov[slot][0], "en": ov[slot][1]}
-                confidence[slot] = "authored"
-                continue
-            if act is None:
-                gaps.append(f"{module}.{jid}: slot {slot} has neither override nor template")
-                continue
-            ja, en = act[slot]
-            fmt = {
-                "c": comp["ja"] if comp else jid,
-                "where": comp["ja_where"] if comp else "",
-            }
-            fmt_en = {
-                "c": comp["en"] if comp else jid,
-                "where": comp["en_where"] if comp else "",
-            }
-            text[slot] = {"ja": ja.format(**fmt).strip(), "en": en.format(**fmt_en).strip()}
-            # 部品辞書の `where` が空なら、テンプレートの穴が埋まっていない。
-            thin = comp is not None and not comp["ja_where"] and "{where}" in ja
-            confidence[slot] = "template-thin" if thin else "template"
-
-        # 体感できること（sense）は、あるときだけ `fail` に足す。
-        if comp and comp.get("ja_sense") and confidence.get("fail") != "authored":
-            text["fail"]["ja"] += " " + comp["ja_sense"]
-            text["fail"]["en"] += " " + comp["en_sense"]
-
-        if "caution" in ov:
-            text["caution"] = {"ja": ov["caution"][0], "en": ov["caution"][1]}
-            confidence["caution"] = "authored"
-
-        # 手書き必須クラスにテンプレートの fail/after を出さない
-        if job["class"] in MUST_AUTHOR:
-            for slot in ("fail", "after"):
-                if confidence.get(slot, "").startswith("template"):
-                    gaps.append(f"{module}.{jid}: class={job['class']} needs an authored '{slot}'")
-
-        for v in confidence.values():
-            conf[v] += 1
-
-        entry = {"id": jid, "text": text, "confidence": confidence}
-        if comp:
-            entry["from"] = {"component": comp["key"], "action": job["op"]["kind"]}
-        out.append(entry)
-
-    return ({"schema": 1, "module": module, "jobs": out}, conf, gaps)
+    return ({"schema": SCHEMA, "module": module, "jobs": out}, gaps, required)
 
 
 def main() -> int:
-    total = collections.Counter()
     all_gaps: list[str] = []
+    total_required = 0
     for module in MODULES:
-        doc, conf, gaps = build(module)
-        total.update(conf)
+        doc, gaps, required = build(module)
         all_gaps += gaps
+        total_required += required
         path = os.path.join(DATA, f"{module}.jobtext.json")
         tmp = path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(doc, f, ensure_ascii=False, indent=1)
             f.write("\n")
         os.replace(tmp, path)
-        n = len(doc["jobs"])
-        authored = sum(1 for j in doc["jobs"] if all(v == "authored" for v in j["confidence"].values()))
-        print(f"  {module:10} jobs={n:4} fully-authored={authored:3} "
-              f"fields={dict(conf.most_common())}")
+        print(f"  {module:10} cautions={len(doc['jobs']):4}  "
+              f"required={required:3}  missing={len(gaps):3}")
 
-    print(f"\n  field confidence overall: {dict(total.most_common())}")
+    covered = total_required - len(all_gaps)
+    print(f"\n  high-risk or irreversible: {total_required}, with a caution: {covered}, "
+          f"missing: {len(all_gaps)}")
     if all_gaps:
-        print(f"\n[GAPS] {len(all_gaps)} jobs need authored text:")
-        for g in all_gaps[:40]:
+        # 危険な操作が注意文なしで出荷されることを許さない。計画では負債69件を
+        # 見込んで2段階（警告→失敗）にするつもりだったが、族の正規表現表で全部
+        # 埋まったので最初から失敗させる。埋まっている状態を維持し続ける方が、
+        # 後から埋め直すより安い。
+        print("\n[FAIL] high-risk or irreversible jobs with no caution:")
+        for g in all_gaps:
             print("  -", g)
-        if len(all_gaps) > 40:
-            print(f"  ... and {len(all_gaps) - 40} more")
-        # 網羅の穴は失敗にする。埋まっていないことを黙って出荷しない。
         return 1
     return 0
 

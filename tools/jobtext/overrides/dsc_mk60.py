@@ -1,210 +1,53 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""DSC (E46 M3) の手書き説明。
+"""DSC MK60 (E46 M3) の個別注意文。
 
-このモジュールは**テンプレート生成が原理的に効かない**。SGBD のコメントが:
+族で足りるものは `cautions.py` の正規表現表が受け持つ。ここに書くのは
+**その族の一般論では足りない個体**だけである。
 
-    DRUCKSENSOR_DSC_ABGLEICHEN                -> "Default init job"
-    QUERBESCHLEUNIGUNGSSENSOR_DSC_ABGLEICHEN  -> "Default init job"
-    ABGLEICH_DSC_SENSOREN                     -> "LWS direkt ansprechen und O-Abgleich durchfuehren"
-    ABGLEICH_LWS_AQ_SENSOREN                  -> "LWS direkt ansprechen und O-Abgleich durchfuehren"
-    DDS_RESET                                 -> ""
-
-つまり4件が2組の完全な重複、1件は空。部品×動作で回せば、違うジョブに同じ文が
-出る。DSC の較正10件は全数手書き以外に正しくなる道が無い。
+各値は `(ja, en)` のタプル。
 """
 from __future__ import annotations
 
-DSC_MK60: dict[str, dict[str, tuple[str, str]]] = {
-    # ---------------------------------------------------------- 故障メモリ
-    "FS_LOESCHEN": {
-        "does": ("DSC が記録している故障コードをすべて消します。フリーズフレーム（そのときの車速・ブレーキ状態など）も一緒に消えます。",
-                 "Erases every fault code DSC has stored, together with the freeze frames that recorded the conditions at the time."),
-        "observe": ("車では何も起きません。警告灯が点いていた場合、原因が直っていればこの操作で消え、直っていなければ走り出すとすぐ再点灯します。",
-                    "Nothing happens on the car. If a warning lamp was on, it goes out - and comes straight back on as you drive if the cause is still there."),
-        "pass": ("消去後にもう一度読み取って空であれば成功です。走行後に再度読み取って空のままなら、本当に直っています。",
-                 "Read again afterwards: empty means the erase worked. Drive, then read again: still empty means it is genuinely fixed."),
-        "fail": ("消してもすぐ戻るコードは、現在も発生し続けている故障です。**消すことは修理ではありません。** 戻ってきたコードこそが本命なので、その内容を先に調べてください。",
-                 "A code that comes straight back is a fault that is still happening. **Erasing is not repairing.** The code that returns is the real one; investigate that first."),
-        "after": ("故障履歴が失われます。**整備の証拠として残しておきたい場合は、消す前に記録を保存してください。** 一度消すとこのアプリからは戻せません。",
-                  "The fault history is gone. **If you want it as evidence of what happened, save it before erasing.** Nothing here can bring it back."),
-        "caution": ("車検や保証の判断材料になる履歴を消してしまうことがあります。",
-                    "You may be erasing history that a workshop or a warranty claim would have relied on."),
-    },
-    "FS_INIT": {
-        "does": ("故障メモリの領域（NVRAM）そのものを初期化します。`FS_LOESCHEN` より強い操作で、カウンタや内部状態も含めて消します。",
-                 "Initialises the fault-memory area (NVRAM) itself. Stronger than FS_LOESCHEN: counters and internal state go too."),
-        "observe": ("車では何も起きません。",
-                    "Nothing happens on the car."),
-        "pass": ("初期化後に故障メモリが空で、DSC が正常に起動すれば成功です。",
-                 "Success is: the memory reads empty afterwards and DSC starts up normally."),
-        "fail": ("初期化後に DSC が故障を出し続ける場合は、メモリではなくハードウェアの問題です。センサと配線を先に見てください。",
-                 "If DSC keeps reporting faults afterwards, the problem is hardware, not memory. Look at the sensors and wiring first."),
-        "after": ("**履歴・カウンタとも完全に失われます。** 通常の整備で使うものではなく、コントロールユニット交換時などの操作です。",
-                  "**History and counters are gone completely.** This is not a routine service operation; it belongs to control-unit replacement."),
-    },
-    # ------------------------------------------------------ センサ較正10件
-    "ABGLEICH_DSC_SENSOREN": {
-        "does": ("ステアリング角センサと横加速度センサに「いまが中立」と教え込みます。DSC はこの中立点を基準に、運転者が何をしようとしているかを判断します。",
-                 "Teaches the steering-angle and lateral-acceleration sensors that this is neutral. DSC judges what the driver intends relative to that zero."),
-        "observe": ("車では何も起きません。数秒で終わります。",
-                    "Nothing happens on the car. It takes a few seconds."),
-        "pass": ("完了後、ステアリング角の読み値が直進状態でほぼ 0 度、横加速度がほぼ 0 になれば成功です。",
-                 "Afterwards, steering angle should read about 0 degrees with the wheels straight and lateral acceleration about 0."),
-        "fail": ("値がゼロにならない場合、車両が本当に直進・水平・静止していなかったか、センサ自体の不良です。**傾いた場所でやり直すと、傾きを中立として覚えてしまいます。**",
-                 "If it will not zero, either the car was not genuinely straight, level and still, or the sensor is faulty. **Redoing it on a slope teaches the slope as neutral.**"),
-        "after": ("DSC の介入判断の基準そのものが変わります。誤った中立点を覚えると、直進中に介入したり、必要な場面で介入しなかったりします。",
-                  "The reference DSC intervenes against has changed. A wrong zero makes it intervene going straight, or fail to intervene when it should."),
-        "caution": ("必ず平坦な場所で、ハンドルを直進位置に保ち、車両を完全に静止させてから実行してください。",
-                    "Do this only on level ground, with the wheel held straight and the car completely still."),
-    },
-    "ABGLEICH_LWS_AQ_SENSOREN": {
-        "does": ("ステアリング角センサ（LWS）と横加速度センサのゼロ点を、両方まとめて取り直します。SGBD のコメントは `ABGLEICH_DSC_SENSOREN` と同一ですが、こちらは対象を明示した呼び出しです。",
-                 "Re-zeroes the steering-angle sensor (LWS) and the lateral-acceleration sensor together. The SGBD comment is identical to ABGLEICH_DSC_SENSOREN; this is the call that names its targets."),
-        "observe": ("車では何も起きません。",
-                    "Nothing happens on the car."),
-        "pass": ("直進・静止状態でステアリング角と横加速度がともにほぼ 0 を示せば成功です。",
-                 "Success is both steering angle and lateral acceleration reading near 0 with the car straight and still."),
-        "fail": ("片方だけゼロにならない場合、そのセンサか配線が疑わしいです。両方ともずれる場合は車両姿勢を疑ってください。",
-                 "If only one refuses to zero, suspect that sensor or its wiring. If both are off, suspect how the car is standing."),
-        "after": ("DSC・ABS の介入基準が更新されます。",
-                  "The reference DSC and ABS intervene against is updated."),
-        "caution": ("平坦な場所・直進・静止が前提です。ステアリングを切ったまま実行しないでください。",
-                    "Level ground, wheels straight, car still. Never with the wheel turned."),
-    },
-    "DRUCKSENSOR_DSC_ABGLEICHEN": {
-        "does": ("ブレーキ油圧センサのゼロ点を取り直します。ブレーキを踏んでいない状態の圧力を「0 bar」として覚えさせます。",
-                 "Re-zeroes the brake pressure sensor: it learns that the pressure with your foot off the pedal is zero bar."),
-        "observe": ("車では何も起きません。",
-                    "Nothing happens on the car."),
-        "pass": ("ブレーキを踏んでいない状態で圧力の読み値がほぼ 0 になれば成功です。",
-                 "Success is a pressure reading near zero with the pedal released."),
-        "fail": ("ゼロにならない場合は、ブレーキペダルが完全に戻っていないか、センサ不良です。**踏んだ状態でゼロ点を取ると、以後 DSC は常圧を0と誤認します。**",
-                 "If it will not zero, the pedal is not fully released or the sensor is bad. **Zeroing with the pedal pressed makes DSC treat standing pressure as zero from then on.**"),
-        "after": ("ブレーキ圧の判断基準が変わります。ABS/DSC の介入タイミングに直接影響します。",
-                  "The reference for brake pressure has changed, which directly affects when ABS and DSC step in."),
-        "caution": ("実行中はブレーキペダルに触れないでください。",
-                    "Do not touch the brake pedal while it runs."),
-    },
-    "QUERBESCHLEUNIGUNGSSENSOR_DSC_ABGLEICHEN": {
-        "does": ("横加速度センサのゼロ点を取り直します。停止・水平状態での出力を「横 G ゼロ」として覚えさせます。",
-                 "Re-zeroes the lateral-acceleration sensor: its output while stationary and level becomes zero lateral g."),
-        "observe": ("車では何も起きません。",
-                    "Nothing happens on the car."),
-        "pass": ("水平な場所で静止したまま、横加速度の読み値がほぼ 0 になれば成功です。",
-                 "Success is a lateral-acceleration reading near zero, stationary on level ground."),
-        "fail": ("ゼロにならない場合、路面が傾いているかセンサ不良です。**傾斜地で実行すると、その傾きを「まっすぐ」として覚えます。**",
-                 "If it will not zero, the surface is sloped or the sensor is bad. **Doing it on a slope teaches the slope as level.**"),
-        "after": ("DSC がコーナリング中の横 G を判断する基準が変わります。",
-                  "The reference DSC uses to judge cornering force has changed."),
-        "caution": ("必ず水平な場所で、車両を完全に静止させてください。",
-                    "Level ground only, and the car completely still."),
-    },
-    "LENKWINKELSENSOR_ID_DSC_SCHREIBEN": {
-        "does": ("ステアリング角センサの識別情報を DSC に書き込みます。センサを交換したときに、新しいセンサを DSC に認識させる操作です。",
-                 "Writes the steering-angle sensor's identification into DSC. This is how a replacement sensor gets recognised."),
-        "observe": ("車では何も起きません。",
-                    "Nothing happens on the car."),
-        "pass": ("書込後に DSC がセンサを認識し、角度が読めれば成功です。書込のあとはゼロ点調整が必要です。",
-                 "Success is DSC recognising the sensor and reading an angle. A zero calibration must follow."),
-        "fail": ("認識されない場合は、書き込んだ ID がセンサと合っていないか、配線・CAN の問題です。",
-                 "Not being recognised means the written ID does not match the sensor, or there is a wiring or CAN problem."),
-        "after": ("**書込だけでは完了しません。** 続けて `ABGLEICH_LWS_AQ_SENSOREN` でゼロ点を取り直してください。",
-                  "**Writing alone does not finish the job.** Follow it with ABGLEICH_LWS_AQ_SENSOREN to re-zero."),
-    },
-    "TRIG_SCHREIBEN": {
-        "does": ("車輪速センサの信号を有効と判定する電圧しきい値を書き込みます。センサとリラクタリングの組み合わせに合わせる値です。",
-                 "Writes the voltage threshold at which a wheel-speed pulse counts. It is matched to the sensor and reluctor combination."),
-        "observe": ("車では何も起きません。",
-                    "Nothing happens on the car."),
-        "pass": ("走行時に4輪すべての車輪速が滑らかに読めれば成功です。",
-                 "Success is all four wheel speeds reading smoothly while driving."),
-        "fail": ("しきい値が高すぎるとパルスを取りこぼして低速で車輪速が抜け、低すぎるとノイズを拾って誤検出します。低速走行で4輪の値を見比べてください。",
-                 "Too high and it drops pulses so a wheel reads zero at low speed; too low and it counts noise. Compare all four at walking pace."),
-        "after": ("ABS の作動判定に直接影響します。誤った値は低速でのABS誤作動や不作動につながります。",
-                  "This feeds ABS directly. A wrong value causes ABS to trigger when it should not, or not when it should, at low speed."),
-    },
-    "DDS_RESET": {
-        "does": ("タイヤ空気圧警報（DDS）に「いまの4輪の状態が正常」と教え直します。DDS は圧力センサを持たず、4輪の回転差から空気圧低下を推定するので、基準の取り直しが必要です。",
-                 "Tells the tyre-pressure warning (DDS) that the current state of all four tyres is correct. DDS has no pressure sensors - it infers a soft tyre from rotation differences - so the reference has to be retaken."),
-        "observe": ("車では何も起きません。警告灯が点いていれば消えます。",
-                    "Nothing happens on the car. If the warning lamp was on, it goes out."),
-        "pass": ("リセット後、しばらく走って警告灯が点かなければ成功です。学習には一定距離の走行が要ります。",
-                 "Success is: drive for a while afterwards and the lamp stays off. Learning needs some distance."),
-        "fail": ("走行後すぐ再点灯する場合は、実際に空気圧が低いか、タイヤのサイズ・銘柄が4輪で揃っていません。**リセットは空気を入れることの代わりにはなりません。**",
-                 "Re-lighting soon after means a tyre really is soft, or the four tyres are not the same size and type. **Resetting is not a substitute for putting air in.**"),
-        "after": ("**いまの空気圧が「正常」として記憶されます。** 空気圧が低い状態でリセットすると、その低い状態を正常として覚えてしまい、以後の警告が出なくなります。必ず規定圧に合わせてから実行してください。",
-                  "**Whatever the pressures are now becomes the definition of correct.** Reset with a soft tyre and DDS learns soft as normal and stops warning you. Set the pressures first."),
-        "caution": ("タイヤ交換・ローテーション・空気圧調整のあとは必ず実行してください。逆に、規定圧に合わせる前に実行してはいけません。",
-                    "Always run it after a tyre change, rotation or pressure adjustment - and never before setting the pressures."),
-    },
-    "DDS_EOL_PASSIV": {
-        "does": ("DDS を工場出荷ライン用の受動状態にします。SGBD にコメントが無く、通常の整備で使う操作ではありません。",
-                 "Puts DDS into its end-of-line passive state. The SGBD carries no comment for it, and it is not a routine service operation."),
-        "observe": ("車では何も起きません。",
-                    "Nothing happens on the car."),
-        "pass": ("SGBD が期待される結果を述べていないため、このアプリからは成功の判定基準を示せません。",
-                 "The SGBD does not state an expected result, so nothing here can tell you what success looks like."),
-        "fail": ("同じ理由で、失敗時に何を疑うべきかも示せません。**判定基準を述べられない操作を実車で実行しないでください。**",
-                 "For the same reason nothing here can tell you what a failure means. **Do not run an operation on a car when the tool cannot tell you what the outcome should be.**"),
-        "after": ("DDS が警告を出さない状態になる可能性があります。元に戻す手順は SGBD に記載がありません。",
-                  "DDS may be left in a state where it does not warn. The SGBD documents no way back."),
-        "caution": ("SGBD が動作も結果も記述していない操作です。実車では実行しないでください。",
-                    "The SGBD describes neither the action nor the result. Do not run this on a car."),
-    },
-    "INITIALISIERUNG": {
-        "does": ("DSC を初期状態に戻します。学習しているセンサのゼロ点や内部状態が初期値に戻ります。",
-                 "Returns DSC to its initial state. Learned sensor zeros and internal state go back to defaults."),
-        "observe": ("車では何も起きません。実行後、DSC 警告灯が点灯したままになることがあります。",
-                    "Nothing happens on the car. The DSC lamp may stay on afterwards."),
-        "pass": ("初期化後にセンサ較正を行い、警告灯が消えれば一連の作業として成功です。",
-                 "Success for the whole job is: initialise, then calibrate the sensors, and the lamp goes out."),
-        "fail": ("警告灯が消えない場合は、較正が済んでいないか、実際にセンサやアクチュエータに故障があります。故障メモリを先に読んでください。",
-                 "A lamp that stays on means either the calibration has not been done or something really is faulty. Read the fault memory first."),
-        "after": ("**初期化だけでは走行可能な状態になりません。** ステアリング角・横加速度・ブレーキ圧の各センサ較正が必要です。",
-                  "**Initialising alone does not leave the car ready to drive.** The steering-angle, lateral-acceleration and brake-pressure sensors all need calibrating."),
-        "caution": ("較正まで一続きで行える時間と場所を確保してから始めてください。",
-                    "Start only when you have the time and the level ground to complete the calibrations as well."),
-    },
-    # -------------------------------------------------------- 検査スタンプ
-    "PRUEFSTEMPEL_LESEN": {
-        "does": ("この ECU に記録されている検査スタンプ（工場やサービスが書いた検査記録）を読み出します。",
-                 "Reads the inspection stamps recorded in this ECU by the factory or a service operation."),
-        "observe": ("車では何も起きません。",
-                    "Nothing happens on the car."),
-        "pass": ("記録が返れば成功です。内容は履歴であって、車の現在の健康状態ではありません。",
-                 "A record coming back is success. What it contains is history, not the car's present health."),
-        "fail": ("読めない場合は通信の問題です。この項目の故障ではありません。",
-                 "Failure to read is a communication problem, not a fault in this item."),
-        "after": ("何も変わりません。",
-                  "Nothing changes."),
-    },
-    "PRUEFSTEMPEL_SCHREIBEN": {
-        "does": ("検査スタンプを ECU に書き込みます。車両の動作には影響しませんが、記録は書き換わります。",
-                 "Writes an inspection stamp into the ECU. It does not affect how the car runs, but the record changes."),
-        "observe": ("車では何も起きません。",
-                    "Nothing happens on the car."),
-        "pass": ("書込後に読み出して、意図した内容になっていれば成功です。",
-                 "Success is: read it back and find what you intended."),
-        "fail": ("拒否される場合は保護が解除されていません。",
-                 "A refusal means the protection is not unlocked."),
-        "after": ("**整備履歴の改変にあたります。** 元の内容はこのアプリからは復元できません。書く前に必ず読み出して控えてください。",
-                  "**This alters a service record.** Nothing here can restore the previous content. Read and note it before writing."),
-        "caution": ("検査記録の書き換えは、車両の来歴に関する情報を変えることになります。",
-                    "Rewriting an inspection record changes information about the car's history."),
-    },
-    "ID_SCHREIBEN": {
-        "does": ("名前は ID ですが、SGBD のコメントによれば実体は検査スタンプ（Prüfstempel）の書込です。アドレスとデータバイトを指定して書き込みます。",
-                 "Named ID, but the SGBD comment says what it writes is the Pruefstempel - the inspection stamp. You give it an address and a data byte."),
-        "observe": ("車では何も起きません。",
-                    "Nothing happens on the car."),
-        "pass": ("指定アドレスに指定バイトが入っていれば成功です。",
-                 "Success is the byte you gave landing at the address you gave."),
-        "fail": ("アドレスを誤ると別の領域を書き換えます。書く前にどのアドレスに何が入っているかを読み出して確認してください。",
-                 "A wrong address writes over something else. Read what is at the address before writing to it."),
-        "after": ("**任意のアドレスに任意のバイトを書けます。** 何が壊れるかは何を上書きしたかによります。このアプリは実行制御を出しません。",
-                  "**It writes an arbitrary byte to an arbitrary address.** What breaks depends on what you overwrote. This app offers no run control for it."),
-        "caution": ("同じ操作が PRUEFSTEMPEL_SCHREIBEN という名前でも存在します。片方だけを安全だと考えないでください。",
-                    "The same operation also exists as PRUEFSTEMPEL_SCHREIBEN. Do not assume one of them is the safe one."),
-    },
+DSC_MK60: dict[str, tuple[str, str]] = {
+    'ABGLEICH_DSC_SENSOREN': (
+        '必ず平坦な場所で、ハンドルを直進位置に保ち、車両を完全に静止させてから実行してください。',
+        'Do this only on level ground, with the wheel held straight and the car completely still.',
+    ),
+    'ABGLEICH_LWS_AQ_SENSOREN': (
+        '平坦な場所・直進・静止が前提です。ステアリングを切ったまま実行しないでください。',
+        'Level ground, wheels straight, car still. Never with the wheel turned.',
+    ),
+    'DDS_EOL_PASSIV': (
+        'SGBD が動作も結果も記述していない操作です。実車では実行しないでください。',
+        'The SGBD describes neither the action nor the result. Do not run this on a car.',
+    ),
+    'DDS_RESET': (
+        'タイヤ交換・ローテーション・空気圧調整のあとは必ず実行してください。逆に、規定圧に合わせる前に実行してはいけません。',
+        'Always run it after a tyre change, rotation or pressure adjustment - and never before setting the pressures.',
+    ),
+    'DRUCKSENSOR_DSC_ABGLEICHEN': (
+        '実行中はブレーキペダルに触れないでください。',
+        'Do not touch the brake pedal while it runs.',
+    ),
+    'FS_LOESCHEN': (
+        '車検や保証の判断材料になる履歴を消してしまうことがあります。',
+        'You may be erasing history that a workshop or a warranty claim would have relied on.',
+    ),
+    'ID_SCHREIBEN': (
+        '同じ操作が PRUEFSTEMPEL_SCHREIBEN という名前でも存在します。片方だけを安全だと考えないでください。',
+        'The same operation also exists as PRUEFSTEMPEL_SCHREIBEN. Do not assume one of them is the safe one.',
+    ),
+    'INITIALISIERUNG': (
+        '較正まで一続きで行える時間と場所を確保してから始めてください。',
+        'Start only when you have the time and the level ground to complete the calibrations as well.',
+    ),
+    'PRUEFSTEMPEL_SCHREIBEN': (
+        '検査記録の書き換えは、車両の来歴に関する情報を変えることになります。',
+        "Rewriting an inspection record changes information about the car's history.",
+    ),
+    'QUERBESCHLEUNIGUNGSSENSOR_DSC_ABGLEICHEN': (
+        '必ず水平な場所で、車両を完全に静止させてください。',
+        'Level ground only, and the car completely still.',
+    ),
 }

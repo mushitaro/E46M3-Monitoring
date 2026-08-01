@@ -242,7 +242,12 @@ def classify(sgbd: str, job: str, comment: str, args: list[str]) -> JobClassific
         return _apply_override(n, c, argset, de)
 
     # --- 書換系（WinKFP 領域）---------------------------------------------
-    if re.match(r"^(FLASH|SPEICHER_SCHREIBEN|AIF_SCHREIBEN|PRUEFSTEMPEL|ZIF_BACKUP)", n):
+    # `_LESEN` を除く。`PRUEFSTEMPEL_LESEN` は SGBD 自身が
+    # `Auslesen des Pruefstempels`（＝読み出し）と述べているのに、接頭辞だけで
+    # 判定していたため3モジュールすべてで「不可逆な書込」になっていた。
+    # 読取に不可逆マークが付くのは、それ自体が分類の誤りである。
+    if re.match(r"^(FLASH|SPEICHER_SCHREIBEN|AIF_SCHREIBEN|PRUEFSTEMPEL|ZIF_BACKUP)", n) \
+            and not re.search(r"_LESEN(_|$)", n):
         c.cls, c.audience, c.kind, c.risk = CLASS_PROGRAMMING, AUD_TECH, "write", RISK_HIGH
         c.irreversible = "irr_write"
         return _apply_override(n, c, argset, de)

@@ -42,7 +42,7 @@ import {
     type EcuProfile,
 } from '@/lib/ecuCatalog';
 import { deliversResultElsewhere, hasStopControl, jobOperation, type OpKind } from '@/lib/jobOps';
-import { SLOTS, jobTextFor, resolve, type Confidence, type JobTextTable } from '@/lib/jobText';
+import { cautionFor, type JobTextTable } from '@/lib/jobText';
 import { bestTelegram, telegramIsCertain, type TelegramTable } from '@/lib/telegrams';
 import { readResultsFor, type ResultBlockRef, type Smg2Procedure, type Smg2Sequence, type Smg2Workflows } from '@/lib/smg2Workflows';
 import { GEARS, MEASURES, PASSES, gearWindows } from '@/lib/gearWindows';
@@ -87,15 +87,15 @@ export function JobDetail({
     const tel = bestTelegram(telegrams, job.id);
     // An adapted SMG II procedure has no jobtext entry of its own — it is not an
     // SGBD job. It IS `TESTPRG_STARTEN` with a program number, so it inherits
-    // that job's written explanation rather than showing five "not written" rows.
-    const entry = jobTextFor(jobText, job.id) ?? (procedure ? jobTextFor(jobText, 'TESTPRG_STARTEN') : null);
+    // that job's caution.
+    const caution =
+        cautionFor(jobText, job.id, lang) ??
+        (procedure ? cautionFor(jobText, 'TESTPRG_STARTEN', lang) : null);
 
     // The argument values the operator has chosen. They decide which results come
     // back — ADAPTIONSWERTE_LESEN declares 216 and returns about 30 of them.
     const [argValues, setArgValues] = useState<Record<string, string>>({});
     const results = useMemo(() => resultsFor(job, argValues), [job, argValues]);
-
-    const caution = resolve(entry, 'caution', lang);
 
     return (
         <div className="flex h-full flex-col gap-5 overflow-y-auto pr-1">
@@ -129,21 +129,8 @@ export function JobDetail({
             </header>
 
             {/* Read before pressing, so it is placed before pressing. */}
-            {caution.confidence !== 'missing' && (
-                <Callout tone="caution" text={caution.text} />
-            )}
+            {caution && <Callout tone="caution" text={caution} />}
             {op.irreversible && <Callout tone="danger" text={t.op_irreversible[op.irreversible]} />}
-
-            {/* 1. The five questions. */}
-            <div className="flex flex-col gap-3">
-                {SLOTS.map((slot) => (
-                    <Explanation
-                        key={slot}
-                        heading={t.jt[slot]}
-                        resolved={resolve(entry, slot, lang, d.original)}
-                    />
-                ))}
-            </div>
 
             {/* 2. The operation shape — four axes, because it was never one. */}
             <Section title={t.plan_kind}>
@@ -312,42 +299,6 @@ export function JobDetail({
             </Section>
 
             {procedure && <ProcedureDetail profile={profile} procedure={procedure} workflows={workflows} />}
-        </div>
-    );
-}
-
-/** One of the five questions, with the confidence of the answer beside it. */
-function Explanation({
-    heading,
-    resolved,
-}: {
-    heading: string;
-    resolved: { text: string; confidence: Confidence; original?: string };
-}) {
-    const { t } = useLang();
-    const missing = resolved.confidence === 'missing';
-    return (
-        <div>
-            <div className="flex items-baseline justify-between gap-3">
-                <MicroLabel>{heading}</MicroLabel>
-                <Provenance title={t.jt_confidenceNote[resolved.confidence]}>
-                    {t.jt_confidence[resolved.confidence]}
-                </Provenance>
-            </div>
-            {missing ? (
-                // Never a blank. A blank reads as "nothing to say here", which is
-                // a different claim from "nobody has written this yet".
-                <div className="mt-1">
-                    <p className="text-[11px] italic text-slate-500">{t.jt_missing}</p>
-                    {resolved.original && (
-                        <p className="mt-0.5 font-mono text-[10px] leading-relaxed text-slate-500">
-                            {resolved.original}
-                        </p>
-                    )}
-                </div>
-            ) : (
-                <p className="mt-1 text-[11px] leading-relaxed text-slate-300">{stripEmphasis(resolved.text)}</p>
-            )}
         </div>
     );
 }

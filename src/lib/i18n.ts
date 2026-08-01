@@ -13,7 +13,6 @@
 import { useSyncExternalStore } from 'react';
 import type { Audience, JobClass, ResultDelivery, ResultRole, Actor, Termination, Risk } from './ecuCatalog';
 import type { IrreversibleKey, OpKind, WhyKey } from './jobOps';
-import type { Confidence, TextKey } from './jobText';
 
 export type Lang = 'ja' | 'en';
 
@@ -198,12 +197,6 @@ interface Catalog {
     /** Where the answer to a companion-job test is read. */
     op_resultJob: (job: string) => string;
 
-    // --- The owner-facing explanation --------------------------------------
-    jt: Record<TextKey, string>;
-    jt_confidence: Record<Confidence, string>;
-    jt_confidenceNote: Record<Confidence, string>;
-    jt_missing: string;
-    jt_germanOnly: string;
 
     // --- The job's contents -------------------------------------------------
     det_results: string;
@@ -532,28 +525,6 @@ const STRINGS: Record<Lang, Catalog> = {
         },
         op_resultJob: (job) => `判定は ${job} で読み出します`,
 
-        jt: {
-            does: '何が行われるか',
-            observe: '車で何が起きるか',
-            pass: 'どうなれば問題ないか',
-            fail: 'そうならなかったら何を疑うか',
-            after: '実行後に何が残るか',
-            caution: '押す前に',
-        },
-        jt_confidence: {
-            authored: '個別記述',
-            template: '定型',
-            'template-thin': '定型（情報不足）',
-            missing: '未作成',
-        },
-        jt_confidenceNote: {
-            authored: 'このジョブについて個別に書かれた説明です。',
-            template: '部品名と動作種別から組み立てた定型文です。このジョブ固有の事情は含みません。',
-            'template-thin': '定型文ですが、部品辞書にこの部品の説明が無く、内容が薄くなっています。',
-            missing: '平易な説明はまだ作成されていません。SGBD の独語原文をそのまま表示しています。',
-        },
-        jt_missing: '平易な説明は未作成です',
-        jt_germanOnly: 'SGBD の独語原文のみ',
 
         det_results: 'このジョブが返す内容',
         det_resultCount: (n) => `返り値 ${n}`,
@@ -903,30 +874,6 @@ const STRINGS: Record<Lang, Catalog> = {
         },
         op_resultJob: (job) => `The verdict is read with ${job}`,
 
-        jt: {
-            does: 'What it does',
-            observe: 'What happens on the car',
-            pass: 'How you know it is OK',
-            fail: 'What to suspect if it is not',
-            after: 'What it leaves behind',
-            caution: 'Before you press it',
-        },
-        jt_confidence: {
-            authored: 'Written',
-            template: 'Generated',
-            'template-thin': 'Generated (thin)',
-            missing: 'Not written',
-        },
-        jt_confidenceNote: {
-            authored: 'Written about this job specifically.',
-            template:
-                'Assembled from the component and action dictionaries. It carries nothing specific to this job.',
-            'template-thin':
-                'Generated, but the component dictionary has no description for this part, so it is thin.',
-            missing: 'No plain-language version has been written. The SGBD German original is shown instead.',
-        },
-        jt_missing: 'No plain-language explanation written',
-        jt_germanOnly: 'SGBD German original only',
 
         det_results: 'What this job returns',
         det_resultCount: (n) => `${n} result${n === 1 ? '' : 's'}`,

@@ -1,67 +1,47 @@
 'use client';
 
 /**
- * The owner-facing explanation of a job: what it does, what you will see, how you
- * know it worked, what to suspect if it did not, and what it leaves behind.
+ * The one written sentence a job may carry: what to know BEFORE pressing it.
  *
- * ## Why this is a separate file from the catalogue
+ * ## What this used to be, and why it is gone
  *
- * The catalogue is generated from the SGBD and is authentic ECU data. This is
- * NOT: it is `tools/jobtext/`, which builds five sentences per job out of a
- * 105-entry component dictionary crossed with an 11-entry action dictionary, and
- * then lets `tools/jobtext/overrides/` replace any of them with text somebody
- * actually wrote. Keeping the two apart is what makes it possible to say, per
- * field, which one you are reading.
+ * This module used to hold five slots per job — what it does, what happens on
+ * the car, how you know it is OK, what to suspect, what it leaves behind —
+ * generated from a component dictionary crossed with an action dictionary, with
+ * hand-written overrides on top. 1315 of the 1640 fields were generated.
  *
- * ## Confidence is per FIELD, not per job
+ * On a control panel that was five headings of near-identical prose above the
+ * controls, and for the fourteen SMG II procedures it was literally identical
+ * text on all fourteen, because they all inherited `TESTPRG_STARTEN`'s. The
+ * headings promised specifics and delivered a template.
  *
- * A job with a hand-written `does` and a templated `fail` is the normal case, and
- * the reader is entitled to know which is which. A generic "if it fails, check
- * the wiring" under a heading that promises to tell you what went wrong is worse
- * than an empty space, because it looks like an answer.
+ * What replaced them is not more prose. It is the things the five slots were
+ * paraphrasing at lower fidelity:
  *
- * That is also why `calibration` and `programming` jobs cannot ship a templated
- * `fail` or `after` at all — the generator refuses to emit one and exits non-zero.
- * A sentence about what an irreversible write leaves behind has to be about THAT
- * write.
+ *   "what it does"        → the step list (`StepList`), from the ECU's own
+ *                           activity vocabulary or the job's wire plan
+ *   "how you know"        → the results, and the recorded values
+ *   "what it leaves"      → the before/after numbers, and the irreversibility
+ *                           callout that was always there
  *
- * ## Absence is a state, not a blank
+ * A table of numbers answers "what did this change" better than a sentence can,
+ * and that is the whole argument for the rework.
  *
- * `loadJobText` returns null rather than throwing, like `loadTelegrams`: the
- * catalogue is still worth reading without the plain-language layer. But a
- * missing explanation is never rendered as empty space — `resolve()` falls back
- * to the SGBD's German original and says outright that no plain-language version
- * exists. An empty cell reads as "nothing to say here", which is a different
- * claim entirely.
+ * ## What survives
+ *
+ * `caution`: the sentence you need before pressing, on the jobs where pressing
+ * is consequential. It has no heading scaffolding — it is a callout, because
+ * that is what it is. Only hand-written text lives here now; there is no
+ * generated tier and therefore no confidence to display.
  */
-
-/** The five questions, in the order an owner asks them. */
-export const SLOTS = ['does', 'observe', 'pass', 'fail', 'after'] as const;
-export type Slot = (typeof SLOTS)[number];
-
-/** `caution` is optional and sits apart: it is read BEFORE pressing, not after. */
-export type TextKey = Slot | 'caution';
-
-export type Confidence =
-    /** Somebody wrote this sentence about this job. */
-    | 'authored'
-    /** Generated from the component × action dictionaries. */
-    | 'template'
-    /** Generated, but the component had no "where it is / what it does" phrase, so it is thin. */
-    | 'template-thin'
-    /** There is no entry at all. The German original is shown instead. */
-    | 'missing';
 
 export interface JobTextEntry {
     id: string;
-    text: Partial<Record<TextKey, { ja: string; en: string }>>;
-    confidence: Partial<Record<TextKey, Exclude<Confidence, 'missing'>>>;
-    /** Which dictionary entries produced it. Absent on fully-authored jobs. */
-    from?: { component: string; action: string };
+    caution?: { ja: string; en: string };
 }
 
 export interface JobTextTable {
-    schema: 1;
+    schema: 2;
     module: string;
     jobs: JobTextEntry[];
 }
@@ -71,7 +51,7 @@ const indexes = new WeakMap<JobTextTable, Map<string, JobTextEntry>>();
 
 /**
  * Returns null — not a throw — when a module has no text file. A missing file
- * must degrade the job view to the German originals, never break it.
+ * must degrade the job view to "no caution written", never break it.
  */
 export async function loadJobText(moduleId: string): Promise<JobTextTable | null> {
     const hit = cache.get(moduleId);
@@ -91,58 +71,23 @@ export async function loadJobText(moduleId: string): Promise<JobTextTable | null
     }
 }
 
-export function jobTextFor(table: JobTextTable | null, jobId: string): JobTextEntry | null {
-    if (!table) return null;
+function indexOf(table: JobTextTable): Map<string, JobTextEntry> {
     let idx = indexes.get(table);
     if (!idx) {
         idx = new Map(table.jobs.map((j) => [j.id, j]));
         indexes.set(table, idx);
     }
-    return idx.get(jobId) ?? null;
+    return idx;
 }
 
-export interface ResolvedText {
-    text: string;
-    confidence: Confidence;
-    /**
-     * The SGBD's German, when this is the fallback. Set only for `missing`,
-     * because that is the only case where the German IS the explanation rather
-     * than a source shown beside one.
-     */
-    original?: string;
-}
-
-/**
- * One field, resolved, with a confidence the caller is expected to render.
- *
- * `fallbackDe` is the job's own German comment. When there is no written
- * explanation the caller gets that plus `confidence: 'missing'`, and the UI is
- * responsible for saying "no plain-language version has been written" — not for
- * quietly showing German under a Japanese heading and letting the reader work it
- * out.
- */
-export function resolve(
-    entry: JobTextEntry | null,
-    key: TextKey,
+/** The caution for a job, or null. Null means nobody wrote one — not that there is nothing to say. */
+export function cautionFor(
+    table: JobTextTable | null,
+    jobId: string,
     lang: 'ja' | 'en',
-    fallbackDe = '',
-): ResolvedText {
-    const t = entry?.text[key];
-    const c = entry?.confidence[key];
-    if (!t || !c) return { text: '', confidence: 'missing', original: fallbackDe };
-    const s = (lang === 'en' ? t.en : t.ja) || t.ja || t.en;
-    if (!s) return { text: '', confidence: 'missing', original: fallbackDe };
-    return { text: s, confidence: c };
-}
-
-/** Is any of this job's text hand-written? Drives whether the detail view says so once, at the top. */
-export function hasAuthoredText(entry: JobTextEntry | null): boolean {
-    return !!entry && Object.values(entry.confidence).some((c) => c === 'authored');
-}
-
-/** Every field written by hand. Fully-authored jobs are the ones worth flagging as such. */
-export function isFullyAuthored(entry: JobTextEntry | null): boolean {
-    if (!entry) return false;
-    const vals = SLOTS.map((s) => entry.confidence[s]);
-    return vals.every((c) => c === 'authored');
+): string | null {
+    if (!table) return null;
+    const c = indexOf(table).get(jobId)?.caution;
+    if (!c) return null;
+    return (lang === 'en' ? c.en : c.ja) || c.ja || c.en || null;
 }

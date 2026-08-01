@@ -20,7 +20,8 @@ from translate import translate, leftover_ratio
 
 HERE = os.path.dirname(__file__)
 DUMP = os.path.join(HERE, "SgbdDump", "out")
-OUT = os.path.join(HERE, "..", "ecu-data")
+# public/ 配下が配信ルート（アプリは ./ecu-data/*.json を fetch する）。
+OUT = os.path.join(HERE, "..", "public", "ecu-data")
 ECU_DIR = r"C:\EDIABAS\ECU"
 
 # id : (dump/SGBDファイル名, (ja名, en名), DS2アドレス, 実SGBDファイル)

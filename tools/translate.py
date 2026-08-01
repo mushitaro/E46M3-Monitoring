@@ -201,6 +201,13 @@ def _join_frags(frags, idx):
        （例: "状態・Fahrgeschwindigkeitsregler"）。"""
     if idx == 1:
         return " ".join(x for x, _ in frags if x)
+    # 全断片が未訳なら、それは「日本語の中に独語が混ざった文」ではなく素の独語。
+    # 区切り記号は訳語との境界を示すためのものなので、境界が存在しないこの場合に
+    # 挿入すると "Wort・Wort・Wort" となり、独語として読めなくなる（実測: SMG II の
+    # コード表 288 行のうち 26 行がこの状態だった）。半角空白で繋いで独語のまま出す。
+    kept = [(x, bad) for x, bad in frags if x]
+    if kept and all(bad for _, bad in kept):
+        return " ".join(x for x, _ in kept)
     out, prev_bad = [], False
     for text, is_bad in frags:
         if not text:

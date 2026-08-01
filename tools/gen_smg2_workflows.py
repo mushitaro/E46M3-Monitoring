@@ -22,7 +22,9 @@ from translate import translate
 
 HERE = os.path.dirname(__file__)
 DUMP = os.path.join(HERE, "SgbdDump", "out", "SMG2.json")
-OUT = os.path.join(HERE, "..", "ecu-data", "smg2-workflows.json")
+# public/ 配下が配信ルート。旧 ecu-data/ を指したままだと生成物がどこにも
+# 届かず、しかも FileNotFoundError で落ちるまで気付けない。
+OUT = os.path.join(HERE, "..", "public", "ecu-data", "smg2-workflows.json")
 
 # --- カテゴリ（利用者のメンタルモデル） ------------------------------------
 CATS = [

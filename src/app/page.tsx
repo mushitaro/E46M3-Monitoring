@@ -7,9 +7,10 @@ import {
     CircleDot,
     Cpu,
     Download,
-    FlaskConical,
     ListChecks,
     Loader2,
+    Play,
+    PlayCircle,
     PlugZap,
     Radio,
     RotateCcw,
@@ -23,13 +24,24 @@ import { MSS54_LIVE_BLOCKS, formatErrorCode, planBlockReads } from '@tsunagi/ds2
 import { AppHeader } from '@/components/AppHeader';
 import { ElectricalFaultDialog } from '@/components/ElectricalFaultDialog';
 import { Hub, HubCluster, HubNotice, SubActions, type HubConfig, type NoticeTone } from '@/components/Hub';
+import { JobPlan, SequenceCard } from '@/components/JobPlan';
 import { JobTable } from '@/components/JobTable';
 import { LogPopover } from '@/components/LogPopover';
-import { MicroLabel, SearchInput, TextButton, Well } from '@/components/ui';
+import { MicroLabel, Pill, SearchInput, TextButton, Well } from '@/components/ui';
 import { useDs2Link, type CommsLogLine, type LiveSample } from '@/hooks/useDs2Link';
 import { useLang, type Lang } from '@/lib/i18n';
-import { jobRisk, loadEcuCatalog, loadEcuIndex, type EcuCatalog, type EcuIndexEntry } from '@/lib/ecuCatalog';
+import {
+    jobRiskOf,
+    loadEcuCatalog,
+    loadEcuIndex,
+    type CatalogJob,
+    type EcuCatalog,
+    type EcuIndexEntry,
+} from '@/lib/ecuCatalog';
+import { PROCEDURE_PREFIX, hasStopControl, jobOperation } from '@/lib/jobOps';
 import { EMPTY_LEDGER, type Ledger } from '@/lib/ledger';
+import { loadSmg2Workflows, type Smg2Procedure, type Smg2Workflows } from '@/lib/smg2Workflows';
+import { bestTelegram, loadTelegrams, telegramIsCertain, type TelegramTable } from '@/lib/telegrams';
 
 type Tab = 'diagnosis' | 'datalog' | 'calibration' | 'testjobs';
 type Link = ReturnType<typeof useDs2Link>;
@@ -87,7 +99,14 @@ export default function Home() {
         let cancelled = false;
         loadEcuCatalog(ecuId)
             .then((c) => {
-                if (!cancelled) setLoaded({ id: ecuId, catalog: c });
+                if (cancelled) return;
+                setLoaded({ id: ecuId, catalog: c });
+                // Clear it. Without this a single transient failure — a file
+                // being rewritten under a dev server, a dropped request —
+                // latched the notice line for the rest of the session, so the
+                // one place a REAL error would appear was already occupied by a
+                // stale one that had since fixed itself.
+                setCatalogError(null);
             })
             .catch((e: Error) => {
                 if (!cancelled) setCatalogError(e.message);
@@ -97,8 +116,45 @@ export default function Home() {
         };
     }, [ecuId]);
 
+    // The job views' selection, and the two side tables that describe it. Both
+    // load lazily and BOTH may legitimately be absent: only SMG II has guided
+    // procedures, and DSC has no unambiguous telegram for any of its 48 jobs.
+    // A missing table degrades the panel to "not established", never breaks it.
+    // Keyed by module rather than cleared from an effect: switching modules must
+    // drop the selection, and deriving that is both simpler and impossible to
+    // get out of sync with a cascading render.
+    const [selection, setSelection] = useState<{ ecuId: string; job: CatalogJob } | null>(null);
+    const selectedJob = selection?.ecuId === ecuId ? selection.job : null;
+    const selectJob = useCallback((job: CatalogJob) => setSelection({ ecuId, job }), [ecuId]);
+
+    const [telegrams, setTelegrams] = useState<TelegramTable | null>(null);
+    const [workflows, setWorkflows] = useState<Smg2Workflows | null>(null);
+
+    useEffect(() => {
+        void loadTelegrams(ecuId).then(setTelegrams);
+    }, [ecuId]);
+
+    useEffect(() => {
+        void loadSmg2Workflows().then(setWorkflows);
+    }, []);
+
     const connectedToVehicle = link.mode === 'vehicle' && link.state !== 'disconnected';
-    const hub = useHubConfig(tab, link, datalog);
+    const jobTab = tab === 'calibration' || tab === 'testjobs';
+    // PRACTICE is a MODE the hub then connects in, not a second connect button.
+    // As a button beside CONNECT it was a fork with no stated default; as a
+    // checkbox the hub reads CONNECT either way and the box says which link you
+    // will get — which is also why it is disabled once a session is open.
+    const [practiceArmed, setPracticeArmed] = useState(false);
+    const hub = useHubConfig(
+        tab,
+        link,
+        datalog,
+        jobTab ? selectedJob : null,
+        ecuId,
+        telegrams,
+        practiceArmed,
+        connectedToVehicle,
+    );
     const [faultOpen, setFaultOpen] = useState(false);
 
     // One notice line, one precedence: a link error outranks a catalog error
@@ -173,19 +229,35 @@ export default function Home() {
                         {tab === 'diagnosis' && <DiagnosisPane link={link} catalog={catalog} />}
                         {tab === 'datalog' && <DatalogPane datalog={datalog} />}
                         {tab === 'calibration' && (
-                            <JobTable
-                                jobs={catalog?.actuators ?? []}
-                                ledger={ledger}
-                                ecuId={ecuId}
-                                connectedToVehicle={connectedToVehicle}
-                            />
+                            <>
+                                {/* SMG II's guided procedures sit above its
+                                    calibration jobs because that is what they
+                                    are: the gearbox controller's own adaptation
+                                    programs. The other two modules genuinely
+                                    have none, and the section says so rather
+                                    than disappearing without explanation. */}
+                                <ProcedureSection
+                                    ecuId={ecuId}
+                                    workflows={workflows}
+                                    selectedId={selectedJob?.id ?? null}
+                                    onSelect={selectJob}
+                                />
+                                <JobTable
+                                    jobs={catalog?.actuators ?? []}
+                                    ledger={ledger}
+                                    ecuId={ecuId}
+                                    selectedId={selectedJob?.id ?? null}
+                                    onSelect={selectJob}
+                                />
+                            </>
                         )}
                         {tab === 'testjobs' && (
                             <JobTable
                                 jobs={catalog?.testJobs ?? []}
                                 ledger={ledger}
                                 ecuId={ecuId}
-                                connectedToVehicle={connectedToVehicle}
+                                selectedId={selectedJob?.id ?? null}
+                                onSelect={selectJob}
                             />
                         )}
                     </div>
@@ -199,7 +271,16 @@ export default function Home() {
                     </div>
 
                     <div className="relative min-h-[140px] flex-1 overflow-hidden bg-gradient-to-b from-slate-900/10 to-transparent p-4">
-                        <Viz tab={tab} link={link} catalog={catalog} datalog={datalog} />
+                        <Viz
+                            tab={tab}
+                            link={link}
+                            catalog={catalog}
+                            datalog={datalog}
+                            selectedJob={jobTab ? selectedJob : null}
+                            ecuId={ecuId}
+                            telegrams={telegrams}
+                            workflows={workflows}
+                        />
                     </div>
 
                     {/* Controls take their natural height; the picture above
@@ -211,20 +292,30 @@ export default function Home() {
                             left and offers its controls on the right — the same
                             shape as the reference app's DME row. Centring a lone
                             chip left the panel with no anchor and no label. */}
-                        <div className="flex h-[32px] items-center justify-between px-2">
-                            <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                        <div className="flex h-[32px] items-center justify-between gap-3 px-2">
+                            <span className="flex shrink-0 items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">
                                 <Cpu className="size-3" />
                                 {t.module}
                             </span>
-                            <EcuSelect
-                                index={ecuIndex}
-                                value={ecuId}
-                                lang={lang}
-                                // The DS2 address is per module, so switching one
-                                // under an open link would silently retarget it.
-                                disabled={link.state !== 'disconnected'}
-                                onChange={setEcuId}
-                            />
+                            <div className="flex min-w-0 items-center gap-3">
+                                <PracticeToggle
+                                    checked={practiceArmed}
+                                    // A mode cannot change under an open link:
+                                    // the session already IS one or the other.
+                                    disabled={link.state !== 'disconnected'}
+                                    onChange={setPracticeArmed}
+                                />
+                                <EcuSelect
+                                    index={ecuIndex}
+                                    value={ecuId}
+                                    lang={lang}
+                                    // The DS2 address is per module, so switching
+                                    // one under an open link would silently
+                                    // retarget it.
+                                    disabled={link.state !== 'disconnected'}
+                                    onChange={setEcuId}
+                                />
+                            </div>
                         </div>
 
                         {/* A failure is reported HERE, in the slot that is
@@ -254,11 +345,7 @@ export default function Home() {
                                     </TextButton>
                                 )
                             )}
-                            {link.state === 'disconnected' ? (
-                                <TextButton onClick={() => void link.connect('practice')} tone="secondary" Icon={FlaskConical}>
-                                    {t.practice}
-                                </TextButton>
-                            ) : (
+                            {link.state !== 'disconnected' && (
                                 <TextButton onClick={() => void link.disconnect()} tone="danger" Icon={Unplug}>
                                     {t.disconnect}
                                 </TextButton>
@@ -266,6 +353,17 @@ export default function Home() {
                             {tab === 'datalog' && datalog.samples.length > 0 && (
                                 <TextButton onClick={datalog.exportCsv} Icon={Download}>
                                     {t.exportCsv}
+                                </TextButton>
+                            )}
+                            {/* A held or paired job needs a STOP that is NOT the
+                                hub: the hub is what started it, and re-deriving
+                                one control into "now it stops" is how an operator
+                                ends up pressing start twice. `latching` gets none
+                                — it has no release job, and a disabled STOP would
+                                imply one exists. */}
+                            {jobTab && selectedJob && hasStopControl(jobOperation(selectedJob, ecuId)) && (
+                                <TextButton disabled tone="destructive" Icon={Square} title={t.gate_practiceOnly}>
+                                    {jobOperation(selectedJob, ecuId).kind === 'procedure' ? t.op_abort : t.op_stop}
                                 </TextButton>
                             )}
                         </SubActions>
@@ -287,22 +385,213 @@ export default function Home() {
 const BAR =
     'flex h-[44px] flex-none items-center border-b border-slate-900 bg-slate-900/50 px-4 backdrop-blur-sm';
 
+/**
+ * PRACTICE as a checkbox, not a second connect button.
+ *
+ * It is a MODE — which link the one CONNECT verb will open — and a button beside
+ * CONNECT made it a fork with no stated default, so the app had two primary
+ * actions and told you nothing about which one you were about to take. As a
+ * checkbox the hub reads CONNECT either way and the box states which link you
+ * get. It is a checkbox rather than a switch on purpose: a switch is for a mode
+ * that changes what the app DOES to the car, and this changes whether there is a
+ * car at all.
+ *
+ * Disabled once a session is open, because the session already IS one or the
+ * other and a control that cannot take effect must not read as available.
+ */
+function PracticeToggle({
+    checked,
+    disabled,
+    onChange,
+}: {
+    checked: boolean;
+    disabled: boolean;
+    onChange: (v: boolean) => void;
+}) {
+    const { t } = useLang();
+    return (
+        <label
+            className={`flex shrink-0 items-center gap-1.5 font-mono text-[9px] uppercase tracking-wider ${
+                disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'
+            } ${checked && !disabled ? 'text-indigo-400' : 'text-slate-500'}`}
+            title={t.mode_practice}
+        >
+            <input
+                type="checkbox"
+                checked={checked}
+                disabled={disabled}
+                onChange={(e) => onChange(e.target.checked)}
+                className="size-3 accent-indigo-500"
+            />
+            {t.practice}
+        </label>
+    );
+}
+
+/**
+ * SMG II's guided procedures, above the calibration jobs.
+ *
+ * They are presented as rows in the same list idiom as the jobs — same
+ * selection, same right-hand panel — because from the operator's side they are
+ * the same kind of thing: a named operation with preconditions and a result. The
+ * difference is that these carry the ECU's own progress and result vocabularies,
+ * and the panel shows those.
+ *
+ * A procedure is not a `CatalogJob`, so it is adapted into one. The adaptation
+ * is lossless in the direction that matters — the panel looks the real procedure
+ * back up by id (see `procedureForJob`) rather than reading the adapted shell.
+ */
+function ProcedureSection({
+    ecuId,
+    workflows,
+    selectedId,
+    onSelect,
+}: {
+    ecuId: string;
+    workflows: Smg2Workflows | null;
+    selectedId: string | null;
+    onSelect: (job: CatalogJob) => void;
+}) {
+    const { lang, t } = useLang();
+    if (ecuId !== 'smg2') return null;
+    if (!workflows) return null;
+
+    return (
+        <section className="mb-6">
+            <div className="flex items-baseline justify-between">
+                <MicroLabel>{t.proc_title}</MicroLabel>
+                <span className="font-mono text-[11px] text-slate-600">{workflows.procedures.length}</span>
+            </div>
+
+            <ul className="mt-1.5 divide-y divide-slate-800/50 border-t border-slate-800/50">
+                {workflows.procedures.map((p) => {
+                    const job = procedureAsJob(p);
+                    const selected = job.id === selectedId;
+                    return (
+                        <li key={p.id}>
+                            <button
+                                type="button"
+                                onClick={() => onSelect(job)}
+                                aria-pressed={selected}
+                                className={`w-full px-2 py-2 text-left transition-colors ${
+                                    selected ? 'bg-blue-500/10' : 'hover:bg-slate-800/40'
+                                }`}
+                            >
+                                <div className="flex items-baseline gap-x-3">
+                                    <Pill tone={p.risk === 'high' ? 'danger' : 'caution'}>
+                                        {p.risk === 'high' ? t.risk_high : t.risk_medium}
+                                    </Pill>
+                                    <span className="font-mono text-xs text-slate-300">{p.id}</span>
+                                    <span className="min-w-0 flex-1 truncate text-xs text-slate-400">
+                                        {lang === 'en' ? p.name.en : p.name.ja}
+                                    </span>
+                                    <span className="shrink-0 font-mono text-[10px] text-slate-500">{p.durMax}</span>
+                                    <span
+                                        className={`shrink-0 text-[9px] font-bold uppercase tracking-widest ${
+                                            p.engine === 'run' ? 'text-amber-400' : 'text-slate-600'
+                                        }`}
+                                    >
+                                        {p.engine === 'run' ? t.proc_engineRun : t.proc_engineOff}
+                                    </span>
+                                </div>
+                                <p className="mt-1 text-[11px] text-slate-500">{lang === 'en' ? p.desc.en : p.desc.ja}</p>
+                            </button>
+                        </li>
+                    );
+                })}
+            </ul>
+
+            <div className="mt-4">
+                <MicroLabel>{t.seq_title}</MicroLabel>
+                <div className="mt-1.5 divide-y divide-slate-800/50 border-t border-slate-800/50">
+                    {workflows.sequences.map((s) => (
+                        <SequenceCard
+                            key={s.id}
+                            sequence={s}
+                            procedures={workflows.procedures}
+                            onPick={(id) => {
+                                const p = workflows.procedures.find((x) => x.id === id);
+                                if (p) onSelect(procedureAsJob(p));
+                            }}
+                        />
+                    ))}
+                </div>
+            </div>
+        </section>
+    );
+}
+
+/**
+ * Adapts a test program into the job shape the list and the panel already speak.
+ *
+ * PROCEDURE_PREFIX lives in jobOps.ts beside the classifier that has to
+ * recognise it — the ledger, the risk classifier and the telegram lookup are all
+ * keyed on job id, and none of them should match a procedure by accident.
+ */
+function procedureAsJob(p: Smg2Procedure): CatalogJob {
+    return {
+        id: `${PROCEDURE_PREFIX}${p.id}`,
+        ja: p.name.ja,
+        en: p.name.en,
+        desc: { de: p.name.de, ja: p.desc.ja, en: p.desc.en },
+        // Both arguments TESTPRG_STARTEN takes. AUSWAHLBYTE only where the
+        // procedure actually selects something — 0x0A "engage arbitrary gear"
+        // is the one that does.
+        args: p.auswahl
+            ? [{ name: 'TESTPRG_NR' }, { name: 'AUSWAHLBYTE' }]
+            : [{ name: 'TESTPRG_NR' }],
+        catJa: p.cat,
+        catEn: p.cat,
+        // The SGBD-derived table states this; do not let the name heuristic
+        // downgrade a 3-minute full gearbox adaptation to "medium".
+        risk: p.risk === 'high' ? 'high' : p.risk === 'low' ? 'low' : 'medium',
+    };
+}
+
+function procedureForJob(job: CatalogJob, workflows: Smg2Workflows | null): Smg2Procedure | null {
+    if (!job.id.startsWith(PROCEDURE_PREFIX)) return null;
+    const id = job.id.slice(PROCEDURE_PREFIX.length);
+    return workflows?.procedures.find((p) => p.id === id) ?? null;
+}
+
 
 /**
  * The hub's config, derived on every render from the live state. Nothing is
  * stored — storing it and re-syncing by hand is the source of "the button says
  * the wrong thing" bugs.
  *
- * The job tables deliberately contribute no config: they have dozens of
- * independently-runnable rows, each with its own inline control, and routing
- * those through one shared button would be an extra click and a re-derived
- * label. They fall through to a passive connected state.
+ * On the job tabs the hub becomes the RUN control for the SELECTED job, and its
+ * verb comes from that job's operation shape: a program STARTS, everything else
+ * RUNS. It is disabled with a stated reason rather than hidden, because "why
+ * can't I run this" is the question the panel exists to answer — and today the
+ * answer is almost always the same one: the request telegram for that job was
+ * not recoverable from a static scrape of the SGBD, so we do not know what to
+ * send. A tool that guesses at that byte string is a tool that sends a
+ * neighbouring job's command to a car.
  */
-function useHubConfig(tab: Tab, link: Link, datalog: ReturnType<typeof useDatalog>): HubConfig {
+function useHubConfig(
+    tab: Tab,
+    link: Link,
+    datalog: ReturnType<typeof useDatalog>,
+    selectedJob: CatalogJob | null,
+    ecuId: string,
+    telegrams: TelegramTable | null,
+    practiceArmed: boolean,
+    onVehicle: boolean,
+): HubConfig {
     const { t } = useLang();
 
     if (link.state === 'disconnected') {
-        return { label: t.hub_connect, Icon: PlugZap, tone: 'idle', onClick: () => void link.connect('vehicle') };
+        return {
+            label: t.hub_connect,
+            Icon: PlugZap,
+            tone: practiceArmed ? 'ready' : 'idle',
+            // The checkbox decides which link this opens. One verb, one button;
+            // the mode is stated beside it rather than forked into a second
+            // control with no stated default.
+            onClick: () => void link.connect(practiceArmed ? 'practice' : 'vehicle'),
+            notice: practiceArmed ? t.mode_practice : undefined,
+        };
     }
     // Loader2, not the state's own glyph. animate-spin rotates whatever it is
     // given, and PlugZap and Zap both have an obvious "up" — spun end over end
@@ -340,6 +629,40 @@ function useHubConfig(tab: Tab, link: Link, datalog: ReturnType<typeof useDatalo
             notice: datalog.costNotice,
         };
     }
+
+    // The job tabs. With nothing selected the hub has no job to name, and says
+    // so rather than offering a verb with no object.
+    if (tab === 'calibration' || tab === 'testjobs') {
+        if (!selectedJob) {
+            return { label: t.hub_connected, Icon: CircleDot, tone: 'idle', disabled: true, notice: t.plan_selectHint };
+        }
+        const op = jobOperation(selectedJob, ecuId);
+        const tel = bestTelegram(telegrams, selectedJob.id);
+        const risk = jobRiskOf(selectedJob);
+
+        // Three independent gates, and the notice names whichever bites first,
+        // cheapest-to-fix first: PRACTICE is a checkbox away, an argument is
+        // something the operator can supply, an unrecovered telegram is neither.
+        const blocked = !onVehicle
+            ? t.op_blocked_practice
+            : op.needsArgs
+              ? t.op_blocked_args
+              : !telegramIsCertain(tel)
+                ? t.op_blocked_telegram
+                : undefined;
+
+        return {
+            label: op.kind === 'procedure' ? t.op_start : t.op_run,
+            Icon: op.kind === 'procedure' ? PlayCircle : Play,
+            // Red only when the control is armed to do something irreversible,
+            // and only when it could actually go — an armed-looking ring on a
+            // button that cannot fire is theatre.
+            tone: blocked ? 'idle' : risk === 'high' ? 'armed-danger' : 'ready',
+            disabled: !!blocked,
+            notice: blocked,
+        };
+    }
+
     return { label: t.hub_connected, Icon: CircleDot, tone: 'idle', disabled: true };
 }
 
@@ -352,11 +675,19 @@ function Viz({
     link,
     catalog,
     datalog,
+    selectedJob,
+    ecuId,
+    telegrams,
+    workflows,
 }: {
     tab: Tab;
     link: Link;
     catalog: EcuCatalog | null;
     datalog: ReturnType<typeof useDatalog>;
+    selectedJob: CatalogJob | null;
+    ecuId: string;
+    telegrams: TelegramTable | null;
+    workflows: Smg2Workflows | null;
 }) {
     const { t } = useLang();
 
@@ -390,11 +721,25 @@ function Viz({
 
     if (tab === 'datalog') return <Sparkline datalog={datalog} />;
 
+    // A job is selected: the question is no longer "what is in this list" but
+    // "what happens if I press the button", so answer that instead.
+    if (selectedJob) {
+        return (
+            <JobPlan
+                job={selectedJob}
+                moduleId={ecuId}
+                telegrams={telegrams}
+                workflows={workflows}
+                procedure={procedureForJob(selectedJob, workflows)}
+            />
+        );
+    }
+
     const jobs = tab === 'calibration' ? catalog?.actuators : catalog?.testJobs;
     if (!jobs || jobs.length === 0) return <Awaiting icon={ListChecks} label={t.awaiting_catalog} />;
 
     const mix = { high: 0, medium: 0, low: 0 };
-    for (const j of jobs) mix[jobRisk(j.id)]++;
+    for (const j of jobs) mix[jobRiskOf(j)]++;
     const total = jobs.length;
 
     return (

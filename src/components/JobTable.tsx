@@ -1,13 +1,12 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Play } from 'lucide-react';
-import { Chip, Pill, SearchInput, TextButton } from '@/components/ui';
+import { Chip, Pill, SearchInput } from '@/components/ui';
+import { jobOperation, type OpKind } from '@/lib/jobOps';
 import {
     description,
-    execStyle,
     jobPreconditions,
-    jobRisk,
+    jobRiskOf,
     label,
     type CatalogJob,
     type Risk,
@@ -34,12 +33,15 @@ export function JobTable({
     jobs,
     ledger,
     ecuId,
-    connectedToVehicle,
+    selectedId,
+    onSelect,
 }: {
     jobs: CatalogJob[];
     ledger: Ledger;
     ecuId: string;
-    connectedToVehicle: boolean;
+    /** The row whose operation the right column is describing. */
+    selectedId: string | null;
+    onSelect: (job: CatalogJob) => void;
 }) {
     const { lang, t } = useLang();
     const [query, setQuery] = useState('');
@@ -49,9 +51,9 @@ export function JobTable({
         const q = query.trim().toLowerCase();
         return jobs
             .map((job) => {
-                const risk = jobRisk(job.id);
+                const risk = jobRiskOf(job);
                 const gate = mayRunOnVehicle(ledger, `${ecuId}:${job.id}`);
-                return { job, risk, gate, d: description(job, lang) };
+                return { job, risk, gate, d: description(job, lang), op: jobOperation(job, ecuId).kind };
             })
             .filter(({ job, risk, d }) => {
                 if (riskFilter !== 'all' && risk !== riskFilter) return false;
@@ -101,61 +103,102 @@ export function JobTable({
                 search field and the labels above them, which reads as broken
                 alignment — a worse cost than a hover band that stops at the
                 text. */}
+            {/* The whole row is the selector. Selecting is what fills the
+                visualization pane with this job's operation, so it has to be one
+                gesture on the obvious target — a separate "details" affordance
+                would put a click between the operator and the description of
+                what they are about to do to a car. */}
             <ul className="divide-y divide-slate-800/50 border-t border-slate-800/50">
-                {rows.map(({ job, risk, gate, d }) => (
-                    <li key={job.id} className="group py-2 transition-colors hover:bg-slate-800/40">
-                        <div className="flex items-baseline gap-x-3">
-                            <RiskPill risk={risk} />
-                            <span className="font-mono text-xs text-slate-200">{job.id}</span>
-                            <span className="min-w-0 flex-1 truncate text-xs text-slate-400">{label(job, lang)}</span>
-                            {job.catJa && (
-                                <span className="hidden shrink-0 text-[10px] uppercase tracking-widest text-slate-600 min-[1100px]:inline">
-                                    {lang === 'en' ? job.catEn : job.catJa}
-                                </span>
-                            )}
-                            <GateBadge allowed={gate.allowed} reason={gate.reason} />
-                        </div>
+                {rows.map(({ job, risk, gate, d, op }) => {
+                    const selected = job.id === selectedId;
+                    return (
+                        <li key={job.id}>
+                            <button
+                                type="button"
+                                onClick={() => onSelect(job)}
+                                aria-pressed={selected}
+                                className={`w-full py-2 text-left transition-colors ${
+                                    selected ? 'bg-blue-500/10' : 'hover:bg-slate-800/40'
+                                }`}
+                            >
+                                <div className="flex items-baseline gap-x-3 px-2">
+                                    <RiskPill risk={risk} />
+                                    <span
+                                        className={`font-mono text-xs ${selected ? 'text-blue-300' : 'text-slate-200'}`}
+                                    >
+                                        {job.id}
+                                    </span>
+                                    <span className="min-w-0 flex-1 truncate text-xs text-slate-400">
+                                        {label(job, lang)}
+                                    </span>
+                                    {/* The operation shape on every row, not just
+                                        the selected one. Which of these ends by
+                                        itself and which stays energised until you
+                                        stop it is the single most useful thing to
+                                        be able to scan for. */}
+                                    <OpBadge kind={op} />
+                                    <GateBadge allowed={gate.allowed} reason={gate.reason} />
+                                </div>
 
-                        {d.text && <p className="mt-1 text-[11px] text-slate-400">{d.text}</p>}
-                        {/* slate-500, not slate-700. slate-700 is #2A2A33 —
-                            1.48:1 on black, a BORDER colour. The German original
-                            is the one line this component's own docstring calls
-                            non-negotiable (at least one translation shipped
-                            wrong), and it was rendering as blank space. */}
-                        {d.original && d.original !== d.text && (
-                            <p className="mt-0.5 font-mono text-[10px] text-slate-500">{d.original}</p>
-                        )}
+                                {d.text && <p className="mt-1 px-2 text-[11px] text-slate-400">{d.text}</p>}
+                                {/* slate-500, not slate-700. slate-700 is #2A2A33
+                                    — 1.48:1 on black, a BORDER colour. The German
+                                    original is the one line this component's own
+                                    docstring calls non-negotiable (at least one
+                                    translation shipped wrong), and it was
+                                    rendering as blank space. */}
+                                {d.original && d.original !== d.text && (
+                                    <p className="mt-0.5 px-2 font-mono text-[10px] text-slate-500">{d.original}</p>
+                                )}
 
-                        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                                {execStyle(job)}
-                            </span>
-                            {jobPreconditions(job.id).map((c) => (
-                                <span key={c} className="text-[10px] text-slate-500">
-                                    {t[`precond_${c}` as keyof typeof t] as string}
-                                </span>
-                            ))}
-                            {(job.args ?? []).length > 0 && (
-                                <span className="font-mono text-[10px] text-amber-400">
-                                    {t.args_required((job.args ?? []).map((a) => a.name).join(', '))}
-                                </span>
-                            )}
-                            <span className="ml-auto">
-                                <TextButton
-                                    disabled
-                                    tone={risk === 'high' ? 'danger' : 'primary'}
-                                    Icon={Play}
-                                    title={connectedToVehicle ? gate.reason : t.gate_practiceOnly}
-                                >
-                                    {t.run}
-                                </TextButton>
-                            </span>
-                        </div>
-                    </li>
-                ))}
+                                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 px-2">
+                                    {jobPreconditions(job.id).map((c) => (
+                                        <span key={c} className="text-[10px] text-slate-500">
+                                            {t[`precond_${c}` as keyof typeof t] as string}
+                                        </span>
+                                    ))}
+                                    {(job.args ?? []).length > 0 && (
+                                        <span className="font-mono text-[10px] text-amber-400">
+                                            {t.args_required((job.args ?? []).map((a) => a.name).join(', '))}
+                                        </span>
+                                    )}
+                                </div>
+                            </button>
+                        </li>
+                    );
+                })}
             </ul>
         </>
     );
+}
+
+/**
+ * The operation shape, on every row.
+ *
+ * Only the three that carry an obligation are tinted: LATCHING cannot be undone,
+ * HOLD leaves an output live until you stop it, PROGRAM runs for minutes and has
+ * to be watched. Everything else is quiet text — if all ten shapes shouted, the
+ * three that matter would not.
+ */
+const OP_TONE: Partial<Record<OpKind, 'danger' | 'caution' | 'secondary'>> = {
+    latching: 'danger',
+    write: 'danger',
+    hold: 'caution',
+    paired: 'caution',
+    procedure: 'secondary',
+};
+
+function OpBadge({ kind }: { kind: OpKind }) {
+    const { t } = useLang();
+    const tone = OP_TONE[kind];
+    if (!tone) {
+        return (
+            <span className="hidden shrink-0 text-[9px] font-bold uppercase tracking-widest text-slate-600 min-[1100px]:inline">
+                {t.opKind[kind]}
+            </span>
+        );
+    }
+    return <Pill tone={tone}>{t.opKind[kind]}</Pill>;
 }
 
 function RiskPill({ risk }: { risk: Risk }) {

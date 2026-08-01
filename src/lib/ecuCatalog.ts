@@ -55,6 +55,15 @@ export interface CatalogJob {
     catEn?: string;
     desc?: { de?: string; ja?: string; en?: string };
     args?: Array<{ name: string; type?: string; comment?: string }>;
+    /**
+     * A risk the SOURCE DATA states, overriding the name-matching heuristic.
+     *
+     * SMG II's test programs carry their own risk in the SGBD-derived workflow
+     * table; classifying `TESTPRG:0x07` by its name would fall through to the
+     * default and call a 3-minute full gearbox adaptation "medium". Stated data
+     * always beats a guess about a name.
+     */
+    risk?: Risk;
 }
 
 export interface CatalogFault {
@@ -148,6 +157,16 @@ export function jobRisk(id: string): Risk {
     if (/^STEUERN_(EV|ZS)\d|^STEUERN_START$|^STEUERN_EKP$/.test(n)) return 'high';
 
     return 'medium';
+}
+
+/**
+ * The risk for a job object: stated data first, the name heuristic second.
+ *
+ * Prefer this over `jobRisk(id)` at any call site that has the whole job — the
+ * heuristic exists only because most of the catalogue has nothing better.
+ */
+export function jobRiskOf(job: CatalogJob): Risk {
+    return job.risk ?? jobRisk(job.id);
 }
 
 /** Preconditions the operator must confirm. Measured checks come later (plan §4-4). */

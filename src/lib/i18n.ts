@@ -101,16 +101,97 @@ interface Catalog {
     /** The physical checklist for an electrical fault. Safety copy lives here,
      *  in the reader's language — not as English literals at the call site. */
     error_electrical_steps: string[];
+
+    // --- The job-operation vocabulary ------------------------------------
+    // Every one of these is safety copy: it tells the operator whether the
+    // thing they are about to press ends by itself, has to be stopped by hand,
+    // or cannot be undone at all.
+    plan_kind: string;
+    plan_steps: string;
+    plan_optional: string;
+    plan_needsStop: string;
+    plan_ecuTimeout: string;
+    plan_maxHold: string;
+    plan_args: string;
+    plan_telegram: string;
+    plan_noTelegram: string;
+    plan_selectHint: string;
+    opKind: Record<OpKindKey, string>;
+    opKindNote: Record<OpKindKey, string>;
+    confidence: Record<'single' | 'multiple' | 'shared', string>;
+    confidenceNote: Record<'single' | 'multiple' | 'shared', string>;
+
+    // --- SMG II procedures ------------------------------------------------
+    proc_title: string;
+    proc_duration: string;
+    proc_engine: string;
+    proc_engineRun: string;
+    proc_engineOff: string;
+    proc_results: string;
+    proc_status: string;
+    proc_activity: string;
+    proc_faults: string;
+    proc_none: string;
+    seq_title: string;
+    seq_pickHint: string;
+
+    // --- Controls ----------------------------------------------------------
+    op_run: string;
+    op_stop: string;
+    op_abort: string;
+    op_start: string;
+    op_blocked_telegram: string;
+    op_blocked_args: string;
+    op_blocked_practice: string;
+    /** Why each plan step exists. Safety copy — see jobOps.ts WhyKey. */
+    op_why: Record<WhyKey, string>;
+    /** Why an operation cannot be taken back. */
+    op_irreversible: Record<IrrKey, string>;
 }
+
+type WhyKey =
+    | 'why_read'
+    | 'why_pulse'
+    | 'why_write'
+    | 'why_measure'
+    | 'why_latching'
+    | 'why_multiOutput'
+    | 'why_driveAndReset'
+    | 'why_switchOn'
+    | 'why_switchOff'
+    | 'why_pinDrive'
+    | 'why_pairStart'
+    | 'why_pairStop'
+    | 'why_prepare'
+    | 'why_driveActuator'
+    | 'why_keepAlive'
+    | 'why_testprgStop'
+    | 'why_testprgStart'
+    | 'why_testprgPoll'
+    | 'why_unknown';
+
+type IrrKey = 'irr_latching' | 'irr_pin' | 'irr_write';
+
+type OpKindKey =
+    | 'read'
+    | 'pulse'
+    | 'hold'
+    | 'paired'
+    | 'measurement'
+    | 'latching'
+    | 'compound'
+    | 'procedure'
+    | 'write'
+    | 'unknown';
 
 const STORAGE_KEY = 'e46m3.lang';
 
 const STRINGS: Record<Lang, Catalog> = {
     ja: {
         appRole: 'DIAGNOSIS',
-        tab_diagnosis: '診断',
-        tab_datalog: 'データログ',
-        tab_log: '通信ログ',
+        tab_diagnosis: 'DIAGNOSIS',
+        tab_datalog: 'DATALOG',
+        tab_log: 'COMMS LOG',
 
         connect: '接続',
         connecting: '接続中…',
@@ -159,8 +240,8 @@ const STRINGS: Record<Lang, Catalog> = {
         unverified:
             '未検証: このデータは実車で確認されていません。表示値は参考であり、診断の根拠にはできません。',
         provenance_title: 'データの出所',
-        tab_calibration: 'キャリブレーション',
-        tab_testjobs: 'アクチュエータテスト',
+        tab_calibration: 'CALIBRATION',
+        tab_testjobs: 'ACTUATOR TEST',
         search: '検索（ジョブ名・ラベル・独語原文）',
         run: '実行',
         risk_all: 'すべて',
@@ -193,7 +274,7 @@ const STRINGS: Record<Lang, Catalog> = {
         viz_faults: '故障',
         viz_clean: '故障なし',
         riskMix: 'リスク内訳',
-        pane_visualization: '可視化と操作',
+        pane_visualization: 'VISUALIZATION & CONTROLS',
         awaiting_read: '読取待機中…',
         awaiting_samples: 'サンプル待機中…',
         awaiting_catalog: 'カタログ未読込…',
@@ -207,12 +288,100 @@ const STRINGS: Record<Lang, Catalog> = {
             'ポートのグラウンドと電源を確認してください。',
             'アダプタの VID/PID を控えてください。FTDI のクローンチップは非常に多く出回っています。',
         ],
+
+        plan_kind: '操作の種類',
+        plan_steps: '実行手順（送信順）',
+        plan_optional: '任意',
+        plan_needsStop: '停止操作が必要',
+        plan_ecuTimeout: 'ECUタイムアウト',
+        plan_maxHold: '最大保持',
+        plan_args: '引数',
+        plan_telegram: '送信テレグラム',
+        plan_noTelegram: 'このジョブのテレグラムは静的解析で復元できていません。SGBD が引数から実行時に組み立てるためです。',
+        plan_selectHint: 'ジョブを選択すると、その操作内容がここに表示されます',
+        opKind: {
+            read: '読取',
+            pulse: '単発',
+            hold: '保持',
+            paired: '対ジョブ',
+            measurement: '測定',
+            latching: 'ラッチ',
+            compound: '複合',
+            procedure: '自動プログラム',
+            write: '書込',
+            unknown: '不明',
+        },
+        opKindNote: {
+            read: '値を読み出すだけで、ECU の状態は変わりません。何度実行しても安全です。',
+            pulse: '一度作動し、ECU 側で自動的に終了します。停止操作はありません。',
+            hold: '停止するまで出力が入ったままになります。停止操作とデッドマン（通信途絶での自動解除）が必要です。',
+            paired: '別名のジョブを送るまで作動し続けます。開始と停止が別ジョブになっています。',
+            measurement: '測定を開始します。ECU が最後まで実行し、結果はライブ値ブロックに現れます。',
+            latching: '作動後ラッチします。SGBD に解除ジョブが存在せず、このアプリからは戻せません。',
+            compound: 'SGBD ジョブ自体が複数の出力を順に駆動します。単一の操作ではありません。',
+            procedure: 'ECU が複数ステップの試験プログラムを自走させ、進行状況と結果コードを報告します。中断可能です。',
+            write: '永続的な状態を書き換えます。元の値を読み戻す手段がないため、取り消せません。',
+            unknown: 'SGBD のコメントに記述がなく、動作を確定できていません。',
+        },
+        confidence: { single: '一意', multiple: '複数候補', shared: '共有' },
+        confidenceNote: {
+            single: 'このジョブだけが出すテレグラムです。静的解析で一意に特定できています。',
+            multiple: '複数の候補があります。引数や ECU 状態によって分岐するため、どれが出るかは確定できません。',
+            shared: '他のジョブと同一のテレグラムです。SGBD が実行時に引数から組み立てる雛形であり、このジョブのテレグラムではありません。',
+        },
+
+        proc_title: 'ガイド手順（試験プログラム）',
+        proc_duration: '所要時間',
+        proc_engine: 'エンジン',
+        proc_engineRun: '稼働',
+        proc_engineOff: '停止',
+        proc_results: '結果ブロック',
+        proc_status: '実行ステータス',
+        proc_activity: '進行状況コード',
+        proc_faults: '結果コード',
+        proc_none: 'このモジュールにガイド手順はありません（SMG II のみ）',
+        seq_title: '推奨シーケンス',
+        seq_pickHint: 'ステップを押すとその手順を表示します',
+
+        op_run: '実行',
+        op_stop: '停止',
+        op_abort: '中断',
+        op_start: '開始',
+        op_blocked_telegram: 'テレグラム未確定のため実行できません',
+        op_blocked_args: '引数が必要です',
+        op_blocked_practice: 'PRACTICE の模擬 ECU はこのジョブを実装していません',
+        op_why: {
+            why_read: '値を読み出して返します。ECU の状態は変わりません。',
+            why_pulse: '一度作動します。終了は ECU 側が行います。',
+            why_write: '永続的な状態を書き込みます。',
+            why_measure: '測定を開始します。ECU が最後まで実行し、結果はライブ値ブロックに現れます。',
+            why_latching: 'デジタル制御で作動させ、そのまま保持します。',
+            why_multiOutput: '複数のデジタル出力を順に駆動します。',
+            why_driveAndReset: 'STEUERN_DIGITAL を駆動し、続けてリセットします。ECU が自ら行う2段階のジョブです。',
+            why_switchOn: '出力を ON にします。',
+            why_switchOff: '同じジョブを SCHALTEN の逆値で送り、OFF に戻します。',
+            why_pinDrive: '指定ピンを、指定のデューティ比・周期で直接駆動します。',
+            why_pairStart: '開始します。対になるジョブを送るまで作動し続けます。',
+            why_pairStop: '対になるジョブが開始した動作を終了させます。',
+            why_prepare: 'SGBD の要求：スタータ解除・油圧ポンプ・故障表示・シフトロックではこのジョブを先に送る必要があります。ECU の時間カウンタもここでゼロに戻ります。',
+            why_driveActuator: '選択したアクチュエータを駆動します。',
+            why_keepAlive: 'セッションを維持します。ECU のタイムアウトは 10 秒、実行は最長 960 秒に及びます。',
+            why_testprgStop: 'SGBD の要求：「TESTPRG_STARTEN より前に送ること」。',
+            why_testprgStart: '試験プログラムを開始します（TESTPRG_NR、選択を伴う場合は AUSWAHLBYTE）。',
+            why_testprgPoll: '実行ステータス・進行状況コード・最終的な結果コードをポーリングします。',
+            why_unknown: 'SGBD のコメントに動作の記述がありません。',
+        },
+        op_irreversible: {
+            irr_latching: 'DSC_SIM_* には SGBD 上に解除ジョブが存在しません。一度作動させると作動したままになり、復帰はコマンドではなくイグニッションサイクルです。',
+            irr_pin: '任意の出力ピンを強制駆動します。SGBD 側にピンの制約が無いため、無害なピンと破損させうるピンをこのアプリでは区別できません。',
+            irr_write: 'イグニッションサイクルをまたいで残る状態を書き換えます。事前に元の値を読み戻す手段がこのアプリには無いため、取り消せません。',
+        },
     },
     en: {
         appRole: 'DIAGNOSIS',
-        tab_diagnosis: 'Diagnosis',
-        tab_datalog: 'Datalog',
-        tab_log: 'Comms log',
+        tab_diagnosis: 'DIAGNOSIS',
+        tab_datalog: 'DATALOG',
+        tab_log: 'COMMS LOG',
 
         connect: 'Connect',
         connecting: 'Connecting…',
@@ -261,8 +430,8 @@ const STRINGS: Record<Lang, Catalog> = {
         unverified:
             'UNVERIFIED: this data has not been confirmed on a vehicle. Treat displayed values as indicative, not as a basis for diagnosis.',
         provenance_title: 'Data provenance',
-        tab_calibration: 'Calibration',
-        tab_testjobs: 'Actuator test',
+        tab_calibration: 'CALIBRATION',
+        tab_testjobs: 'ACTUATOR TEST',
         search: 'Search (job id, label, German original)',
         run: 'Run',
         risk_all: 'All',
@@ -296,7 +465,7 @@ const STRINGS: Record<Lang, Catalog> = {
         viz_faults: 'faults',
         viz_clean: 'No faults',
         riskMix: 'Risk mix',
-        pane_visualization: 'Visualization & controls',
+        pane_visualization: 'VISUALIZATION & CONTROLS',
         awaiting_read: 'AWAITING READ…',
         awaiting_samples: 'AWAITING SAMPLES…',
         awaiting_catalog: 'AWAITING CATALOG…',
@@ -310,6 +479,101 @@ const STRINGS: Record<Lang, Catalog> = {
             "Check the port's ground and supply.",
             "Note the adapter's VID/PID — clone FTDI chips are common.",
         ],
+
+        plan_kind: 'Operation',
+        plan_steps: 'Plan (wire order)',
+        plan_optional: 'optional',
+        plan_needsStop: 'needs a stop',
+        plan_ecuTimeout: 'ECU timeout',
+        plan_maxHold: 'Max hold',
+        plan_args: 'Arguments',
+        plan_telegram: 'Request telegram',
+        plan_noTelegram:
+            'No telegram recovered for this job. The SGBD assembles the request from arguments at run time, which a static scrape cannot evaluate.',
+        plan_selectHint: 'Select a job to see what it does',
+        opKind: {
+            read: 'Read',
+            pulse: 'Pulse',
+            hold: 'Hold',
+            paired: 'Paired',
+            measurement: 'Measurement',
+            latching: 'Latching',
+            compound: 'Compound',
+            procedure: 'Program',
+            write: 'Write',
+            unknown: 'Unknown',
+        },
+        opKindNote: {
+            read: 'Reads values and changes nothing. Safe to repeat.',
+            pulse: 'Actuates once and ends by itself. There is nothing to stop.',
+            hold: 'Stays energised until stopped. Needs a stop control and a deadman that releases it if the link dies.',
+            paired: 'Runs until a DIFFERENTLY NAMED job ends it. Start and stop are separate jobs.',
+            measurement: 'Triggers a measurement the ECU runs to completion; the result appears in the live blocks.',
+            latching: 'Actuates and latches. The SGBD exposes no release job, so this cannot be undone from here.',
+            compound: 'The SGBD job itself drives several outputs in sequence. This is not a single action.',
+            procedure: 'A multi-step program the ECU runs by itself, reporting progress and a result code. Abortable.',
+            write: 'Writes persistent state. Nothing here can read the previous value back, so there is no undo.',
+            unknown: 'The SGBD comment does not state what this does, so neither will this panel.',
+        },
+        confidence: { single: 'Unambiguous', multiple: 'Several candidates', shared: 'Shared' },
+        confidenceNote: {
+            single: 'Emitted by this job and no other. The static scrape resolved it uniquely.',
+            multiple:
+                'Several candidates. The job branches on arguments or ECU state the scrape cannot evaluate, so which one goes out is not decidable here.',
+            shared:
+                'The same frame appears under several job names. It is the template the SGBD fills in at run time — NOT this job‘s telegram.',
+        },
+
+        proc_title: 'Guided procedures (test programs)',
+        proc_duration: 'Duration',
+        proc_engine: 'Engine',
+        proc_engineRun: 'Running',
+        proc_engineOff: 'Stopped',
+        proc_results: 'Result block',
+        proc_status: 'Run status',
+        proc_activity: 'Activity codes',
+        proc_faults: 'Result codes',
+        proc_none: 'This module has no guided procedures (SMG II only)',
+        seq_title: 'Suggested sequences',
+        seq_pickHint: 'Press a step to show that procedure',
+
+        op_run: 'Run',
+        op_stop: 'Stop',
+        op_abort: 'Abort',
+        op_start: 'Start',
+        op_blocked_telegram: 'Blocked — the telegram for this job is not established',
+        op_blocked_args: 'Arguments required',
+        op_blocked_practice: 'The PRACTICE ECU does not implement this job',
+        op_why: {
+            why_read: 'reads and returns values; the ECU state does not change',
+            why_pulse: 'actuates once; the ECU ends it by itself',
+            why_write: 'writes persistent state',
+            why_measure: 'triggers a measurement the ECU runs to completion; the result appears in the live blocks',
+            why_latching: 'actuates and HOLDS via digital control',
+            why_multiOutput: 'drives several digital outputs in sequence',
+            why_driveAndReset: 'drives, then resets, STEUERN_DIGITAL — a two-phase job the ECU runs itself',
+            why_switchOn: 'switches the output ON',
+            why_switchOff: 'switches it OFF again — same job, opposite SCHALTEN value',
+            why_pinDrive: 'drives the chosen pin directly at the given duty cycle and period',
+            why_pairStart: 'starts, and stays active until its counterpart is sent',
+            why_pairStop: 'ends the operation its counterpart started',
+            why_prepare:
+                'the SGBD requires it for the starter release, hydraulic pump, fault indicator and shift lock, and it resets the ECU time counter',
+            why_driveActuator: 'drives the selected actuator',
+            why_keepAlive: 'keeps the session alive — the ECU timeout is 10 s and a run can last 960',
+            why_testprgStop: 'the SGBD requires it: "Must be sent BEFORE TESTPRG_STARTEN!"',
+            why_testprgStart: 'starts the program (TESTPRG_NR, and AUSWAHLBYTE where it takes a selection)',
+            why_testprgPoll: 'polled for the run status, the activity code, and finally the result code',
+            why_unknown: 'the SGBD comment does not state what this does',
+        },
+        op_irreversible: {
+            irr_latching:
+                'The SGBD exposes no release job for DSC_SIM_*. Once actuated it stays actuated; recovery is an ignition cycle, not a command.',
+            irr_pin:
+                'Forces an arbitrary output pin. Nothing in the SGBD constrains which pin, so nothing here can tell a harmless one from a damaging one.',
+            irr_write:
+                'Writes state that survives an ignition cycle. Nothing in this app can read the previous value back first, so there is no undo.',
+        },
     },
 };
 

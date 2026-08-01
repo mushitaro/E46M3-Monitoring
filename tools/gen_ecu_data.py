@@ -154,7 +154,10 @@ def env_fields(dump: model.SgbdDump, pool: TextPool) -> list[dict]:
         text = (row.get("UWTEXT") or "").strip()
         if not nr or not text:
             continue
-        e: dict = {"code": nr, "text": pool.ref(text)}
+        # 分解翻訳を使う。フリーズフレームの項目名は文ではなく短い名詞句で、
+        # `Kuehlwassertemp.` は KUEHLWASSER + TEMP に割らないと独語のまま出る
+        # ——そしてこれは診断画面の見出しとして最前面に出る文字列である。
+        e: dict = {"code": nr, "text": pool.ref(text, translate(text, "ja"), translate(text, "en"))}
         unit = (row.get("UW_EINH") or "").strip()
         if unit and unit != "-":
             e["unit"] = unit

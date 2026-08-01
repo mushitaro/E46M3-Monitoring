@@ -24,6 +24,8 @@ DICT = {
     "INNEN": ("内部", "Internal"), "INNENTEMP": ("内部温度", "Internal temp"),
     # --- electrical ---
     "SPANNUNG": ("電圧", "Voltage"), "SPG": ("電圧", "Voltage"), "UBATT": ("バッテリー電圧", "Battery V"),
+    "VERSORGUNG": ("供給", "Supply"), "VERSORGUNGSSPANNUNG": ("供給電圧", "Supply voltage"),
+
     "STROM": ("電流", "Current"), "DRUCK": ("圧力", "Pressure"),
     "WIDERSTAND": ("抵抗", "Resistance"), "FREQUENZ": ("周波数", "Frequency"),
     # --- fuel / injection / ignition ---

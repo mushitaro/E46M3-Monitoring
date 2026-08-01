@@ -27,7 +27,21 @@ import { Hub, HubCluster, HubNotice, SubActions, type HubConfig, type NoticeTone
 import { JobDetail, SequenceCard } from '@/components/JobDetail';
 import { JobsPane } from '@/components/JobsPane';
 import { LogPopover } from '@/components/LogPopover';
-import { LABEL, DataList, DataRow, Field, MicroLabel, Pill, SearchInput, Section, TextButton, Well } from '@/components/ui';
+import {
+    Chip,
+    DataList,
+    DataRow,
+    FacetRow,
+    Field,
+    LABEL,
+    ListControls,
+    MicroLabel,
+    Pane,
+    Pill,
+    Section,
+    TextButton,
+    Well,
+} from '@/components/ui';
 import { useDs2Link, type CommsLogLine, type LiveSample } from '@/hooks/useDs2Link';
 import { useLang, type Lang } from '@/lib/i18n';
 import {
@@ -460,7 +474,7 @@ function ProcedureSection({
     if (!workflows) return null;
 
     return (
-        <div className="flex flex-col gap-6">
+        <Pane>
             <Section title={t.proc_title} count={workflows.procedures.length}>
                 <DataList>
                     {workflows.procedures.map((p) => {
@@ -503,7 +517,7 @@ function ProcedureSection({
             </Section>
 
             <Section title={t.seq_title} count={workflows.sequences.length}>
-                <div className="divide-y divide-slate-800/50 border-t border-slate-800/50">
+                <DataList>
                     {workflows.sequences.map((s) => (
                         <SequenceCard
                             key={s.id}
@@ -515,9 +529,9 @@ function ProcedureSection({
                             }}
                         />
                     ))}
-                </div>
+                </DataList>
             </Section>
-        </div>
+        </Pane>
     );
 }
 
@@ -906,28 +920,32 @@ function DiagnosisPane({ link, catalog }: { link: Link; catalog: EcuProfile | nu
         [catalog],
     );
 
+    // No slice, and no empty-on-empty-query. Returning [] with no query made the
+    // counter read `0 / 226`, which is what "no matches" looks like — on a list
+    // that had simply not been asked anything yet. The jobs list renders 115 rows
+    // without complaint; 226 is not the problem.
     const hits = useMemo(() => {
+        if (!catalog) return [];
         const q = query.trim().toLowerCase();
-        if (!q || !catalog) return [];
-        return catalog.faultText
-            .filter((f) => {
-                if (f.code.toLowerCase().includes(q)) return true;
-                const x = catalog.texts[f.text];
-                return !!x && [x.de, x.ja, x.en].some((s) => s.toLowerCase().includes(q));
-            })
-            .slice(0, 40);
+        if (!q) return catalog.faultText;
+        return catalog.faultText.filter((f) => {
+            if (f.code.toLowerCase().includes(q)) return true;
+            const x = catalog.texts[f.text];
+            return !!x && [x.de, x.ja, x.en].some((s) => s.toLowerCase().includes(q));
+        });
     }, [catalog, query]);
 
     return (
-        <>
+        <Pane>
             {link.ident && (
-                <Well className="mb-4 max-w-[60ch]">
-                    <MicroLabel>IDENT</MicroLabel>
-                    <p className="mt-1 break-all font-mono text-xs text-slate-300">{link.ident.hex}</p>
-                    <p className="mt-1 text-[10px] text-slate-600">{t.ident_note(link.ident.length)}</p>
-                </Well>
+                <Section title="IDENT" note={t.ident_note(link.ident.length)}>
+                    <Well className="max-w-[60ch]">
+                        <p className="break-all font-mono text-xs text-slate-300">{link.ident.hex}</p>
+                    </Well>
+                </Section>
             )}
 
+            <Section title={t.faults_read} count={link.faults?.length}>
             {link.faults === null ? (
                 <p className="py-2 font-mono text-xs uppercase text-slate-600">{t.awaiting_read}</p>
             ) : link.faults.length === 0 ? (
@@ -977,40 +995,37 @@ function DiagnosisPane({ link, catalog }: { link: Link; catalog: EcuProfile | nu
                     })}
                 </DataList>
             )}
+            </Section>
 
             {catalog && (
-                <div className="mt-6">
-                    <Section title={t.faultRef} count={catalog.faultText.length} note={t.faultRef_note}>
-                        {/* Capped. Stretched to a 900px column this was a grey
-                            slab the width of the pane, which is the largest
-                            object on the screen and says nothing. */}
-                        <SearchInput
-                            value={query}
-                            onChange={setQuery}
-                            placeholder={t.search}
-                            className="w-full max-w-[420px]"
-                        />
-                        <DataList className="mt-2">
-                            {hits.map((f) => {
-                                const x = resolveText(catalog, f.text, lang);
-                                return (
-                                    <DataRow
-                                        key={f.code}
-                                        title={f.code}
-                                        subtitle={x.text}
-                                        detail={
-                                            x.original !== x.text ? (
-                                                <p className="font-mono text-[10px] text-slate-500">{x.original}</p>
-                                            ) : undefined
-                                        }
-                                    />
-                                );
-                            })}
-                        </DataList>
-                    </Section>
-                </div>
+                <Section title={t.faultRef} count={catalog.faultText.length} note={t.faultRef_note}>
+                    <ListControls
+                        query={query}
+                        onQuery={setQuery}
+                        placeholder={t.faultRef_search}
+                        shown={hits.length}
+                        total={catalog.faultText.length}
+                    />
+                    <DataList className="mt-3">
+                        {hits.map((f) => {
+                            const x = resolveText(catalog, f.text, lang);
+                            return (
+                                <DataRow
+                                    key={f.code}
+                                    title={f.code}
+                                    subtitle={x.text}
+                                    detail={
+                                        x.original !== x.text ? (
+                                            <p className="font-mono text-[10px] text-slate-500">{x.original}</p>
+                                        ) : undefined
+                                    }
+                                />
+                            );
+                        })}
+                    </DataList>
+                </Section>
             )}
-        </>
+        </Pane>
     );
 }
 
@@ -1077,48 +1092,64 @@ function FreezeFrame({
 function DatalogPane({ datalog }: { datalog: ReturnType<typeof useDatalog> }) {
     const { t } = useLang();
     return (
-        <>
-            <div className="mb-3 flex flex-wrap items-center gap-4 font-mono text-[11px] text-slate-500">
-                <span>
-                    {t.samples} <span className="text-slate-300">{datalog.samples.length}</span>
-                </span>
-                <span>
-                    {t.rate}{' '}
-                    <span className="text-slate-300">
-                        {datalog.rateHz ? `${datalog.rateHz.toFixed(1)} Hz` : '—'}
-                    </span>
-                </span>
-                <span className="text-slate-600">{datalog.costNotice}</span>
-            </div>
+        <Pane>
+            {/* Readouts, not a bare strip of mono text. This row was the one
+                place in the app that looked like neither a section nor a list. */}
+            <Section title={t.datalog_run} note={datalog.costNotice}>
+                <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
+                    <Field label={t.samples} value={datalog.samples.length} />
+                    <Field
+                        label={t.rate}
+                        value={datalog.rateHz ? datalog.rateHz.toFixed(1) : '—'}
+                        unit={datalog.rateHz ? 'Hz' : undefined}
+                    />
+                </div>
+            </Section>
 
-            <div className="flex flex-col gap-6">
-                <Section title={t.channels} count={datalog.selected.length}>
-                    <DataList>
-                        {datalog.selected.map((symbol) => (
-                            <DataRow
-                                key={symbol}
-                                title={symbol}
-                                trailing={
-                                    <span className="shrink-0 font-mono text-xs tabular-nums text-slate-200">
-                                        {datalog.latest[symbol] == null ? '—' : datalog.latest[symbol]!.toFixed(2)}
-                                    </span>
-                                }
-                            />
-                        ))}
-                    </DataList>
-                </Section>
+            <Section title={t.channels} count={datalog.selected.length}>
+                <DataList>
+                    {datalog.selected.map((symbol) => (
+                        <DataRow
+                            key={symbol}
+                            title={symbol}
+                            subtitle={MSS54_CHANNEL_NAMES.get(symbol)}
+                            trailing={
+                                <span className="shrink-0 font-mono text-xs tabular-nums text-slate-200">
+                                    {datalog.latest[symbol] == null ? '—' : datalog.latest[symbol]!.toFixed(2)}
+                                </span>
+                            }
+                        />
+                    ))}
+                </DataList>
+            </Section>
 
-                <ChannelPicker selected={datalog.selected} disabled={datalog.running} onToggle={datalog.toggle} />
-            </div>
-        </>
+            <ChannelPicker selected={datalog.selected} disabled={datalog.running} onToggle={datalog.toggle} />
+        </Pane>
     );
 }
 
+/** Symbol -> human name, for the selected-channel table. Built once. */
+const MSS54_CHANNEL_NAMES = new Map(
+    MSS54_LIVE_BLOCKS.flatMap((b) => b.fields.map((f) => [f.symbol, f.name] as const)),
+);
+
 /**
- * 213 checkboxes, memoized. Without this every sample flush re-rendered the
- * whole picker, and against a synchronous simulator that starved the poll loop
- * badly enough to report 1.0 Hz — the app measuring itself instead of the link,
- * in the one view whose job is to report the link's real rate.
+ * The channel picker — the same recipe as the jobs pane, not its own idiom.
+ *
+ * It used to be `<details>` / `<summary>` / `<label>` with its own uppercase
+ * group headers, its own `(32)` count format, its own row height and a nested
+ * scroller, sitting next to a jobs list that had a search box, facet chips with
+ * counts, and none of those things. Two lists of a few hundred rows, doing the
+ * same job, looking nothing alike.
+ *
+ * Now: search, block chips carrying their counts, one DataList. The block is a
+ * FACET rather than a container because a block is a cost — one round trip per
+ * block per sample — so what you want is to see the count, not to fold it away.
+ *
+ * Still memoized. Without it every sample flush re-rendered all 213 rows, and
+ * against a synchronous simulator that starved the poll loop badly enough to
+ * report 1.0 Hz — the app measuring itself instead of the link, in the one view
+ * whose job is to report the link's real rate.
  */
 const ChannelPicker = memo(function ChannelPicker({
     selected,
@@ -1129,40 +1160,84 @@ const ChannelPicker = memo(function ChannelPicker({
     disabled: boolean;
     onToggle: (symbol: string, on: boolean) => void;
 }) {
+    const { t } = useLang();
+    const [query, setQuery] = useState('');
+    const [block, setBlock] = useState<number | 'all'>('all');
+
+    const all = useMemo(
+        () => MSS54_LIVE_BLOCKS.flatMap((b) => b.fields.map((f) => ({ ...f, block: b }))),
+        [],
+    );
+    const rows = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        return all.filter((f) => {
+            if (block !== 'all' && f.block.selection !== block) return false;
+            if (!q) return true;
+            return f.symbol.toLowerCase().includes(q) || f.name.toLowerCase().includes(q);
+        });
+    }, [all, query, block]);
+
     return (
-        <div className="divide-y divide-slate-800/50 border-t border-slate-800/50">
-            {MSS54_LIVE_BLOCKS.map((block) => (
-                <details key={block.selection}>
-                    <summary className="cursor-pointer py-1.5 text-[11px] uppercase tracking-widest text-slate-400 hover:text-slate-200">
-                        <span className="font-mono text-slate-600">{block.selection}</span> {block.name}{' '}
-                        <span className="text-slate-600">({block.fields.length})</span>
-                    </summary>
-                    {/* No max-h / overflow-auto here. The pane is already the
-                        scroller; a second one inside it means the wheel does
-                        nothing until the inner list bottoms out, and the picker
-                        was the only place in the app that did that. */}
-                    <div className="pb-2 pl-4">
-                        {block.fields.map((f) => (
-                            <label
-                                key={`${block.selection}:${f.symbol}`}
-                                className="flex cursor-pointer items-center gap-2 py-0.5 text-[11px] text-slate-400 hover:text-slate-200"
-                            >
+        <Section title={t.channels_pick} count={all.length}>
+            <ListControls
+                query={query}
+                onQuery={setQuery}
+                placeholder={t.channels_search}
+                shown={rows.length}
+                total={all.length}
+                hiddenNote={rows.length < all.length ? t.facet_hidden(all.length - rows.length) : undefined}
+            >
+                <FacetRow label={t.channels_block}>
+                    <Chip active={block === 'all'} onClick={() => setBlock('all')}>
+                        {t.facet_all}
+                    </Chip>
+                    {MSS54_LIVE_BLOCKS.map((b) => (
+                        <Chip
+                            key={b.selection}
+                            active={block === b.selection}
+                            count={b.fields.length}
+                            title={t.channels_blockNote(b.selection)}
+                            onClick={() => setBlock(block === b.selection ? 'all' : b.selection)}
+                        >
+                            {b.name}
+                        </Chip>
+                    ))}
+                </FacetRow>
+            </ListControls>
+
+            <DataList className="mt-3">
+                {rows.map((f) => {
+                    const on = selected.includes(f.symbol);
+                    return (
+                        <DataRow
+                            key={`${f.block.selection}:${f.symbol}`}
+                            selected={on}
+                            onSelect={disabled ? undefined : () => onToggle(f.symbol, !on)}
+                            leading={
                                 <input
                                     type="checkbox"
-                                    checked={selected.includes(f.symbol)}
+                                    checked={on}
                                     disabled={disabled}
-                                    onChange={(e) => onToggle(f.symbol, e.target.checked)}
-                                    className="size-3 accent-blue-500"
+                                    readOnly
+                                    tabIndex={-1}
+                                    className="size-3 shrink-0 accent-blue-500"
                                 />
-                                <span className="font-mono">{f.symbol}</span>
-                                <span className="truncate text-slate-600">{f.name}</span>
-                                {f.unit && <span className="ml-auto text-slate-500">{f.unit}</span>}
-                            </label>
-                        ))}
-                    </div>
-                </details>
-            ))}
-        </div>
+                            }
+                            title={f.symbol}
+                            subtitle={f.name}
+                            trailing={
+                                <>
+                                    {f.unit && (
+                                        <span className="shrink-0 font-mono text-[11px] text-slate-500">{f.unit}</span>
+                                    )}
+                                    <span className={`shrink-0 ${LABEL} text-slate-600`}>{f.block.selection}</span>
+                                </>
+                            }
+                        />
+                    );
+                })}
+            </DataList>
+        </Section>
     );
 });
 

@@ -49,6 +49,13 @@ interface Catalog {
     faults_logistics: string;
     faults_freezeFrames: string;
     channels: string;
+    channels_pick: string;
+    datalog_run: string;
+    channels_search: string;
+    channels_block: string;
+    channels_blockNote: (selection: number) => string;
+    faults_read: string;
+    faultRef_search: string;
     channels_selected: (n: number, blocks: number) => string;
     rate: string;
     samples: string;
@@ -249,6 +256,13 @@ const STRINGS: Record<Lang, Catalog> = {
         faults_freezeFrames: 'フリーズフレーム',
 
         channels: 'チャンネル',
+        channels_pick: '記録するチャンネルを選ぶ',
+        datalog_run: '記録',
+        channels_search: '検索（シンボル名・項目名）',
+        channels_block: 'ブロック',
+        channels_blockNote: (s) => `選択 ${s} — 同一ブロックの項目は1往復でまとめて読めます`,
+        faults_read: '読み取った故障',
+        faultRef_search: '検索（コード・訳文・独語原文）',
         channels_selected: (n: number, blocks: number) =>
             `${n} 項目 / ${blocks} ブロック = 1サンプルあたり ${blocks} 往復`,
         rate: '実効レート',
@@ -577,6 +591,13 @@ const STRINGS: Record<Lang, Catalog> = {
         faults_freezeFrames: 'Freeze frames',
 
         channels: 'Channels',
+        channels_pick: 'Choose what to record',
+        datalog_run: 'Recording',
+        channels_search: 'Search (symbol, name)',
+        channels_block: 'Block',
+        channels_blockNote: (s) => `Selection ${s} — everything in one block costs a single round trip`,
+        faults_read: 'Faults read',
+        faultRef_search: 'Search (code, translation, German original)',
         channels_selected: (n: number, blocks: number) =>
             `${n} channel${n === 1 ? '' : 's'} across ${blocks} block${blocks === 1 ? '' : 's'} = ${blocks} round trip${blocks === 1 ? '' : 's'} per sample`,
         rate: 'Measured rate',

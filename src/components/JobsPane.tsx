@@ -32,7 +32,7 @@
  */
 
 import { useMemo, useState } from 'react';
-import { LABEL, Chip, DataList, DataRow, Pill, SearchInput, Section } from '@/components/ui';
+import { Chip, DataList, DataRow, FacetRow, LABEL, ListControls, Pane, Pill, Section } from '@/components/ui';
 import {
     description,
     facetCounts,
@@ -103,7 +103,7 @@ export function JobsPane({
     const hidden = jobs.length - rows.length;
 
     return (
-        <div className="flex flex-col gap-6">
+        <Pane>
             {children}
 
             <Section
@@ -112,20 +112,17 @@ export function JobsPane({
                 // The sentence that used to exist only in a code comment.
                 note={cls !== 'all' ? t.jobClassNote[cls] : undefined}
             >
-                <div className="flex flex-col gap-2">
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                        <SearchInput
-                            value={query}
-                            onChange={setQuery}
-                            placeholder={t.search}
-                            className="w-full max-w-[340px]"
-                        />
-                        <span className="ml-auto shrink-0 font-mono text-[11px] tabular-nums text-slate-600">
-                            {rows.length} / {jobs.length}
-                        </span>
-                    </div>
-
-                    <Facet label={t.facet_purpose}>
+                <ListControls
+                    query={query}
+                    onQuery={setQuery}
+                    placeholder={t.search}
+                    shown={rows.length}
+                    total={jobs.length}
+                    // Say what is hidden. This is the line whose absence let 192
+                    // jobs disappear from the old build without a trace.
+                    hiddenNote={hidden > 0 ? t.facet_hidden(hidden) : undefined}
+                >
+                    <FacetRow label={t.facet_purpose}>
                         <Chip active={cls === 'all'} onClick={() => setCls('all')}>
                             {t.facet_all}
                         </Chip>
@@ -140,9 +137,9 @@ export function JobsPane({
                                 {t.jobClass[c]}
                             </Chip>
                         ))}
-                    </Facet>
+                    </FacetRow>
 
-                    <Facet label={t.facet_audience}>
+                    <FacetRow label={t.facet_audience}>
                         <Chip active={audience === 'all'} onClick={() => setAudience('all')}>
                             {t.facet_all}
                         </Chip>
@@ -157,9 +154,9 @@ export function JobsPane({
                                 {t.audience[a]}
                             </Chip>
                         ))}
-                    </Facet>
+                    </FacetRow>
 
-                    <Facet label={t.facet_system}>
+                    <FacetRow label={t.facet_system}>
                         <Chip active={system === 'all'} onClick={() => setSystem('all')}>
                             {t.facet_all}
                         </Chip>
@@ -173,14 +170,8 @@ export function JobsPane({
                                 {t.system[key] ?? key}
                             </Chip>
                         ))}
-                    </Facet>
-
-                    {/* Say what is hidden. This is the line whose absence let 192
-                        jobs disappear from the old build without a trace. */}
-                    {hidden > 0 && (
-                        <p className="text-[11px] text-slate-500">{t.facet_hidden(hidden)}</p>
-                    )}
-                </div>
+                    </FacetRow>
+                </ListControls>
 
                 <DataList className="mt-3">
                     {rows.map(({ job, d }) => {
@@ -245,19 +236,7 @@ export function JobsPane({
                     })}
                 </DataList>
             </Section>
-        </div>
-    );
-}
-
-/** A facet axis with its name. An unlabelled filter row is a mystery toggle. */
-function Facet({ label: heading, children }: { label: string; children: React.ReactNode }) {
-    return (
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-            <span className={`w-[4.5rem] shrink-0 ${LABEL} text-slate-600`}>
-                {heading}
-            </span>
-            {children}
-        </div>
+        </Pane>
     );
 }
 

@@ -623,16 +623,15 @@ function CodeTable({
                 {heading}
                 <span className="font-mono tabular-nums text-slate-600">{rows.length}</span>
             </summary>
-            <ul className="mt-1.5 divide-y divide-slate-800/50">
+            <DataList className="mt-1.5">
                 {rows.map((r) => (
-                    <li key={r.code} className="flex items-baseline gap-2 py-1">
-                        <span className={`w-9 shrink-0 font-mono text-[10px] ${tone}`}>{r.code}</span>
-                        <span className="min-w-0 text-[11px] leading-relaxed text-slate-400">
-                            {lang === 'en' ? r.en : r.ja}
-                        </span>
-                    </li>
+                    <DataRow
+                        key={r.code}
+                        title={<span className={tone}>{r.code}</span>}
+                        subtitle={lang === 'en' ? r.en : r.ja}
+                    />
                 ))}
-            </ul>
+            </DataList>
         </details>
     );
 }
@@ -659,7 +658,7 @@ export function SequenceCard({
     const pick = (x: { ja: string; en: string }) => (lang === 'en' ? x.en : x.ja);
 
     return (
-        <div className="py-2">
+        <li className="px-2 py-2">
             <div className="flex items-baseline gap-2">
                 <span className="text-[11px] font-bold text-slate-200">{pick(sequence.name)}</span>
                 <span className="font-mono text-[10px] tabular-nums text-slate-600">{sequence.steps.length}</span>
@@ -687,6 +686,6 @@ export function SequenceCard({
                 })}
             </ol>
             <p className={`mt-1.5 ${LABEL} text-slate-600`}>{t.seq_pickHint}</p>
-        </div>
+        </li>
     );
 }

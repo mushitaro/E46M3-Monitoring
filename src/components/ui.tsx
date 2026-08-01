@@ -246,6 +246,78 @@ export function Section({
 }
 
 /**
+ * A pane: a column of Sections, one gap.
+ *
+ * Every left-hand pane is this. The gap lives HERE and not on the Sections, so
+ * blocks can be reordered without re-tuning their neighbours — which is how the
+ * app ended up with mb-3, mb-4, mb-6 and mt-6+pt-4 all meaning "next block".
+ */
+export function Pane({ children }: { children: React.ReactNode }) {
+    return <div className="flex flex-col gap-6">{children}</div>;
+}
+
+/**
+ * A named row of filter chips.
+ *
+ * The name is not decoration: an unlabelled row of toggles is a mystery, and
+ * there are three axes in the jobs pane whose chips would otherwise run together
+ * into one undifferentiated wall.
+ */
+export function FacetRow({ label: heading, children }: { label: string; children: React.ReactNode }) {
+    return (
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <span className={`w-[4.5rem] shrink-0 ${LABEL} text-slate-600`}>{heading}</span>
+            {children}
+        </div>
+    );
+}
+
+/**
+ * The controls above a list: a capped search field, the facet rows, the
+ * shown/total counter, and the line that says what is hidden.
+ *
+ * One component because a list with a search and a list without one were drifting
+ * into two different layouts — and the datalog pane, which has 213 rows, had no
+ * search at all while the jobs pane next to it did.
+ */
+export function ListControls({
+    query,
+    onQuery,
+    placeholder,
+    shown,
+    total,
+    hiddenNote,
+    children,
+}: {
+    query: string;
+    onQuery: (v: string) => void;
+    placeholder: string;
+    shown: number;
+    total: number;
+    /** Stated, never implied. A filtered list that does not say so is how rows go missing. */
+    hiddenNote?: string;
+    /** Facet rows. */
+    children?: React.ReactNode;
+}) {
+    return (
+        <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                {/* Capped, not stretched. Given a 900px column, flex-1 made the
+                    field the single largest object on screen — a grey slab that
+                    says nothing — while the filters it belongs with were pushed
+                    half a metre from the text they filter. */}
+                <SearchInput value={query} onChange={onQuery} placeholder={placeholder} className="w-full max-w-[340px]" />
+                <span className="ml-auto shrink-0 font-mono text-[11px] tabular-nums text-slate-600">
+                    {shown} / {total}
+                </span>
+            </div>
+            {children}
+            {hiddenNote && <p className="text-[11px] text-slate-500">{hiddenNote}</p>}
+        </div>
+    );
+}
+
+/**
  * The one list. Rows are separated by a hairline and by hover, never by a box
  * each — at 77 rows an outline per row plus its pills stacks four frames deep and
  * the eye stops resolving the only thing that matters, which row is under the

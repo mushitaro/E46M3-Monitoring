@@ -54,6 +54,27 @@ const OUTLINE_ALLOWED = new Set([
 /** Row padding. One list, one row height. */
 const BAD_PY = /\bpy-(?!0\.5\b|1\b|1\.5\b|2\b|3\b|4\b|5\b)[\w.[\]]+/g;
 
+/**
+ * A hand-rolled list.
+ *
+ * `divide-y` IS a list — it is what separates rows — so only `DataList` may own
+ * it. This is the rule whose absence let the datalog channel picker stay a
+ * `<details>` / `<summary>` / `<label>` tree with its own group headers, its own
+ * count format and its own row height, sitting beside a jobs list that had a
+ * search box and facet chips and none of which it shared. Two lists of a few
+ * hundred rows doing the same job and looking nothing alike.
+ */
+const HAND_LIST = /divide-y/g;
+
+/**
+ * A nested scroller inside a pane that already scrolls.
+ *
+ * The wheel does nothing until the inner list bottoms out. The channel picker
+ * was the only place in the app that did this, which is exactly why nobody
+ * noticed it was wrong.
+ */
+const NESTED_SCROLL = /\bmax-h-\d+\b[^"'`]*\boverflow-(auto|y-auto|scroll)\b|\boverflow-(auto|y-auto|scroll)\b[^"'`]*\bmax-h-\d+\b/g;
+
 function* files(dir) {
     for (const name of readdirSync(dir)) {
         const p = path.join(dir, name);
@@ -116,6 +137,16 @@ for (const file of files(ROOT)) {
         }
         for (const m of text.matchAll(BAD_PY)) {
             fail(rel, n, `${m[0]} — row padding comes from DataRow; the allowed scale is py-0.5|1|1.5|2|3|4|5`);
+        }
+        if (!isUi) {
+            for (const m of text.matchAll(HAND_LIST)) {
+                void m;
+                fail(rel, n, `hand-rolled list — divide-y belongs to DataList; use DataList/DataRow from ui.tsx`);
+            }
+        }
+        for (const m of text.matchAll(NESTED_SCROLL)) {
+            void m;
+            fail(rel, n, `nested scroller — the pane already scrolls; a max-h + overflow inside it traps the wheel`);
         }
     });
 }

@@ -220,6 +220,29 @@ export function MicroLabel({ children, className = '' }: { children: React.React
     return <div className={`${LABEL} text-slate-500 ${className}`}>{children}</div>;
 }
 
+/**
+ * Render `**bold**` in authored safety copy.
+ *
+ * One marker, one meaning, and deliberately not a markdown parser: a stray
+ * asterisk turning into an italic run inside a caution is not a class of bug
+ * worth accepting for the convenience.
+ *
+ * It lives here because three different places render authored text now — the
+ * caution callout, a step's absence sentence, and the DSC stop's provenance
+ * note — and a second copy would drift.
+ */
+export function emphasise(text: string): React.ReactNode {
+    return text.split(/\*\*(.+?)\*\*/g).map((part, i) =>
+        i % 2 === 1 ? (
+            <strong key={i} className="font-bold text-amber-300">
+                {part}
+            </strong>
+        ) : (
+            part
+        ),
+    );
+}
+
 /** A recessed block for machine output (raw idents, planned telegrams). Surface,
  *  not outline. */
 export function Well({ children, className = '' }: { children: React.ReactNode; className?: string }) {

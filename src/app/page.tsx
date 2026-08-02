@@ -26,6 +26,7 @@ import { ElectricalFaultDialog } from '@/components/ElectricalFaultDialog';
 import { Hub, HubCluster, HubNotice, SubActions, type HubConfig, type NoticeTone } from '@/components/Hub';
 import { JobDetail, SequenceView } from '@/components/JobDetail';
 import { JobsPane } from '@/components/JobsPane';
+import { DscHydraulicsPane } from '@/components/DscHydraulics';
 import { LogPopover } from '@/components/LogPopover';
 import {
     Chip,
@@ -47,6 +48,7 @@ import { useDs2Link, type CommsLogLine, type LiveSample } from '@/hooks/useDs2Li
 import { useLang, type Lang } from '@/lib/i18n';
 import {
     facetCounts,
+    jobIndex,
     jobRiskOf,
     loadEcuCatalog,
     loadEcuIndex,
@@ -57,6 +59,7 @@ import {
 } from '@/lib/ecuCatalog';
 import { PROCEDURE_PREFIX, hasStopControl, jobOperation, procedureOperation } from '@/lib/jobOps';
 import { loadJobText, type JobTextTable } from '@/lib/jobText';
+import { loadDscHydraulics, type DscHydraulics } from '@/lib/dscHydraulics';
 import { EMPTY_LEDGER, type Ledger } from '@/lib/ledger';
 import { loadSmg2Workflows, type Smg2Procedure, type Smg2Workflows } from '@/lib/smg2Workflows';
 import { bestTelegram, loadTelegrams, telegramIsCertain, type TelegramTable } from '@/lib/telegrams';
@@ -156,10 +159,12 @@ export default function Home() {
     const [telegrams, setTelegrams] = useState<TelegramTable | null>(null);
     const [jobText, setJobText] = useState<JobTextTable | null>(null);
     const [workflows, setWorkflows] = useState<Smg2Workflows | null>(null);
+    const [hydraulics, setHydraulics] = useState<DscHydraulics | null>(null);
 
     useEffect(() => {
         void loadTelegrams(ecuId).then(setTelegrams);
         void loadJobText(ecuId).then(setJobText);
+        void loadDscHydraulics(ecuId).then(setHydraulics);
     }, [ecuId]);
 
     useEffect(() => {
@@ -274,6 +279,18 @@ export default function Home() {
                                         selectedId={selectedJob?.id ?? null}
                                         onSelect={selectJob}
                                     />
+                                    {/* DSC's per-wheel hydraulics. Above the job
+                                        list for the same reason the SMG II
+                                        procedures are: these are what someone
+                                        opens this module to do. */}
+                                    {hydraulics && (
+                                        <DscHydraulicsPane
+                                            hydraulics={hydraulics}
+                                            jobs={jobIndex(catalog)}
+                                            selectedId={selectedJob?.id ?? null}
+                                            onSelect={selectJob}
+                                        />
+                                    )}
                                 </JobsPane>
                             ) : (
                                 <p className="py-2 font-mono text-xs uppercase text-slate-600">{t.awaiting_catalog}</p>

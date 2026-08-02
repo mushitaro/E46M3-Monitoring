@@ -148,6 +148,15 @@ interface Catalog {
     gear_noSpec: string;
     gear_name: Record<'1' | '2' | '3' | '4' | '5' | '6' | 'R', string>;
     gear_measure: Record<'SW' | 'WW_TOUCH_L' | 'WW_TOUCH_R', string>;
+
+    // --- DSC hydraulics ----------------------------------------------------
+    dsc_title: string;
+    dsc_stop: string;
+    dsc_allOutputsOff: string;
+    dsc_appConstruct: string;
+    dsc_drivesNote: string;
+    dsc_absenceHint: string;
+    dsc_runnerUp: (list: string) => string;
     seq_title: string;
     seq_pickHint: string;
 
@@ -399,6 +408,16 @@ const STRINGS: Record<Lang, Catalog> = {
             'この42個に規定値はありません。SGBD が上限・下限を公表していないため、合否は判定できません。前回の読取値との比較、およびギア間の比較にのみ使えます。',
         gear_name: { '1': '1速', '2': '2速', '3': '3速', '4': '4速', '5': '5速', '6': '6速', R: '後退（R）' },
         gear_measure: { SW: 'シフト経路', WW_TOUCH_L: 'セレクト角 左端', WW_TOUCH_R: 'セレクト角 右端' },
+
+        dsc_title: 'ブレーキ油圧の操作',
+        dsc_stop: '停止',
+        dsc_allOutputsOff: '全出力OFF',
+        dsc_appConstruct: 'アプリの構成物',
+        dsc_drivesNote:
+            '各行の弁名は、抽出したバイトコード中でその操作が**どこかの時点で**駆動する電磁弁の一覧です。同時に駆動するという意味ではなく、静的抽出には順序がありません。片側エア抜きの一覧に反対側の排出弁が入るのはそのためで、こちらでは解釈しません。',
+        dsc_absenceHint: 'この族には SGBD にジョブが存在しない場所があります。上の該当行に理由を書いています。',
+        dsc_runnerUp: (l) =>
+            `全出力OFF の候補は他にもあります: ${l}。違いは STEUERN 表が名前を持たないビットなので、どちらが正しいかはこちらでは決められません。`,
         seq_title: '推奨シーケンス',
         seq_pickHint: 'ステップを押すとその手順を表示します',
 
@@ -740,6 +759,16 @@ const STRINGS: Record<Lang, Catalog> = {
             'None of these 42 has a stated range — the SGBD publishes no limits for them, so there is no pass or fail to give. They are comparable against a previous read and against each other.',
         gear_name: { '1': '1st', '2': '2nd', '3': '3rd', '4': '4th', '5': '5th', '6': '6th', R: 'Reverse' },
         gear_measure: { SW: 'Shift travel', WW_TOUCH_L: 'Gate stop, left', WW_TOUCH_R: 'Gate stop, right' },
+
+        dsc_title: 'Brake hydraulic operations',
+        dsc_stop: 'Stop',
+        dsc_allOutputsOff: 'All outputs off',
+        dsc_appConstruct: "the app's own construct",
+        dsc_drivesNote:
+            "The valve names on each row are every solenoid that operation actuates **at some point** in the extracted bytecode. It does not mean they are driven together — a static extraction has no order. That is why a one-side bleed lists the opposite side's outlet valves, and this app does not interpret it.",
+        dsc_absenceHint: 'This family has a place the SGBD provides no job for. The row above says which, and why.',
+        dsc_runnerUp: (l) =>
+            `There are other all-outputs-off candidates: ${l}. They differ only in bits the STEUERN table does not name, so which is correct is not something this app can decide.`,
         seq_title: 'Suggested sequences',
         seq_pickHint: 'Press a step to show that procedure',
 

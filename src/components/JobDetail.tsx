@@ -28,7 +28,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { AlertTriangle, ArrowRight } from 'lucide-react';
-import { LABEL, DataList, DataRow, Field, MicroLabel, Pill, Provenance, Section, humanName } from '@/components/ui';
+import { LABEL, DataList, DataRow, Field, MicroLabel, Pill, Provenance, Section, emphasise, humanName } from '@/components/ui';
 import {
     description,
     jobIndex,
@@ -303,25 +303,6 @@ export function JobDetail({
     );
 }
 
-/**
- * The authored text uses `**` for the sentences that must not be skimmed past.
- * Rendered as a strong span rather than passed through a markdown parser — one
- * marker, one meaning, no chance of a stray asterisk becoming an italic run in
- * safety copy.
- */
-function stripEmphasis(s: string): React.ReactNode {
-    const parts = s.split(/\*\*(.+?)\*\*/g);
-    return parts.map((p, i) =>
-        i % 2 === 1 ? (
-            <strong key={i} className="font-bold text-amber-300">
-                {p}
-            </strong>
-        ) : (
-            p
-        ),
-    );
-}
-
 function Axis({ term, value, mono = false }: { term: string; value: string; mono?: boolean }) {
     return (
         <div className="flex items-baseline gap-2">
@@ -338,7 +319,7 @@ function Callout({ tone, text }: { tone: 'caution' | 'danger'; text: string }) {
     return (
         <div className={`flex items-start gap-2 rounded p-2 ${cls}`}>
             <AlertTriangle className="mt-0.5 size-3 shrink-0" />
-            <p className="text-[11px] leading-relaxed">{stripEmphasis(text)}</p>
+            <p className="text-[11px] leading-relaxed">{emphasise(text)}</p>
         </div>
     );
 }
@@ -569,7 +550,7 @@ function ProcedureDetail({
             {/* A fact the SGBD tables do not carry — that 0x07/0x0B sweep every
                 gear automatically, that 0x0A engages one and learns nothing. */}
             {procedure.note && (
-                <p className="text-[11px] leading-relaxed text-slate-300">{stripEmphasis(pick(procedure.note))}</p>
+                <p className="text-[11px] leading-relaxed text-slate-300">{emphasise(pick(procedure.note))}</p>
             )}
 
             <Section title={t.proc_steps}>
@@ -586,7 +567,7 @@ function ProcedureDetail({
                 <Section title={t.proc_results}>
                     <p className="text-[11px] leading-relaxed text-slate-500">
                         {procedure.readResultsNote
-                            ? stripEmphasis(pick(procedure.readResultsNote))
+                            ? emphasise(pick(procedure.readResultsNote))
                             : t.det_noValues}
                     </p>
                 </Section>

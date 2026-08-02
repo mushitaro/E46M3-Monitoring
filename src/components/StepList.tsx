@@ -22,7 +22,7 @@
  */
 
 import { AlertTriangle } from 'lucide-react';
-import { DataList, DataRow, LABEL, Provenance } from '@/components/ui';
+import { DataList, DataRow, LABEL, Provenance, emphasise } from '@/components/ui';
 import type { Step, StepPlan, StepState } from '@/lib/procedureSteps';
 import { useLang } from '@/lib/i18n';
 
@@ -98,7 +98,7 @@ function StepRow({ step: s }: { step: Step }) {
                         not machine-mangled. */}
                     {s.de && <p className="font-mono text-[10px] leading-relaxed text-slate-500">{s.de}</p>}
                     {s.absence && (
-                        <p className="text-[11px] leading-relaxed text-amber-400/90">{s.absence}</p>
+                        <p className="text-[11px] leading-relaxed text-amber-400/90">{emphasise(s.absence)}</p>
                     )}
                     {s.outcome && (
                         <p

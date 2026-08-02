@@ -190,10 +190,21 @@ interface Catalog {
     run_request: string;
     run_response: string;
     run_undecoded: string;
+    tab_adaptation: string;
     adaptations: string;
     adaptations_read: string;
     adaptations_note: string;
     adaptations_short: (got: number, need: number) => string;
+    /** Said where the module has adaptation data but this app has no decoder for it. */
+    adaptations_noDecoder: string;
+    adaptationsReset: string;
+    adaptationsReset_note: string;
+    adaptationsReset_none: string;
+    /** A module this app has not surveyed. Never shown as "there are none". */
+    adaptationsReset_unknown: string;
+    viz_adaptationBlocks: string;
+    /** The state of a control that will not fire. Shorter than the reason, which sits under it. */
+    op_blocked: string;
     clearFaults: string;
     clearFaults_title: string;
     clearFaults_consequence: string;
@@ -505,11 +516,23 @@ const STRINGS: Record<Lang, Catalog> = {
         run_response: '応答',
         run_undecoded:
             'SGBD は結果の名前を持ちますが、バイト位置を公表していません。生バイトのまま出します——名前に当てはめるのはレイアウトの捏造になります。ライブ値・適応値・故障メモリ・識別はそれぞれ専用のデコーダを通っており、この経路ではありません。',
+        tab_adaptation: 'ADAPTATION',
         adaptations: '適応値（学習値）',
         adaptations_read: 'Read adaptations',
         adaptations_note:
             'ECU が走行を通じて学習した値です。読取のみで、車には何も書きません。',
         adaptations_short: (g, n) => `応答 ${g} バイト（この表は最低 ${n} バイト必要）——欠けた項目は表示しません。`,
+        adaptations_noDecoder:
+            '適応ブロックの復号表を持っているのは MSS54 だけです。SMG II と DSC にも ECU 側には学習値がありますが、本アプリに読み方がありません——「この ECU に学習値が無い」という意味ではありません。SMG II の学習値は SERVICE タブの ADAPTIONSWERTE_LESEN から読めます。',
+        adaptationsReset: '学習値のリセット',
+        adaptationsReset_note:
+            'ECU 自身が持つ学習値の消去ジョブです。本アプリは送信しません。理由は各行に書いてあります。消去すると ECU は工場出荷の初期値から学習をやり直すため、しばらくの間アイドリングや燃調が荒れます。',
+        adaptationsReset_none:
+            'このモジュールの SGBD に学習値の消去ジョブはありません。カタログ全ジョブを走査して確認済みです（故障メモリの消去は別の話で、DIAGNOSIS タブにあります）。',
+        adaptationsReset_unknown:
+            'このモジュールについては未調査です。「消去ジョブが無い」という意味ではありません。',
+        viz_adaptationBlocks: '復号できたブロック',
+        op_blocked: '実行不可',
         // The BUTTON is English like the rest of the row. Everything the dialog
         // then says — what is destroyed, that it cannot be undone — stays
         // Japanese. That is the line: chrome in one vocabulary, consent in the
@@ -901,11 +924,23 @@ const STRINGS: Record<Lang, Catalog> = {
         run_response: 'Response',
         run_undecoded:
             'The SGBD names this job’s results but publishes no byte offsets for them, so the payload is shown raw — mapping it onto those names would be inventing a layout. Live values, adaptations, fault memory and ident each go through a real decoder, not this path.',
+        tab_adaptation: 'ADAPTATION',
         adaptations: 'Adaptation values',
         adaptations_read: 'Read adaptations',
         adaptations_note:
             'What the ECU has learned in service. Read-only; nothing is written to the car.',
         adaptations_short: (g, n) => `${g} bytes came back; this table needs at least ${n}. Missing fields are not shown.`,
+        adaptations_noDecoder:
+            'MSS54 is the only module with a ported adaptation-block table. SMG II and DSC hold learned values in the ECU too — this app just has no way to read them, which is not the same as the ECU having none. SMG II’s are reachable from ADAPTIONSWERTE_LESEN in the SERVICE tab.',
+        adaptationsReset: 'Reset adaptations',
+        adaptationsReset_note:
+            'The ECU’s own jobs for erasing what it has learned. This app does not send them; each row says why. After an erase the ECU relearns from its factory defaults, so idle and fuel trim are rough for a while.',
+        adaptationsReset_none:
+            'This module’s SGBD has no adaptation-erase job — checked against every job in the catalogue. (Clearing fault memory is a different thing and lives in the DIAGNOSIS tab.)',
+        adaptationsReset_unknown:
+            'This module has not been surveyed. That is not the same as having no erase job.',
+        viz_adaptationBlocks: 'Blocks decoded',
+        op_blocked: 'Blocked',
         clearFaults: 'Clear faults',
         clearFaults_title: 'Clear fault memory',
         clearFaults_consequence:

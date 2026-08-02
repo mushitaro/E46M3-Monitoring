@@ -16,7 +16,6 @@ import {
     RotateCcw,
     ScanLine,
     Square,
-    Unplug,
     Zap,
     type LucideIcon,
 } from 'lucide-react';
@@ -59,6 +58,7 @@ import {
     facetCounts,
     jobIndex,
     jobRiskOf,
+    label,
     loadEcuCatalog,
     loadEcuIndex,
     text as resolveText,
@@ -69,20 +69,27 @@ import {
 import { PROCEDURE_OP, PROCEDURE_PREFIX, hasStopControl, operationFor } from '@/lib/jobOps';
 import { loadJobText, type JobTextTable } from '@/lib/jobText';
 import { loadDscHydraulics, type DscHydraulics } from '@/lib/dscHydraulics';
+import { resetJobsFor } from '@/lib/adaptationReset';
 import { EMPTY_LEDGER, type Ledger } from '@/lib/ledger';
 import { mayRun, type RunVerdict } from '@/lib/runGate';
 import { loadSmg2Workflows, type Smg2Procedure, type Smg2Workflows } from '@/lib/smg2Workflows';
 import { bestTelegram, loadTelegrams, type TelegramTable } from '@/lib/telegrams';
 
 /**
- * Three tabs, not four.
+ * CALIBRATION and ACTUATOR TEST were merged into SERVICE, and not only because
+ * the split was wrong. It also removed a leak: the selection was keyed on
+ * `ecuId` alone, so a procedure picked under CALIBRATION stayed selected — and
+ * stayed in the right column's viz — after switching to ACTUATOR TEST, where its
+ * row did not exist.
  *
- * Merging CALIBRATION and ACTUATOR TEST is not only about the split being wrong.
- * It also removes a leak: the selection was keyed on `ecuId` alone, so a
- * procedure picked under CALIBRATION stayed selected — and stayed in the right
- * column's viz — after switching to ACTUATOR TEST, where its row did not exist.
+ * ADAPTATION is a tab rather than a section under DIAGNOSIS because the two
+ * halves of it need a surface of their own: the learned values are what an owner
+ * reads after a repair, and the ECU's own reset for them is a WRITE this app
+ * refuses to send. Both belong on one screen where the refusal is stated next to
+ * the thing it refuses, instead of a read hidden in a sub-action row and a reset
+ * lost among 223 rows in SERVICE.
  */
-type Tab = 'diagnosis' | 'datalog' | 'service';
+type Tab = 'diagnosis' | 'datalog' | 'adaptation' | 'service';
 type Link = ReturnType<typeof useDs2Link>;
 
 /**
@@ -203,6 +210,7 @@ export default function Home() {
         serviceTab ? selectedJob : null,
         runVerdict,
         practiceArmed,
+        ecuId,
     );
     const [faultOpen, setFaultOpen] = useState(false);
 
@@ -243,6 +251,7 @@ export default function Home() {
                                 [
                                     ['diagnosis', t.tab_diagnosis],
                                     ['datalog', t.tab_datalog],
+                                    ['adaptation', t.tab_adaptation],
                                     ['service', t.tab_service],
                                 ] as const
                             ).map(([id, labelText]) => (
@@ -276,6 +285,15 @@ export default function Home() {
                     <div className="min-h-0 flex-1 overflow-auto px-4 pb-2 pt-2">
                         {tab === 'diagnosis' && <DiagnosisPane link={link} catalog={catalog} />}
                         {tab === 'datalog' && <DatalogPane datalog={datalog} />}
+                        {tab === 'adaptation' && (
+                            <AdaptationPane
+                                link={link}
+                                catalog={catalog}
+                                ecuId={ecuId}
+                                telegrams={telegrams}
+                                ledger={ledger}
+                            />
+                        )}
                         {tab === 'service' &&
                             (catalog ? (
                                 <ServicePane
@@ -351,13 +369,35 @@ export default function Home() {
                                 {t.module}
                             </span>
                             <div className="flex min-w-0 items-center gap-3">
-                                <PracticeToggle
-                                    checked={practiceArmed}
-                                    // A mode cannot change under an open link:
-                                    // the session already IS one or the other.
-                                    disabled={link.state !== 'disconnected'}
-                                    onChange={setPracticeArmed}
-                                />
+                                {/* DISCONNECT lives HERE, not in the sub-action
+                                    row, because that is where the reference tool
+                                    puts it: on the row that states what you are
+                                    talking to. It ends the session the row is
+                                    describing, which is a different kind of act
+                                    from the row below — those act on the current
+                                    run and on the workspace.
+
+                                    It also takes the slot PRACTICE vacates. The
+                                    mode cannot change under an open link, so the
+                                    checkbox has nothing left to say; leaving it
+                                    there disabled spent the only free space in a
+                                    32px row on a dead control. */}
+                                {link.state === 'disconnected' ? (
+                                    <PracticeToggle
+                                        checked={practiceArmed}
+                                        disabled={false}
+                                        onChange={setPracticeArmed}
+                                    />
+                                ) : (
+                                    <>
+                                        <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-slate-600">
+                                            {link.mode} · {link.state}
+                                        </span>
+                                        <TextButton onClick={() => void link.disconnect()} tone="danger">
+                                            {t.disconnect}
+                                        </TextButton>
+                                    </>
+                                )}
                                 <EcuSelect
                                     index={ecuIndex}
                                     value={ecuId}
@@ -397,24 +437,16 @@ export default function Home() {
                                     </TextButton>
                                 )
                             )}
-                            {link.state !== 'disconnected' && (
-                                <TextButton onClick={() => void link.disconnect()} tone="danger" Icon={Unplug}>
-                                    {t.disconnect}
-                                </TextButton>
-                            )}
+                            {/* DISCONNECT was here. It is now on the MODULE row
+                                above — see the note there. */}
                             {tab === 'datalog' && datalog.samples.length > 0 && (
                                 <TextButton onClick={datalog.exportCsv} Icon={Download}>
                                     {t.exportCsv}
                                 </TextButton>
                             )}
-                            {/* Reads, so they sit beside the hub rather than
-                                behind a gate. Only where a decoder exists: the
-                                adaptation block table is MSS54's. */}
-                            {tab === 'diagnosis' && link.state === 'connected' && ecuId === 'mss54' && (
-                                <TextButton onClick={() => void link.readAdaptations()} Icon={ListChecks}>
-                                    {t.adaptations_read}
-                                </TextButton>
-                            )}
+                            {/* READ ADAPTATIONS was here. It is the ADAPTATION
+                                tab's hub now — a tab's whole purpose does not
+                                belong in the row under the primary control. */}
                             {/* The one mutating command this app sends, and the
                                 only sub-action that opens a confirmation. It is
                                 offered only once faults have actually been read,
@@ -679,6 +711,7 @@ function useHubConfig(
     selectedJob: CatalogJob | null,
     runVerdict: RunVerdict | null,
     practiceArmed: boolean,
+    moduleId: string,
 ): HubConfig {
     const { t } = useLang();
 
@@ -729,6 +762,22 @@ function useHubConfig(
             onClick: datalog.start,
             notice: datalog.costNotice,
         };
+    }
+    // The read is the hub here, not a sub-action. It is the one thing this tab
+    // does, and the sub-action row is for actions on the current run — a tab
+    // whose entire purpose sat in the row BELOW the primary control had the hub
+    // saying LINKED and nothing to press.
+    if (tab === 'adaptation') {
+        if (moduleId !== 'mss54') {
+            return {
+                label: t.hub_read,
+                Icon: Zap,
+                tone: 'idle',
+                disabled: true,
+                notice: t.adaptations_noDecoder,
+            };
+        }
+        return { label: t.hub_read, Icon: Zap, tone: 'ready', onClick: () => void link.readAdaptations() };
     }
 
     // The job tab. With nothing selected the hub has no job to name, and says so
@@ -820,6 +869,29 @@ function Viz({
     }
 
     if (tab === 'datalog') return <Sparkline datalog={datalog} />;
+
+    if (tab === 'adaptation') {
+        const blocks = link.adaptations;
+        if (blocks === null) return <Awaiting icon={ListChecks} label={t.awaiting_read} />;
+        // How many of the ECU's answers actually decoded. A block that came back
+        // short is counted as read and NOT as a value — the pane says which one
+        // and by how many bytes, and the number here must not quietly round that
+        // up into "everything is fine".
+        const ok = blocks.filter((b) => !b.error && !b.short).length;
+        return (
+            <div className="flex h-full flex-col items-center justify-center">
+                <div
+                    className={`font-mono text-[22px] font-bold leading-none tabular-nums ${
+                        ok === blocks.length ? 'text-emerald-400' : 'text-amber-400'
+                    }`}
+                >
+                    {ok}
+                    <span className="text-slate-600">/{blocks.length}</span>
+                </div>
+                <div className={`mt-2 ${LABEL} text-slate-500`}>{t.viz_adaptationBlocks}</div>
+            </div>
+        );
+    }
 
     // A job is selected: the question is no longer "what is in this list" but
     // "what happens if I press the button", so answer that instead.
@@ -1003,47 +1075,11 @@ function DiagnosisPane({ link, catalog }: { link: Link; catalog: EcuProfile | nu
                 </Section>
             )}
 
-            {/* The ECU's learned values. A read, and the one an owner most often
-                wants after a repair — lambda adaptation, misfire counters, knock
-                adaptation, throttle adaptation. Only MSS54 has a ported block
-                table, so the section appears only where it can say something. */}
-            {link.adaptations && (
-                <Section title={t.adaptations} note={t.adaptations_note}>
-                    {link.adaptations.map((b) => (
-                        <div key={b.selection} className="mb-4 last:mb-0">
-                            <MicroLabel>{b.name}</MicroLabel>
-                            {b.error ? (
-                                <p className="mt-1 text-[11px] text-red-400">{b.error}</p>
-                            ) : (
-                                <>
-                                    {b.short && (
-                                        <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-                                            {t.adaptations_short(b.payloadLength, b.requiredLength)}
-                                        </p>
-                                    )}
-                                    <DataList className="mt-1.5">
-                                        {b.values.map((v) => (
-                                            <DataRow
-                                                key={v.symbol}
-                                                name={humanName(v.de || v.name)}
-                                                ident={v.symbol}
-                                                trailing={
-                                                    <span className="shrink-0 font-mono text-xs tabular-nums text-slate-200">
-                                                        {v.value === null ? '—' : v.value.toFixed(3)}
-                                                        {v.unit && (
-                                                            <span className="ml-1 text-slate-500">{v.unit}</span>
-                                                        )}
-                                                    </span>
-                                                }
-                                            />
-                                        ))}
-                                    </DataList>
-                                </>
-                            )}
-                        </div>
-                    ))}
-                </Section>
-            )}
+            {/* The ECU's learned values used to be a section here, read from a
+                sub-action button. They have their own tab now — see
+                `AdaptationPane`. They are not a footnote to the fault memory:
+                after a repair they are the thing you came to look at, and the
+                ECU's reset for them needed somewhere to be refused out loud. */}
 
             <Section title={t.faults_read} count={link.faults?.length}>
             {link.faults === null ? (
@@ -1126,6 +1162,138 @@ function DiagnosisPane({ link, catalog }: { link: Link; catalog: EcuProfile | nu
                     </DataList>
                 </Section>
             )}
+        </Pane>
+    );
+}
+
+/**
+ * The ECU's learned values, and the ECU's own way of throwing them away.
+ *
+ * Two halves that have to be on one screen. The read is what an owner wants
+ * after a repair — lambda adaptation, knock adaptation, throttle adaptation,
+ * lifetime misfire counters. The reset is the thing they will reach for next,
+ * and it is a WRITE this app does not send. Putting the read behind a
+ * sub-action button and leaving the reset to be found among 223 rows in SERVICE
+ * meant the refusal was never stated where the question gets asked.
+ *
+ * Both reset jobs go through `mayRun` — the same gate the SERVICE tab uses, with
+ * the same telegram table and the same ledger. Not a second opinion rendered
+ * next to the first: a second derivation is a second chance to disagree, and
+ * this one would be disagreeing about whether to write to an engine controller.
+ */
+function AdaptationPane({
+    link,
+    catalog,
+    ecuId,
+    telegrams,
+    ledger,
+}: {
+    link: Link;
+    catalog: EcuProfile | null;
+    ecuId: string;
+    telegrams: TelegramTable | null;
+    ledger: Ledger;
+}) {
+    const { t, lang } = useLang();
+
+    // The block table is MSS54's. The other two modules have adaptation data in
+    // the ECU and no ported decoder for it here, which is a different statement
+    // from "this module has none" — so say that, rather than showing an empty
+    // list that reads as a car with nothing learned.
+    const decoded = ecuId === 'mss54';
+
+    const known = resetJobsFor(ecuId);
+    const resets = useMemo(() => {
+        if (!catalog) return [];
+        const index = jobIndex(catalog);
+        return resetJobsFor(ecuId).ids.flatMap((id) => {
+            const job = index.get(id);
+            if (!job) return [];
+            return [{ job, verdict: mayRun(job, bestTelegram(telegrams, id), ledger, { moduleId: ecuId }) }];
+        });
+    }, [catalog, telegrams, ledger, ecuId]);
+
+    return (
+        <Pane>
+            <Section title={t.adaptations} note={t.adaptations_note}>
+                {!decoded ? (
+                    <p className="py-2 text-[11px] leading-relaxed text-slate-500">{t.adaptations_noDecoder}</p>
+                ) : link.adaptations === null ? (
+                    <p className="py-2 font-mono text-xs uppercase text-slate-600">{t.awaiting_read}</p>
+                ) : (
+                    link.adaptations.map((b) => (
+                        <div key={b.selection} className="mb-4 last:mb-0">
+                            <MicroLabel>{b.name}</MicroLabel>
+                            {b.error ? (
+                                <p className="mt-1 text-[11px] text-red-400">{b.error}</p>
+                            ) : (
+                                <>
+                                    {b.short && (
+                                        <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                                            {t.adaptations_short(b.payloadLength, b.requiredLength)}
+                                        </p>
+                                    )}
+                                    <DataList className="mt-1.5">
+                                        {b.values.map((v) => (
+                                            <DataRow
+                                                key={v.symbol}
+                                                name={humanName(v.de || v.name)}
+                                                ident={v.symbol}
+                                                trailing={
+                                                    <span className="shrink-0 font-mono text-xs tabular-nums text-slate-200">
+                                                        {v.value === null ? '—' : v.value.toFixed(3)}
+                                                        {v.unit && (
+                                                            <span className="ml-1 text-slate-500">{v.unit}</span>
+                                                        )}
+                                                    </span>
+                                                }
+                                            />
+                                        ))}
+                                    </DataList>
+                                </>
+                            )}
+                        </div>
+                    ))
+                )}
+            </Section>
+
+            {/* The reset section renders whether or not there are jobs to show:
+                on SMG II and DSC its absence would otherwise read as "reset is
+                available here", which is the one misreading that costs someone
+                an engine's worth of learned values. */}
+            <Section title={t.adaptationsReset} note={t.adaptationsReset_note}>
+                {resets.length === 0 ? (
+                    // "None" and "not checked" are different sentences. An empty
+                    // list under the wrong one is the app asserting a module has
+                    // no erase job when nobody has looked — which is precisely
+                    // how the first draft of this pane lied about SMG II.
+                    <p className="py-2 text-[11px] leading-relaxed text-slate-500">
+                        {known.known ? t.adaptationsReset_none : t.adaptationsReset_unknown}
+                    </p>
+                ) : (
+                    <DataList>
+                        {resets.map(({ job, verdict }) => (
+                            <DataRow
+                                key={job.id}
+                                name={label(job, lang)}
+                                ident={job.id}
+                                trailing={
+                                    <span className={`shrink-0 ${LABEL} text-slate-600`}>
+                                        {verdict.allowed ? t.gate_verified : t.op_blocked}
+                                    </span>
+                                }
+                                detail={
+                                    verdict.allowed ? undefined : (
+                                        <p className="text-[11px] leading-relaxed text-slate-500">
+                                            {t.runBlock[verdict.reason]}
+                                        </p>
+                                    )
+                                }
+                            />
+                        ))}
+                    </DataList>
+                )}
+            </Section>
         </Pane>
     );
 }

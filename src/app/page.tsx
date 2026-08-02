@@ -860,8 +860,11 @@ function Awaiting({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
 
 /** A single-channel trace. Enough to see the shape; the pane shows the numbers. */
 function Sparkline({ datalog }: { datalog: ReturnType<typeof useDatalog> }) {
-    const { t } = useLang();
+    const { t, lang } = useLang();
     const id = datalog.selected[0];
+    // The trace's own label followed the rest of the app's inversion: it printed
+    // the raw channel id, `3:n`, in the one slot the eye reads as the name.
+    const ch = id ? MSS54_CHANNELS.get(id) : undefined;
     const points = useMemo(() => {
         if (!id) return null;
         const window = datalog.samples.slice(-240);
@@ -886,7 +889,12 @@ function Sparkline({ datalog }: { datalog: ReturnType<typeof useDatalog> }) {
     return (
         <div className="flex h-full flex-col">
             <div className="flex items-baseline justify-between font-mono text-[10px] text-slate-600">
-                <span className="text-slate-400">{id}</span>
+                <span className="flex min-w-0 items-baseline gap-1.5">
+                    <span className="truncate font-sans text-slate-300">
+                        {ch ? (lang === 'en' ? ch.field.name : ch.field.ja) : id}
+                    </span>
+                    <span className="shrink-0 text-slate-600">{id}</span>
+                </span>
                 <span>
                     {points.min.toFixed(1)} – {points.max.toFixed(1)}
                 </span>
@@ -1118,6 +1126,14 @@ function DatalogPane({ datalog }: { datalog: ReturnType<typeof useDatalog> }) {
                         unit={datalog.rateHz ? 'Hz' : undefined}
                     />
                 </div>
+                {/* The export describes the RUN. Once the selection has moved on
+                    from it, say so — otherwise the file and the list above
+                    disagree and only the file is right. */}
+                {datalog.selectionDrifted && (
+                    <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                        {t.datalog_exportsRun(datalog.recorded.length)}
+                    </p>
+                )}
             </Section>
 
             <Section title={t.channels} count={datalog.selected.length}>
@@ -1258,16 +1274,16 @@ const ChannelPicker = memo(function ChannelPicker({
                                 />
                             }
                             name={humanName(lang === 'en' ? f.name : f.ja)}
-                            ident={f.symbol}
-                            // The SGBD's own German, where the join found it. Shown
-                            // because it is the only name here the ECU actually
-                            // publishes — the English is a third party's, and the
-                            // Japanese is ours. 86 of 213 have one.
-                            detail={
-                                f.de ? (
-                                    <span className="font-mono text-[10px] text-slate-600">{f.de}</span>
-                                ) : undefined
-                            }
+                            // The SGBD's own German where the join found it, and the
+                            // symbol otherwise. It goes in the identifier slot rather
+                            // than a `detail` line: as a detail it made 86 of 213 rows
+                            // taller than the other 127, and a list whose row height
+                            // alternates down the page is the reflow this system
+                            // reserves slots to avoid.
+                            ident={f.de ? `${f.symbol} · ${f.de}` : f.symbol}
+                            // Same datum, same slot as the selected-channel
+                            // list above: the block IS part of the identity.
+                            code={String(f.block.selection)}
                             trailing={
                                 <>
                                     {f.unit && (
@@ -1281,7 +1297,6 @@ const ChannelPicker = memo(function ChannelPicker({
                                             {t.channels_alsoIn(also.join(' / '))}
                                         </span>
                                     )}
-                                    <span className={`shrink-0 ${LABEL} text-slate-600`}>{f.block.selection}</span>
                                 </>
                             }
                         />
@@ -1306,6 +1321,18 @@ function useDatalog(link: Link) {
     const [latest, setLatest] = useState<Partial<Record<ChannelId, number | null>>>({});
     const samplesRef = useRef<LiveSample[]>([]);
     const flushAtRef = useRef(0);
+    /**
+     * The channels the RUN recorded, frozen at start.
+     *
+     * The CSV used to be written from the live `selected` array, and the picker
+     * re-enables the moment a run stops. Deselect a channel afterwards and its
+     * column vanished from the file - data that WAS captured, silently dropped;
+     * select a new one and an empty column appeared as though it had been
+     * recorded. A file has to describe the run that happened, not the state of
+     * the UI when someone clicked export.
+     */
+    const recordedRef = useRef<ChannelId[]>([]);
+    const [recorded, setRecorded] = useState<ChannelId[]>([]);
 
     const plan = useMemo(() => planBlockReads(selected), [selected]);
     const running = link.state === 'logging';
@@ -1335,6 +1362,11 @@ function useDatalog(link: Link) {
         samplesRef.current.length = 0;
         flushAtRef.current = 0;
         setSamples([]);
+        // Stale readings from a previous run must not survive into this one's
+        // readout while the first sample is still in flight.
+        setLatest({});
+        recordedRef.current = [...selected];
+        setRecorded([...selected]);
         // Both endings land in the same place: the stop button and a link
         // failure. A run that dies must not leave the view looking live.
         link.startLog(selected, onSample, () => setSamples(samplesRef.current.slice()));
@@ -1349,16 +1381,27 @@ function useDatalog(link: Link) {
     // last block read. The colon is CSV-safe and the pair is machine-readable.
     const exportCsv = useCallback(() => {
         const rows = [
-            ['time_s', ...selected].join(','),
+            ['time_s', ...recordedRef.current].join(','),
             ...samplesRef.current.map((s) =>
-                [s.time.toFixed(3), ...selected.map((k) => s.values[k] ?? '')].join(','),
+                [s.time.toFixed(3), ...recordedRef.current.map((k) => s.values[k] ?? '')].join(','),
             ),
         ];
         download(rows.join('\r\n'), 'text/csv', `e46m3-datalog-${stamp()}.csv`);
-    }, [selected]);
+        // No dependency on `selected` — that is the whole point. The file
+        // describes the run, and the run is over.
+    }, []);
+
+    // The selection has moved away from what the last run recorded, so the file
+    // and the on-screen list now describe different things.
+    const selectionDrifted =
+        recorded.length > 0 &&
+        (recorded.length !== selected.length || recorded.some((c, i) => c !== selected[i]));
 
     return {
         selected,
+        /** What the last run actually captured. Empty until one has been started. */
+        recorded,
+        selectionDrifted,
         samples,
         latest,
         rateHz,

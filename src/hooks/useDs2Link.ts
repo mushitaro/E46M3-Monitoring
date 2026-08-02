@@ -47,6 +47,7 @@ import {
     type ErrorMemoryQuickTest,
 } from '@tsunagi/ds2-mss54';
 import { practiceEcu } from '@/lib/practiceEcu';
+import { READ_ONLY_CONTROLS, clearFaultsCommand, telegramBytes } from '@/lib/runGate';
 
 const KEEP_ALIVE_INTERVAL_MS = 2000;
 
@@ -88,6 +89,26 @@ export interface CommsLogLine {
     t: number;
     kind: 'tx' | 'rx' | 'info' | 'warn' | 'error';
     text: string;
+}
+
+/**
+ * What one gated read returned.
+ *
+ * The bytes are kept verbatim. For most jobs that is ALL we can honestly show:
+ * the SGBD names a job's results but gives no byte offsets for them, so mapping
+ * this payload onto those names would be inventing a layout. Where a real
+ * decoder exists — live blocks, adaptation blocks, fault memory, ident — the
+ * app uses that decoder instead of coming through here.
+ */
+export interface JobRunResult {
+    jobId: string;
+    /** The frame we sent, as sent. */
+    request: string;
+    /** The payload that came back, as received. */
+    response: string;
+    payloadLength: number;
+    at: number;
+    error: string | null;
 }
 
 export interface LiveSample {
@@ -159,6 +180,7 @@ export function useDs2Link() {
     const [faults, setFaults] = useState<ErrorMemoryEntry[] | null>(null);
     const [quickTest, setQuickTest] = useState<ErrorMemoryQuickTest | null>(null);
     const [adaptations, setAdaptations] = useState<AdaptationRead[] | null>(null);
+    const [lastRun, setLastRun] = useState<JobRunResult | null>(null);
 
     const webSerialSupported = useWebSerialSupported();
 
@@ -369,6 +391,80 @@ export function useDs2Link() {
      * why the caller is shown the block count rather than being asked for a
      * cadence it cannot honour.
      */
+    /**
+     * Sends one gated read and keeps what came back.
+     *
+     * Takes the FRAME, not a job id. The caller has already been through
+     * `mayRun`, which is where the decision lives; this function's job is to put
+     * those exact bytes on the wire and report what returned. It re-parses and
+     * re-checks the frame anyway — a function that transmits should not take
+     * "somebody upstream checked" on trust.
+     */
+    const runRead = useCallback(
+        (jobId: string, hex: string) =>
+            run(`Run ${jobId}`, async (link) => {
+                const bytes = telegramBytes(hex);
+                if (!bytes) {
+                    // A plain Error on purpose: this is the APP refusing, not
+                    // the link failing, and the electrical-fault dialog must not
+                    // claim a wiring problem for a bug in our own data.
+                    throw new Error(`${jobId}: telegram is not a well-formed frame: ${hex}`);
+                }
+                const control = bytes[2];
+                if (!READ_ONLY_CONTROLS.has(control)) {
+                    // Belt and braces. If this ever fires, the gate above it has
+                    // a hole and the car is one line away from being written to.
+                    throw new Error(
+                        `${jobId}: refusing to send control 0x${control.toString(16)} — not a read`,
+                    );
+                }
+                const payload = bytes.slice(3, bytes.length - 1);
+                append('tx', `${jobId}: ${hex}`);
+                const frame = await link.exchangeWithRetry(control, payload);
+                link.assertPositive(frame, jobId);
+                const result: JobRunResult = {
+                    jobId,
+                    request: hex,
+                    response: toHex(frame.payload),
+                    payloadLength: frame.payload.length,
+                    at: Date.now(),
+                    error: null,
+                };
+                append('rx', `${frame.payload.length} bytes`);
+                setLastRun(result);
+                return result;
+            }),
+        [append, run],
+    );
+
+    /**
+     * Clears fault memory. The one mutating command this app sends.
+     *
+     * The frame is BUILT from the protocol (`clearFaultsCommand`), not replayed
+     * from the telegram scrape — see runGate.ts for why, and for the check that
+     * both derivations agree on all three modules.
+     *
+     * Callers must confirm first. This function does not ask: a transmit
+     * function that also owns the confirmation is a transmit function that can
+     * be called without one.
+     */
+    const clearFaults = useCallback(
+        () =>
+            run('Clear fault memory', async (link) => {
+                const { control, payload } = clearFaultsCommand();
+                append('tx', `Clear fault memory (control 0x${control.toString(16)})`);
+                const frame = await link.exchangeWithRetry(control, payload);
+                link.assertPositive(frame, 'Clear fault memory');
+                append('info', 'fault memory cleared — freeze frames are gone with it');
+                // The displayed faults are now a claim about a memory that no
+                // longer holds them. Drop them and make the operator re-read.
+                setFaults(null);
+                setQuickTest(null);
+                return true;
+            }),
+        [append, run],
+    );
+
     const startLog = useCallback(
         (
             channels: readonly ChannelId[],
@@ -492,6 +588,9 @@ export function useDs2Link() {
         readIdent,
         readFaults,
         readAdaptations,
+        runRead,
+        clearFaults,
+        lastRun,
         startLog,
         stopLog,
         clearLog,

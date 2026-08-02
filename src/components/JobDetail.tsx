@@ -49,6 +49,8 @@ import { GATE_CODE, GATE_OF, GEARS, MEASURES, PASSES, gearWindows } from '@/lib/
 import { stepsFromActivity, stepsFromSequence } from '@/lib/procedureSteps';
 import { StepList } from '@/components/StepList';
 import { useLang } from '@/lib/i18n';
+import type { RunVerdict } from '@/lib/runGate';
+import type { JobRunResult } from '@/hooks/useDs2Link';
 
 const KIND_TONE: Record<OpKind, 'neutral' | 'primary' | 'caution' | 'danger' | 'secondary'> = {
     read: 'primary',
@@ -71,6 +73,8 @@ export function JobDetail({
     telegrams,
     workflows,
     procedure,
+    runVerdict,
+    lastRun,
 }: {
     profile: EcuProfile;
     job: CatalogJob;
@@ -79,6 +83,10 @@ export function JobDetail({
     workflows: Smg2Workflows | null;
     /** Set when the selected row is an SMG II test program rather than an SGBD job. */
     procedure: Smg2Procedure | null;
+    /** Why this can or cannot be sent to a car. The same verdict the hub renders. */
+    runVerdict?: RunVerdict | null;
+    /** What the last run of THIS job returned, if there was one. */
+    lastRun?: JobRunResult | null;
 }) {
     const { lang, t } = useLang();
     const op = operationFor(job);
@@ -334,7 +342,33 @@ export function JobDetail({
                 ) : (
                     <p className="text-[11px] leading-relaxed text-slate-500">{t.plan_noTelegram}</p>
                 )}
+                {/* Why this will or will not go out. The same verdict the hub
+                    renders, from the same call — so the button and the panel
+                    cannot tell the operator different things. */}
+                {runVerdict && !runVerdict.allowed && (
+                    <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                        {t.runBlock[runVerdict.reason]}
+                    </p>
+                )}
             </Section>
+
+            {/* 7. What came back, if it has been run. */}
+            {lastRun && (
+                <Section title={t.run_result}>
+                    <div className="flex flex-col gap-2">
+                        <Field label={t.run_request} labelKind="data" stacked value={lastRun.request} />
+                        <Field
+                            label={t.run_response}
+                            labelKind="data"
+                            stacked
+                            value={lastRun.response || '—'}
+                            unit={`${lastRun.payloadLength} B`}
+                        />
+                    </div>
+                    {/* The payload is shown raw and stays raw. See the note. */}
+                    <p className="mt-2 text-[11px] leading-relaxed text-slate-500">{t.run_undecoded}</p>
+                </Section>
+            )}
 
             {procedure && <ProcedureDetail profile={profile} procedure={procedure} workflows={workflows} />}
         </div>

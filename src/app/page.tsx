@@ -30,6 +30,7 @@ import {
     type ChannelId,
 } from '@tsunagi/ds2-mss54';
 import { AppHeader } from '@/components/AppHeader';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { ElectricalFaultDialog } from '@/components/ElectricalFaultDialog';
 import { Hub, HubCluster, HubNotice, SubActions, type HubConfig, type NoticeTone } from '@/components/Hub';
 import { JobDetail, SequenceView } from '@/components/JobDetail';
@@ -69,8 +70,9 @@ import { PROCEDURE_OP, PROCEDURE_PREFIX, hasStopControl, operationFor } from '@/
 import { loadJobText, type JobTextTable } from '@/lib/jobText';
 import { loadDscHydraulics, type DscHydraulics } from '@/lib/dscHydraulics';
 import { EMPTY_LEDGER, type Ledger } from '@/lib/ledger';
+import { mayRun, type RunVerdict } from '@/lib/runGate';
 import { loadSmg2Workflows, type Smg2Procedure, type Smg2Workflows } from '@/lib/smg2Workflows';
-import { bestTelegram, loadTelegrams, telegramIsCertain, type TelegramTable } from '@/lib/telegrams';
+import { bestTelegram, loadTelegrams, type TelegramTable } from '@/lib/telegrams';
 
 /**
  * Three tabs, not four.
@@ -160,6 +162,7 @@ export default function Home() {
     // Keyed by module rather than cleared from an effect: switching modules must
     // drop the selection, and deriving that is both simpler and impossible to
     // get out of sync with a cascading render.
+    const [clearOpen, setClearOpen] = useState(false);
     const [selection, setSelection] = useState<{ ecuId: string; job: CatalogJob } | null>(null);
     const selectedJob = selection?.ecuId === ecuId ? selection.job : null;
     const selectJob = useCallback((job: CatalogJob) => setSelection({ ecuId, job }), [ecuId]);
@@ -179,22 +182,27 @@ export default function Home() {
         void loadSmg2Workflows().then(setWorkflows);
     }, []);
 
-    const connectedToVehicle = link.mode === 'vehicle' && link.state !== 'disconnected';
     const serviceTab = tab === 'service';
     // PRACTICE is a MODE the hub then connects in, not a second connect button.
     // As a button beside CONNECT it was a fork with no stated default; as a
     // checkbox the hub reads CONNECT either way and the box says which link you
     // will get — which is also why it is disabled once a session is open.
     const [practiceArmed, setPracticeArmed] = useState(false);
+    // One verdict, computed once, used by the hub AND by the panel. They used to
+    // reason about runnability separately, which is how a control that says it
+    // can fire ends up beside a panel that says it cannot.
+    const runVerdict: RunVerdict | null =
+        serviceTab && selectedJob
+            ? mayRun(selectedJob, bestTelegram(telegrams, selectedJob.id), ledger, { moduleId: ecuId })
+            : null;
+
     const hub = useHubConfig(
         tab,
         link,
         datalog,
         serviceTab ? selectedJob : null,
-        ecuId,
-        telegrams,
+        runVerdict,
         practiceArmed,
-        connectedToVehicle,
     );
     const [faultOpen, setFaultOpen] = useState(false);
 
@@ -323,6 +331,7 @@ export default function Home() {
                             telegrams={telegrams}
                             jobText={jobText}
                             workflows={workflows}
+                            runVerdict={runVerdict}
                         />
                     </div>
 
@@ -398,6 +407,28 @@ export default function Home() {
                                     {t.exportCsv}
                                 </TextButton>
                             )}
+                            {/* Reads, so they sit beside the hub rather than
+                                behind a gate. Only where a decoder exists: the
+                                adaptation block table is MSS54's. */}
+                            {tab === 'diagnosis' && link.state === 'connected' && ecuId === 'mss54' && (
+                                <TextButton onClick={() => void link.readAdaptations()} Icon={ListChecks}>
+                                    {t.adaptations_read}
+                                </TextButton>
+                            )}
+                            {/* The one mutating command this app sends, and the
+                                only sub-action that opens a confirmation. It is
+                                offered only once faults have actually been read,
+                                so the evidence it destroys has at least been on
+                                screen once. */}
+                            {tab === 'diagnosis' && link.state === 'connected' && link.faults !== null && (
+                                <TextButton
+                                    onClick={() => setClearOpen(true)}
+                                    tone="danger"
+                                    Icon={AlertTriangle}
+                                >
+                                    {t.clearFaults}
+                                </TextButton>
+                            )}
                             {/* A held or paired job needs a STOP that is NOT the
                                 hub: the hub is what started it, and re-deriving
                                 one control into "now it stops" is how an operator
@@ -417,6 +448,19 @@ export default function Home() {
             <UnverifiedBanner />
 
             {faultOpen && <ElectricalFaultDialog message={link.error ?? ''} onClose={() => setFaultOpen(false)} />}
+
+            {clearOpen && (
+                <ConfirmDialog
+                    title={t.clearFaults_title}
+                    consequence={t.clearFaults_consequence}
+                    confirmLabel={t.clearFaults_confirm}
+                    onCancel={() => setClearOpen(false)}
+                    onConfirm={() => {
+                        setClearOpen(false);
+                        void link.clearFaults();
+                    }}
+                />
+            )}
         </div>
     );
 }
@@ -633,10 +677,8 @@ function useHubConfig(
     link: Link,
     datalog: ReturnType<typeof useDatalog>,
     selectedJob: CatalogJob | null,
-    ecuId: string,
-    telegrams: TelegramTable | null,
+    runVerdict: RunVerdict | null,
     practiceArmed: boolean,
-    onVehicle: boolean,
 ): HubConfig {
     const { t } = useLang();
 
@@ -696,35 +738,26 @@ function useHubConfig(
             return { label: t.hub_connected, Icon: CircleDot, tone: 'idle', disabled: true, notice: t.plan_selectHint };
         }
         const op = opFor(selectedJob);
-        const tel = bestTelegram(telegrams, selectedJob.id);
         const risk = jobRiskOf(selectedJob);
+        const allowed = runVerdict?.allowed === true;
 
-        // Four independent gates, and the notice names whichever bites first,
-        // cheapest-to-fix first: PRACTICE is a checkbox away, an argument is
-        // something the operator can supply, an unrecovered telegram is neither —
-        // and a programming job gets NO run control at all, which is why it is
-        // checked first and phrased as a property of the job rather than of the
-        // session.
-        const blocked =
-            selectedJob.class === 'programming'
-                ? t.jobClass.programming
-                : !onVehicle
-                  ? t.op_blocked_practice
-                  : op.needsArgs
-                    ? t.op_blocked_args
-                    : !telegramIsCertain(tel)
-                      ? t.op_blocked_telegram
-                      : undefined;
-
+        // The gate is `mayRun`, in one module, tested against all 323 jobs and
+        // against the actual control byte of the frame that would go out. The
+        // hub only renders its answer — it does not re-derive one, because two
+        // derivations are two chances to disagree.
         return {
             label: op.kind === 'procedure' ? t.op_start : t.op_run,
             Icon: op.kind === 'procedure' ? PlayCircle : Play,
             // Red only when the control is armed to do something irreversible,
             // and only when it could actually go — an armed-looking ring on a
             // button that cannot fire is theatre.
-            tone: blocked ? 'idle' : risk === 'high' ? 'armed-danger' : 'ready',
-            disabled: !!blocked,
-            notice: blocked,
+            tone: !allowed ? 'idle' : risk === 'high' ? 'armed-danger' : 'ready',
+            disabled: !allowed,
+            notice: runVerdict && !runVerdict.allowed ? t.runBlock[runVerdict.reason] : undefined,
+            onClick:
+                runVerdict?.allowed === true
+                    ? () => void link.runRead(selectedJob.id, runVerdict.telegram.hex)
+                    : undefined,
         };
     }
 
@@ -744,6 +777,7 @@ function Viz({
     telegrams,
     jobText,
     workflows,
+    runVerdict,
 }: {
     tab: Tab;
     link: Link;
@@ -753,6 +787,7 @@ function Viz({
     telegrams: TelegramTable | null;
     jobText: JobTextTable | null;
     workflows: Smg2Workflows | null;
+    runVerdict: RunVerdict | null;
 }) {
     const { t } = useLang();
 
@@ -797,6 +832,8 @@ function Viz({
                 telegrams={telegrams}
                 workflows={workflows}
                 procedure={procedureForJob(selectedJob, workflows)}
+                runVerdict={runVerdict}
+                lastRun={link.lastRun?.jobId === selectedJob.id ? link.lastRun : null}
             />
         );
     }
@@ -963,6 +1000,48 @@ function DiagnosisPane({ link, catalog }: { link: Link; catalog: EcuProfile | nu
                     <Well className="max-w-[60ch]">
                         <p className="break-all font-mono text-xs text-slate-300">{link.ident.hex}</p>
                     </Well>
+                </Section>
+            )}
+
+            {/* The ECU's learned values. A read, and the one an owner most often
+                wants after a repair — lambda adaptation, misfire counters, knock
+                adaptation, throttle adaptation. Only MSS54 has a ported block
+                table, so the section appears only where it can say something. */}
+            {link.adaptations && (
+                <Section title={t.adaptations} note={t.adaptations_note}>
+                    {link.adaptations.map((b) => (
+                        <div key={b.selection} className="mb-4 last:mb-0">
+                            <MicroLabel>{b.name}</MicroLabel>
+                            {b.error ? (
+                                <p className="mt-1 text-[11px] text-red-400">{b.error}</p>
+                            ) : (
+                                <>
+                                    {b.short && (
+                                        <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                                            {t.adaptations_short(b.payloadLength, b.requiredLength)}
+                                        </p>
+                                    )}
+                                    <DataList className="mt-1.5">
+                                        {b.values.map((v) => (
+                                            <DataRow
+                                                key={v.symbol}
+                                                name={humanName(v.de || v.name)}
+                                                ident={v.symbol}
+                                                trailing={
+                                                    <span className="shrink-0 font-mono text-xs tabular-nums text-slate-200">
+                                                        {v.value === null ? '—' : v.value.toFixed(3)}
+                                                        {v.unit && (
+                                                            <span className="ml-1 text-slate-500">{v.unit}</span>
+                                                        )}
+                                                    </span>
+                                                }
+                                            />
+                                        ))}
+                                    </DataList>
+                                </>
+                            )}
+                        </div>
+                    ))}
                 </Section>
             )}
 

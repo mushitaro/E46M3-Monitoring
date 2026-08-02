@@ -172,6 +172,28 @@ interface Catalog {
     op_blocked_telegram: string;
     op_blocked_args: string;
     op_blocked_practice: string;
+    /** Why a run control will not fire. One key per RunBlockKey — see runGate.ts. */
+    runBlock: Record<
+        | 'run_block_programming'
+        | 'run_block_noTelegram'
+        | 'run_block_needsArgs'
+        | 'run_block_notRead'
+        | 'run_block_controlWrites'
+        | 'run_block_notVerified',
+        string
+    >;
+    run_result: string;
+    run_request: string;
+    run_response: string;
+    run_undecoded: string;
+    adaptations: string;
+    adaptations_read: string;
+    adaptations_note: string;
+    adaptations_short: (got: number, need: number) => string;
+    clearFaults: string;
+    clearFaults_title: string;
+    clearFaults_consequence: string;
+    clearFaults_confirm: string;
     /** Why each plan step exists. Safety copy — see jobOps.ts WhyKey. */
     op_why: Record<WhyKey, string>;
     /** Why an operation cannot be taken back. */
@@ -440,6 +462,29 @@ const STRINGS: Record<Lang, Catalog> = {
         op_start: '開始',
         op_blocked_telegram: 'テレグラム未確定のため実行できません',
         op_blocked_args: '引数が必要です',
+        runBlock: {
+            run_block_programming: '書換系のジョブに実行操作はありません。本アプリはフラッシュ/EEPROM 書換を送信しません。',
+            run_block_noTelegram: 'このジョブの要求テレグラムが一意に確定していません。何を送るか分からないものは送りません。',
+            run_block_needsArgs: '引数を取るジョブです。抽出したテレグラムには私たちが選んでいない引数値が埋まっているため、そのままでは送れません。',
+            run_block_notRead: '読取ジョブではありません。本アプリが実車に送れるのは読取だけです（作動テスト・較正書込・手順の実行経路はまだありません）。',
+            run_block_controlWrites: '制御バイトが読取専用ではありません。分類がどうであれ、実際に出るフレームが車を書き換え得るので送りません。',
+            run_block_notVerified: '実車で検証済みという台帳の記録がありません。読取以外は記録が無い限り実行しません。',
+        },
+        run_result: '実行結果',
+        run_request: '送信',
+        run_response: '応答',
+        run_undecoded:
+            'SGBD は結果の名前を持ちますが、バイト位置を公表していません。生バイトのまま出します——名前に当てはめるのはレイアウトの捏造になります。ライブ値・適応値・故障メモリ・識別はそれぞれ専用のデコーダを通っており、この経路ではありません。',
+        adaptations: '適応値（学習値）',
+        adaptations_read: '適応値を読む',
+        adaptations_note:
+            'ECU が走行を通じて学習した値です。読取のみで、車には何も書きません。',
+        adaptations_short: (g, n) => `応答 ${g} バイト（この表は最低 ${n} バイト必要）——欠けた項目は表示しません。`,
+        clearFaults: '故障メモリ消去',
+        clearFaults_title: '故障メモリを消去します',
+        clearFaults_consequence:
+            '故障コードと、それに付随するフリーズフレーム（発生時の運転状態の記録）が ECU から消えます。元に戻せません。原因が残っていれば故障は再登録されますが、消えたフリーズフレームは戻りません。先に読み取って記録を残してください。',
+        clearFaults_confirm: '消去する',
         op_blocked_practice: 'PRACTICE の模擬 ECU はこのジョブを実装していません',
         op_why: {
             why_read: '値を読み出して返します。ECU の状態は変わりません。',
@@ -801,6 +846,29 @@ const STRINGS: Record<Lang, Catalog> = {
         op_start: 'Start',
         op_blocked_telegram: 'Blocked — the telegram for this job is not established',
         op_blocked_args: 'Arguments required',
+        runBlock: {
+            run_block_programming: 'Programming jobs get no run control. This app does not send flash or EEPROM writes.',
+            run_block_noTelegram: "This job's request telegram is not uniquely established. We do not send what we cannot name.",
+            run_block_needsArgs: 'This job takes arguments. The extracted telegram embeds argument values we did not choose, so it cannot be sent as it stands.',
+            run_block_notRead: 'Not a read job. Reads are all this app can send to a car so far — there is no execution path yet for actuator tests, calibration writes or procedures.',
+            run_block_controlWrites: 'The control byte is not read-only. Whatever the classification says, the frame that would go out could change the car, so it is not sent.',
+            run_block_notVerified: 'No ledger entry saying this was proven on a vehicle. Nothing but reads runs without one.',
+        },
+        run_result: 'Run result',
+        run_request: 'Sent',
+        run_response: 'Response',
+        run_undecoded:
+            'The SGBD names this job’s results but publishes no byte offsets for them, so the payload is shown raw — mapping it onto those names would be inventing a layout. Live values, adaptations, fault memory and ident each go through a real decoder, not this path.',
+        adaptations: 'Adaptation values',
+        adaptations_read: 'Read adaptations',
+        adaptations_note:
+            'What the ECU has learned in service. Read-only; nothing is written to the car.',
+        adaptations_short: (g, n) => `${g} bytes came back; this table needs at least ${n}. Missing fields are not shown.`,
+        clearFaults: 'Clear faults',
+        clearFaults_title: 'Clear fault memory',
+        clearFaults_consequence:
+            'The fault codes and their freeze frames — the recorded operating conditions at the moment each fault occurred — are erased from the ECU. This cannot be undone. Faults will re-log if their cause is still present, but the freeze frames will not come back. Read and record them first.',
+        clearFaults_confirm: 'Clear',
         op_blocked_practice: 'The PRACTICE ECU does not implement this job',
         op_why: {
             why_read: 'reads and returns values; the ECU state does not change',

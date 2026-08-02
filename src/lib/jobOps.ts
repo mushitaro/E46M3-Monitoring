@@ -123,6 +123,8 @@ export interface JobOperation {
     steps: OpStep[];
     /** The job that ends this one, when a named counterpart exists. */
     stopJob?: string;
+    /** When stopping is the same job with different arguments. */
+    stopArgs?: Record<string, string>;
     /** The job that carries the answer, when this one does not. */
     resultJob?: string;
     /**
@@ -147,6 +149,13 @@ export const PROCEDURE_PREFIX = 'TESTPRG:';
 
 /** The SMG II actuation window, from the SGBD comment on ANSTEUERUNG_VORBEREITEN. */
 const SMG2_ECU_TIMEOUT_SEC = 10;
+
+/**
+ * The job that holds the diagnostic session open: `Diagnosemode aufrechterhalten`.
+ *
+ * Named once, because the wrong name was written twice and asserted in a test.
+ */
+const KEEP_ALIVE_JOB = 'DIAGNOSE_AUFRECHT';
 
 /** Prerequisites the SGBD names, and the sentence that explains each one. */
 const PREREQ_WHY: Record<string, WhyKey> = {
@@ -217,8 +226,13 @@ export function jobOperation(job: CatalogJob): JobOperation {
 
     // The keep-alive is not optional where the ECU states a timeout: SMG II drops
     // the session after 10 s, and a full gearbox adaptation runs for 960.
+    //
+    // The job is `DIAGNOSE_AUFRECHT` (`Diagnosemode aufrechterhalten`). This said
+    // `DIAGNOSE_ERHALTEN`, which is not one of SMG II's 46 jobs — a name I
+    // invented and then asserted in a test, so the test agreed with the plan and
+    // both were wrong. INPA's SMG2.IPO calls the real one.
     if (op.ecuTimeoutSec !== undefined) {
-        steps.push({ job: 'DIAGNOSE_ERHALTEN', why: 'why_keepAlive', required: true });
+        steps.push({ job: KEEP_ALIVE_JOB, why: 'why_keepAlive', required: true });
     }
 
     return {
@@ -228,6 +242,7 @@ export function jobOperation(job: CatalogJob): JobOperation {
         resultDelivery: op.resultDelivery,
         steps,
         stopJob: op.stopJob,
+        stopArgs: op.stopArgs,
         resultJob: op.resultJob,
         ecuTimeoutSec: op.ecuTimeoutSec,
         maxHoldSec: op.maxHoldSec,
@@ -253,15 +268,22 @@ export function procedureOperation(id: string, needsArgs: boolean): JobOperation
         kind: 'procedure',
         actor: 'ecu',
         termination: 'companion-job',
-        resultDelivery: 'companion-job',
+        resultDelivery: 'inline',
         steps: [
             { job: 'TESTPRG_STOP', why: 'why_testprgStop', required: true },
             { job: 'TESTPRG_STARTEN', why: 'why_testprgStart', required: true },
-            { job: 'STATUS_TESTPRG', why: 'why_testprgPoll', required: true },
-            { job: 'DIAGNOSE_ERHALTEN', why: 'why_keepAlive', required: true },
+            // Progress is read by RE-SENDING the same job, not by a companion.
+            // This step used to name `STATUS_TESTPRG` and the keep-alive
+            // `DIAGNOSE_ERHALTEN`; neither exists among SMG II's 46 jobs. The
+            // SGBD says so on `TEST_STATUS_BYTE` — "Job muss kontinuierlich
+            // angestossen werden ... bis dieses Result ungleich 1 liefert!" —
+            // and INPA's SMG2.IPO does exactly that, then calls
+            // DIAGNOSE_AUFRECHT to hold the 10 s session open.
+            { job: 'TESTPRG_STARTEN', why: 'why_testprgPoll', required: true },
+            { job: KEEP_ALIVE_JOB, why: 'why_keepAlive', required: true },
         ],
         stopJob: 'TESTPRG_STOP',
-        resultJob: 'STATUS_TESTPRG',
+        resultJob: 'TESTPRG_STARTEN',
         ecuTimeoutSec: SMG2_ECU_TIMEOUT_SEC,
         needsArgs,
     };

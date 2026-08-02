@@ -97,7 +97,31 @@ check(c("MSS54DS0", "START_SYSTEMCHECK_SEK_LUFT").stop_job == "STOP_SYSTEMCHECK_
 v = c("SMG2", "TESTPRG_STARTEN")
 check(v.kind == "procedure", f"TESTPRG_STARTEN: kind={v.kind}")
 check(v.prerequisite_jobs == ["TESTPRG_STOP"], f"...: prerequisites={v.prerequisite_jobs}")
-check(v.stop_job == "TESTPRG_STOP" and v.result_job == "STATUS_TESTPRG", f"...: {v.stop_job}/{v.result_job}")
+# 進行状況はこのジョブ自身の再送で読む。以前ここには `STATUS_TESTPRG` と書いて
+# あったが、SMG II の46ジョブにそんな名前は無い。SGBD が `TEST_STATUS_BYTE` の
+# コメントで「Job solange anstossen, bis dieses Result ungleich 1 liefert!」と
+# 明言しており、INPA の SMG2.IPO も同じことをしている。
+check(v.stop_job == "TESTPRG_STOP" and v.result_job == "TESTPRG_STARTEN", f"...: {v.stop_job}/{v.result_job}")
+
+# 停止が「同じジョブ＋別の引数」であるものは、引数値をジョブ名として出さない。
+# `INAKTIV` は `STEUERART1` の値であって、ジョブではない。
+v = c("SMG2", "STEUERN_STELLGLIED")
+check(v.stop_job == "STEUERN_STELLGLIED", f"STEUERN_STELLGLIED: stop_job={v.stop_job}")
+check(v.stop_args == {"STEUERART1": "INAKTIV"}, f"STEUERN_STELLGLIED: stop_args={v.stop_args}")
+
+# **すべてのモジュールで**、名指しされたジョブは実在しなければならない。
+# この不変条件が無かったので、`STATUS_TESTPRG` / `DIAGNOSE_ERHALTEN` / `INAKTIV`
+# の3つが幻のまま出荷されていた。
+for (sgbd_name, jid), cl in rows.items():
+    known = {j for (s, j) in rows if s == sgbd_name}
+    for ref, where in (
+        *[(p, "prerequisite") for p in cl.prerequisite_jobs],
+        (cl.stop_job, "stop"),
+        (cl.result_job, "result"),
+    ):
+        if ref is None:
+            continue
+        check(ref in known, f"{sgbd_name}.{jid}: {where} job {ref!r} does not exist in this module")
 check(v.ecu_timeout_sec == 10, f"...: ecu timeout={v.ecu_timeout_sec}")
 
 # SGBD が前段ジョブを明言しているのは SMG2 だけ。他モジュールの同名ジョブに

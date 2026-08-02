@@ -139,7 +139,14 @@ export function JobDetail({
                     {hasStopControl(op) && (
                         <span className="text-[11px] text-amber-400">
                             {t.plan_needsStop}
-                            {op.stopJob && op.stopJob !== job.id ? ` · ${op.stopJob}` : ''}
+                            {/* When stopping is the same job with a different
+                                argument, say the ARGUMENT — naming `INAKTIV` as
+                                if it were a job is what this replaced. */}
+                            {op.stopArgs
+                                ? ` · ${Object.entries(op.stopArgs).map(([k, v]) => `${k}=${v}`).join(', ')}`
+                                : op.stopJob && op.stopJob !== job.id
+                                  ? ` · ${op.stopJob}`
+                                  : ''}
                         </span>
                     )}
                     <Provenance title={t.provenance[job.op.provenance]}>{t.provenance[job.op.provenance]}</Provenance>
@@ -173,7 +180,7 @@ export function JobDetail({
                             <span className="min-w-0">
                                 <span className="font-mono text-[11px] text-blue-400">{s.job}</span>
                                 <span className="block text-[11px] leading-relaxed text-slate-500">
-                                    {t.op_why[s.why]}
+                                    {emphasise(t.op_why[s.why])}
                                 </span>
                             </span>
                         </li>

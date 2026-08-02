@@ -178,7 +178,7 @@ describe('the SMG II prepare requirement', () => {
         for (const m of MODULES) {
             for (const j of profile(m).jobs) {
                 if (j.op.ecuTimeoutSec === undefined) continue;
-                expect(jobOperation(j).steps.map((s) => s.job)).toContain('DIAGNOSE_ERHALTEN');
+                expect(jobOperation(j).steps.map((s) => s.job)).toContain('DIAGNOSE_AUFRECHT');
             }
         }
     });
@@ -193,10 +193,21 @@ describe('SMG II test programs', () => {
         expect(o.stopJob).toBe('TESTPRG_STOP');
     });
 
-    it('polls for progress and keeps the 10s session alive', () => {
+    // This test used to assert `STATUS_TESTPRG` and `DIAGNOSE_ERHALTEN` — it was
+    // encoding the bug rather than catching it, because it only ever compared
+    // the plan against itself. Neither name exists among SMG II's 46 jobs.
+    //
+    // The SGBD said so all along, on `TEST_STATUS_BYTE`: "Job muss kontinuierlich
+    // angestossen werden ... Job solange anstossen, bis dieses Result ungleich 1
+    // liefert!" — progress comes from RE-SENDING TESTPRG_STARTEN. INPA's
+    // SMG2.IPO does exactly that, and calls DIAGNOSE_AUFRECHT to hold the
+    // session open.
+    it('polls by re-sending itself, and keeps the 10s session alive', () => {
         const o = op('smg2', 'TESTPRG_STARTEN');
-        expect(o.steps.map((s) => s.job)).toContain('STATUS_TESTPRG');
-        expect(o.steps.map((s) => s.job)).toContain('DIAGNOSE_ERHALTEN');
+        expect(o.resultJob).toBe('TESTPRG_STARTEN');
+        expect(o.steps.filter((s) => s.job === 'TESTPRG_STARTEN')).toHaveLength(2);
+        expect(o.steps.map((s) => s.job)).toContain('DIAGNOSE_AUFRECHT');
+        expect(o.steps.map((s) => s.job)).not.toContain('STATUS_TESTPRG');
         expect(o.ecuTimeoutSec).toBe(10);
         expect(reportsProgress(o)).toBe(true);
         expect(hasStopControl(o)).toBe(true);
@@ -282,5 +293,46 @@ describe('only shapes that can genuinely be stopped offer a stop', () => {
             }
         }
         expect(seen).toBe(323);
+    });
+});
+
+describe('every job name we print is a job that exists', () => {
+    // Three did not. `STATUS_TESTPRG` was TESTPRG_STARTEN's resultJob,
+    // `DIAGNOSE_ERHALTEN` was the keep-alive step, and `INAKTIV` was
+    // STEUERN_STELLGLIED's stopJob — INAKTIV is a value for the STEUERART1
+    // ARGUMENT, which is what INPA sends to switch the hydraulic pump off. All
+    // three shipped because nothing checked that a named job was real.
+    it('holds for prerequisites, stop jobs and result jobs across all 323', () => {
+        for (const m of MODULES) {
+            const known = new Set(profile(m).jobs.map((j) => j.id));
+            for (const j of profile(m).jobs) {
+                for (const p of j.op.prerequisiteJobs ?? []) {
+                    expect(known.has(p), `${m}.${j.id} prerequisite ${p}`).toBe(true);
+                }
+                if (j.op.stopJob) expect(known.has(j.op.stopJob), `${m}.${j.id} stop ${j.op.stopJob}`).toBe(true);
+                if (j.op.resultJob)
+                    expect(known.has(j.op.resultJob), `${m}.${j.id} result ${j.op.resultJob}`).toBe(true);
+            }
+        }
+    });
+
+    // The adapted SMG II procedures are built, not read, so they need the same
+    // check — and they are exactly where the phantom names lived longest.
+    it('holds for the adapted procedure plan too', () => {
+        const known = new Set(profile('smg2').jobs.map((j) => j.id));
+        const op = procedureOperation(`${PROCEDURE_PREFIX}0x07`, true);
+        for (const s of op.steps) expect(known.has(s.job), `step ${s.job}`).toBe(true);
+        expect(known.has(op.stopJob!)).toBe(true);
+        expect(known.has(op.resultJob!)).toBe(true);
+        // Progress comes from re-sending the same job, per the SGBD and INPA.
+        expect(op.resultJob).toBe('TESTPRG_STARTEN');
+        expect(op.steps.map((s) => s.job)).toContain('DIAGNOSE_AUFRECHT');
+    });
+
+    // Stopping STEUERN_STELLGLIED means an argument, not another job.
+    it('expresses an argument-valued stop as arguments', () => {
+        const o = op('smg2', 'STEUERN_STELLGLIED');
+        expect(o.stopJob).toBe('STEUERN_STELLGLIED');
+        expect(o.stopArgs).toEqual({ STEUERART1: 'INAKTIV' });
     });
 });

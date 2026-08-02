@@ -396,6 +396,7 @@ def build(mid: str, dumpname: str, name: tuple[str, str], addr: int, prg: str) -
                 "resultDelivery": cls.result_delivery,
                 "prerequisiteJobs": cls.prerequisite_jobs or None,
                 "stopJob": cls.stop_job,
+                "stopArgs": cls.stop_args,
                 "resultJob": cls.result_job,
                 "ecuTimeoutSec": cls.ecu_timeout_sec,
                 "maxHoldSec": cls.max_hold_sec,

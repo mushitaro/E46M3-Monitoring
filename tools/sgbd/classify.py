@@ -83,6 +83,8 @@ class JobClassification:
     kind: str                       # UI 側 OpKind
     prerequisite_jobs: list[str] = field(default_factory=list)
     stop_job: str | None = None
+    # 停止が「同じジョブ＋別の引数」である場合の引数。別ジョブではない。
+    stop_args: dict | None = None
     result_job: str | None = None
     ecu_timeout_sec: int | None = None
     max_hold_sec: int | None = None
@@ -294,8 +296,17 @@ def classify(sgbd: str, job: str, comment: str, args: list[str]) -> JobClassific
     # --- SMG II 試験プログラム --------------------------------------------
     if n == "TESTPRG_STARTEN":
         c.cls, c.kind, c.audience, c.risk = CLASS_CALIBRATION, "procedure", AUD_OWNER, RISK_HIGH
-        c.actor, c.termination, c.result_delivery = ACTOR_ECU, TERM_COMPANION, DELIVER_COMPANION
-        c.stop_job, c.result_job = "TESTPRG_STOP", "STATUS_TESTPRG"
+        c.actor, c.termination, c.result_delivery = ACTOR_ECU, TERM_COMPANION, DELIVER_INLINE
+        c.stop_job = "TESTPRG_STOP"
+        # **進行状況はこのジョブ自身を再送して読む。** 以前ここには
+        # `STATUS_TESTPRG` と書いてあったが、そんなジョブは SMG II の46件に
+        # 存在しない。SGBD が `TEST_STATUS_BYTE` のコメントで明言している:
+        #   「Job muss kontinuierlich angestossen werden ...
+        #     Job solange anstossen, bis dieses Result ungleich 1 liefert!」
+        # INPA の SMG2.IPO も同じで、TESTPRG_STOP → TESTPRG_STARTEN と送った後、
+        # TESTPRG_STARTEN を再送して TEST_STATUS_BYTE / TEST_STATUS /
+        # INFO_STATUS / STAT_INFO_STATUS2_WERT を読み続けている。
+        c.result_job = "TESTPRG_STARTEN"
         c.prerequisite_jobs = ["TESTPRG_STOP"]
         c.ecu_timeout_sec = SMG2_ECU_TIMEOUT_SEC
         c.preconditions = ["voltage_ok", "stationary"]
@@ -311,7 +322,14 @@ def classify(sgbd: str, job: str, comment: str, args: list[str]) -> JobClassific
         c.cls, c.kind, c.audience, c.risk = CLASS_TEST, "hold", AUD_TECH, RISK_HIGH
         c.actor, c.termination = ACTOR_APP, TERM_APP_STOP
         c.prerequisite_jobs = ["ANSTEUERUNG_VORBEREITEN"]
-        c.stop_job = "INAKTIV"
+        # 停止は**同じジョブに別の引数を渡す**ことであって、別ジョブではない。
+        # `INAKTIV` は `STEUERART1` の値の一つ（SGBD 逐語:
+        # `Argument Steuerungsart: POSITIONSVORGABE / STROMVORGABE / INAKTIV /
+        # AKTIV`）。INPA も `STEUERN_STELLGLIED(HYDROPUMPE, INAKTIV)` で
+        # 油圧ポンプを止めている。ジョブ名として出すと、存在しないジョブを
+        # 名指しすることになる。
+        c.stop_job = job
+        c.stop_args = {"STEUERART1": "INAKTIV"}
         c.ecu_timeout_sec, c.max_hold_sec = SMG2_ECU_TIMEOUT_SEC, SMG2_MAX_HOLD_SEC
         c.preconditions = ["voltage_ok", "stationary"]
         c.provenance = "sgbd-comment"

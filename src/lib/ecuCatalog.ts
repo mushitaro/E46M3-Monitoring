@@ -237,6 +237,15 @@ export interface JobOperationData {
     /** Jobs the SGBD says must be sent first, or the ECU refuses. */
     prerequisiteJobs?: string[];
     stopJob?: string;
+    /**
+     * When stopping means sending the SAME job with different arguments.
+     *
+     * `STEUERN_STELLGLIED` is switched off with `STEUERART1 = INAKTIV` — one of
+     * the four values the SGBD lists for that argument, and what INPA sends to
+     * stop the hydraulic pump. It used to be recorded as `stopJob: 'INAKTIV'`,
+     * which named a job that does not exist.
+     */
+    stopArgs?: Record<string, string>;
     /** For `resultDelivery: 'companion-job'`: the job that reads the answer. */
     resultJob?: string;
     /** The ECU's own session timeout. A SAFETY property: it bounds the damage if the browser dies mid-actuation. */

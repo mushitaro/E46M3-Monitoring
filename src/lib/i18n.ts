@@ -448,7 +448,7 @@ const STRINGS: Record<Lang, Catalog> = {
             why_keepAlive: 'セッションを維持します。ECU のタイムアウトは 10 秒、実行は最長 960 秒に及びます。',
             why_testprgStop: 'SGBD の要求：「TESTPRG_STARTEN より前に送ること」。',
             why_testprgStart: '試験プログラムを開始します（TESTPRG_NR、選択を伴う場合は AUSWAHLBYTE）。',
-            why_testprgPoll: '実行ステータス・進行状況コード・最終的な結果コードをポーリングします。',
+            why_testprgPoll: '**同じジョブを送り続けて**実行ステータス・進行状況コード・結果コードを読みます。SGBD の指示: 「この結果が 1 以外を返すまで送り続けること」。別のジョブで読むのではありません。',
             why_unknown: 'SGBD のコメントに動作の記述がありません。',
         },
         op_irreversible: {
@@ -801,7 +801,7 @@ const STRINGS: Record<Lang, Catalog> = {
             why_keepAlive: 'keeps the session alive — the ECU timeout is 10 s and a run can last 960',
             why_testprgStop: 'the SGBD requires it: "Must be sent BEFORE TESTPRG_STARTEN!"',
             why_testprgStart: 'starts the program (TESTPRG_NR, and AUSWAHLBYTE where it takes a selection)',
-            why_testprgPoll: 'polled for the run status, the activity code, and finally the result code',
+            why_testprgPoll: '**re-send this same job** and read the run status, activity code and result code from it. The SGBD: "keep sending until this result is not 1". There is no companion job for this.',
             why_unknown: 'the SGBD comment does not state what this does',
         },
         op_irreversible: {

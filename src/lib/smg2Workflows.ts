@@ -66,6 +66,24 @@ export interface Smg2Procedure {
      */
     readResults?: string | null;
     readResultsNote?: { ja: string; en: string };
+    /**
+     * A value this procedure returns directly, and the band the SGBD states for it.
+     *
+     * Only 0x04 has one. The band is CONDITIONAL in the source — the SGBD says
+     * `STAT_INFO_STATUS2_WERT` carries a pre-charge pressure "fuer TESTPRG=0x04"
+     * and is plain INFO_STATUS_BYTE2 for every other program — so it lives on the
+     * procedure rather than on the result. As a `spec` on the result it would put
+     * a bar range on a byte that means something else thirteen times out of
+     * fourteen.
+     */
+    reading?: {
+        result: string;
+        unit: string;
+        band: { min: number; max: number };
+        /** The SGBD sentence the band came from, quoted. */
+        source: string;
+        note: { ja: string; en: string };
+    };
     /** A fact about this procedure the SGBD tables do not carry. */
     note?: { ja: string; en: string };
     risk: string;

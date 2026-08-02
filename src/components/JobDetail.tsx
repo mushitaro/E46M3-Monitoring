@@ -642,6 +642,32 @@ function ProcedureDetail({
                             ? emphasise(pick(procedure.readResultsNote))
                             : t.det_noValues}
                     </p>
+                    {/* The number this procedure hands back, and what it should
+                        be. Shown before it has been run, because "what am I
+                        looking for" is the question you have BEFORE pressing —
+                        and because this app cannot run the procedure yet, so the
+                        band is the whole of what it can honestly offer here. */}
+                    {procedure.reading && (
+                        <div className="mt-3">
+                            <MicroLabel>{t.proc_expectedReading}</MicroLabel>
+                            <div className="mt-1.5 flex flex-wrap items-baseline gap-x-6 gap-y-2">
+                                <Field
+                                    label={t.proc_band}
+                                    value={`${procedure.reading.band.min} – ${procedure.reading.band.max}`}
+                                    unit={procedure.reading.unit}
+                                />
+                                <Field
+                                    label={t.proc_readingFrom}
+                                    labelKind="data"
+                                    value={procedure.reading.result}
+                                />
+                            </div>
+                            <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
+                                {pick(procedure.reading.note)}
+                            </p>
+                            <Provenance title={procedure.reading.source}>{t.det_sgbdComment}</Provenance>
+                        </div>
+                    )}
                 </Section>
             )}
 

@@ -144,6 +144,10 @@ interface Catalog {
     proc_activity: string;
     proc_faults: string;
     proc_none: string;
+    proc_expectedReading: string;
+    proc_band: string;
+    proc_readingFrom: string;
+    det_sgbdComment: string;
     proc_steps: string;
     det_blockInferred: (job: string, arg: string, value: string) => string;
     gear_windows: string;
@@ -432,6 +436,10 @@ const STRINGS: Record<Lang, Catalog> = {
         proc_activity: '進行状況コード',
         proc_faults: '結果コード',
         proc_none: 'このモジュールにガイド手順はありません（SMG II のみ）',
+        proc_expectedReading: '返る測定値と判定帯',
+        proc_band: '整備判定帯',
+        proc_readingFrom: '結果',
+        det_sgbdComment: 'SGBD コメント',
         proc_steps: 'ECU が実行する手順',
         det_blockInferred: (j, a, v) =>
             `SGBD はこの対応を明示していません。結果名の接頭辞から ${j}（${a} = ${v}）と推定しています。`,
@@ -816,6 +824,10 @@ const STRINGS: Record<Lang, Catalog> = {
         proc_activity: 'Activity codes',
         proc_faults: 'Result codes',
         proc_none: 'This module has no guided procedures (SMG II only)',
+        proc_expectedReading: 'Value returned, and its band',
+        proc_band: 'Workshop band',
+        proc_readingFrom: 'Result',
+        det_sgbdComment: 'SGBD comment',
         proc_steps: 'What the ECU does, step by step',
         det_blockInferred: (j, a, v) =>
             `The SGBD does not state this mapping. It is inferred from the result-name prefixes as ${j} (${a} = ${v}).`,

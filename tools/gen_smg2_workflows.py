@@ -96,6 +96,30 @@ READ_NOTE = {
           "A check that **writes nothing**. The result is the result code itself."),
 }
 
+# 手順が直接返す測定値と、SGBD が述べる判定帯。
+#
+# `STAT_INFO_STATUS2_WERT` のコメントは逐語でこう言う:
+#
+#   "Messwert des Infobyte 2 mit Quantisierung / fuer TESTPRG=0x04/
+#    Speichervorspanndruck ermitteln / bei allen anderen Ausgabe wie
+#    INFO_STATUS_BYTE2 / Hinweis zu Speichervorspanndruck: / Im Neuzustand:
+#    Soll laut SACHS nicht gemessen werden, da kein Aussage moeglich. /
+#    Werkstattbereich: 29-41 bar"
+#
+# **条件付きであることが要**。この帯が意味を持つのは TESTPRG=0x04 のときだけで、
+# 他の13手順では同じ結果はただの INFO_STATUS_BYTE2 である。結果側に無条件の
+# `spec` として付けると、bar でない値に bar の合否を出すことになる。
+# だから手順側に置く——ここでなら曖昧さが無い。
+READING = {
+ "0x04": dict(result="STAT_INFO_STATUS2_WERT", unit="bar", min=29.0, max=41.0,
+    source="SGBD 逐語 (TESTPRG_STARTEN.STAT_INFO_STATUS2_WERT): Werkstattbereich: 29-41 bar",
+    ja="新品時は測定対象外です。SGBD 逐語:「Im Neuzustand: Soll laut SACHS nicht gemessen "
+       "werden, da kein Aussage moeglich」——新品では判断できないため測定しない、と SACHS が"
+       "言っている、という意味です。整備時の判定帯は 29〜41 bar。",
+    en="Not to be measured when new. The SGBD quotes SACHS: no statement is possible on a new "
+       "unit, so it should not be measured. The workshop band is 29-41 bar."),
+}
+
 # 手順そのものについて、SGBD の表からは読み取れない事実。
 PROC_NOTE = {
  "0x07": ("引数はありません。1〜6速とRを**自動で順に**測定します（進行コードの"
@@ -224,6 +248,14 @@ def build():
             entry_notes["readResultsNote"] = {"ja": READ_NOTE[nr][0], "en": READ_NOTE[nr][1]}
         if nr in PROC_NOTE:
             entry_notes["note"] = {"ja": PROC_NOTE[nr][0], "en": PROC_NOTE[nr][1]}
+        if nr in READING:
+            r = READING[nr]
+            entry_notes["reading"] = {
+                "result": r["result"], "unit": r["unit"],
+                "band": {"min": r["min"], "max": r["max"]},
+                "source": r["source"],
+                "note": {"ja": r["ja"], "en": r["en"]},
+            }
         procs.append({
             "id": nr, "testprg": nr, "cat": meta["cat"],
             "name": {"de": row[1], "ja": meta["ja"], "en": meta["en"]},

@@ -280,7 +280,8 @@ const STRINGS: Record<Lang, Catalog> = {
 
         connect: '接続',
         connecting: '接続中…',
-        disconnect: '切断',
+        // Sub-action row, under the hub. Same vocabulary as the hub itself.
+        disconnect: 'Disconnect',
         connected: '接続済み',
         disconnected: '未接続',
         practice: 'PRACTICE',
@@ -295,7 +296,7 @@ const STRINGS: Record<Lang, Catalog> = {
         startLog: '記録開始',
         stopLog: '停止',
         clearLog: 'クリア',
-        exportCsv: 'CSV出力',
+        exportCsv: 'Export CSV',
         exportLog: '通信ログを保存',
 
         faults_none: '故障コードはありません',
@@ -332,7 +333,7 @@ const STRINGS: Record<Lang, Catalog> = {
         error_electrical_body:
             'K-line が送信中に引き下げられました。再試行では直りません。以下を上から順に確認してください。',
         error_desync_body: '通信のずれです。再試行で回復する可能性があります。',
-        retry: '再試行',
+        retry: 'Retry',
 
         unverified:
             '未検証: このデータは実車で確認されていません。表示値は参考であり、診断の根拠にはできません。',
@@ -363,14 +364,26 @@ const STRINGS: Record<Lang, Catalog> = {
         cancel: 'キャンセル',
         gate_plan: '送信内容',
         gate_preconditions: '前提条件（すべて確認）',
-        hub_connect: '接続',
-        hub_connecting: '接続中',
-        hub_connected: '接続済み',
-        hub_read: '読取',
-        hub_reading: '読取中',
-        hub_record: '記録',
-        hub_stop: '停止',
-        hub_recording: '記録中',
+        // --- The hub cluster's verbs. English in BOTH languages. ---
+        //
+        // These are the labels ON the controls: the hub's own verb and the
+        // sub-action row under it. They join DIAGNOSIS / DATALOG / SERVICE /
+        // PRACTICE / MODULE as one chrome vocabulary, the same one the
+        // reference tuner uses (CONNECTION / READ / WRITE).
+        //
+        // The boundary is deliberate and it is NOT "English everywhere":
+        // anything that explains, warns or asks for consent stays in the
+        // reader's language — the notice line, the run-block reasons, every
+        // dialog body and its confirm/cancel buttons. A verb on a button is
+        // chrome; a sentence about what it will destroy is safety copy.
+        hub_connect: 'Connect',
+        hub_connecting: 'Linking',
+        hub_connected: 'Linked',
+        hub_read: 'Read',
+        hub_reading: 'Reading',
+        hub_record: 'Record',
+        hub_stop: 'Stop',
+        hub_recording: 'Recording',
         viz_faults: '故障',
         viz_clean: '故障なし',
         riskMix: 'リスク内訳',
@@ -380,7 +393,7 @@ const STRINGS: Record<Lang, Catalog> = {
         awaiting_catalog: 'カタログ未読込…',
         ident_note: (b) =>
             `${b} バイト — この応答のフィールド配置はまだ判明していません。EdiabasLib が解釈していた部分で、推測せず生値のまま表示しています。`,
-        details: '詳細',
+        details: 'Details',
         error_electrical_steps: [
             'エンジン停止時と稼働時で失敗率を比べてください。稼働時だけ不安定なら、非シールドケーブルへの点火系ノイズ（EMI）であってソフトウェアの問題ではありません。',
             'OBD コネクタを挿し直し、接続したまま軽く動かして接触を確認してください。',
@@ -470,10 +483,13 @@ const STRINGS: Record<Lang, Catalog> = {
         seq_title: '推奨シーケンス',
         seq_pickHint: 'ステップを押すとその手順を表示します',
 
-        op_run: '実行',
-        op_stop: '停止',
-        op_abort: '中断',
-        op_start: '開始',
+        // The hub's verb in the SERVICE tab, and the STOP/ABORT beside it.
+        // Same rule as hub_* above: the label on the control is English, the
+        // reason it is blocked (op_blocked_*, runBlock) is not.
+        op_run: 'Run',
+        op_stop: 'Stop',
+        op_abort: 'Abort',
+        op_start: 'Start',
         op_blocked_telegram: 'テレグラム未確定のため実行できません',
         op_blocked_args: '引数が必要です',
         runBlock: {
@@ -490,11 +506,15 @@ const STRINGS: Record<Lang, Catalog> = {
         run_undecoded:
             'SGBD は結果の名前を持ちますが、バイト位置を公表していません。生バイトのまま出します——名前に当てはめるのはレイアウトの捏造になります。ライブ値・適応値・故障メモリ・識別はそれぞれ専用のデコーダを通っており、この経路ではありません。',
         adaptations: '適応値（学習値）',
-        adaptations_read: '適応値を読む',
+        adaptations_read: 'Read adaptations',
         adaptations_note:
             'ECU が走行を通じて学習した値です。読取のみで、車には何も書きません。',
         adaptations_short: (g, n) => `応答 ${g} バイト（この表は最低 ${n} バイト必要）——欠けた項目は表示しません。`,
-        clearFaults: '故障メモリ消去',
+        // The BUTTON is English like the rest of the row. Everything the dialog
+        // then says — what is destroyed, that it cannot be undone — stays
+        // Japanese. That is the line: chrome in one vocabulary, consent in the
+        // reader's language.
+        clearFaults: 'Clear faults',
         clearFaults_title: '故障メモリを消去します',
         clearFaults_consequence:
             '故障コードと、それに付随するフリーズフレーム（発生時の運転状態の記録）が ECU から消えます。元に戻せません。原因が残っていれば故障は再登録されますが、消えたフリーズフレームは戻りません。先に読み取って記録を残してください。',

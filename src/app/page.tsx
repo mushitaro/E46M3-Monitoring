@@ -504,8 +504,6 @@ export default function Home() {
                 </aside>
             </main>
 
-            <UnverifiedBanner />
-
             {faultOpen && <ElectricalFaultDialog message={link.error ?? ''} onClose={() => setFaultOpen(false)} />}
 
             {clearOpen && (
@@ -1728,24 +1726,24 @@ function EcuSelect({
     );
 }
 
-/**
- * Permanent, not dismissible. Every number this app can display comes from a
- * static scrape of SGBD bytecode or a decompiled catalog, and none of it has
- * been confirmed against a car. Behind a one-time dialog, the app's own
- * uncertainty is the first thing a user forgets.
+/*
+ * The 26px "none of this has been confirmed against a car" footer was here.
+ * Removed at the owner's request.
  *
- * Built as the 26px context bar rather than a tinted panel: it is a standing
- * condition of the whole app, so it reads as chrome, and a permanent banner that
- * shouts stops being read within a day.
+ * What it said is still said, and said more precisely, per row rather than once
+ * for the whole app:
+ *
+ *   - every job in SERVICE carries 実車未確認 / "Not confirmed on a car",
+ *     rendered from the ledger by `VerifiedBadge`;
+ *   - `mayRun` refuses anything that is not a read and not in the ledger, and
+ *     prints the reason in the notice line;
+ *   - result tables state where each number came from via `Provenance`, and say
+ *     so when the SGBD publishes no spec.
+ *
+ * A standing banner is the weakest of those three — it is the one a user stops
+ * reading within a day. Deleting it also gives the right column the last 26px,
+ * so its phi split now measures against the same 708px the reference does.
  */
-function UnverifiedBanner() {
-    const { t } = useLang();
-    return (
-        <footer className="flex h-[26px] flex-none items-center border-t border-slate-900 bg-slate-950/60 px-4">
-            <p className="truncate text-[10px] tracking-wide text-amber-400/80">{t.unverified}</p>
-        </footer>
-    );
-}
 
 function exportLog(log: CommsLogLine[]) {
     const text = log

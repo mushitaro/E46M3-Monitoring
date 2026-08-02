@@ -67,7 +67,6 @@ interface Catalog {
     error_electrical_body: string;
     error_desync_body: string;
     retry: string;
-    unverified: string;
     provenance_title: string;
     tab_calibration: string;
     tab_testjobs: string;
@@ -346,8 +345,6 @@ const STRINGS: Record<Lang, Catalog> = {
         error_desync_body: '通信のずれです。再試行で回復する可能性があります。',
         retry: 'Retry',
 
-        unverified:
-            '未検証: このデータは実車で確認されていません。表示値は参考であり、診断の根拠にはできません。',
         provenance_title: 'データの出所',
         tab_calibration: 'CALIBRATION',
         tab_testjobs: 'ACTUATOR TEST',
@@ -767,8 +764,6 @@ const STRINGS: Record<Lang, Catalog> = {
         error_desync_body: 'The stream lost framing. A retry will usually recover it.',
         retry: 'Retry',
 
-        unverified:
-            'UNVERIFIED: this data has not been confirmed on a vehicle. Treat displayed values as indicative, not as a basis for diagnosis.',
         provenance_title: 'Data provenance',
         tab_calibration: 'CALIBRATION',
         tab_testjobs: 'ACTUATOR TEST',

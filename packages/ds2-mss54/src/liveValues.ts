@@ -127,46 +127,39 @@ export function decodeLiveBlock(block: LiveValueBlock, frame: Ds2Frame): Decoded
 }
 
 /**
- * Works out which blocks must be read to cover a set of symbols.
- *
- * Because 10 quantities live in two blocks, this is a small set-cover problem:
- * a symbol available in a block already being read costs nothing, so choosing
- * greedily can genuinely save a round trip. The algorithm is greedy — repeatedly
- * take the block covering the most still-uncovered symbols — which is not
- * guaranteed optimal but is within a known factor and is easy to reason about.
- * With 8 blocks the difference is at most one exchange.
+ * Works out which blocks must be read to cover a set of channels.
  *
  * The block count IS the cost: one DS2 round trip each. A caller should show it,
  * because "12 channels" and "12 channels spread over 4 blocks" sample at very
  * different rates.
+ *
+ * ## This used to be a set-cover, and it should not have been
+ *
+ * It took bare symbols and solved greedily for the fewest blocks — legitimate
+ * arithmetic on the wrong question. With a symbol you have to decide WHICH block
+ * supplies it; with a `ChannelId` the caller has already said. Choosing for them
+ * meant asking for engine speed and being handed block 35's copy, then recording
+ * it under a key that could not tell you so. The saving was real and the
+ * bookkeeping was not, and the bookkeeping is what ends up in the CSV.
+ *
+ * The saving is not lost, it moved: `MSS54_BLOCKS_BY_SYMBOL` says which blocks
+ * carry a duplicated quantity, so the picker can show that a channel is also
+ * available in a block already being read. That is the same optimisation made by
+ * the person who will read the file.
  */
-export function planBlockReads(symbols: readonly string[]): {
+export function planBlockReads(channels: readonly ChannelId[]): {
     blocks: LiveValueBlock[];
-    unknown: string[];
+    unknown: ChannelId[];
 } {
-    const unknown: string[] = [];
-    const remaining = new Set<string>();
-    for (const symbol of symbols) {
-        if (MSS54_BLOCKS_BY_SYMBOL.has(symbol)) remaining.add(symbol);
-        else unknown.push(symbol);
+    const unknown: ChannelId[] = [];
+    const selections = new Set<number>();
+    for (const id of channels) {
+        const hit = MSS54_CHANNELS.get(id);
+        if (hit) selections.add(hit.block.selection);
+        else unknown.push(id);
     }
-
-    const chosen: LiveValueBlock[] = [];
-    while (remaining.size > 0) {
-        let best: LiveValueBlock | undefined;
-        let bestCovered: string[] = [];
-        for (const block of MSS54_LIVE_BLOCKS) {
-            if (chosen.includes(block)) continue;
-            const covered = block.fields.map((f) => f.symbol).filter((s) => remaining.has(s));
-            if (covered.length > bestCovered.length) {
-                best = block;
-                bestCovered = covered;
-            }
-        }
-        if (!best) break; // unreachable while remaining is non-empty, but do not spin
-        chosen.push(best);
-        for (const s of bestCovered) remaining.delete(s);
-    }
-
-    return { blocks: chosen.sort((a, b) => a.selection - b.selection), unknown };
+    const blocks = MSS54_LIVE_BLOCKS.filter((b) => selections.has(b.selection)).sort(
+        (a, b) => a.selection - b.selection,
+    );
+    return { blocks, unknown };
 }

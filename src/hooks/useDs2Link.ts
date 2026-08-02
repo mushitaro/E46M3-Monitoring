@@ -39,7 +39,9 @@ import {
     liveBlockRequest,
     parseErrorMemoryEntries,
     parseQuickTest,
+    channelId,
     planBlockReads,
+    type ChannelId,
     type DecodedAdaptation,
     type ErrorMemoryEntry,
     type ErrorMemoryQuickTest,
@@ -91,7 +93,15 @@ export interface CommsLogLine {
 export interface LiveSample {
     /** Monotonic seconds since the run began. */
     time: number;
-    values: Record<string, number | null>;
+    /**
+     * Keyed by `ChannelId` — `selection:symbol` — never by symbol alone.
+     *
+     * 10 of the 213 quantities appear in two blocks. A symbol-keyed row records
+     * whichever block was read last under a name that cannot say which, so a run
+     * covering blocks 3 and 35 wrote one column called `n` holding a mixture.
+     * The saved CSV was wrong, not just vaguely labelled.
+     */
+    values: Partial<Record<ChannelId, number | null>>;
 }
 
 /**
@@ -360,23 +370,28 @@ export function useDs2Link() {
      * cadence it cannot honour.
      */
     const startLog = useCallback(
-        (symbols: string[], onSample: (s: LiveSample) => void, onEnd: (failure: string | null) => void) => {
+        (
+            channels: readonly ChannelId[],
+            onSample: (s: LiveSample) => void,
+            onEnd: (failure: string | null) => void,
+        ) => {
             const link = linkRef.current;
             if (!link || pollingRef.current) return;
-            const { blocks } = planBlockReads(symbols);
+            const { blocks } = planBlockReads(channels);
             if (blocks.length === 0) return;
+            const wanted = new Set<ChannelId>(channels);
 
             pollingRef.current = true;
             finishedRef.current = false;
             setState('logging');
             const t0 = performance.now();
-            append('info', `Recording ${symbols.length} channel(s) across ${blocks.length} block(s).`);
+            append('info', `Recording ${channels.length} channel(s) across ${blocks.length} block(s).`);
 
             void (async () => {
                 let failure: string | null = null;
                 try {
                     while (pollingRef.current && linkRef.current) {
-                        const values: Record<string, number | null> = {};
+                        const values: Partial<Record<ChannelId, number | null>> = {};
                         let incomplete = false;
                         for (const block of blocks) {
                             const req = liveBlockRequest(block.selection);
@@ -403,8 +418,13 @@ export function useDs2Link() {
                             // it looks like a reading.
                             if (frame === null) { incomplete = true; break; }
                             link.assertPositive(frame, `Live block ${block.selection}`);
+                            // Keyed by (selection, symbol). `block.selection` was
+                            // already in hand here; the old line threw it away
+                            // and used `v.symbol`, which is how one column ended
+                            // up holding two blocks' readings.
                             for (const v of decodeLiveBlock(block, frame)) {
-                                if (symbols.includes(v.symbol)) values[v.symbol] = v.value;
+                                const id = channelId(block.selection, v.symbol);
+                                if (wanted.has(id)) values[id] = v.value;
                             }
                         }
                         if (!incomplete) onSample({ time: (performance.now() - t0) / 1000, values });

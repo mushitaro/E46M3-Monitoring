@@ -53,6 +53,8 @@ interface Catalog {
     channels_search: string;
     channels_block: string;
     channels_blockNote: (selection: number) => string;
+    channels_alsoIn: (blocks: string) => string;
+    channels_alsoInNote: string;
     faults_read: string;
     faultRef_search: string;
     channels_selected: (n: number, blocks: number) => string;
@@ -281,6 +283,9 @@ const STRINGS: Record<Lang, Catalog> = {
         channels_search: '検索（シンボル名・項目名）',
         channels_block: 'ブロック',
         channels_blockNote: (s) => `選択 ${s} — 同一ブロックの項目は1往復でまとめて読めます`,
+        channels_alsoIn: (b) => `＋${b}`,
+        channels_alsoInNote:
+            'この量は他のブロックにもあります。すでに読んでいるブロックの方を選べば往復が増えません。ブロックが違えば別チャンネルとして記録されます。',
         faults_read: '読み取った故障',
         faultRef_search: '検索（コード・訳文・独語原文）',
         channels_selected: (n: number, blocks: number) =>
@@ -633,6 +638,9 @@ const STRINGS: Record<Lang, Catalog> = {
         channels_search: 'Search (symbol, name)',
         channels_block: 'Block',
         channels_blockNote: (s) => `Selection ${s} — everything in one block costs a single round trip`,
+        channels_alsoIn: (b) => `+${b}`,
+        channels_alsoInNote:
+            'This quantity is also in another block. Taking the copy from a block you already read costs no extra round trip. Different blocks are recorded as different channels.',
         faults_read: 'Faults read',
         faultRef_search: 'Search (code, translation, German original)',
         channels_selected: (n: number, blocks: number) =>

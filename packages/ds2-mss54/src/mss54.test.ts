@@ -22,6 +22,7 @@ import {
     parseErrorMemoryEntries,
     parseQuickTest,
     planBlockReads,
+    type ChannelId,
 } from './index';
 
 const positive = (payload: number[]) =>
@@ -128,25 +129,73 @@ describe('decodeLiveBlock', () => {
 });
 
 describe('planBlockReads', () => {
-    it('collapses symbols to the blocks that carry them — one round trip per block', () => {
-        const { blocks, unknown } = planBlockReads(['n', 'tmot', 'evan1_ist']);
-        // tmot is only in block 3, evan1_ist only in block 35, and n is in
-        // both — so n is free and two round trips cover all three.
+    it('collapses channels to the blocks that carry them — one round trip per block', () => {
+        const { blocks, unknown } = planBlockReads([
+            channelId(3, 'n'),
+            channelId(3, 'tmot'),
+            channelId(35, 'evan1_ist'),
+        ]);
         expect(blocks.map((b) => b.selection)).toEqual([3, 35]);
         expect(unknown).toEqual([]);
     });
 
-    it('uses a duplicated symbol from a block it is already reading', () => {
-        // n lives in blocks 3 and 35. Asking for n plus a VANOS-only channel
-        // must not add block 3 as well.
-        const { blocks } = planBlockReads(['n', 'evan1_ist']);
+    it('costs one round trip when everything asked for is in one block', () => {
+        // `n` is in both 3 and 35. Taking it from 35, alongside a VANOS-only
+        // channel, is one exchange — but that is now the CALLER's choice, made
+        // by naming the channel, not a solver's choice made behind their back.
+        const { blocks } = planBlockReads([channelId(35, 'n'), channelId(35, 'evan1_ist')]);
         expect(blocks.map((b) => b.selection)).toEqual([35]);
     });
 
-    it('reports unknown symbols rather than silently dropping them', () => {
-        const { unknown } = planBlockReads(['n', 'rpm', 'coolant']);
-        // 'rpm' and 'coolant' were the old PWA's dead default selection.
-        expect(unknown).toEqual(['rpm', 'coolant']);
+    it('reads both blocks when both copies of a duplicated quantity are asked for', () => {
+        // The old symbol-keyed version could not express this at all: `['n']`
+        // meant one `n`, and the sample recorded one column whichever blocks
+        // were read. Two channels, two columns, two exchanges.
+        const { blocks } = planBlockReads([channelId(3, 'n'), channelId(35, 'n')]);
+        expect(blocks.map((b) => b.selection)).toEqual([3, 35]);
+    });
+
+    /**
+     * The recording rule, run the way `startLog` runs it.
+     *
+     * This is the bug that mattered: the loop had `block.selection` in hand and
+     * wrote `values[v.symbol]`, so a run covering blocks 3 and 35 produced ONE
+     * column called `n` holding whichever block came last. The saved CSV was
+     * wrong — not mislabelled, wrong — and nothing in the app could tell.
+     */
+    it('keeps both copies of a duplicated quantity in one sample', () => {
+        const values: Partial<Record<ChannelId, number | null>> = {};
+        // Different filler per block, so the two `n` readings genuinely differ.
+        for (const [selection, fill] of [
+            [3, 0x11],
+            [35, 0x22],
+        ] as const) {
+            const block = blockBySelection(selection)!;
+            const frame = positive(new Array<number>(minPayloadLength(block.fields)).fill(fill));
+            for (const v of decodeLiveBlock(block, frame)) {
+                values[channelId(selection, v.symbol)] = v.value;
+            }
+        }
+
+        const a = values[channelId(3, 'n')];
+        const b = values[channelId(35, 'n')];
+        expect(a).not.toBeUndefined();
+        expect(b).not.toBeUndefined();
+        expect(a).not.toBe(b); // neither overwrote the other
+        // 213 fields over 8 blocks; the two read here account for their own.
+        const expected =
+            blockBySelection(3)!.fields.length + blockBySelection(35)!.fields.length;
+        expect(Object.keys(values)).toHaveLength(expected);
+    });
+
+    it('reports unknown channels rather than silently dropping them', () => {
+        const { unknown } = planBlockReads([
+            channelId(3, 'n'),
+            channelId(3, 'rpm'),
+            channelId(99, 'n'), // no such block
+        ]);
+        // 'rpm' was the old PWA's dead default selection; block 99 does not exist.
+        expect(unknown).toEqual(['3:rpm', '99:n']);
     });
 });
 

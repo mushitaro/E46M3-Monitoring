@@ -20,7 +20,15 @@ import {
     Zap,
     type LucideIcon,
 } from 'lucide-react';
-import { MSS54_LIVE_BLOCKS, formatErrorCode, planBlockReads } from '@tsunagi/ds2-mss54';
+import {
+    MSS54_BLOCKS_BY_SYMBOL,
+    MSS54_CHANNELS,
+    MSS54_LIVE_BLOCKS,
+    channelId,
+    formatErrorCode,
+    planBlockReads,
+    type ChannelId,
+} from '@tsunagi/ds2-mss54';
 import { AppHeader } from '@/components/AppHeader';
 import { ElectricalFaultDialog } from '@/components/ElectricalFaultDialog';
 import { Hub, HubCluster, HubNotice, SubActions, type HubConfig, type NoticeTone } from '@/components/Hub';
@@ -865,12 +873,12 @@ function Awaiting({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
 /** A single-channel trace. Enough to see the shape; the pane shows the numbers. */
 function Sparkline({ datalog }: { datalog: ReturnType<typeof useDatalog> }) {
     const { t } = useLang();
-    const symbol = datalog.selected[0];
+    const id = datalog.selected[0];
     const points = useMemo(() => {
-        if (!symbol) return null;
+        if (!id) return null;
         const window = datalog.samples.slice(-240);
         const values = window
-            .map((s) => s.values[symbol])
+            .map((s) => s.values[id])
             .filter((v): v is number => v !== null && v !== undefined);
         if (values.length < 2) return null;
         const min = Math.min(...values);
@@ -883,14 +891,14 @@ function Sparkline({ datalog }: { datalog: ReturnType<typeof useDatalog> }) {
                 .map((v, i) => `${(i / (values.length - 1)) * 100},${100 - ((v - min) / span) * 100}`)
                 .join(' '),
         };
-    }, [datalog.samples, symbol]);
+    }, [datalog.samples, id]);
 
     if (!points) return <Awaiting icon={Activity} label={t.awaiting_samples} />;
 
     return (
         <div className="flex h-full flex-col">
             <div className="flex items-baseline justify-between font-mono text-[10px] text-slate-600">
-                <span className="text-slate-400">{symbol}</span>
+                <span className="text-slate-400">{id}</span>
                 <span>
                     {points.min.toFixed(1)} – {points.max.toFixed(1)}
                 </span>
@@ -1126,18 +1134,25 @@ function DatalogPane({ datalog }: { datalog: ReturnType<typeof useDatalog> }) {
 
             <Section title={t.channels} count={datalog.selected.length}>
                 <DataList>
-                    {datalog.selected.map((symbol) => (
-                        <DataRow
-                            key={symbol}
-                            name={humanName(MSS54_CHANNEL_NAMES.get(symbol) ?? '')}
-                            ident={symbol}
-                            trailing={
-                                <span className="shrink-0 font-mono text-xs tabular-nums text-slate-200">
-                                    {datalog.latest[symbol] == null ? '—' : datalog.latest[symbol]!.toFixed(2)}
-                                </span>
-                            }
-                        />
-                    ))}
+                    {datalog.selected.map((id) => {
+                        const ch = MSS54_CHANNELS.get(id);
+                        const v = datalog.latest[id];
+                        return (
+                            <DataRow
+                                key={id}
+                                name={humanName(ch?.field.name ?? '')}
+                                ident={ch?.field.symbol ?? id}
+                                // The block is part of the channel's identity, so
+                                // it is shown where the identity is shown.
+                                code={ch ? String(ch.block.selection) : undefined}
+                                trailing={
+                                    <span className="shrink-0 font-mono text-xs tabular-nums text-slate-200">
+                                        {v == null ? '—' : v.toFixed(2)}
+                                    </span>
+                                }
+                            />
+                        );
+                    })}
                 </DataList>
             </Section>
 
@@ -1145,11 +1160,6 @@ function DatalogPane({ datalog }: { datalog: ReturnType<typeof useDatalog> }) {
         </Pane>
     );
 }
-
-/** Symbol -> human name, for the selected-channel table. Built once. */
-const MSS54_CHANNEL_NAMES = new Map(
-    MSS54_LIVE_BLOCKS.flatMap((b) => b.fields.map((f) => [f.symbol, f.name] as const)),
-);
 
 /**
  * The channel picker — the same recipe as the jobs pane, not its own idiom.
@@ -1174,9 +1184,9 @@ const ChannelPicker = memo(function ChannelPicker({
     disabled,
     onToggle,
 }: {
-    selected: string[];
+    selected: readonly ChannelId[];
     disabled: boolean;
-    onToggle: (symbol: string, on: boolean) => void;
+    onToggle: (id: ChannelId, on: boolean) => void;
 }) {
     const { t } = useLang();
     const [query, setQuery] = useState('');
@@ -1225,12 +1235,20 @@ const ChannelPicker = memo(function ChannelPicker({
 
             <DataList className="mt-3">
                 {rows.map((f) => {
-                    const on = selected.includes(f.symbol);
+                    const id = channelId(f.block.selection, f.symbol);
+                    const on = selected.includes(id);
+                    // 10 quantities are readable from two blocks. Naming the
+                    // other one is what replaces the solver that used to pick
+                    // silently: a channel already covered by a block you are
+                    // reading costs no extra round trip, and now you can see it.
+                    const also = (MSS54_BLOCKS_BY_SYMBOL.get(f.symbol) ?? [])
+                        .filter((b) => b.selection !== f.block.selection)
+                        .map((b) => b.selection);
                     return (
                         <DataRow
-                            key={`${f.block.selection}:${f.symbol}`}
+                            key={id}
                             selected={on}
-                            onSelect={disabled ? undefined : () => onToggle(f.symbol, !on)}
+                            onSelect={disabled ? undefined : () => onToggle(id, !on)}
                             leading={
                                 <input
                                     type="checkbox"
@@ -1247,6 +1265,14 @@ const ChannelPicker = memo(function ChannelPicker({
                                 <>
                                     {f.unit && (
                                         <span className="shrink-0 font-mono text-[11px] text-slate-500">{f.unit}</span>
+                                    )}
+                                    {also.length > 0 && (
+                                        <span
+                                            title={t.channels_alsoInNote}
+                                            className={`shrink-0 ${LABEL} text-slate-600`}
+                                        >
+                                            {t.channels_alsoIn(also.join(' / '))}
+                                        </span>
                                     )}
                                     <span className={`shrink-0 ${LABEL} text-slate-600`}>{f.block.selection}</span>
                                 </>
@@ -1265,9 +1291,12 @@ const FLUSH_INTERVAL_MS = 500;
 
 function useDatalog(link: Link) {
     const { t } = useLang();
-    const [selected, setSelected] = useState<string[]>(['n', 'tmot']);
+    // Engine speed and coolant temperature, both from block 3 — one round trip.
+    // Written as channel ids, not symbols: `n` alone does not say which block,
+    // and block 35 carries an `n` too.
+    const [selected, setSelected] = useState<ChannelId[]>([channelId(3, 'n'), channelId(3, 'tmot')]);
     const [samples, setSamples] = useState<LiveSample[]>([]);
-    const [latest, setLatest] = useState<Record<string, number | null>>({});
+    const [latest, setLatest] = useState<Partial<Record<ChannelId, number | null>>>({});
     const samplesRef = useRef<LiveSample[]>([]);
     const flushAtRef = useRef(0);
 
@@ -1304,10 +1333,13 @@ function useDatalog(link: Link) {
         link.startLog(selected, onSample, () => setSamples(samplesRef.current.slice()));
     }, [link, onSample, selected]);
 
-    const toggle = useCallback((symbol: string, on: boolean) => {
-        setSelected((prev) => (on ? [...prev, symbol] : prev.filter((s) => s !== symbol)));
+    const toggle = useCallback((id: ChannelId, on: boolean) => {
+        setSelected((prev) => (on ? [...prev, id] : prev.filter((s) => s !== id)));
     }, []);
 
+    // Headings are channel ids — `3:n`, `35:n` — so a file that read both blocks
+    // has two distinct columns instead of one column called `n` holding the
+    // last block read. The colon is CSV-safe and the pair is machine-readable.
     const exportCsv = useCallback(() => {
         const rows = [
             ['time_s', ...selected].join(','),

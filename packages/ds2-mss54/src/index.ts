@@ -14,7 +14,9 @@
 
 export {
     MSS54_LIVE_BLOCKS,
+    MSS54_LIVE_COVERAGE,
     MSS54_LIVE_FIELD_COUNT,
+    MSS54_LIVE_JOIN_REFUSALS,
     MSS54_CHANNELS,
     MSS54_BLOCKS_BY_SYMBOL,
     channelId,
@@ -22,6 +24,8 @@ export {
     liveBlockRequest,
     decodeLiveBlock,
     planBlockReads,
+    type LiveJoinRefusal,
+    type LiveJoinSource,
     type LiveValueBlock,
     type LiveValueField,
     type DecodedValue,

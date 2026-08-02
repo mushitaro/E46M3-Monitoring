@@ -26,8 +26,18 @@ import {
     type LiveValueField,
 } from './liveValueBlocks.generated';
 
-export { MSS54_LIVE_BLOCKS, MSS54_LIVE_FIELD_COUNT } from './liveValueBlocks.generated';
-export type { LiveValueBlock, LiveValueField } from './liveValueBlocks.generated';
+export {
+    MSS54_LIVE_BLOCKS,
+    MSS54_LIVE_COVERAGE,
+    MSS54_LIVE_FIELD_COUNT,
+    MSS54_LIVE_JOIN_REFUSALS,
+} from './liveValueBlocks.generated';
+export type {
+    LiveJoinRefusal,
+    LiveJoinSource,
+    LiveValueBlock,
+    LiveValueField,
+} from './liveValueBlocks.generated';
 
 /**
  * A channel is identified by BLOCK PLUS SYMBOL, not by symbol alone.

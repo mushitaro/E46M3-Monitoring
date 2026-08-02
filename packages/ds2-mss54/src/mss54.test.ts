@@ -13,7 +13,9 @@ import {
     MSS54_CHANNELS,
     channelId,
     MSS54_LIVE_BLOCKS,
+    MSS54_LIVE_COVERAGE,
     MSS54_LIVE_FIELD_COUNT,
+    MSS54_LIVE_JOIN_REFUSALS,
     SHADOW_RECORD_LENGTH,
     blockBySelection,
     decodeLiveBlock,
@@ -77,6 +79,101 @@ describe('the generated live-value catalog', () => {
 
         const tmot = MSS54_CHANNELS.get(channelId(3, 'tmot'))!.field;
         expect(tmot).toMatchObject({ offset: 11, format: 'uint8', add: -48 });
+    });
+});
+
+describe('the German join', () => {
+    const field = (selection: number, symbol: string) =>
+        MSS54_CHANNELS.get(channelId(selection, symbol))!.field;
+
+    it('agrees with its own coverage figures', () => {
+        const withGerman = MSS54_LIVE_BLOCKS.flatMap((b) => b.fields).filter((f) => f.de);
+        expect(withGerman).toHaveLength(MSS54_LIVE_COVERAGE.withGerman);
+        expect(MSS54_LIVE_COVERAGE.fields).toBe(MSS54_LIVE_FIELD_COUNT);
+        expect(
+            Object.values(MSS54_LIVE_COVERAGE.bySource).reduce((a, b) => a + b, 0),
+        ).toBe(MSS54_LIVE_COVERAGE.withGerman);
+        // `de` and `deSource` travel together, always.
+        for (const f of MSS54_LIVE_BLOCKS.flatMap((b) => b.fields)) {
+            expect(Boolean(f.de), f.symbol).toBe(Boolean(f.deSource));
+        }
+    });
+
+    it('carries the SGBD German for the quantities the SGBD names', () => {
+        expect(field(3, 'n').de).toBe('Drehzahl n');
+        expect(field(3, 'tmot').de).toBe('Motortemperatursensor');
+        expect(field(35, 'evan1_ist').de).toBe('Einlass-VANOS Bank 1 ist');
+        expect(field(3, 'n').sgbdRow).toBe('BETRIEBSWTAB.mw_n');
+    });
+
+    /**
+     * `ll_abw1` is where the source itself is wrong: BETRIEBSWTAB gives the
+     * rough-running deviation the Servotronic valve's target current as its
+     * long name. Taking it would have put a confident, wrong German name on a
+     * cylinder measurement.
+     */
+    it('refuses the one corrupt BETRIEBSWTAB row instead of copying it', () => {
+        expect(field(21, 'll_abw1').de).toBeUndefined();
+        expect(
+            MSS54_LIVE_JOIN_REFUSALS.some(
+                (r) => r.kind === 'corrupt-source-row' && r.sgbdRow === 'BETRIEBSWTAB.ll_abw',
+            ),
+        ).toBe(true);
+    });
+
+    /**
+     * `tl` is the load signal (Lastsignal); `STAT_TL_EIN` is the full-load
+     * STATUS bit (Status Vollast). Same three letters, different quantity —
+     * which is why the result join takes `_WERT` and never `_EIN`.
+     */
+    it('does not take a status bit as the name of a measured value', () => {
+        expect(field(3, 'tl').de).not.toBe('Status Vollast');
+    });
+
+    it('names a status byte only when the SGBD names exactly one bit in it', () => {
+        expect(field(4, 'ekp_st').de).toBe('Status Kraftstoffpumpe'); // one bit, EKP
+        expect(field(4, 'tz_ed_status').de).toBeUndefined(); // TZ1..TZ8 share the byte
+        const refusal = MSS54_LIVE_JOIN_REFUSALS.find(
+            (r) => r.kind === 'byte-carries-several-bits' && r.symbol === 'tz_ed_status',
+        );
+        expect(refusal?.candidates).toContain('TZ1');
+    });
+
+    /**
+     * The order of block 179 is a fact about how to read it, and the job that
+     * reads it says so: physical cylinder order, NOT firing order (1-5-3-6-2-4).
+     * Reading these as firing order blames the wrong cylinder.
+     */
+    it('carries block 179 with the cylinder-order caveat the reader job states', () => {
+        for (let i = 0; i < 6; i++) {
+            const f = field(179, `lu[${i}]`);
+            expect(f.deSource).toBe('reader-job');
+            expect(f.de).toContain(`Zylinder ${i + 1}`);
+            expect(f.de).toContain('NICHT Zuendreihenfolge');
+        }
+    });
+
+    it('propagates between blocks only when the reference name is identical', () => {
+        // `n` is "Engine speed" in both 3 and 35 — the same quantity.
+        expect(field(35, 'n').de).toBe(field(3, 'n').de);
+        expect(field(35, 'n').deSource).toBe('sibling-block');
+
+        // `ti_ausblend_ist` is "Injection channels" in block 4 and "Injection
+        // blanking counter actual" in 19. One symbol, two quantities.
+        expect(field(4, 'ti_ausblend_ist').de).toBeUndefined();
+        expect(
+            MSS54_LIVE_JOIN_REFUSALS.some(
+                (r) => r.kind === 'sibling-name-differs' && r.symbol === 'ti_ausblend_ist',
+            ),
+        ).toBe(true);
+    });
+
+    it('cites a checkable SGBD row for everything it did join', () => {
+        for (const b of MSS54_LIVE_BLOCKS) {
+            for (const f of b.fields) {
+                if (f.de) expect(f.sgbdRow, `${b.selection}:${f.symbol}`).toBeTruthy();
+            }
+        }
     });
 });
 

@@ -15,7 +15,11 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")  # Windowsコンソール(cp932)でüäö等が落ちるのを防ぐ
 
 HERE = os.path.dirname(__file__)
-ECU_DIR = os.path.join(HERE, "..", "ecu-data")
+# データは public/ecu-data に移した。ここが古いままだったため、この検査は
+# 「ファイルが無ければ continue」で3件とも黙って飛ばし、ヘッダだけ出して
+# exit 0 していた——何も検査しない検査。下の「1件も読めなければ失敗」が
+# その再発を止める。
+ECU_DIR = os.path.join(HERE, "..", "public", "ecu-data")
 sys.path.insert(0, HERE)
 from translate import DICT  # ja==en の既存キー = 意図的な保持略語を自動で許可リスト化
 
@@ -58,7 +62,9 @@ def main():
     results = {}
     for fname in ("mss54.json", "smg2.json", "dsc_mk60.json"):
         path = os.path.join(ECU_DIR, fname)
-        if not os.path.exists(path): continue
+        if not os.path.exists(path):
+            sys.stderr.write(f"[FATAL] {path} not found — this check would measure nothing.\n")
+            return 1
         d = json.load(open(path, encoding="utf-8"))
         labels, descs, faults = collect(d)
         results[fname[:-5]] = {
@@ -79,7 +85,8 @@ def main():
     for mod, r in results.items():
         print(f"{mod:10} {r['label']:>7}% {r['desc']:>7}% {r['faultText']:>7}%   "
               f"(n={r['label_n']}/{r['desc_n']}/{r['faultText_n']})")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main() or 0)

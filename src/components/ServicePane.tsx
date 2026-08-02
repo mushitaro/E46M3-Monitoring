@@ -242,6 +242,10 @@ export function ServicePane({
 
                 <DataList className="mt-3">
                     {rows.map(({ job, d }) => {
+                        // The LEDGER's answer — has a car ever confirmed this
+                        // job's data. Deliberately not `mayRun`: that is the
+                        // permission question, and it is answered by the
+                        // `実行可能` marker beside this one.
                         const gate = mayRunOnVehicle(ledger, `${profile.id}:${job.id}`);
                         return (
                             <DataRow
@@ -262,7 +266,7 @@ export function ServicePane({
                                             </span>
                                         )}
                                         <OpBadge kind={jobOperation(job).kind} />
-                                        <GateBadge allowed={gate.allowed} reason={gate.reason} />
+                                        <VerifiedBadge verified={gate.allowed} reason={gate.reason} />
                                     </>
                                 }
                                 detail={
@@ -359,9 +363,24 @@ function RiskPill({ risk }: { risk: Risk }) {
  * state of every row today, and a tint on all 323 would be a wall of colour
  * saying nothing. Verified is what will stand out, once anything is.
  */
-function GateBadge({ allowed, reason }: { allowed: boolean; reason: string }) {
+/**
+ * Whether a vehicle has ever confirmed this job's data. NOT whether it may run.
+ *
+ * This was called `GateBadge` and it read as a permission verdict, which put
+ * `実行可能` and `未検証` on the same row and made them look like a
+ * contradiction. They are both true and they are about different things:
+ *
+ *   runnable  — the app will send this, because the frame is known and reads.
+ *   unverified — nobody has confirmed against a car that this frame does what
+ *                the catalogue says. The telegram is a static scrape.
+ *
+ * `mayRun` does not consult the ledger on the read path at all, so this badge
+ * never had a say in whether the RUN button lit. Naming it a gate implied it
+ * did. It now says what it measures.
+ */
+function VerifiedBadge({ verified, reason }: { verified: boolean; reason: string }) {
     const { t } = useLang();
-    if (!allowed) {
+    if (!verified) {
         return (
             <span title={reason} className={`shrink-0 ${LABEL} text-slate-600`}>
                 {t.gate_unverified}

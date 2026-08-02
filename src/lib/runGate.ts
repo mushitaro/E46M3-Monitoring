@@ -9,12 +9,23 @@
  * ## The layers, and why the last one is the bytes
  *
  * Our classification of a job (`class: 'read'`) is a judgement made by a regex
- * over an SGBD comment. It is right about all 323 today — I checked every job
- * whose telegram is certain, and not one `read` carries a write control byte —
- * but "right today" is not a safety property. The final check is therefore made
- * against the CONTROL BYTE OF THE FRAME THAT WOULD ACTUALLY GO OUT, which does
- * not depend on our opinion of the job at all. If the classifier were ever
- * wrong, this is the check that stops the car being touched.
+ * over an SGBD comment. The final check is therefore made against the CONTROL
+ * BYTE OF THE FRAME THAT WOULD ACTUALLY GO OUT, which does not depend on our
+ * opinion of the job at all. If the classifier were ever wrong, this is the
+ * check that stops the car being touched.
+ *
+ * How much that has actually been checked, precisely — an earlier version of
+ * this comment said "right about all 323 today", which was inflation:
+ *
+ *   150 jobs are classified `read`.
+ *     8 of those have a `single`-graded telegram, so we know their bytes.
+ *     5 of those take no arguments and reach the control-byte check.
+ *     0 of those carry a control byte outside the allowlist.
+ *
+ * So the backstop is UNEXERCISED, not demonstrated redundant. For the other 142
+ * reads the bytes are simply unknown — 84 MSS54 reads have no telegram entry at
+ * all — and a check that five jobs happen to pass is not a check that a hundred
+ * and fifty made unnecessary. It is here for the case that has not arrived.
  *
  * ## What is allowed out of the box
  *

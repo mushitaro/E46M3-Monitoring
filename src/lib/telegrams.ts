@@ -23,8 +23,14 @@
  * the bytes every time and the run gate treats anything below `single` as
  * unknown.
  *
- * DSC MK60 has ZERO single-graded telegrams across all 48 jobs. That is a real
- * result about the module, not a gap to paper over.
+ * DSC MK60 has ZERO single-graded telegrams — not in its 15 reads, not anywhere:
+ * all 124 rows in its table are `shared` or `multiple`. That is a real result
+ * about the module, not a gap to paper over, and it is why nothing in DSC is
+ * runnable.
+ *
+ * (This said "all 48 jobs". 48 is the number of KEYS IN THIS TABLE; the DSC
+ * catalogue has 54 jobs, six of which the scrape recovered nothing for. Two
+ * different counts, and the sentence used the wrong one.)
  */
 
 export type TelegramConfidence = 'single' | 'multiple' | 'shared';

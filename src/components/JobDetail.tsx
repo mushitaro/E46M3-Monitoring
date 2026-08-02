@@ -625,7 +625,7 @@ function ProcedureDetail({
                 ECU reports one. Collapsed, and the German leads on the faults —
                 their `ja` is machine-mangled and the `de` is clean. */}
             {workflows && <CodeTable label={t.proc_status} rows={workflows.testStatus} tone="neutral" />}
-            <CodeTable label={t.proc_faults} rows={procedure.faults} tone="danger" germanFirst />
+            <CodeTable label={t.proc_faults} rows={procedure.faults} tone="danger" />
         </>
     );
 }
@@ -724,41 +724,44 @@ function RecordedValues({ profile, block }: { profile: EcuProfile; block: Result
  * A code vocabulary, collapsed. Reference: you look a code up when the ECU
  * reports one.
  *
- * `germanFirst` exists because the SMG II FAULT texts' Japanese is machine
- * output and largely unreadable — `Schaltwegendstellungen・geraden・Gaenge・
- * sind・過・unterschiedlich`. The German is always clean. Until the phrase table
- * covers them, the German leads and the mangled translation is not shown at all:
- * this vocabulary is what decides "finished or on a flatbed", and a garbled
- * sentence under a Japanese heading is worse than a German one.
+ * This used to lead with the German for faults, because their Japanese was
+ * machine output and unreadable — `Schaltwegendstellungen・geraden・Gaenge・
+ * sind・過・unterschiedlich` — and a garbled sentence under a Japanese heading
+ * is worse than a German one on the vocabulary that decides "finished or on a
+ * flatbed". All 156 phrases are hand-written now and the generator refuses to
+ * emit a machine-translated one, so the reader's language leads.
+ *
+ * The German stays underneath: it is what the ECU actually said, and it is what
+ * a workshop manual or a forum thread will be written in.
  */
 function CodeTable({
     label: heading,
     rows,
     tone,
-    germanFirst = false,
 }: {
     label: string;
     rows: Array<{ code: string; ja: string; en: string; de?: string }>;
     tone: 'neutral' | 'primary' | 'danger';
-    germanFirst?: boolean;
 }) {
-    const { lang, t } = useLang();
+    const { lang } = useLang();
     return (
         <details>
             <summary className={`flex cursor-pointer items-baseline justify-between ${LABEL} text-slate-500 hover:text-slate-300`}>
                 {heading}
                 <span className="font-mono tabular-nums text-slate-600">{rows.length}</span>
             </summary>
-            {germanFirst && (
-                <p className="mt-1 text-[10px] leading-relaxed text-slate-500">{t.proc_germanOnly}</p>
-            )}
             <DataList className="mt-1.5">
                 {rows.map((r) => (
                     <DataRow
                         key={r.code}
                         code={r.code}
                         codeTone={tone}
-                        name={humanName(germanFirst ? (r.de ?? r.en) : lang === 'en' ? r.en : r.ja)}
+                        name={humanName(lang === 'en' ? r.en : r.ja)}
+                        detail={
+                            r.de && r.de !== (lang === 'en' ? r.en : r.ja) ? (
+                                <span className="text-[10px] text-slate-600">{r.de}</span>
+                            ) : undefined
+                        }
                     />
                 ))}
             </DataList>

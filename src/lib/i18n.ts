@@ -144,7 +144,6 @@ interface Catalog {
     proc_faults: string;
     proc_none: string;
     proc_steps: string;
-    proc_germanOnly: string;
     det_blockInferred: (job: string, arg: string, value: string) => string;
     gear_windows: string;
     gear_noSpec: string;
@@ -184,7 +183,7 @@ interface Catalog {
     step_meta: Record<string, string>;
 
     // --- The merged JOBS pane ---------------------------------------------
-    tab_jobs: string;
+    tab_service: string;
     /** The facet axes. Named, because a filter whose axis is unlabelled is a mystery toggle. */
     facet_purpose: string;
     facet_audience: string;
@@ -409,7 +408,6 @@ const STRINGS: Record<Lang, Catalog> = {
         proc_faults: '結果コード',
         proc_none: 'このモジュールにガイド手順はありません（SMG II のみ）',
         proc_steps: 'ECU が実行する手順',
-        proc_germanOnly: 'この語彙の日本語訳は機械出力のままで読めないため、SGBD の独語原文を表示しています。',
         det_blockInferred: (j, a, v) =>
             `SGBD はこの対応を明示していません。結果名の接頭辞から ${j}（${a} = ${v}）と推定しています。`,
         gear_windows: 'ギアごとの測定窓',
@@ -483,7 +481,7 @@ const STRINGS: Record<Lang, Catalog> = {
         step_state: { running: '実行中', passed: '通過', done: '完了', failed: '失敗', unknown: '不明' },
         step_meta: { duration: '所要', engine: 'エンジン', valves: '駆動' },
 
-        tab_jobs: 'JOBS',
+        tab_service: 'SERVICE',
         facet_purpose: '用途',
         facet_audience: '対象',
         facet_system: '系統',
@@ -769,7 +767,6 @@ const STRINGS: Record<Lang, Catalog> = {
         proc_faults: 'Result codes',
         proc_none: 'This module has no guided procedures (SMG II only)',
         proc_steps: 'What the ECU does, step by step',
-        proc_germanOnly: "This vocabulary's Japanese is raw machine output and not readable, so the SGBD German original is shown instead.",
         det_blockInferred: (j, a, v) =>
             `The SGBD does not state this mapping. It is inferred from the result-name prefixes as ${j} (${a} = ${v}).`,
         gear_windows: 'Per-gear measurement windows',
@@ -849,7 +846,7 @@ const STRINGS: Record<Lang, Catalog> = {
         step_state: { running: 'Running', passed: 'Passed', done: 'Done', failed: 'Failed', unknown: 'Unknown' },
         step_meta: { duration: 'Takes', engine: 'Engine', valves: 'Drives' },
 
-        tab_jobs: 'JOBS',
+        tab_service: 'SERVICE',
         facet_purpose: 'Purpose',
         facet_audience: 'For',
         facet_system: 'System',

@@ -149,11 +149,22 @@ DESC = {
 # tools/terms/ is not published. See docs/PRESERVED.md.
 from terms.smg2_workflows import PHRASES  # noqa: E402
 
+# PHRASES に無く translate.py に落ちた独文。これが1件でもあれば出荷しない。
+#
+# フォールバックの機械訳は、この語彙に限っては使い物にならない——
+# `Schaltwegendstellungen・geraden・Gaenge・sind・過・unterschiedlich` が
+# 実際に出荷されていた。ここは ECU が「どこが駄目か」を言ってくる場所で、
+# 読めない文字列は「読めない」では済まず、別の部品を疑わせる。
+UNTRANSLATED: list[str] = []
+
+
 def tr(de, lang):
     """独→ja/en：厳選辞書を最優先、無ければ translate.py にフォールバック。"""
     de = (de or "").strip()
     if de in PHRASES:
         return PHRASES[de][0 if lang == "ja" else 1]
+    if de and de not in UNTRANSLATED:
+        UNTRANSLATED.append(de)
     return translate(de, lang, decompose=False)
 
 def txt(de):
@@ -242,8 +253,16 @@ def build():
         "actuators": stell, "testStatus": teststatus,
         "procedures": procs, "sequences": seqs,
     }
+    if UNTRANSLATED:
+        sys.stderr.write(
+            "[FATAL] %d SGBD phrase(s) fell through to machine translation. "
+            "Add them to PHRASES in this file:\n" % len(UNTRANSLATED)
+            + "".join(f"    {p!r}\n" for p in sorted(UNTRANSLATED)))
+        sys.exit(1)
+
     json.dump(prof, open(OUT, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     print(f"  procedures={len(procs)}  sequences={len(seqs)}  actuators={len(stell)}  -> {OUT}")
+    print(f"  vocabulary: {len(PHRASES)} phrases, all hand-written (fallback is fatal)")
 
 def dur_sec(s):
     """'16 min' / '2,30 min' / '10 sek' → 秒。"""

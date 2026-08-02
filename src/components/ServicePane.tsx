@@ -3,6 +3,13 @@
 /**
  * One list of every job the module has, faceted by what the job is FOR.
  *
+ * ## The tab is called SERVICE
+ *
+ * It was called JOBS, which is the SGBD's word for a unit of work and a
+ * developer's word for this list. Nobody opens a diagnostic tool to run a job;
+ * they open it to service a car. The name was never chosen, it was inherited
+ * from the data format.
+ *
  * ## Why this replaced two tabs
  *
  * CALIBRATION and ACTUATOR TEST were split by a regex in the generator, and the
@@ -21,7 +28,7 @@
  * ## Why the default hides things, and says so
  *
  * All 323 jobs are here. About fifteen are steps inside other jobs' procedures
- * (`SEED_KEY`, `LOGIN_*`, `DIAGNOSE_ERHALTEN`), and thirteen are flash and EEPROM
+ * (`SEED_KEY`, `LOGIN_*`, `DIAGNOSE_AUFRECHT`), and thirteen are flash and EEPROM
  * writes this app will not run. Opening on all 323 would bury the ones an owner
  * can act on.
  *
@@ -51,7 +58,7 @@ import { useLang } from '@/lib/i18n';
 const CLASS_ORDER: JobClass[] = ['read', 'test', 'calibration', 'coding', 'programming', 'protocol'];
 const AUDIENCE_ORDER: Audience[] = ['owner', 'technician', 'protocol'];
 
-export function JobsPane({
+export function ServicePane({
     profile,
     ledger,
     selectedId,
@@ -107,7 +114,7 @@ export function JobsPane({
             {children}
 
             <Section
-                title={t.tab_jobs}
+                title={t.tab_service}
                 count={jobs.length}
                 // The sentence that used to exist only in a code comment.
                 note={cls !== 'all' ? t.jobClassNote[cls] : undefined}

@@ -33,7 +33,7 @@ import { AppHeader } from '@/components/AppHeader';
 import { ElectricalFaultDialog } from '@/components/ElectricalFaultDialog';
 import { Hub, HubCluster, HubNotice, SubActions, type HubConfig, type NoticeTone } from '@/components/Hub';
 import { JobDetail, SequenceView } from '@/components/JobDetail';
-import { JobsPane } from '@/components/JobsPane';
+import { ServicePane } from '@/components/ServicePane';
 import { DscHydraulicsPane } from '@/components/DscHydraulics';
 import { LogPopover } from '@/components/LogPopover';
 import {
@@ -80,7 +80,7 @@ import { bestTelegram, loadTelegrams, telegramIsCertain, type TelegramTable } fr
  * procedure picked under CALIBRATION stayed selected — and stayed in the right
  * column's viz — after switching to ACTUATOR TEST, where its row did not exist.
  */
-type Tab = 'diagnosis' | 'datalog' | 'jobs';
+type Tab = 'diagnosis' | 'datalog' | 'service';
 type Link = ReturnType<typeof useDs2Link>;
 
 /**
@@ -180,7 +180,7 @@ export default function Home() {
     }, []);
 
     const connectedToVehicle = link.mode === 'vehicle' && link.state !== 'disconnected';
-    const jobTab = tab === 'jobs';
+    const serviceTab = tab === 'service';
     // PRACTICE is a MODE the hub then connects in, not a second connect button.
     // As a button beside CONNECT it was a fork with no stated default; as a
     // checkbox the hub reads CONNECT either way and the box says which link you
@@ -190,7 +190,7 @@ export default function Home() {
         tab,
         link,
         datalog,
-        jobTab ? selectedJob : null,
+        serviceTab ? selectedJob : null,
         ecuId,
         telegrams,
         practiceArmed,
@@ -235,7 +235,7 @@ export default function Home() {
                                 [
                                     ['diagnosis', t.tab_diagnosis],
                                     ['datalog', t.tab_datalog],
-                                    ['jobs', t.tab_jobs],
+                                    ['service', t.tab_service],
                                 ] as const
                             ).map(([id, labelText]) => (
                                 <button
@@ -268,9 +268,9 @@ export default function Home() {
                     <div className="min-h-0 flex-1 overflow-auto px-4 pb-2 pt-2">
                         {tab === 'diagnosis' && <DiagnosisPane link={link} catalog={catalog} />}
                         {tab === 'datalog' && <DatalogPane datalog={datalog} />}
-                        {tab === 'jobs' &&
+                        {tab === 'service' &&
                             (catalog ? (
-                                <JobsPane
+                                <ServicePane
                                     profile={catalog}
                                     ledger={ledger}
                                     selectedId={selectedJob?.id ?? null}
@@ -299,7 +299,7 @@ export default function Home() {
                                             onSelect={selectJob}
                                         />
                                     )}
-                                </JobsPane>
+                                </ServicePane>
                             ) : (
                                 <p className="py-2 font-mono text-xs uppercase text-slate-600">{t.awaiting_catalog}</p>
                             ))}
@@ -319,7 +319,7 @@ export default function Home() {
                             link={link}
                             catalog={catalog}
                             datalog={datalog}
-                            selectedJob={jobTab ? selectedJob : null}
+                            selectedJob={serviceTab ? selectedJob : null}
                             telegrams={telegrams}
                             jobText={jobText}
                             workflows={workflows}
@@ -404,7 +404,7 @@ export default function Home() {
                                 ends up pressing start twice. `latching` gets none
                                 — it has no release job, and a disabled STOP would
                                 imply one exists. */}
-                            {jobTab && selectedJob && hasStopControl(opFor(selectedJob)) && (
+                            {serviceTab && selectedJob && hasStopControl(opFor(selectedJob)) && (
                                 <TextButton disabled tone="destructive" Icon={Square} title={t.gate_practiceOnly}>
                                     {opFor(selectedJob).kind === 'procedure' ? t.op_abort : t.op_stop}
                                 </TextButton>
@@ -703,7 +703,7 @@ function useHubConfig(
 
     // The job tab. With nothing selected the hub has no job to name, and says so
     // rather than offering a verb with no object.
-    if (tab === 'jobs') {
+    if (tab === 'service') {
         if (!selectedJob) {
             return { label: t.hub_connected, Icon: CircleDot, tone: 'idle', disabled: true, notice: t.plan_selectHint };
         }

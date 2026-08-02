@@ -65,7 +65,7 @@ import {
     type EcuIndexEntry,
     type EcuProfile,
 } from '@/lib/ecuCatalog';
-import { PROCEDURE_PREFIX, hasStopControl, jobOperation, procedureOperation } from '@/lib/jobOps';
+import { PROCEDURE_OP, PROCEDURE_PREFIX, hasStopControl, operationFor } from '@/lib/jobOps';
 import { loadJobText, type JobTextTable } from '@/lib/jobText';
 import { loadDscHydraulics, type DscHydraulics } from '@/lib/dscHydraulics';
 import { EMPTY_LEDGER, type Ledger } from '@/lib/ledger';
@@ -579,17 +579,9 @@ function procedureAsJob(p: Smg2Procedure): CatalogJob {
         // downgrade a 3-minute full gearbox adaptation to "medium".
         risk: p.risk === 'high' ? 'high' : p.risk === 'low' ? 'low' : 'medium',
         riskProvenance: 'sgbd-comment',
-        op: {
-            kind: 'procedure',
-            actor: 'ecu',
-            termination: 'companion-job',
-            resultDelivery: 'companion-job',
-            prerequisiteJobs: ['TESTPRG_STOP'],
-            stopJob: 'TESTPRG_STOP',
-            resultJob: 'STATUS_TESTPRG',
-            ecuTimeoutSec: 10,
-            provenance: 'sgbd-comment',
-        },
+        // One definition, in jobOps. This used to be a second copy of the same
+        // object; it drifted, and the panel rendered the stale one.
+        op: PROCEDURE_OP,
         // The engine state is the procedure's own, from the SGBD table. Asserting
         // `engine_off` for a program that requires the engine RUNNING would be a
         // precondition that makes the job impossible.
@@ -619,11 +611,7 @@ function procedureForJob(job: CatalogJob, workflows: Smg2Workflows | null): Smg2
  * An adapted procedure is not an SGBD job and has no classification to read, so
  * it takes the one builder in jobOps. Everything else reads `job.op`.
  */
-function opFor(job: CatalogJob) {
-    return job.id.startsWith(PROCEDURE_PREFIX)
-        ? procedureOperation(job.id, job.args.length > 0)
-        : jobOperation(job);
-}
+const opFor = operationFor;
 
 
 /**

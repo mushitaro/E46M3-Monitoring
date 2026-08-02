@@ -2,10 +2,12 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+    PROCEDURE_OP,
     PROCEDURE_PREFIX,
     deliversResultElsewhere,
     hasStopControl,
     jobOperation,
+    operationFor,
     procedureOperation,
     reportsProgress,
 } from './jobOps';
@@ -327,6 +329,43 @@ describe('every job name we print is a job that exists', () => {
         // Progress comes from re-sending the same job, per the SGBD and INPA.
         expect(op.resultJob).toBe('TESTPRG_STARTEN');
         expect(op.steps.map((s) => s.job)).toContain('DIAGNOSE_AUFRECHT');
+    });
+
+    /**
+     * The test above was not enough, and the gap shipped.
+     *
+     * It exercised `procedureOperation()` — the function that had been fixed —
+     * while the DETAIL PANEL took its plan from `job.op`, which for a procedure
+     * came from a second, stale copy of the same object in page.tsx. So the
+     * panel went on printing `STATUS_TESTPRG` for three commits after the name
+     * was "corrected", and this suite stayed green the whole time because it
+     * only ever checked the copy that had been edited.
+     *
+     * This goes through `operationFor()` — the one dispatcher both the controls
+     * and the panel now use — starting from a job shaped exactly as
+     * `procedureAsJob()` builds one, `PROCEDURE_OP` included. Every job named in
+     * the resulting plan must be a real SMG II job.
+     */
+    it('holds for the plan the DETAIL PANEL renders, not just the builder', () => {
+        const known = new Set(profile('smg2').jobs.map((j) => j.id));
+        const asPanelSeesIt = {
+            ...profile('smg2').jobs[0],
+            id: `${PROCEDURE_PREFIX}0x07`,
+            op: PROCEDURE_OP,
+            args: [],
+        } as CatalogJob;
+
+        const op = operationFor(asPanelSeesIt);
+        for (const s of op.steps) expect(known.has(s.job), `step ${s.job}`).toBe(true);
+        // The synthetic id is NOT a job. The wire job is TESTPRG_STARTEN with a
+        // program number, and naming `TESTPRG:0x07` as a step would be an
+        // instruction that cannot be carried out.
+        expect(op.steps.map((s) => s.job)).not.toContain(`${PROCEDURE_PREFIX}0x07`);
+        expect(op.steps.map((s) => s.job)).not.toContain('STATUS_TESTPRG');
+        // The two definitions agreed on everything except this, and this is what
+        // was on screen.
+        expect(PROCEDURE_OP.resultJob).toBe('TESTPRG_STARTEN');
+        expect(PROCEDURE_OP.resultDelivery).toBe('inline');
     });
 
     // Stopping STEUERN_STELLGLIED means an argument, not another job.

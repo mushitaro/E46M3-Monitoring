@@ -41,7 +41,7 @@ import {
     type CatalogResult,
     type EcuProfile,
 } from '@/lib/ecuCatalog';
-import { deliversResultElsewhere, hasStopControl, jobOperation, type OpKind } from '@/lib/jobOps';
+import { deliversResultElsewhere, hasStopControl, operationFor, type OpKind } from '@/lib/jobOps';
 import { cautionFor, type JobTextTable } from '@/lib/jobText';
 import { bestTelegram, telegramIsCertain, type TelegramTable } from '@/lib/telegrams';
 import { readResultsFor, type ResultBlockRef, type Smg2Procedure, type Smg2Sequence, type Smg2Workflows } from '@/lib/smg2Workflows';
@@ -81,7 +81,7 @@ export function JobDetail({
     procedure: Smg2Procedure | null;
 }) {
     const { lang, t } = useLang();
-    const op = jobOperation(job);
+    const op = operationFor(job);
     const risk = jobRiskOf(job);
     const d = description(profile, job, lang);
     const tel = bestTelegram(telegrams, job.id);

@@ -252,13 +252,51 @@ export function jobOperation(job: CatalogJob): JobOperation {
 }
 
 /**
+ * The `op` DATA an adapted SMG II procedure carries — the same shape an SGBD job
+ * has, so `job.op` is never a lie for a procedure either.
+ *
+ * This existed twice: here in `procedureOperation()`, and as an object literal
+ * inside `procedureAsJob()` in page.tsx. They drifted. When the phantom job
+ * names were corrected the literal was missed, and because the DETAIL PANEL
+ * derived its plan from `job.op` rather than from `procedureOperation()`, the
+ * copy on screen stayed the wrong one — still instructing the operator to send
+ * `STATUS_TESTPRG`, which is not one of SMG II's 46 jobs. One definition now.
+ */
+export const PROCEDURE_OP: JobOperationData = {
+    kind: 'procedure',
+    actor: 'ecu',
+    termination: 'companion-job',
+    // Progress is read by RE-SENDING TESTPRG_STARTEN, so the answer arrives on
+    // the same job — inline, not from a companion.
+    resultDelivery: 'inline',
+    prerequisiteJobs: ['TESTPRG_STOP'],
+    stopJob: 'TESTPRG_STOP',
+    resultJob: 'TESTPRG_STARTEN',
+    ecuTimeoutSec: SMG2_ECU_TIMEOUT_SEC,
+    provenance: 'sgbd-comment',
+};
+
+/**
+ * The operation for any row the panel can select.
+ *
+ * An adapted procedure is not an SGBD job: its id is synthetic (`TESTPRG:0x07`)
+ * and the job actually sent is `TESTPRG_STARTEN` with that program number. The
+ * generic deriver would name the synthetic id as a step, so procedures take
+ * their own builder. Both the controls and the detail panel MUST come through
+ * here — they used to disagree, and the panel had the wrong one.
+ */
+export function operationFor(job: CatalogJob): JobOperation {
+    return isProcedureId(job.id)
+        ? procedureOperation(job.id, job.args.length > 0)
+        : jobOperation(job);
+}
+
+/**
  * The plan for an SMG II guided procedure.
  *
- * These are adapted from `smg2-workflows.json`, not from the SGBD job table, so
- * there is no `job.op` to read. The protocol is quoted in
- * `SMG2_PROCEDURE_PROTOCOL` and is identical for every program number — what
- * differs is the duration, the preconditions, and the vocabularies, none of which
- * belong here.
+ * These are adapted from `smg2-workflows.json`, not from the SGBD job table. The
+ * protocol is identical for every program number — what differs is the duration,
+ * the preconditions and the vocabularies, none of which belong here.
  *
  * It must never fall through to `unknown`: a sixteen-minute gearbox adaptation
  * described as "the SGBD does not say" would be worse than no description at all.

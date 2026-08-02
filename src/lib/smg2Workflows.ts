@@ -170,21 +170,13 @@ export function procedureById(w: Smg2Workflows | null, id: string): Smg2Procedur
     return w?.procedures.find((p) => p.id === id) ?? null;
 }
 
-/**
- * The wire protocol for running one, from the SGBD's own comments:
+/*
+ * The wire protocol for running a procedure lives in `jobOps.ts` — see
+ * `PROCEDURE_OP` and `procedureOperation()`.
  *
- *   TESTPRG_STOP           "Must be sent BEFORE TESTPRG_STARTEN! (ECU timeout: 10s!)"
- *   TESTPRG_STARTEN(nr, auswahl)
- *   STATUS_TESTPRG         polled — testStatus + activity + fault
- *   TESTPRG_STOP           to abort (the fault vocabulary has 0x7F "aborted by user")
- *
- * The keep-alive is not optional: the ECU's diagnostic timeout is 10 s, and a
- * procedure can legitimately run for 960. Stop feeding it and the gearbox
- * controller drops the session mid-adaptation.
+ * A third copy of it used to sit here as `SMG2_PROCEDURE_PROTOCOL`, exported and
+ * never imported by anything. It still named `STATUS_TESTPRG` and
+ * `DIAGNOSE_ERHALTEN` long after both were shown not to exist, because nothing
+ * read it and nothing tested it. Deleted rather than corrected: an unused copy
+ * of a safety-relevant sequence is a place for the truth to rot.
  */
-export const SMG2_PROCEDURE_PROTOCOL: ReadonlyArray<{ job: string; why: string }> = [
-    { job: 'TESTPRG_STOP', why: 'the SGBD requires it: "Must be sent BEFORE TESTPRG_STARTEN!"' },
-    { job: 'TESTPRG_STARTEN', why: 'starts the program (TESTPRG_NR, and AUSWAHLBYTE where it takes a selection)' },
-    { job: 'STATUS_TESTPRG', why: 'polled for testStatus, the activity code, and finally the result code' },
-    { job: 'DIAGNOSE_ERHALTEN', why: 'keeps the session alive — the ECU timeout is 10 s and a run can last 960' },
-];

@@ -1,7 +1,7 @@
 'use client';
 
 import type { LucideIcon } from 'lucide-react';
-import { LABEL } from './ui';
+import { HUB_LABEL } from './ui';
 
 /**
  * The hub — a state-machine action ring.
@@ -81,6 +81,24 @@ const FACE: Record<HubTone, string> = {
     fail: 'text-red-400',
 };
 
+/**
+ * 72px, not 80.
+ *
+ * `layout-and-structure.md` writes the hub down as `w-20 h-20` and this used to
+ * follow it literally — but the reference tool does NOT render 80. Its cluster
+ * sits in a box whose height its own wings set (3 rows of 28 + 2 gaps of 18 =
+ * 120), and its fit-scale then divides `clientHeight - 12` by that: 108/120 =
+ * 0.9, permanently. Measured at 1280x720, 1280x800, 1280x1400 and 1920x1080 —
+ * 0.9 every time. So the instrument everyone has actually looked at has a 72px
+ * ring with an 18px glyph, and this app was the odd one out at 80/20.
+ *
+ * Declared rather than reproduced with a transform. `scale-90` would paint 72
+ * while still occupying an 80px box, which would silently put 8px back into the
+ * gaps below — and those gaps are measured against the same reference.
+ */
+const HUB_SIZE = 'size-[72px]';
+const HUB_ICON = 'size-[18px]';
+
 export function Hub({ config }: { config: HubConfig }) {
     const { label, Icon, onClick, tone, disabled, spin } = config;
     return (
@@ -90,12 +108,12 @@ export function Hub({ config }: { config: HubConfig }) {
                 type="button"
                 onClick={disabled ? undefined : onClick}
                 disabled={disabled}
-                className={`relative flex size-20 flex-col items-center justify-center gap-1 rounded-full border border-slate-700 bg-slate-900 shadow-2xl ring-1 ring-slate-800 transition-colors hover:bg-slate-800 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-slate-900 ${
+                className={`relative flex ${HUB_SIZE} flex-col items-center justify-center gap-1 rounded-full border border-slate-700 bg-slate-900 shadow-2xl ring-1 ring-slate-800 transition-colors hover:bg-slate-800 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-slate-900 ${
                     disabled ? 'text-slate-500' : FACE[tone]
                 }`}
             >
-                <Icon className={`size-5 stroke-[1.5] ${spin ? 'animate-spin' : ''}`} />
-                <span className={`${LABEL}`}>{label}</span>
+                <Icon className={`${HUB_ICON} stroke-[1.5] ${spin ? 'animate-spin' : ''}`} />
+                <span className={HUB_LABEL}>{label}</span>
             </button>
         </div>
     );
@@ -141,17 +159,40 @@ const NOTICE: Record<NoticeTone, string> = {
 
 export function HubNotice({ text, tone = 'info' }: { text?: string; tone?: NoticeTone }) {
     return (
-        // Fixed height AND a constant margin. The height reserves the slot; the
-        // margin is what stops the text from sitting flush against the hub's
-        // ring, which extends 4px past the button on every side.
+        // Fixed height AND constant margins. The height reserves the slot; the
+        // margins put it where the reference tool puts it.
+        //
+        // Measured side by side at 1280x800, from the top of the panel:
+        //
+        //             reference          here (before)
+        //   status    548 → 580          570 → 602
+        //   notice    584 → 598  (+4)    602 → 616  (+0)   flush under the row
+        //   hub ring  614        (+16)   628        (+12)
+        //
+        // So: `mt-1 mb-4`. It belongs to the status row it comments on — a 4px
+        // hairline gap — and then stands clear of the ring, which extends 4px
+        // past the button on every side.
+        //
+        // LEFT, not centred. This slot carries link errors, catalogue errors and
+        // the hub's own cost line; centring each one moved the text sideways
+        // every time the message changed, which is the reflow the reserved slot
+        // exists to prevent, just on the other axis. The reference left-aligns
+        // it for the same reason.
+        //
+        // 11px, up from 10px, and the tracking dropped. The reference found the
+        // same thing: at micro-label size a line reporting real numbers was
+        // unreadable at arm's length and got reported as "nothing appeared".
+        // Still sans, not the reference's mono — its notices are DS2 errors and
+        // baud rates, machine text; these are Japanese sentences, and mono
+        // renders CJK through a fallback anyway.
         //
         // overflow-hidden + truncate + a pinned leading are not optional here.
         // Reserving 14px does nothing if the content can be 330px of tracked
         // uppercase in a 250px panel: it wrapped to three lines and painted
         // straight over the MODULE row above and the ring below. The panel never
         // reflowed — the text simply collided with the controls.
-        <div className="mb-3 flex h-[14px] items-center justify-center overflow-hidden px-2">
-            <p className={`truncate text-[10px] leading-[14px] tracking-widest ${NOTICE[tone]}`} title={text ?? ''}>
+        <div className="mb-4 mt-1 flex h-[14px] items-center overflow-hidden px-2">
+            <p className={`truncate text-[11px] leading-[14px] ${NOTICE[tone]}`} title={text ?? ''}>
                 {text ?? ''}
             </p>
         </div>

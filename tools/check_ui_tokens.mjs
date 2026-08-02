@@ -16,13 +16,22 @@ const ROOT = path.resolve(import.meta.dirname, '..', 'src');
 const UI = path.join(ROOT, 'components', 'ui.tsx');
 
 /**
- * Arbitrary type sizes. There are two steps and both live in ui.tsx.
+ * Arbitrary type sizes. There are two steps in the ramp and both live in ui.tsx.
  *
- * `text-[22px]` is the one exception and it is a single documented value: the
- * hub-scale numeric readout, the largest type the reference app uses anywhere.
- * Naming it here is what stops it becoming "well, 18px is nearly the same".
+ * Two documented exceptions, both single values used by exactly one element:
+ *
+ *   `text-[22px]` — the hub-scale numeric readout, the largest type the
+ *                   reference app uses anywhere.
+ *   `text-[8px]`  — the verb inside the hub ring (`HUB_LABEL` in ui.tsx). The
+ *                   ///M type scale has always had this "tiny tag / unit" step;
+ *                   this checker simply did not, so the hub's verb sat at
+ *                   LABEL's 10px inside a 72px circle.
+ *
+ * Naming them here is what stops either becoming "well, 18px is nearly the
+ * same". Both live in ui.tsx — a call site that spells one out by hand still
+ * trips HAND_LABEL below.
  */
-const BAD_SIZE = /text-\[(?!10px|11px|22px)\d+px\]/g;
+const BAD_SIZE = /text-\[(?!8px|10px|11px|22px)\d+px\]/g;
 
 /**
  * The label recipe. Written once, in `LABEL`. Six call sites had spelled it out

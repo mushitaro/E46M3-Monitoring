@@ -63,6 +63,20 @@ export const LABEL = 'text-[10px] font-bold uppercase tracking-widest';
 export const WORDMARK = 'text-sm font-bold uppercase tracking-widest';
 
 /**
+ * The verb inside the hub ring. **One element**, like WORDMARK — the other end
+ * of the same scale.
+ *
+ * 8px is the ///M "tiny tag" step and it is what the reference tool sets on this
+ * exact control. At LABEL's 10px the verb crowded a 72px circle that also
+ * carries a 18px icon; the ring is read by its shape and its colour from across
+ * a garage, and the word is confirmation once you are already looking at it.
+ *
+ * Only legible because these verbs are short and English — CONNECT, READ, RUN,
+ * RECORD. Do not put a sentence here.
+ */
+export const HUB_LABEL = 'text-[8px] font-bold uppercase tracking-widest';
+
+/**
  * Text a person can read, resolved for the current language.
  *
  * This is a brand, not a description. `DataRow`'s primary slot takes only a

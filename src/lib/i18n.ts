@@ -352,7 +352,10 @@ const STRINGS: Record<Lang, Catalog> = {
         precond_voltage_ok: '電圧',
         precond_stationary: '停車',
         precond_engine_off: 'エンジン停止',
-        module: 'モジュール',
+        // English in BOTH languages, like DIAGNOSIS / DATALOG / SERVICE / PRACTICE
+        // beside it. The chrome tokens of this panel are one vocabulary; a lone
+        // katakana word in that row read as a different app's control.
+        module: 'MODULE',
         faultRef: '故障本文リファレンス',
         faultRef_note:
             'SGBD の FORTTEXTE 表そのものです。故障コードと本文の対応が付いているので、読み取った故障には本文が直接付きます。ここはコード・訳文・独語原文のいずれでも引ける検索用の一覧です。',

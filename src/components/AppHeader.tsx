@@ -1,6 +1,6 @@
 'use client';
 
-import { LABEL } from './ui';
+import { LABEL, WORDMARK } from './ui';
 import { MMark } from './MMark';
 import { StatusLed } from './StatusLed';
 import { APP_VERSION } from '@/lib/version';
@@ -54,7 +54,11 @@ export function AppHeader({
             <div className="flex min-w-0 flex-1 items-center gap-3">
                 <StatusLed state={state} mode={mode} hasError={hasError} showLabel={false} />
 
-                <h1 className={`shrink-0 whitespace-nowrap ${LABEL} text-slate-200`}>
+                {/* WORDMARK, not LABEL. This shipped at 10px — the app's own
+                    name set at tab-label size, while the reference app's header
+                    reads at 14px. Measured side by side at the same viewport:
+                    10px/1px tracking here against 14px/1.4px there. */}
+                <h1 className={`shrink-0 whitespace-nowrap ${WORDMARK} text-slate-200`}>
                     E46M3
                     <MMark className="mx-1.5" />
                     {t.appRole}

@@ -115,7 +115,7 @@ type Link = ReturnType<typeof useDs2Link>;
  * commands a car.
  */
 export default function Home() {
-    const { t, lang } = useLang();
+    const { t } = useLang();
     const link = useDs2Link();
     const [tab, setTab] = useState<Tab>('diagnosis');
 
@@ -361,7 +361,6 @@ export default function Home() {
                                 <EcuSelect
                                     index={ecuIndex}
                                     value={ecuId}
-                                    lang={lang}
                                     // The DS2 address is per module, so switching
                                     // one under an open link would silently
                                     // retarget it.
@@ -1498,19 +1497,24 @@ function useDatalog(link: Link) {
 function EcuSelect({
     index,
     value,
-    lang,
     disabled,
     onChange,
 }: {
     index: EcuIndexEntry[];
     value: string;
-    lang: Lang;
     disabled: boolean;
     onChange: (id: string) => void;
 }) {
     // No label inside the chip: the status row it sits in already says MODULE,
     // and printing it twice on one 32px line is the sort of thing that makes a
     // panel look unread.
+    //
+    // English in both languages, so this takes no `lang`. `MSS54`, `SMG II` and
+    // `DSC` are the ECUs' own designations and `S54 / E46 M3` is a chassis code —
+    // the whole string is machine identity, not prose, and it sits in a row of
+    // English chrome tokens (MODULE, PRACTICE) under English tabs. The Japanese
+    // variant only ever translated the one common noun in it (エンジン / 変速機),
+    // which bought nothing and broke the row's vocabulary.
     return (
         <div className="flex items-center rounded bg-slate-800 px-2 py-0.5">
             <select
@@ -1521,7 +1525,7 @@ function EcuSelect({
             >
                 {index.map((e) => (
                     <option key={e.id} value={e.id} className="bg-slate-900 text-slate-300">
-                        {lang === 'en' ? e.name_en : e.name}
+                        {e.name_en || e.name}
                     </option>
                 ))}
             </select>

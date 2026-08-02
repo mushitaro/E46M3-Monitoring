@@ -46,6 +46,23 @@ import type { LucideIcon } from 'lucide-react';
 export const LABEL = 'text-[10px] font-bold uppercase tracking-widest';
 
 /**
+ * The wordmark. **One element in the whole app** — the `<h1>` in the header.
+ *
+ * This is NOT a third micro-label size, and nothing else may take it. The ///M
+ * type scale has always had two chrome steps — `text-sm` for the app / section
+ * title and `text-[10px]` for tab and control labels — and only the second was
+ * written down here. So the header title, which had no token to reach for,
+ * reached for `LABEL` and shipped at 10px: the app's own name rendered at the
+ * size of a facet chip, four points under the reference app's.
+ *
+ * Encoded rather than remembered, for the same reason as everything else in this
+ * file. `tracking-widest` at 14px is 1.4px, which is what makes the mark read as
+ * a title without being large — the weight and the tracking carry the hierarchy,
+ * not the point size.
+ */
+export const WORDMARK = 'text-sm font-bold uppercase tracking-widest';
+
+/**
  * Text a person can read, resolved for the current language.
  *
  * This is a brand, not a description. `DataRow`'s primary slot takes only a

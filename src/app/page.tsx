@@ -340,6 +340,25 @@ export default function Home() {
                         </span>
                     </div>
 
+                    {/* The φ split, on the vertical axis too.
+                        ────────────────────────────────────────────────────────
+                        This used to be "picture takes the slack, controls take
+                        their natural height", which made the ratio a side effect
+                        of how tall the control content happened to be: 66.9 /
+                        33.1 measured at 1280x800, against the reference tool's
+                        62.1 / 37.9. The system's proportion rule is φ and
+                        layout-and-structure.md says it holds on BOTH axes — the
+                        reference measures 1.6178 against φ's 1.6180 — so the
+                        split is declared here rather than emerging from content.
+
+                        The wrapper exists because the percentages have to resolve
+                        against the space BELOW the 44px bar, not against the
+                        whole column. `min-h-fit` on the controls is the floor:
+                        the panel's height is constant by construction (every slot
+                        in it is reserved), so on a viewport too short for 38.2%
+                        to hold it, it stops shrinking rather than scrolling the
+                        hub off the bottom. */}
+                    <div className="flex min-h-0 flex-1 flex-col">
                     <div className="relative min-h-[140px] flex-1 overflow-hidden bg-gradient-to-b from-slate-900/10 to-transparent p-4">
                         <Viz
                             tab={tab}
@@ -354,11 +373,9 @@ export default function Home() {
                         />
                     </div>
 
-                    {/* Controls take their natural height; the picture above
-                        absorbs the slack. The reverse pins the picture and
-                        crushes the dial. px-5 pt-4 pb-5 is the control-panel
-                        padding from the spacing scale. */}
-                    <div className="flex flex-initial flex-col overflow-y-auto px-5 pb-5 pt-4">
+                    {/* px-5 pt-4 pb-5 is the control-panel padding from the
+                        spacing scale. */}
+                    <div className="flex h-[38.2%] min-h-fit flex-none flex-col overflow-y-auto px-5 pb-5 pt-4">
                         {/* The status row states WHAT is being addressed on the
                             left and offers its controls on the right — the same
                             shape as the reference app's DME row. Centring a lone
@@ -418,9 +435,18 @@ export default function Home() {
                             full; this costs nothing and puts the message where
                             the eye already is. */}
                         <HubNotice text={notice.text} tone={notice.tone} />
-                        <HubCluster>
-                            <Hub config={hub} />
-                        </HubCluster>
+                        {/* The cluster band takes the panel's slack, and the ring
+                            sits centred in it. The reference does the same — its
+                            band is 120px because its wings reserve that much, and
+                            the hub is 72px centred inside. Giving the slack to
+                            this band rather than letting it pile up at the bottom
+                            is what keeps the ring optically centred in the control
+                            panel at every viewport height. */}
+                        <div className="flex min-h-0 flex-1 items-center justify-center">
+                            <HubCluster>
+                                <Hub config={hub} />
+                            </HubCluster>
+                        </div>
                         <SubActions>
                             {/* The two failure kinds need OPPOSITE advice, so
                                 only one of these can ever appear: retry is the
@@ -473,6 +499,7 @@ export default function Home() {
                                 </TextButton>
                             )}
                         </SubActions>
+                    </div>
                     </div>
                 </aside>
             </main>

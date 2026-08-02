@@ -168,6 +168,39 @@ describe('the German join', () => {
         ).toBe(true);
     });
 
+    /**
+     * Japanese is REQUIRED on every channel and block, and hand-written.
+     *
+     * The generator exits non-zero if one is missing (verified by deleting one)
+     * or if the table names a channel that does not exist (verified by adding
+     * one). This pins the result so the requirement cannot quietly become
+     * optional in the shipped table.
+     */
+    it('names every channel and every block in Japanese', () => {
+        for (const b of MSS54_LIVE_BLOCKS) {
+            expect(b.ja, `block ${b.selection}`).toBeTruthy();
+            expect(b.ja, `block ${b.selection}`).not.toBe(b.name);
+            for (const f of b.fields) {
+                expect(f.ja, `${b.selection}:${f.symbol}`).toBeTruthy();
+                // A Japanese name that is just the English copied over would
+                // pass a truthiness check and fail the user.
+                expect(f.ja, `${b.selection}:${f.symbol}`).not.toBe(f.name);
+                expect(f.ja, `${b.selection}:${f.symbol}`).toMatch(/[ぁ-んァ-ヶ一-龠]/);
+            }
+        }
+    });
+
+    /**
+     * The same symbol in two blocks may be two quantities, and the Japanese has
+     * to say so — this is the naming half of the ChannelId rule.
+     */
+    it('gives the two ti_ausblend_ist channels different Japanese names', () => {
+        expect(field(4, 'ti_ausblend_ist').ja).not.toBe(field(19, 'ti_ausblend_ist').ja);
+        expect(field(4, 'asc_st').ja).not.toBe(field(83, 'asc_st').ja);
+        // ...while genuinely identical quantities keep one name.
+        expect(field(3, 'n').ja).toBe(field(35, 'n').ja);
+    });
+
     it('cites a checkable SGBD row for everything it did join', () => {
         for (const b of MSS54_LIVE_BLOCKS) {
             for (const f of b.fields) {

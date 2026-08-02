@@ -50,6 +50,7 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 from sgbd import model  # noqa: E402
 from extract_telegrams import extract as extract_telegrams  # noqa: E402
+from terms.live_channels import BLOCK_NAMES, LIVE_CHANNELS  # noqa: E402
 
 SRC = os.environ.get(
     "MSS54_CATALOG",
@@ -370,6 +371,30 @@ def join_german(blocks, dump, telegrams):
     return counts, refusals
 
 
+def apply_japanese(blocks):
+    """手書きの日本語名を貼る。欠けていたら **止める**。
+
+    生成器が黙って英語のまま通せば、UI は日本語の見出しの下に第三者の英訳を
+    並べる。それは「訳が無い」ことを隠す。1件でも欠けたら非ゼロ終了にする。
+    """
+    missing, extra = [], set(LIVE_CHANNELS)
+    for block in blocks:
+        for field in block["fields"]:
+            key = (block["selection"], field["symbol"])
+            extra.discard(key)
+            ja = LIVE_CHANNELS.get(key)
+            if not ja:
+                missing.append(f"({block['selection']}, {field['symbol']!r})  {field['name']}")
+                continue
+            field["ja"] = ja
+        names = BLOCK_NAMES.get(block["selection"])
+        if names:
+            block["ja"], block["nameEn"] = names
+        else:
+            missing.append(f"block {block['selection']}  {block['name']}")
+    return missing, sorted(extra)
+
+
 def num(v):
     """スケールを TS のリテラルとして出す。丸めない — 2進で表せる値はそのまま、
        表せない値も repr の往復で桁を落とさない。"""
@@ -421,6 +446,15 @@ def emit(blocks, counts, refusals):
         "     * not what the ECU calls this quantity. `de` is.",
         "     */",
         "    name: string;",
+        "    /**",
+        "     * Japanese name, hand-written in `tools/terms/live_channels.py`.",
+        "     *",
+        "     * Required, and the generator exits non-zero if any channel lacks one.",
+        "     * Machine translation is not an option here: 127 of the 213 have no",
+        "     * German to translate FROM, and decomposing the ones that do put",
+        "     * `Luftmasse` (air MASS) into Japanese as electrical ground.",
+        "     */",
+        "    ja: string;",
         "    unit: string;",
         "    group: string;",
         "    /** The SGBD's own German, where a join was possible. Absent means none was. */",
@@ -447,7 +481,9 @@ def emit(blocks, counts, refusals):
         "export interface LiveValueBlock {",
         "    /** Selection byte sent with DS2 control 0x0B. */",
         "    selection: number;",
+        "    /** Block name, hand-written. A block is one round trip, so this is a cost label. */",
         "    name: string;",
+        "    ja: string;",
         "    group: string;",
         "    /** The reference's declared length. Advisory — see the header note. */",
         "    expectedLength: number;",
@@ -459,7 +495,8 @@ def emit(blocks, counts, refusals):
     for b in blocks:
         lines.append("    {")
         lines.append(f"        selection: {b['selection']},")
-        lines.append(f"        name: {b['name']!r},".replace("'", '"', 2))
+        lines.append("        name: %s," % json_str(b["nameEn"]))
+        lines.append("        ja: %s," % json_str(b["ja"]))
         lines.append(f"        group: {b['group']!r},".replace("'", '"', 2))
         lines.append(f"        expectedLength: {b['expectedLength']},")
         lines.append("        fields: [")
@@ -470,8 +507,9 @@ def emit(blocks, counts, refusals):
                 if f.get("sgbdRow"):
                     tail += ", sgbdRow: %s" % json_str(f["sgbdRow"])
             lines.append(
-                "            { symbol: %s, name: %s, offset: %d, format: '%s', scale: %s, add: %s, unit: %s, group: %s%s },"
-                % (json_str(f["symbol"]), json_str(f["name"]), f["offset"], f["format"],
+                "            { symbol: %s, name: %s, ja: %s, offset: %d, format: '%s', scale: %s, add: %s, unit: %s, group: %s%s },"
+                % (json_str(f["symbol"]), json_str(f["name"]), json_str(f["ja"]),
+                   f["offset"], f["format"],
                    num(f["scale"]), num(f["add"]), json_str(f["unit"]), json_str(f["group"]), tail)
             )
         lines.append("        ],")
@@ -551,6 +589,21 @@ if __name__ == "__main__":
     counts, refusals = join_german(blocks, dump, telegrams)
     with_de = sum(1 for b in blocks for f in b["fields"] if f.get("de"))
 
+    # --- 手書きの日本語名。1件でも欠けたら書き出さない ------------------------
+    missing, extra = apply_japanese(blocks)
+    if extra:
+        sys.stderr.write(
+            "[FATAL] tools/terms/live_channels.py has %d entry/entries for channels that "
+            "do not exist:\n" % len(extra)
+            + "".join(f"    {k}\n" for k in extra))
+        sys.exit(1)
+    if missing:
+        sys.stderr.write(
+            "[FATAL] %d channel(s)/block(s) have no Japanese name. Add them to "
+            "tools/terms/live_channels.py:\n" % len(missing)
+            + "".join(f"    {m}\n" for m in missing))
+        sys.exit(1)
+
     dest = os.path.abspath(OUT)
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     tmp = dest + ".tmp"
@@ -559,12 +612,14 @@ if __name__ == "__main__":
     os.replace(tmp, dest)
     for b in blocks:
         named = sum(1 for f in b["fields"] if f.get("de"))
-        print(f"  selection {b['selection']:>3}  {b['name']:<28} {len(b['fields']):>3} fields  "
+        print(f"  selection {b['selection']:>3}  {b['name']:<40} {len(b['fields']):>3} fields  "
               f"{named:>3} with German  (declared length {b['expectedLength']})")
     print(f"wrote {total} fields across {len(blocks)} blocks -> {os.path.relpath(dest)}")
-    print(f"  German: {with_de}/{total}  {counts}")
+    print(f"  Japanese: {total}/{total} (hand-written; missing is fatal)")
+    print(f"  German:   {with_de}/{total}  {counts}")
     print(f"  refused with reason: {len(refusals)}")
-    # 名前の無いチャンネルが残っていることは、黙って通さない。件数を出す。
-    # 手書き表（tools/terms/live_channels.py）が入ったらここを非ゼロ終了にする。
+    # 独語が無いチャンネルは、日本語名を SGBD と突き合わせて検算できない。
+    # 訳が無いのではなく、裏取りの相手がいない。件数を出しておく。
     if with_de < total:
-        print(f"  [WARN] {total - with_de} field(s) carry only the third-party English name.")
+        print(f"  note: {total - with_de} field(s) have no SGBD German to check "
+              "their Japanese against.")

@@ -1116,7 +1116,7 @@ function FreezeFrame({
 }
 
 function DatalogPane({ datalog }: { datalog: ReturnType<typeof useDatalog> }) {
-    const { t } = useLang();
+    const { t, lang } = useLang();
     return (
         <Pane>
             {/* Readouts, not a bare strip of mono text. This row was the one
@@ -1140,7 +1140,9 @@ function DatalogPane({ datalog }: { datalog: ReturnType<typeof useDatalog> }) {
                         return (
                             <DataRow
                                 key={id}
-                                name={humanName(ch?.field.name ?? '')}
+                                name={humanName(
+                                    ch ? (lang === 'en' ? ch.field.name : ch.field.ja) : '',
+                                )}
                                 ident={ch?.field.symbol ?? id}
                                 // The block is part of the channel's identity, so
                                 // it is shown where the identity is shown.
@@ -1188,7 +1190,7 @@ const ChannelPicker = memo(function ChannelPicker({
     disabled: boolean;
     onToggle: (id: ChannelId, on: boolean) => void;
 }) {
-    const { t } = useLang();
+    const { t, lang } = useLang();
     const [query, setQuery] = useState('');
     const [block, setBlock] = useState<number | 'all'>('all');
 
@@ -1201,7 +1203,15 @@ const ChannelPicker = memo(function ChannelPicker({
         return all.filter((f) => {
             if (block !== 'all' && f.block.selection !== block) return false;
             if (!q) return true;
-            return f.symbol.toLowerCase().includes(q) || f.name.toLowerCase().includes(q);
+            // Every name a channel has is searchable: the symbol, the Japanese,
+            // the reference English and the SGBD German. Someone reading a wiring
+            // diagram has the German; someone reading a forum post has the symbol.
+            return (
+                f.symbol.toLowerCase().includes(q) ||
+                f.ja.includes(query.trim()) ||
+                f.name.toLowerCase().includes(q) ||
+                (f.de ?? '').toLowerCase().includes(q)
+            );
         });
     }, [all, query, block]);
 
@@ -1227,7 +1237,7 @@ const ChannelPicker = memo(function ChannelPicker({
                             title={t.channels_blockNote(b.selection)}
                             onClick={() => setBlock(block === b.selection ? 'all' : b.selection)}
                         >
-                            {b.name}
+                            {lang === 'en' ? b.name : b.ja}
                         </Chip>
                     ))}
                 </FacetRow>
@@ -1259,8 +1269,17 @@ const ChannelPicker = memo(function ChannelPicker({
                                     className="size-3 shrink-0 accent-blue-500"
                                 />
                             }
-                            name={humanName(f.name)}
+                            name={humanName(lang === 'en' ? f.name : f.ja)}
                             ident={f.symbol}
+                            // The SGBD's own German, where the join found it. Shown
+                            // because it is the only name here the ECU actually
+                            // publishes — the English is a third party's, and the
+                            // Japanese is ours. 86 of 213 have one.
+                            detail={
+                                f.de ? (
+                                    <span className="font-mono text-[10px] text-slate-600">{f.de}</span>
+                                ) : undefined
+                            }
                             trailing={
                                 <>
                                     {f.unit && (

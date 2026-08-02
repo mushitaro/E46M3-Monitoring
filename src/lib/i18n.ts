@@ -216,6 +216,9 @@ interface Catalog {
     facet_audience: string;
     facet_system: string;
     facet_all: string;
+    facet_runnable: string;
+    facet_runnableNow: string;
+    facet_runnableNote: string;
     facet_hidden: (n: number) => string;
     jobClass: Record<JobClass, string>;
     /** One line saying what the class IS — the answer to "what is different
@@ -542,6 +545,10 @@ const STRINGS: Record<Lang, Catalog> = {
         facet_audience: '対象',
         facet_system: '系統',
         facet_all: 'すべて',
+        facet_runnable: '実行',
+        facet_runnableNow: '実行可能',
+        facet_runnableNote:
+            'いま送信できるジョブだけを表示します。要求テレグラムが一意に確定していて、引数を取らず、制御バイトが読取専用のものに限られます。ほとんどのジョブはテレグラムが一意に取れていないため送れません——出せないのではなく、何を送るか分からないからです。',
         facet_hidden: (n) => `絞り込みにより ${n} 件を非表示`,
         jobClass: {
             read: '読取',
@@ -936,6 +943,10 @@ const STRINGS: Record<Lang, Catalog> = {
         facet_audience: 'For',
         facet_system: 'System',
         facet_all: 'All',
+        facet_runnable: 'Run',
+        facet_runnableNow: 'Runnable',
+        facet_runnableNote:
+            'Show only what can be sent right now: the request telegram is uniquely established, the job takes no arguments, and its control byte is read-only. Most jobs fail the first of those — not because sending is disallowed, but because we do not know what to send.',
         facet_hidden: (n) => `${n} hidden by the current filter`,
         jobClass: {
             read: 'Read',

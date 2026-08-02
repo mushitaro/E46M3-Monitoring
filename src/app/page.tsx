@@ -280,6 +280,7 @@ export default function Home() {
                             (catalog ? (
                                 <ServicePane
                                     profile={catalog}
+                                    telegrams={telegrams}
                                     ledger={ledger}
                                     selectedId={selectedJob?.id ?? null}
                                     onSelect={selectJob}

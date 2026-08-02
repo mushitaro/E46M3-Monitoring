@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { Ds2Control, buildDs2Frame, toHex } from '@tsunagi/ds2-core';
+import { Ds2Control, Ds2Status, buildDs2Frame, toHex } from '@tsunagi/ds2-core';
+import { MSS54_ADAPTATION_BLOCKS } from '@tsunagi/ds2-mss54';
+import { practiceEcu } from './practiceEcu';
 import {
     READ_ONLY_CONTROLS,
     clearFaultsCommand,
@@ -195,5 +197,75 @@ describe('clearing fault memory', () => {
 
     it('is not in the read-only set — it is a write, and named as one', () => {
         expect(READ_ONLY_CONTROLS.has(Ds2Control.CLEAR_ERROR_MEMORY)).toBe(false);
+    });
+});
+
+/**
+ * The invariant whose absence made the whole feature undemonstrable.
+ *
+ * PRACTICE exists so the app's real paths execute without a car. If the
+ * simulated ECU refuses what `mayRun` permits, the run surface cannot be
+ * exercised at all except on a real M3 — which is exactly the state this
+ * shipped in: of the five jobs the gate allows, the simulator answered two.
+ * The other three came back `REJECTED`, and the one visible under the default
+ * filter was one of them, so a user in PRACTICE could not successfully run
+ * anything.
+ */
+describe('PRACTICE answers everything the gate permits', () => {
+    const ecu = practiceEcu();
+
+    it('has a responder at all', () => {
+        expect(ecu.respond).toBeTypeOf('function');
+    });
+
+    it('returns a payload, never a refusal, for every allowed job', () => {
+        let checked = 0;
+        for (const m of MODULES) {
+            for (const j of profile(m).jobs) {
+                const v = mayRun(j, bestTelegram(telegrams(m), j.id), EMPTY_LEDGER, ctx(m));
+                if (!v.allowed) continue;
+                const bytes = telegramBytes(v.telegram.hex)!;
+                const answer = ecu.respond!({
+                    address: bytes[0],
+                    controlOrStatus: bytes[2],
+                    payload: bytes.slice(3, bytes.length - 1),
+                } as never);
+                checked++;
+                expect(answer, `${m}.${j.id} got no answer`).not.toBeNull();
+                expect(
+                    answer!.status ?? Ds2Status.ACKNOWLEDGE,
+                    `${m}.${j.id} (control 0x${v.control.toString(16)}) was refused by PRACTICE`,
+                ).toBe(Ds2Status.ACKNOWLEDGE);
+                expect(answer!.payload?.length ?? 0).toBeGreaterThan(0);
+            }
+        }
+        // If this ever drops to zero the loop is vacuous and the test is a lie.
+        expect(checked).toBeGreaterThan(0);
+    });
+
+    // The MSS54 adaptation blocks are read with the same control byte as the
+    // live blocks, and only the live ones were handled — so "read adaptations"
+    // reported all four blocks refused.
+    it('answers the adaptation blocks, not just the live ones', () => {
+        for (const block of MSS54_ADAPTATION_BLOCKS) {
+            const answer = ecu.respond!({
+                address: 0x12,
+                controlOrStatus: Ds2Control.READ_IO_STATUS,
+                payload: new Uint8Array([block.selection]),
+            } as never);
+            expect(answer, `adaptation block ${block.selection}`).not.toBeNull();
+            expect(answer!.status ?? Ds2Status.ACKNOWLEDGE).toBe(Ds2Status.ACKNOWLEDGE);
+        }
+    });
+
+    // ...while still refusing what the app is NOT allowed to send. A simulator
+    // that says OKAY to everything is why the tuner's failure path never ran.
+    it('still refuses a control byte the gate would never emit', () => {
+        const answer = ecu.respond!({
+            address: 0x12,
+            controlOrStatus: Ds2Control.SET_IO_STATUS,
+            payload: new Uint8Array([0x01]),
+        } as never);
+        expect(answer?.status).toBe(Ds2Status.REJECTED);
     });
 });

@@ -52,6 +52,8 @@ import {
 } from '@/lib/ecuCatalog';
 import { jobOperation, type OpKind } from '@/lib/jobOps';
 import { mayRunOnVehicle, type Ledger } from '@/lib/ledger';
+import { mayRun } from '@/lib/runGate';
+import { bestTelegram, type TelegramTable } from '@/lib/telegrams';
 import { useLang } from '@/lib/i18n';
 
 /** The class order is the order of consequence, not alphabetical. */
@@ -61,12 +63,15 @@ const AUDIENCE_ORDER: Audience[] = ['owner', 'technician', 'protocol'];
 export function ServicePane({
     profile,
     ledger,
+    telegrams,
     selectedId,
     onSelect,
     children,
 }: {
     profile: EcuProfile;
     ledger: Ledger;
+    /** So the list can ask the SAME gate the hub asks. See `runnable` below. */
+    telegrams: TelegramTable | null;
     selectedId: string | null;
     onSelect: (job: CatalogJob) => void;
     /** SMG II's guided procedures, which are not SGBD jobs. Rendered above the list. */
@@ -77,8 +82,31 @@ export function ServicePane({
     const [cls, setCls] = useState<JobClass | 'all'>('all');
     const [audience, setAudience] = useState<Audience | 'all'>('owner');
     const [system, setSystem] = useState<string | 'all'>('all');
+    const [onlyRunnable, setOnlyRunnable] = useState(false);
 
     const jobs = profile.jobs;
+
+    /**
+     * Which jobs this app can actually send, right now.
+     *
+     * Five of 323. That number was invisible: the list showed 116 rows by
+     * default, 115 of them with a greyed-out RUN, and nothing said which — or
+     * how few — could ever fire. Clicking around to find out is not a feature.
+     *
+     * The same `mayRun` the hub uses, so the chip and the button cannot
+     * disagree. It is computed for the whole catalogue, not the filtered view,
+     * because the count has to be true about the module rather than about the
+     * current filter.
+     */
+    const runnable = useMemo(() => {
+        const out = new Set<string>();
+        for (const job of jobs) {
+            if (mayRun(job, bestTelegram(telegrams, job.id), ledger, { moduleId: profile.id }).allowed) {
+                out.add(job.id);
+            }
+        }
+        return out;
+    }, [jobs, telegrams, ledger, profile.id]);
 
     // Counts over the WHOLE catalogue. Counting the filtered set would make
     // hidden things invisible twice.
@@ -98,6 +126,7 @@ export function ServicePane({
                 if (cls === 'all' && job.class === 'programming') return false;
                 if (audience !== 'all' && job.audience !== audience) return false;
                 if (system !== 'all' && job.system !== system) return false;
+                if (onlyRunnable && !runnable.has(job.id)) return false;
                 if (!q) return true;
                 return (
                     job.id.toLowerCase().includes(q) ||
@@ -105,7 +134,7 @@ export function ServicePane({
                     d.original.toLowerCase().includes(q)
                 );
             });
-    }, [jobs, profile, lang, query, cls, audience, system]);
+    }, [jobs, profile, lang, query, cls, audience, system, onlyRunnable, runnable]);
 
     const hidden = jobs.length - rows.length;
 
@@ -129,6 +158,37 @@ export function ServicePane({
                     // jobs disappear from the old build without a trace.
                     hiddenNote={hidden > 0 ? t.facet_hidden(hidden) : undefined}
                 >
+                    {/* The one filter that answers "what can I actually press".
+                        It sits first because on a list where 318 of 323 rows
+                        cannot fire, that is the first question. */}
+                    <FacetRow label={t.facet_runnable}>
+                        <Chip
+                            active={onlyRunnable}
+                            count={runnable.size}
+                            title={t.facet_runnableNote}
+                            // Turning this on clears the other axes.
+                            //
+                            // The chip counts over the WHOLE catalogue, so with
+                            // the default `audience: owner` still applied it
+                            // promised 3 and showed 1 — two of the three are
+                            // technician-level. A count that the list then
+                            // contradicts is worse than no count. "What can I
+                            // press" is a different question from "what is at my
+                            // level", and it wins while it is asked.
+                            onClick={() => {
+                                const next = !onlyRunnable;
+                                setOnlyRunnable(next);
+                                if (next) {
+                                    setCls('all');
+                                    setAudience('all');
+                                    setSystem('all');
+                                }
+                            }}
+                        >
+                            {t.facet_runnableNow}
+                        </Chip>
+                    </FacetRow>
+
                     <FacetRow label={t.facet_purpose}>
                         <Chip active={cls === 'all'} onClick={() => setCls('all')}>
                             {t.facet_all}
@@ -193,6 +253,14 @@ export function ServicePane({
                                 ident={job.id}
                                 trailing={
                                     <>
+                                        {/* Marked on the row, not only discoverable
+                                            by selecting it and looking at the hub
+                                            in the other column. */}
+                                        {runnable.has(job.id) && (
+                                            <span className={`shrink-0 ${LABEL} text-blue-400`}>
+                                                {t.facet_runnableNow}
+                                            </span>
+                                        )}
                                         <OpBadge kind={jobOperation(job).kind} />
                                         <GateBadge allowed={gate.allowed} reason={gate.reason} />
                                     </>

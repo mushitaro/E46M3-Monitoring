@@ -17,6 +17,8 @@
 import { Ds2Control, Ds2Status } from '@tsunagi/ds2-core';
 import {
     ERROR_MEMORY_RECORD_LENGTH,
+    MSS54_ADAPTATION_BLOCKS,
+    adaptationBlockMinLength,
     blockBySelection,
     type LiveValueBlock,
 } from '@tsunagi/ds2-mss54';
@@ -138,8 +140,54 @@ export function practiceEcu(): SimulatedEcuOptions {
 
                 case Ds2Control.READ_IO_STATUS: {
                     const block = blockBySelection(arg);
-                    if (!block) return { status: Ds2Status.PARAMETER_ERROR };
-                    return { payload: blockPayload(block) };
+                    if (block) return { payload: blockPayload(block) };
+
+                    // Control 0x0B also reads the ADAPTATION blocks — selections
+                    // 6, 22, 38 and 131. Only the live blocks were handled, so
+                    // "read adaptations" reported all four refused, and
+                    // STATUS_ADAPTIONSBLOCK_26 (selection 38) — one of the three
+                    // jobs the run gate permits — could not be exercised without
+                    // a car. A simulator that refuses what the app is allowed to
+                    // ask for teaches nothing.
+                    //
+                    // Length only: these payloads are zeros, so every decoded
+                    // adaptation reads as its own zero point rather than as an
+                    // invented "typical" value. A learned value is exactly the
+                    // kind of number nobody should be able to mistake for real.
+                    const adaptation = MSS54_ADAPTATION_BLOCKS.find((b) => b.selection === arg);
+                    if (adaptation) {
+                        return { payload: new Uint8Array(adaptationBlockMinLength(adaptation)) };
+                    }
+                    return { status: Ds2Status.PARAMETER_ERROR };
+                }
+
+                // --- The reads the run gate can emit ---------------------
+                //
+                // These three were missing, and their absence made the whole run
+                // surface undemonstrable: of the five jobs `mayRun` permits,
+                // three carry these control bytes, so PRACTICE refused them and
+                // the feature could not be exercised without a car. A simulator
+                // that refuses exactly what the app is allowed to send is not
+                // being careful, it is being useless.
+                //
+                // The PAYLOADS are synthetic and shaped, not decoded from
+                // anything — the app shows this response as raw bytes and says
+                // it cannot decode it, so there is no layout here to get wrong.
+                case 0x53: // manufacturer data
+                    return { payload: new Uint8Array([
+                        0x07, 0x53, 0x30, 0x30, 0x31, 0x02, 0x11, 0x20,
+                        0x03, 0x01, 0x00, 0x00, 0x12, 0x34, 0x56,
+                    ]) };
+
+                case Ds2Control.QUERY_ENCODING_CHECKSUM: // 0x0a
+                    return { payload: new Uint8Array([0x5a, 0xa5]) };
+
+                case Ds2Control.READ_MEMORY: {
+                    // Length is the last argument byte in the DS2 read-memory
+                    // request. Answer with that many bytes so a caller that
+                    // checks the length gets a truthful one.
+                    const want = request.payload[request.payload.length - 1] || 1;
+                    return { payload: new Uint8Array(Math.min(want, 64)).fill(0xa5) };
                 }
 
                 case Ds2Control.KEEP_ALIVE:
@@ -149,7 +197,9 @@ export function practiceEcu(): SimulatedEcuOptions {
                 default:
                     // An unimplemented job is REFUSED, not quietly acknowledged.
                     // A mock that says OKAY to everything is why the tuner's
-                    // failure path had never once executed.
+                    // failure path had never once executed. What changed above is
+                    // only that the commands the app IS allowed to send are now
+                    // implemented; everything else still gets refused.
                     return { status: Ds2Status.REJECTED };
             }
         },

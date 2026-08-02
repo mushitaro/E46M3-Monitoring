@@ -262,6 +262,69 @@ _STEUERN_DIGITAL_ARG = ArgTable(
         "Pumpe,SV1,SV2,EUV1,EUV2,V_PUMPE")
 
 
+@dataclasses.dataclass(frozen=True)
+class ArgComment:
+    """選択肢が表ではなく **引数コメントの散文の中** に列挙されている場合。"""
+
+    pattern: str   # 名前付きグループ value（必須）と note（任意）を持つこと
+    why: str
+
+
+# 全 323 ジョブ中、SGBD が値を散文で列挙しているのはこの 4 引数だけである
+# （`kind == enum` かつ表を持たないものを数えた）。総称の正規表現を 323 件に
+# 当てるのではなく (ジョブ, 引数) で明示的に引くのは、当たりどころを間違えると
+# 選択肢に嘘が混じるからで、`ADAPTIONSWERT_LOESCHEN` がその実例になっている——
+# コメントの後半 2 行は "Hinweis:" で始まる注意書きで、値ではない。
+# ここでは `, Argument: <数字>` を必須にすることでそれらが選択肢に化けない。
+ARG_COMMENT_OPTIONS: dict[tuple[str, str], ArgComment] = {
+    # "Adaptionswerte Kupplung lesen, Argument: 0 /
+    #  Adaptionswerte Getriebe lesen, Argument: 1 /
+    #  Getriebedaten lesen,           Argument: 2"
+    # 引数 2 は SGBD がこう明記しているのに、選択肢が無いため UI では
+    # 自由入力欄で、存在すら見えなかった。INPA は 0/1/2 を実際に呼んでいる。
+    ("ADAPTIONSWERTE_LESEN", "ADAPTION_LESEN"): ArgComment(
+        r"(?P<note>[^/]+?)\s*,\s*Argument:\s*(?P<value>\d+)",
+        why="SGBD 逐語: Adaptionswerte Kupplung lesen, Argument: 0 / "
+            "Adaptionswerte Getriebe lesen, Argument: 1 / Getriebedaten lesen, Argument: 2"),
+    # "Kupplungskennlinie loeschen, Argument: 0 /
+    #  Getriebedaten loeschen,      Argument: 1 / Hinweis: ... / ..."
+    ("ADAPTIONSWERTE_LOESCHEN", "ADAPTIONSWERT_LOESCHEN"): ArgComment(
+        r"(?P<note>[^/]+?)\s*,\s*Argument:\s*(?P<value>\d+)",
+        why="SGBD 逐語: Kupplungskennlinie loeschen, Argument: 0 / "
+            "Getriebedaten loeschen, Argument: 1"),
+    # "Argument: 0=inaktiv / 1=aktiv"
+    ("CODIERDATEN_SCHREIBEN", "AKTIVIERUNG"): ArgComment(
+        r"(?P<value>\d+)\s*=\s*(?P<note>\w+)",
+        why="SGBD 逐語: Argument: 0=inaktiv / 1=aktiv"),
+    # "Codierdaten fuer Auswahl: / Argument: ROLLENBETRIEB / oder: RADABRISS / ..."
+    # 値は記号名。以降の解説文は小文字混じりなので大文字だけの語に限れば拾わない。
+    ("CODIERDATEN_SCHREIBEN", "CODIERUNG"): ArgComment(
+        r"(?:Argument|oder)\s*:\s*(?P<value>[A-Z][A-Z_]{3,})",
+        why="SGBD 逐語: Argument: ROLLENBETRIEB / oder: RADABRISS"),
+}
+
+
+def comment_options(job_name: str, arg_name: str, comment: str) -> tuple[list[dict], dict] | None:
+    """SGBD が引数コメントに書き並べた値を選択肢にする。返り値は (選択肢, 由来)。"""
+    spec = ARG_COMMENT_OPTIONS.get((job_name.upper(), arg_name.upper()))
+    if spec is None or not comment:
+        return None
+    opts: list[dict] = []
+    seen: set[str] = set()
+    for m in re.finditer(spec.pattern, comment):
+        value = m.group("value").strip()
+        if value in seen:
+            continue
+        seen.add(value)
+        note = (m.groupdict().get("note") or "").strip()
+        opts.append({"value": value, "note": note} if note else {"value": value})
+    if not opts:
+        return None
+    # `table` は付けない——表から来ていないから。UI はその不在を見て
+    # 「コメント由来」と表示する。存在しない表の名前を書かない。
+    return opts, {"why": spec.why}
+
+
 def arg_options(dump: model.SgbdDump, job_name: str, arg_name: str) -> tuple[list[dict], dict] | None:
     """引数の選択肢を SGBD テーブルから引く。返り値は (選択肢, 由来)。
 
@@ -322,7 +385,7 @@ def build(mid: str, dumpname: str, name: tuple[str, str], addr: int, prg: str) -
             ref = pool.ref(a.comment)
             if ref is not None:
                 entry["comment"] = ref
-            picked = arg_options(d, j.name, a.name)
+            picked = arg_options(d, j.name, a.name) or comment_options(j.name, a.name, a.comment)
             if picked:
                 entry["options"], entry["optionsFrom"] = picked
                 entry["kind"] = model.ARG_ENUM

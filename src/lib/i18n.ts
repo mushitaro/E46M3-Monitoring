@@ -148,6 +148,8 @@ interface Catalog {
     gear_noSpec: string;
     gear_name: Record<'1' | '2' | '3' | '4' | '5' | '6' | 'R', string>;
     gear_measure: Record<'SW' | 'WW_TOUCH_L' | 'WW_TOUCH_R', string>;
+    gear_gate: string;
+    gear_gateNote: string;
 
     // --- DSC hydraulics ----------------------------------------------------
     dsc_title: string;
@@ -217,6 +219,8 @@ interface Catalog {
     det_whenArg: (arg: string, values: string) => string;
     det_inferred: string;
     det_optionsDropped: (list: string) => string;
+    det_optionsFromComment: string;
+    det_argBindsNoResults: (arg: string, value: string) => string;
     resultRole: Record<ResultRole, string>;
 
     // --- Calibration values -------------------------------------------------
@@ -408,6 +412,9 @@ const STRINGS: Record<Lang, Catalog> = {
             'この42個に規定値はありません。SGBD が上限・下限を公表していないため、合否は判定できません。前回の読取値との比較、およびギア間の比較にのみ使えます。',
         gear_name: { '1': '1速', '2': '2速', '3': '3速', '4': '4速', '5': '5速', '6': '6速', R: '後退（R）' },
         gear_measure: { SW: 'シフト経路', WW_TOUCH_L: 'セレクト角 左端', WW_TOUCH_R: 'セレクト角 右端' },
+        gear_gate: 'ゲート',
+        gear_gateNote:
+            '左端の記号は、そのギアが入っているゲート（Gasse）です。2速ずつが同じゲートを共有するので、対になる2速が同じ方向にずれていれば、疑うのはギアではなくゲートの値の方です。ニュートラルはゲートを持たず、POS_SW_N_WERT を単独で見ます。この対応は SGBD には書かれておらず、INPA の getriebeschema／beliebigen_gang_einlegen 画面が読み取り方をそう組んでいることによります。',
 
         dsc_title: 'ブレーキ油圧の操作',
         dsc_stop: '停止',
@@ -555,6 +562,9 @@ const STRINGS: Record<Lang, Catalog> = {
         det_whenArg: (arg, values) => `${arg} が ${values} のときだけ返ります`,
         det_inferred: '推定',
         det_optionsDropped: (l) => `SGBD の記述により除外: ${l}`,
+        det_optionsFromComment: 'コメント',
+        det_argBindsNoResults: (a, v) =>
+            `${a} = ${v} に紐づく名前付きの結果を SGBD は 1 つも宣言していません。返るのは常に返る結果（生データ DATEN を含む）だけです。値が無いのではなく、項目名が公表されていません。`,
         resultRole: {
             value: '値',
             unit: '単位',
@@ -759,6 +769,9 @@ const STRINGS: Record<Lang, Catalog> = {
             'None of these 42 has a stated range — the SGBD publishes no limits for them, so there is no pass or fail to give. They are comparable against a previous read and against each other.',
         gear_name: { '1': '1st', '2': '2nd', '3': '3rd', '4': '4th', '5': '5th', '6': '6th', R: 'Reverse' },
         gear_measure: { SW: 'Shift travel', WW_TOUCH_L: 'Gate stop, left', WW_TOUCH_R: 'Gate stop, right' },
+        gear_gate: 'Gate',
+        gear_gateNote:
+            'The mark on the left is the gate (Gasse) the gear sits in. Two gears share one gate, so when both gears of a pair read off in the same direction, the thing to suspect is the gate value, not the gears. Neutral sits in no gate and is read on its own as POS_SW_N_WERT. The SGBD does not state this pairing; it is how INPA’s getriebeschema and beliebigen_gang_einlegen screens read the two together.',
 
         dsc_title: 'Brake hydraulic operations',
         dsc_stop: 'Stop',
@@ -915,6 +928,9 @@ const STRINGS: Record<Lang, Catalog> = {
         det_whenArg: (arg, values) => `Returned only when ${arg} is ${values}`,
         det_inferred: 'inferred',
         det_optionsDropped: (l) => `Excluded per the SGBD: ${l}`,
+        det_optionsFromComment: 'comment',
+        det_argBindsNoResults: (a, v) =>
+            `The SGBD declares no named result bound to ${a} = ${v}. What comes back is the always-returned set, raw DATEN included. The values are not missing — the field names were never published.`,
         resultRole: {
             value: 'value',
             unit: 'unit',

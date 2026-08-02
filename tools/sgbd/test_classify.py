@@ -183,6 +183,75 @@ check(trig.note is None or "raw actuator bits" not in trig.note,
 check(trig.audience == classify.AUD_OWNER,
       f"TRIG_SCHREIBEN must keep its own audience, not the valve rule's: {trig.audience}")
 
+# --- 11b. コメント散文から起こした引数の選択肢が、逐語のとおりであること ------
+# SGBD が値を表ではなく引数コメントの文章に書いている引数は全 323 ジョブ中 4 つ。
+# ここを取りこぼすと、UI は自由入力欄を出し、値が存在することすら見えなくなる
+# ——`ADAPTIONSWERTE_LESEN` の引数 2 がまさにそうなっていた。
+# 逆に取りすぎると嘘の選択肢が出る。`ADAPTIONSWERT_LOESCHEN` のコメント後半の
+# "Hinweis:" 2 行がその罠で、選択肢に化けていないことをここで固定する。
+import gen_ecu_data as _gen  # noqa: E402  (tools/ is already on sys.path)
+
+
+def _arg_comment(sgbd: str, job: str, arg: str) -> str:
+    for j in dumps[sgbd].jobs:
+        if j.name == job:
+            for a in j.args:
+                if a.name == arg:
+                    return a.comment
+    return ""
+
+
+EXPECTED_COMMENT_OPTIONS = {
+    ("SMG2", "ADAPTIONSWERTE_LESEN", "ADAPTION_LESEN"): [
+        ("0", "Adaptionswerte Kupplung lesen"),
+        ("1", "Adaptionswerte Getriebe lesen"),
+        ("2", "Getriebedaten lesen"),
+    ],
+    ("SMG2", "ADAPTIONSWERTE_LOESCHEN", "ADAPTIONSWERT_LOESCHEN"): [
+        ("0", "Kupplungskennlinie loeschen"),
+        ("1", "Getriebedaten loeschen"),
+    ],
+    ("SMG2", "CODIERDATEN_SCHREIBEN", "AKTIVIERUNG"): [("0", "inaktiv"), ("1", "aktiv")],
+    ("SMG2", "CODIERDATEN_SCHREIBEN", "CODIERUNG"): [("ROLLENBETRIEB", ""), ("RADABRISS", "")],
+}
+
+for (sgbd, job, arg), expected in EXPECTED_COMMENT_OPTIONS.items():
+    picked = _gen.comment_options(job, arg, _arg_comment(sgbd, job, arg))
+    check(picked is not None, f"{job}.{arg}: no options parsed from the comment")
+    if picked:
+        got = [(o["value"], o.get("note", "")) for o in picked[0]]
+        check(got == expected, f"{job}.{arg}: {got!r} != {expected!r}")
+        check("table" not in picked[1], f"{job}.{arg}: must not name a table it did not read")
+
+# コメントから起こしていない引数に対しては何も作らないこと。
+check(_gen.comment_options("FS_LESEN", "IRGENDWAS", "Argument: 0 / Argument: 1") is None,
+      "comment_options must only fire on the four (job, arg) pairs named above")
+
+# その 4 つが本当に「表を持たない enum」の全部であること。ここが増えたら、
+# 新しい引数が自由入力欄のまま出荷されようとしている。
+uncovered = []
+for sgbd, d in dumps.items():
+    for j in d.jobs:
+        for a in j.args:
+            if a.kind != model.ARG_ENUM:
+                continue
+            if _gen.arg_options(d, j.name, a.name):
+                continue
+            if (sgbd, j.name, a.name) in EXPECTED_COMMENT_OPTIONS:
+                continue
+            uncovered.append(f"{sgbd}.{j.name}.{a.name}")
+check(not uncovered, f"enum args with no options at all: {uncovered}")
+
+# --- 11c. 引数 2 に名前付き結果が 1 つも紐づかないこと ------------------------
+# 「2 にも何か割り当たるはずだ」と書いた `^(HEX_GETRIEBEDATEN|GETRIEBE)` は
+# 0 件一致だった。0 件一致の規則は網羅しているように読めて、実際は当て推量。
+_smg2 = dumps["SMG2"]
+_adapt = next(j for j in _smg2.jobs if j.name == "ADAPTIONSWERTE_LESEN")
+_two = [r.name for r in _adapt.results if r.when_arg and "2" in r.when_arg[1]]
+check(not _two, f"ADAPTION_LESEN=2 must bind no named result, got {_two}")
+check(any(r.name == "DATEN" and not r.when_arg for r in _adapt.results),
+      "DATEN must be always-returned — it is all that argument 2 delivers")
+
 # --- 12. 読取に前提条件も不可逆マークも付かないこと --------------------------
 for (s, j), v in rows.items():
     if v.cls == classify.CLASS_READ:

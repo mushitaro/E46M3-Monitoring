@@ -45,7 +45,7 @@ import { deliversResultElsewhere, hasStopControl, jobOperation, type OpKind } fr
 import { cautionFor, type JobTextTable } from '@/lib/jobText';
 import { bestTelegram, telegramIsCertain, type TelegramTable } from '@/lib/telegrams';
 import { readResultsFor, type ResultBlockRef, type Smg2Procedure, type Smg2Sequence, type Smg2Workflows } from '@/lib/smg2Workflows';
-import { GEARS, MEASURES, PASSES, gearWindows } from '@/lib/gearWindows';
+import { GATE_CODE, GATE_OF, GEARS, MEASURES, PASSES, gearWindows } from '@/lib/gearWindows';
 import { stepsFromActivity, stepsFromSequence } from '@/lib/procedureSteps';
 import { StepList } from '@/components/StepList';
 import { useLang } from '@/lib/i18n';
@@ -96,6 +96,27 @@ export function JobDetail({
     // back — ADAPTIONSWERTE_LESEN declares 216 and returns about 30 of them.
     const [argValues, setArgValues] = useState<Record<string, string>>({});
     const results = useMemo(() => resultsFor(job, argValues), [job, argValues]);
+
+    // An argument value the SGBD offers that no named result is bound to.
+    //
+    // `ADAPTIONSWERTE_LESEN = 2` is the one that exists: the SGBD names it
+    // ("Getriebedaten lesen, Argument: 2") and INPA calls it, yet not one of the
+    // 216 declared results carries a `whenArg` of 2 — the block comes back as raw
+    // `DATEN` and nothing else. Silently showing four generic rows would read as
+    // "this value returns almost nothing", which is a different claim from "the
+    // SGBD declares no fields for it". Written as a rule over the data, not as a
+    // case for this job, so any other such value says the same thing.
+    const unboundArgValues = useMemo(() => {
+        const out: Array<{ arg: string; value: string }> = [];
+        for (const [arg, value] of Object.entries(argValues)) {
+            if (!value) continue;
+            const partitioned = job.results.filter((r) => r.whenArg?.arg === arg);
+            if (partitioned.length === 0) continue; // this argument does not split the results
+            if (partitioned.some((r) => r.whenArg!.values.includes(value))) continue;
+            out.push({ arg, value });
+        }
+        return out;
+    }, [job, argValues]);
 
     return (
         <div className="flex h-full flex-col gap-5 overflow-y-auto pr-1">
@@ -218,7 +239,9 @@ export function JobDetail({
                                             A truncated option list that does not say it is
                                             truncated is the 192-jobs mistake in miniature. */}
                                         {a.optionsFrom && (
-                                            <Provenance title={a.optionsFrom.why}>{a.optionsFrom.table}</Provenance>
+                                            <Provenance title={a.optionsFrom.why}>
+                                                {a.optionsFrom.table ?? t.det_optionsFromComment}
+                                            </Provenance>
                                         )}
                                     </div>
                                     {a.optionsFrom?.dropped && (
@@ -269,6 +292,14 @@ export function JobDetail({
                     count={results.length}
                     note={job.results.length !== results.length ? t.det_results_note : undefined}
                 >
+                    {unboundArgValues.map((u) => (
+                        <p
+                            key={`${u.arg}=${u.value}`}
+                            className="mb-2 text-[11px] leading-relaxed text-slate-500"
+                        >
+                            {t.det_argBindsNoResults(u.arg, u.value)}
+                        </p>
+                    ))}
                     <ResultList profile={profile} job={job} results={results} />
                 </Section>
             )}
@@ -647,14 +678,25 @@ function RecordedValues({ profile, block }: { profile: EcuProfile; block: Result
                     {/* These 42 have no stated range. Saying so is the whole
                         point — a verdict here would be invented. */}
                     <p className="mb-1.5 mt-1 text-[11px] leading-relaxed text-slate-500">{t.gear_noSpec}</p>
+                    {/* Which gate a gear sits in is INPA's pairing, not the SGBD's,
+                        so it is said out loud rather than just drawn. */}
+                    <p className="mb-1.5 text-[11px] leading-relaxed text-slate-500">{t.gear_gateNote}</p>
                     <DataList>
                         {GEARS.map((g) => (
                             <DataRow
                                 key={g}
+                                code={GATE_CODE[g]}
                                 name={humanName(t.gear_name[g])}
                                 ident={`GANG${g}`}
                                 detail={
-                                    <div className="grid grid-cols-3 gap-x-3 gap-y-2">
+                                    <div className="grid grid-cols-4 gap-x-3 gap-y-2">
+                                        <Field
+                                            label={t.gear_gate}
+                                            labelKind="data"
+                                            stacked
+                                            tone="text-slate-600"
+                                            value={grid.gate(g) ? GATE_OF[g] : '·'}
+                                        />
                                         {MEASURES.map((m) => (
                                             <Field
                                                 key={m}

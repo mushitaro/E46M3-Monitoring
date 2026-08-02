@@ -139,6 +139,18 @@ def arg_kind(name: str, type_: str, comment: str) -> str:
 #            Getriebedaten lesen, Argument: 2"
 # SGBD は結果側にこの対応を持たないため、名前の接頭辞から推測するしかない。
 # 推測であることは provenance で明示し、UI に出す。
+#
+# **引数 2 はここに現れない。** かつて `^(HEX_GETRIEBEDATEN|GETRIEBE)` という行を
+# 置いていたが、1 件も一致しない——この名前の結果は SGBD に存在せず、私が
+# 「2 にも何か割り当たるはずだ」と考えて書いた当て推量だった。実際には
+# 引数 2 に紐づく **名前付き結果は 1 つも宣言されていない**。返るのは常に返る
+# `DATEN`（生バイト列）だけである。
+# 独立した裏付け: INPA の "Read Adaption Values" 画面は 0 / 1 / 2 を順に呼び、
+# **どれについても `DATEN` しか読んでいない**（SMG2.IPO, オフセット 56183 /
+# 56285 / 56388、それぞれ "Clutch Adaptions Data" / "Gearbox Adaptions Data" /
+# "Gearbox Data"）。
+# 従って 2 は「選べる引数値だが名前付き結果を持たない」——それは表に空行を
+# 作るのではなく、引数の選択肢として出し、生バイトしか返らないと述べる。
 _ARG_PARTITIONS: dict[tuple[str, str], dict[str, list[str]]] = {
     ("SMG2", "ADAPTIONSWERTE_LESEN"): {
         # 0 = クラッチ。弁の零電流特性(ADAPT_SMIN/SMAX/IMIN/IMAX)、過負荷回数、
@@ -150,7 +162,6 @@ _ARG_PARTITIONS: dict[tuple[str, str], dict[str, list[str]]] = {
         #     および軸速度差。
         "1": [r"^(SW_|WW_|ANSCHLAG_SW|POS_SW|OFF_I_WW|OFF_WWSPUR|OFF_SCHALTWEGSPUR|"
               r"KORR_WW|KORR_SW|ANZ_SCHALT|DIFF_V_ACHS|ADAPT_G|GANG|ANZ_RENNSTART)"],
-        "2": [r"^(HEX_GETRIEBEDATEN|GETRIEBE)"],
     },
 }
 

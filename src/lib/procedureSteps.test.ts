@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { stepsFromActivity, stepsFromSequence, stepsFromJobFamily } from './procedureSteps';
 import { humanName } from '@/components/ui';
 import { readResultsFor, type Smg2Workflows } from './smg2Workflows';
-import { GEARS, MEASURES, PASSES, gearWindows } from './gearWindows';
+import { GATE_CODE, GATE_OF, GEARS, MEASURES, NEUTRAL_REF, PASSES, gearWindows } from './gearWindows';
 import { jobIndex, resultsFor, type EcuProfile } from './ecuCatalog';
 
 /**
@@ -228,5 +228,64 @@ describe('recorded values', () => {
         }
         // ...while the gate positions in the same block DO, and go through SpecTable.
         expect(grid.rest.some((r) => r.name.startsWith('WW_GASSE_') && r.spec)).toBe(true);
+    });
+
+    // The gate a gear sits in is INPA's pairing, and it only means anything if
+    // every gear resolves to a gate that the block actually declares.
+    it('resolves every gear to a declared gate, and leaves the gate in the spec table', () => {
+        const smg2 = JSON.parse(
+            readFileSync(
+                path.resolve(import.meta.dirname, '..', '..', 'public', 'ecu-data', 'smg2.jobs.json'),
+                'utf-8',
+            ),
+        ) as EcuProfile;
+        const job = jobIndex(smg2).get('ADAPTIONSWERTE_LESEN')!;
+        const grid = gearWindows(resultsFor(job, { ADAPTION_LESEN: '1' }));
+
+        for (const g of GEARS) {
+            const gate = grid.gate(g);
+            expect(gate, `gear ${g} has no gate`).toBeDefined();
+            expect(gate!.name).toBe(`${GATE_OF[g]}_WERT`);
+            // Not consumed: it carries a factory default, so the table below owns it.
+            expect(grid.rest).toContain(gate);
+        }
+        // Four gates, seven gears — the sharing is the diagnostic point.
+        expect(new Set(GEARS.map((g) => GATE_OF[g])).size).toBe(4);
+        expect(new Set(GEARS.map((g) => GATE_CODE[g])).size).toBe(4);
+        expect(GATE_OF['1']).toBe(GATE_OF['2']);
+        expect(GATE_OF['3']).toBe(GATE_OF['4']);
+        expect(GATE_OF['5']).toBe(GATE_OF['6']);
+        // Neutral sits in no gate and is read on its own.
+        expect(Object.values(GATE_OF)).not.toContain(NEUTRAL_REF);
+        expect(grid.rest.map((r) => r.name)).toContain(NEUTRAL_REF);
+    });
+
+    /**
+     * `ADAPTION_LESEN = 2` is real — the SGBD names it and INPA calls it — and
+     * NOTHING is bound to it.
+     *
+     * A regex claiming otherwise used to sit in `_ARG_PARTITIONS` matching zero
+     * results, which read like coverage and was a guess. This pins both halves:
+     * the value is offered, and it binds no named result.
+     */
+    it('offers ADAPTION_LESEN 0/1/2 and binds no named result to 2', () => {
+        const smg2 = JSON.parse(
+            readFileSync(
+                path.resolve(import.meta.dirname, '..', '..', 'public', 'ecu-data', 'smg2.jobs.json'),
+                'utf-8',
+            ),
+        ) as EcuProfile;
+        const job = jobIndex(smg2).get('ADAPTIONSWERTE_LESEN')!;
+        const arg = job.args.find((a) => a.name === 'ADAPTION_LESEN')!;
+
+        expect(arg.options?.map((o) => o.value)).toEqual(['0', '1', '2']);
+        expect(arg.optionsFrom?.table).toBeUndefined(); // came from the comment, not a table
+
+        expect(job.results.some((r) => r.whenArg?.values.includes('2'))).toBe(false);
+        // What is left for 2 is exactly the always-returned set — DATEN included.
+        const forTwo = resultsFor(job, { ADAPTION_LESEN: '2' });
+        expect(forTwo.every((r) => !r.whenArg)).toBe(true);
+        expect(forTwo.map((r) => r.name)).toContain('DATEN');
+        expect(forTwo.some((r) => r.spec)).toBe(false);
     });
 });

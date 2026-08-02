@@ -211,8 +211,12 @@ export interface CatalogArg {
      * Which table the choices came from, and what the SGBD said that made it the
      * right table. `dropped` lists rows deliberately not offered, with the reason
      * — a list that is silently shorter than its source is how things disappear.
+     *
+     * `table` is absent when the SGBD enumerated the values in the argument's own
+     * comment rather than in a table (four arguments do). No table name is
+     * invented for those; the absence is what the UI reads.
      */
-    optionsFrom?: { table: string; why: string; dropped?: string[] };
+    optionsFrom?: { table?: string; why: string; dropped?: string[] };
 }
 
 export interface CatalogResult {

@@ -1,5 +1,10 @@
 # E46M3///Diagnosis — 実車運用・本番リリース計画
 
+> **2026-08-30 追記**: 本文中の `C:\EC-APPS\OldBMW-Diag-PWA`（前身の PWA）は
+> `C:\Users\kazuh\OldBMW-Diag-PWA` へ移動した。以下は計画時点の記述で、経緯として残してある。
+> 外部参照物の現在地は `docs/REFERENCES.md`。
+
+
 ## Context
 
 現行 `C:\EC-APPS\OldBMW-Diag-PWA` は E46 M3 用 DS2 診断 PWA（バニラJS・ビルド無し）＋ ローカル .NET ブリッジ（EdiabasLib）。

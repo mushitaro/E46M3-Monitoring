@@ -47,6 +47,9 @@ repo に取り込むかどうかは、逆コンパイル物であるためライ
 ### EC-APPS の残り
 
 `INPA` / `NFS` / `BMWCodingTool` / `FindECU` はこのリポジトリのどのスクリプトも読まない。
+
+前身の PWA は 2026-08-30 に `C:\EC-APPS\OldBMW-Diag-PWA` から
+**`C:\Users\kazuh\OldBMW-Diag-PWA`** へ移した（参照用であり、ビルド入力ではない）。
 BMW ツールチェーンの導入物として `C:\EC-APPS` に置いてある。`C:\EDIABAS` も同じ理由で動かさない
 （`EDIABAS.INI` とレジストリが実パスを持っている）。
 

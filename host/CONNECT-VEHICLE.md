@@ -56,7 +56,7 @@ set EDIABAS_COMPORT=COM3      :: ← 手順2でメモした番号に
 ## 4. ホストを実機モードで起動
 
 ```bat
-cd C:\EC-APPS\OldBMW-Diag-PWA\host
+cd C:\Users\kazuh\OldBMW-Diag-PWA\host
 set EDIABAS_COMPORT=COM3
 run-host.bat ediabas
 ```
@@ -72,7 +72,7 @@ run-host.bat ediabas
 
 ```bat
 :: 別ウィンドウで PWA を起動
-cd C:\EC-APPS\OldBMW-Diag-PWA
+cd C:\Users\kazuh\OldBMW-Diag-PWA
 start.bat
 ```
 1. ブラウザ（Chrome/Edge）で `http://localhost:8099/`

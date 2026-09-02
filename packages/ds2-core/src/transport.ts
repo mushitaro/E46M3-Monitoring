@@ -1,25 +1,28 @@
 /**
- * The transport: a pump, and a latch.
+ * The Web Serial transport: a pump, and a latch.
  *
- * Owns the port, a read buffer, readExact, and purge/recover. It must NOT know
- * the protocol — no frame shapes, no control bytes, no retry policy.
+ * Owns the PORT. The receive buffer, the parked reader and readExact live in
+ * BufferedByteTransport — lifted there when a second backend arrived, rather than copied into it,
+ * because two copies would drift and the drift would surface as an intermittent framing fault in a
+ * car rather than as a failing check on a desk. This class must NOT know the protocol — no frame
+ * shapes, no control bytes, no retry policy.
  *
- * Received bytes are drained by a single background pump into an internal
- * buffer, and readExact consumes from that buffer. This is deliberate: the Web
- * Serial reader delivers bytes on arbitrary chunk boundaries, so a DS2 echo and
- * the start of its response frequently arrive in the SAME chunk. A naive "one
- * chunk per readExact" drops the surplus and desynchronises the stream — which
- * is exactly what broke bulk reads in the reference app. Buffering never drops
- * a byte, keeping echo/response framing aligned across thousands of exchanges.
+ * Received bytes are drained by a single background pump into the base class's buffer, and
+ * readExact consumes from it. This is deliberate: the Web Serial reader delivers bytes on arbitrary
+ * chunk boundaries, so a DS2 echo and the start of its response frequently arrive in the SAME
+ * chunk. A naive "one chunk per readExact" drops the surplus and desynchronises the stream — which
+ * is exactly what broke bulk reads in the reference app. Buffering never drops a byte, keeping
+ * echo/response framing aligned across thousands of exchanges.
  *
- * Ported from the MSS54HP CSL Convert Tuner. Changes: explicit Web Serial types
- * instead of ambient globals, coded errors instead of English prose, and the
- * port acquisition is injectable so a device simulator can drive this exact
- * class rather than a mock of it.
+ * Ported from the MSS54HP CSL Convert Tuner. Changes: explicit Web Serial types instead of ambient
+ * globals, coded errors instead of English prose, and the port acquisition is injectable so a
+ * device simulator can drive this exact class rather than a mock of it. That last one is why this
+ * copy, not the tuner's, is the one that survived when the two backends were brought together.
  */
 
+import { BufferedByteTransport, delay, describeError, now } from './bufferedByteTransport';
+import type { Ds2ByteTransport } from './byteTransport';
 import { Ds2Error } from './errors';
-import type { LinkTiming } from './timing';
 import { getSerial, type SerialPortLike } from './webSerialTypes';
 
 /**
@@ -44,6 +47,9 @@ import { getSerial, type SerialPortLike } from './webSerialTypes';
  * 'unclassified'. The write timer is the measurement that tests it: the median
  * should be ~0. It measured 0.10 ms on the tuner, so this is not happening
  * there.
+ *
+ * The WebUSB backend has no equivalent knob and a far smaller margin: there the FT232R's own
+ * 256-byte FIFO is drained by a read loop sharing the main thread. See webUsbFtdiTransport.
  */
 export const RX_BUFFER_BYTES = 4096;
 
@@ -78,67 +84,21 @@ export interface TransportOptions {
     requestPort?: () => Promise<SerialPortLike>;
 }
 
-export class WebSerialTransport {
+export class WebSerialTransport extends BufferedByteTransport implements Ds2ByteTransport {
     private port: SerialPortLike | null = null;
     private reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
     private writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
-    private buffer: number[] = [];
     private pumpActive = false;
-    private pumpError: Error | null = null;
-    /**
-     * A single reader parked in readExact, woken by the pump the moment enough
-     * bytes have arrived.
-     *
-     * Replaces a setTimeout(2) polling loop. Browsers clamp nested timers to
-     * ~4 ms, so that loop could sit on data that had already arrived for up to
-     * a full clamp period — three times per DS2 exchange (echo, header, body).
-     * At 9600 the wire dominates and it hides; the faster the rate, the larger
-     * that fixed cost looms, which is why raising the baud stopped producing a
-     * speed-up.
-     *
-     * One waiter is enough: the transport is serialised by the link's command
-     * gate, so readExact is never re-entered concurrently.
-     */
-    private waiter: { need: number; wake: () => void } | null = null;
-    private timing: LinkTiming | null = null;
     private readonly opts: Required<Omit<TransportOptions, 'requestPort'>> &
         Pick<TransportOptions, 'requestPort'>;
 
     constructor(options: TransportOptions = {}) {
+        super();
         this.opts = {
             baudRate: options.baudRate ?? DS2_SERIAL_DEFAULTS.baudRate,
             bufferSize: options.bufferSize ?? RX_BUFFER_BYTES,
             requestPort: options.requestPort,
         };
-    }
-
-    /** Attaches the instrument. The link owns exchange boundaries; the transport
-     *  owns byte arrival, so both write into the same object. */
-    setTiming(timing: LinkTiming | null): void {
-        this.timing = timing;
-    }
-
-    /** Wakes the parked reader once its byte count is satisfiable — or once it can only fail. */
-    private signalWaiter(): void {
-        const w = this.waiter;
-        if (w && (this.buffer.length >= w.need || this.pumpError)) {
-            this.waiter = null;
-            w.wake();
-        }
-    }
-
-    /**
-     * Releases a parked reader unconditionally. Used wherever the pump it is
-     * waiting on is about to be torn down: after that point no byte can ever
-     * arrive to wake it, so leaving it parked would cost a full timeout for
-     * nothing.
-     */
-    private releaseWaiter(): void {
-        const w = this.waiter;
-        if (w) {
-            this.waiter = null;
-            w.wake();
-        }
     }
 
     static isSupported(): boolean {
@@ -178,8 +138,7 @@ export class WebSerialTransport {
         }
         this.writer = port.writable.getWriter();
         this.reader = port.readable.getReader();
-        this.buffer = [];
-        this.pumpError = null;
+        this.clearBuffer();
         this.pumpActive = true;
         this.startPump();
     }
@@ -216,23 +175,16 @@ export class WebSerialTransport {
                 while (this.pumpActive) {
                     const { value, done } = await reader.read();
                     if (done) break;
-                    if (value) {
-                        // Timestamped HERE, not in readExact: readExact only ever
-                        // learns that enough bytes exist, never when each arrived.
-                        // Byte arrival times are the whole point — they are what
-                        // separates "the ECU was thinking" from "the bytes were
-                        // here and we were slow to notice".
-                        this.timing?.rx(now());
-                        for (let i = 0; i < value.length; i++) this.buffer.push(value[i]);
-                        this.signalWaiter();
-                    }
+                    // `length > 0`, not merely `value`. receive() timestamps an rx event, so a
+                    // zero-length arrival would record a byte arrival that never happened. Web
+                    // Serial is not known to produce one; the FTDI backend certainly does, and the
+                    // precondition belongs to the base class rather than to one of its callers.
+                    if (value && value.length > 0) this.receive(value);
                 }
             } catch (e: unknown) {
-                this.pumpError = e instanceof Error ? e : new Error(String(e));
-                // A latched error must wake the reader too, or it waits out its
-                // whole timeout for bytes that can no longer arrive — turning a
-                // break into a multi-second stall.
-                this.signalWaiter();
+                // Wakes any parked reader too, or it waits out its whole timeout for bytes that
+                // can no longer arrive — turning a break into a multi-second stall.
+                this.latch(e);
             }
         })();
     }
@@ -255,7 +207,7 @@ export class WebSerialTransport {
         this.reader = null;
         this.writer = null;
         this.port = null;
-        this.buffer = [];
+        this.clearBuffer();
     }
 
     /**
@@ -265,6 +217,13 @@ export class WebSerialTransport {
      *
      * Because no other tool does this, any failure that appears only on switched
      * rates should be suspected here first.
+     *
+     * **Deliberately not on `Ds2ByteTransport`.** A close/open moves DTR and RTS across the
+     * transition, and on some K+DCAN cables those lines gate the K-line transceiver — so on this
+     * backend the one moment a baud change could desync the link is the moment an ECU is least
+     * able to survive it. The FTDI backend has no such transition and changes rate in place. A
+     * diagnostics app never initiates a baud switch at all, so rather than carry a capability with
+     * that asymmetry in the contract, it stays a concrete method on the classes that have one.
      */
     async reopen(baudRate: number): Promise<void> {
         const port = this.port;
@@ -309,48 +268,12 @@ export class WebSerialTransport {
         this.timing?.writeEnd(now());
     }
 
-    /** Discards buffered bytes — used to resynchronise after a timeout before retrying. */
-    purge(): void {
-        // No waiter can be parked here: purge runs between exchanges, and the
-        // link's command gate makes those strictly sequential. Emptying the
-        // buffer under a parked reader would strand it until its deadline, so if
-        // that invariant ever changes this needs a signalWaiter().
-        this.buffer = [];
-    }
-
-    /**
-     * How many received bytes are waiting. Lets a caller tell whether the line
-     * has gone quiet (buffer stays empty across a pause) before starting a fresh
-     * exchange, rather than purging into a stream that is still arriving.
-     */
-    bufferedLength(): number {
-        return this.buffer.length;
-    }
-
-    /** True if the pump has latched an error — most often a serial break. */
-    hasReadError(): boolean {
-        return this.pumpError !== null;
-    }
-
-    /**
-     * The latched pump error, WITHOUT clearing it, so a caller can name the
-     * cause in its own message.
-     *
-     * Deliberately non-consuming: clearing the latch here would make
-     * hasReadError() report false, and a resync would then purge() instead of
-     * recoverRead() — leaving the dead pump unrestarted, which is strictly worse
-     * than not looking at all. Only recoverRead/open/reopen clear it.
-     */
-    peekReadError(): Error | null {
-        return this.pumpError;
-    }
-
     /**
      * Restarts the read side after an error latched the pump, without closing
      * the port.
      *
      * A serial break — the K-line held low by an ECU reset or a transient fault
-     * — rejects the pump's read() and sets pumpError, after which every readExact
+     * — rejects the pump's read() and sets the latch, after which every readExact
      * throws until the port is reopened. That is why one break used to kill all
      * further communication until a full reconnect.
      *
@@ -383,92 +306,8 @@ export class WebSerialTransport {
             );
         }
         this.reader = port.readable.getReader();
-        this.buffer = [];
-        this.pumpError = null;
+        this.clearBuffer();
         this.pumpActive = true;
         this.startPump();
     }
-
-    /**
-     * Reads exactly `length` bytes, waiting up to `timeoutMs`.
-     *
-     * **Wait for bytes, never for a clock.** The park below is how often we
-     * look, not how long we wait — it returns the instant the bytes land.
-     * Surplus bytes received alongside are RETAINED for the next call, never
-     * dropped: that is what stops an echo and a response arriving in one chunk
-     * from desyncing the stream.
-     *
-     * If you find yourself adding a delay so a response "has time to arrive",
-     * the bug is in the wait, not in the timing.
-     */
-    async readExact(length: number, timeoutMs: number): Promise<Uint8Array> {
-        const deadline = Date.now() + timeoutMs;
-        while (this.buffer.length < length) {
-            // Name the error class: a BreakError/FramingError (recoverable, the
-            // signature of a disturbed K-line) and a NetworkError (device gone)
-            // otherwise read identically.
-            if (this.pumpError) {
-                throw new Ds2Error(
-                    'READ_FAILED',
-                    `Serial read failed: ${this.pumpError.name} (${this.pumpError.message})`,
-                    {
-                        kind: 'electrical',
-                        detail: { errorName: this.pumpError.name },
-                        cause: this.pumpError,
-                    },
-                );
-            }
-            const remaining = deadline - Date.now();
-            if (remaining <= 0) {
-                throw new Ds2Error(
-                    'READ_TIMEOUT',
-                    `Timed out waiting for ${length} byte(s) (received ${this.buffer.length})`,
-                    {
-                        kind: 'timeout',
-                        detail: { expected: length, received: this.buffer.length, timeoutMs },
-                    },
-                );
-            }
-            // Park until the pump says the bytes are here, or the deadline
-            // passes — whichever first. The loop re-checks afterwards, so a
-            // spurious wake costs one comparison.
-            //
-            // Parked time is measured because it is the honest accounting of
-            // "waiting for the wire" versus "us being slow": if parked time is
-            // close to the total, the bytes genuinely were not here yet and no
-            // host-side change helps.
-            this.timing?.parkStart(now());
-            await new Promise<void>((resolve) => {
-                // The entry is compared by identity below rather than by its
-                // callback, so the deadline only ever clears the waiter it
-                // actually created — never one a later readExact installed.
-                const entry = {
-                    need: length,
-                    wake: () => {
-                        clearTimeout(timer);
-                        resolve();
-                    },
-                };
-                const timer = setTimeout(() => {
-                    if (this.waiter === entry) this.waiter = null;
-                    resolve();
-                }, remaining);
-                this.waiter = entry;
-            });
-            this.timing?.parkEnd(now());
-        }
-        return Uint8Array.from(this.buffer.splice(0, length));
-    }
-}
-
-function now(): number {
-    return typeof performance !== 'undefined' ? performance.now() : Date.now();
-}
-
-function delay(ms: number): Promise<void> {
-    return new Promise((r) => setTimeout(r, ms));
-}
-
-function describeError(e: unknown): string {
-    return e instanceof Error ? `${e.name} (${e.message})` : String(e);
 }

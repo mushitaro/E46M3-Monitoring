@@ -17,7 +17,20 @@ import type { LinkTiming } from './timing';
  * not have to supply a stub that lies about what it recorded. The call site uses `?.` accordingly.
  *
  * `reopen` / `reopenIsInPlace` are deliberately absent: baud switching is a capability of some
- * transports and a destructive-path concern of the caller. `Ds2Link` never initiates it.
+ * transports and a destructive-path concern of the caller. `Ds2Link` never initiates it —
+ * `Ds2Control.REQUEST_BAUD_SWITCH` (0x91) exists in frame.ts and has no caller.
+ *
+ * The app this contract's backends come from does declare both, and its reasoning is worth keeping
+ * even though the members are not: a Web Serial reopen is a close/open, which moves DTR and RTS
+ * across the transition, and on some K+DCAN cables those lines gate the K-line transceiver — so the
+ * one moment a baud change could desync the link is the moment an ECU is least able to survive it.
+ * The FTDI backend has no such transition and says so. **That reasoning now lives beside each
+ * backend's `reopen`, not here** — a guard deleted with no forwarding address is one that gets
+ * re-litigated by the next reader.
+ *
+ * `setLatencyTimer` is likewise off the contract and kept as a concrete method on the FTDI class.
+ * It is live — a datalog arms it — but `Ds2Link` must not know which backend it holds, so the hook
+ * that owns the run boundary operates it instead.
  */
 export interface Ds2ByteTransport {
     open(): Promise<void>;
@@ -37,8 +50,14 @@ export interface Ds2ByteTransport {
     /**
      * Clears a latched read fault and restarts the receive path.
      *
-     * `settleMs` is optional so a backend with nothing to settle — the FTDI path restarts its pump
-     * without a port transition — can ignore it rather than pretend to honour it.
+     * `settleMs` exists because `Ds2Link.drainUntilQuiet` escalates it — a break that survives the
+     * first attempt is given longer on the next — and a transport that hardcoded the wait would put
+     * that number where the link's escalation cannot reach it.
+     *
+     * It is optional, not because a backend might have nothing to settle (both of them do: the
+     * delay is sized to the break condition on the wire, not to anything about the host API), but
+     * because a backend without a port transition to settle ACROSS may reasonably treat the figure
+     * as advisory. What it may not do is ignore the wait itself.
      */
     recoverRead(settleMs?: number): Promise<void>;
     /**

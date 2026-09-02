@@ -83,6 +83,8 @@ export {
     type TransportOptions,
 } from './transport';
 
+export type { Ds2ByteTransport } from './byteTransport';
+
 export {
     Ds2Link,
     DS2_DEFAULT_TIMINGS,

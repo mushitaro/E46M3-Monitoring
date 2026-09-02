@@ -11,6 +11,7 @@
  * protocol core and with the timing constants surfaced as options.
  */
 
+import type { Ds2ByteTransport } from './byteTransport';
 import { Ds2Error } from './errors';
 import {
     DS2_MIN_FRAME_LENGTH,
@@ -33,7 +34,6 @@ import {
     isSeedResponse,
 } from './login';
 import type { LinkTiming } from './timing';
-import type { WebSerialTransport } from './transport';
 
 /**
  * Every timing constant, in one overridable object.
@@ -123,17 +123,18 @@ export interface RetryOptions {
 export class Ds2Link {
     readonly address: number;
     readonly timings: Ds2Timings;
-    private readonly transport: WebSerialTransport;
+    private readonly transport: Ds2ByteTransport;
     private timing: LinkTiming | null;
     private gateHeld = false;
     private connected = false;
 
-    constructor(transport: WebSerialTransport, options: Ds2LinkOptions) {
+    constructor(transport: Ds2ByteTransport, options: Ds2LinkOptions) {
         this.transport = transport;
         this.address = options.address;
         this.timings = { ...DS2_DEFAULT_TIMINGS, ...options.timings };
         this.timing = options.timing ?? null;
-        if (this.timing) transport.setTiming(this.timing);
+        // Optional: a backend without an instrument simply has no setTiming. See Ds2ByteTransport.
+        if (this.timing) transport.setTiming?.(this.timing);
     }
 
     get isConnected(): boolean {

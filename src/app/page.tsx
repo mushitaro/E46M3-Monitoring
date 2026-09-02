@@ -122,7 +122,7 @@ type Link = ReturnType<typeof useDs2Link>;
  * commands a car.
  */
 export default function Home() {
-    const { t } = useLang();
+    const { lang, t } = useLang();
     const link = useDs2Link();
     const [tab, setTab] = useState<Tab>('diagnosis');
 
@@ -136,6 +136,23 @@ export default function Home() {
     // Datalog state lives here so the right column can visualise a run while
     // the datalog tab is not the one on the left.
     const datalog = useDatalog(link);
+
+    // <html lang> is DERIVED from the resolved language, here, and nowhere else.
+    // The attribute layout.tsx renders is a prerender placeholder: this is a
+    // static export, so every visitor is served the same `lang="ja"` regardless
+    // of who they are. i18n.ts resolves the real language at module import in
+    // the browser (stored choice, else navigator), which fixes the COPY but left
+    // the attribute lying to screen readers and to browser translation for every
+    // reader who never touched the ja|en toggle. Writing it only inside setLang()
+    // meant the correction arrived on the switch — the one moment it was already
+    // obvious what language the app was in.
+    // It runs in an effect rather than at import time so it lands after
+    // hydration and cannot be mistaken for a mismatch on the <html> element
+    // React itself rendered; keying it on `lang` covers the boot and the switch
+    // with one rule.
+    useEffect(() => {
+        document.documentElement.lang = lang;
+    }, [lang]);
 
     useEffect(() => {
         loadEcuIndex().then(setEcuIndex).catch((e: Error) => setCatalogError(e.message));

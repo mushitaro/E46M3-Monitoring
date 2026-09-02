@@ -30,6 +30,45 @@ TSUNAGI ///M の計器系サブブランド。DS2 通信は
 実装計画は `docs/PLAN.md`（`~/.claude/plans/pure-hopping-sutton.md` の写し）。
 
 ---
+## clone すると何が手に入るか
+
+このリポジトリは **public だがコードだけ**を含む。ECU テーブルは入っていない。
+gitignore しているのではなく、**全コミットの履歴からも除去済み**である。理由は
+`THIRD-PARTY-NOTICES.md` §3 — あれは BMW の SGBD から生成した派生物であり、
+この企画が再ライセンスできるものではない。
+
+clone した状態でできること・できないこと:
+
+| | |
+|---|---|
+| `npm ci` | ✅ |
+| `npm run typecheck` / `npm run lint` | ✅ |
+| `npm test` | ⚠️ **237 中 55 が落ちる**（実測）。カタログを読むテストが該当し、`adaptationReset` / `jobOps` / `runGate` / `dscHydraulics` / `procedureSteps` が「出荷データが仕様と食い違っていないか」を検査しているため |
+| `npm run build` | ✅ 成功し、アプリのシェルは動く |
+| ECU セレクタ | ❌ `public/ecu-data/index.json` が無いので空。その旨を表示する |
+| 車両との通信 | ❌ 上と同じ理由（どのジョブをどのアドレスへ送るかを知らない） |
+
+**自分のデータを作るには**、自分の EDIABAS インストールが要る。手順と、リポジトリ外に
+ある 5 つの真実の在り処は `docs/REFERENCES.md`、再生成できない資産の一覧は
+`docs/PRESERVED.md` にある。おおまかには:
+
+```bash
+dotnet build tools/SgbdDump/SgbdDump.csproj -c Release   # 要 EdiabasLib のクローン
+python tools/dump_modules.py                             # $SGBD_DUMP_DIR に SGBD をダンプ
+python tools/gen_ecu_data.py                             # public/ecu-data/ を生成
+```
+
+`tools/SgbdDump` は EdiabasLib（**GPLv3**）とリンクする。ここのソースは MIT だが、
+**ビルドした `SgbdDump.exe` は GPLv3 の結合著作物であり再配布してはならない**
+（`THIRD-PARTY-NOTICES.md` §2）。
+
+配信物は事情が違う。デプロイは開発機から行うので `out/` にはテーブルが載る —
+つまり**露出しているのはリポジトリではなく配信先のほう**である。意図して受け入れた
+トレードオフで、緩和策は Cloudflare Access（§3.3）。
+
+---
+
+
 
 ## アーキテクチャ
 

@@ -34,23 +34,35 @@ of the BMW EDIABAS interpreter. **Licensed GPLv3.**
 
 **This project does not link, bundle, or distribute EdiabasLib.** It is used only as a
 local developer tool, on the maintainer's machine, to read BMW SGBD `.prg` files and
-emit the job/telegram/label tables under `ecu-data/`. Those tables are then committed
-as ordinary data and the deployed app reads them directly over Web Serial. No part of
-EdiabasLib reaches a user.
+emit the job/telegram/label tables under `public/ecu-data/`. Those tables are not
+committed (§3.3); the deployed app reads them directly, and talks to the car over Web
+Serial / WebUSB. No part of EdiabasLib reaches a user.
 
 This is a deliberate change from the previous architecture (`OldBMW-Diag-PWA`), which
 ran a local .NET host that **did** link EdiabasLib and would have been distributed to
-users. That arrangement is hard to reconcile with keeping this repository private:
-GPLv3 attaches obligations to *distribution* of a linked work, and "private repo,
-public binary" is exactly the case those obligations bite on. Moving EdiabasLib to a
-build-time tool removes the question rather than answering it.
+users. GPLv3 attaches obligations to *distribution* of a linked work, and "closed
+source, public binary" is exactly the case those obligations bite on. Moving
+EdiabasLib to a build-time tool removes the question rather than answering it.
+
+**Scope note, now that this repository is public.** `tools/SgbdDump/` is a program
+whose only purpose is to link EdiabasLib, and its source is now publicly readable.
+Publishing that source is not distribution of EdiabasLib and does not trigger GPLv3's
+distribution obligations — but the repository's MIT `LICENSE` must not be read as
+covering what comes *out* of building it:
+
+- The source in `tools/SgbdDump/` is MIT, like the rest of this repository.
+- **A built `SgbdDump.exe` is a GPLv3 combined work. Do not redistribute it.**
+  `.gitignore` excludes `bin/` and `obj/` for this reason, not merely for tidiness.
+- EdiabasLib is referenced by path (`<EdiabasLibPath>`, checked by the
+  `CheckEdiabasLib` target) and is never vendored. Clone it yourself from the URL
+  above.
 
 If the `host/` tooling is ever revived as something users install, this decision must
 be revisited first.
 
 ---
 
-## 3. Vehicle data provenance — read this before making the app public
+## 3. Vehicle data provenance
 
 `ecu-data/*.json` is **generated**, not authored. It is derived from two sources, and
 neither is this project's to relicense.
@@ -72,14 +84,25 @@ but the route by which they were obtained is a decompilation.
 
 ### 3.3 What follows from this
 
-- The repository is **private**. That keeps the derived tables out of public
-  circulation, but it does **not** cover the deployed site: anything under the Next.js
-  public output is fetchable by anyone with the URL.
-- Therefore the deployment should sit behind **Cloudflare Access**, with `noindex`,
-  unless and until the provenance question is settled a different way.
-- The cleanest long-term answer is to stop shipping the tables at all and have each
-  user generate them locally from their own EDIABAS installation. That is recorded in
-  the plan as a large but genuinely-resolving option, not as a fix that has been made.
+This section used to say the repository was private and that the cleanest long-term
+answer would be to stop shipping the tables. Half of that has now happened, so the
+arrangement is stated here as it actually is rather than as a plan.
+
+- The **repository is public and carries code only**. `public/ecu-data/`,
+  `tools/terms/` and the SGBD dumps are not committed and are **not in the published
+  history** — they were removed from every commit, not merely gitignored. What a
+  clone gets, and what it cannot do without them, is in `README.md`.
+- The **deployment is not code-only**. Cloudflare Pages is deployed from the
+  maintainer's machine, so the uploaded `out/` contains the generated tables and
+  anyone with the URL can fetch them. This is a deliberate, accepted trade-off: it is
+  what lets the app be usable by someone who does not own an EDIABAS installation.
+  **The exposure is therefore the deployment, not the repository.**
+- The mitigation is **Cloudflare Access** on the Pages project. `X-Robots-Tag:
+  noindex` and `robots.txt` are also set, but those only ask search engines politely;
+  Access is the only one of the three that is access control.
+- The end state the second bullet still falls short of is for each user to generate
+  the tables from their own EDIABAS installation. The generators and their
+  documentation (`docs/REFERENCES.md`) are published precisely so that is possible.
 
 ---
 

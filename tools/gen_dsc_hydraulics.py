@@ -32,7 +32,10 @@ HERE = os.path.dirname(__file__)
 sys.path.insert(0, HERE)
 from sgbd import model                                          # noqa: E402
 
-DUMP = os.path.join(HERE, "SgbdDump", "out")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths                                                # noqa: E402
+
+DUMP = paths.require_dump_dir()   # リポジトリ外。理由は tools/paths.py
 DATA = os.path.join(HERE, "..", "public", "ecu-data")
 OUT = os.path.join(DATA, "dsc_mk60.hydraulics.json")
 GENERATOR = "tools/gen_dsc_hydraulics.py"

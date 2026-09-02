@@ -3,7 +3,7 @@
 # ============================================================================
 #  gen_from_dump.py — 「権威ある」SGBDジョブ表 → アプリ用 ecu-data/*.json
 # ----------------------------------------------------------------------------
-#  入力: tools/SgbdDump/out/<SGBD>.json （EdiabasLibの仮想ジョブ _JOBS/_JOBCOMMENTS/
+#  入力: $SGBD_DUMP_DIR/<SGBD>.json （EdiabasLibの仮想ジョブ _JOBS/_JOBCOMMENTS/
 #        _RESULTS で取得した実データ。ジョブ名・説明文・結果名・型・結果説明を含む）
 #  出力: ecu-data/<id>.json （バイリンガル {id, ja, en} 構造）
 #
@@ -19,7 +19,10 @@ sys.path.insert(0, os.path.dirname(__file__))
 from translate import translate, leftover_ratio
 
 HERE = os.path.dirname(__file__)
-DUMP = os.path.join(HERE, "SgbdDump", "out")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths                                                # noqa: E402
+
+DUMP = paths.require_dump_dir()   # リポジトリ外。理由は tools/paths.py
 # public/ 配下が配信ルート（アプリは ./ecu-data/*.json を fetch する）。
 OUT = os.path.join(HERE, "..", "public", "ecu-data")
 ECU_DIR = r"C:\EDIABAS\ECU"
@@ -58,7 +61,7 @@ EXCLUDE = re.compile(r'^(FLASH|SPEICHER_SCHREIBEN|AIF_SCHREIBEN|PRUEFSTEMPEL|BAU
 # --- テストJob（Stellglieddiagnose = 一時的な動作確認。原則ジョブ自身/ECUが
 #     元の状態へ復帰する）------------------------------------------------------
 #  従来の STEUERN_*/STELLGLIED*/MAGNETVENTIL*/ANSTEUERUNG_*/TESTPRG* に加え、
-#  SgbdDump実ダンプ（tools/SgbdDump/out/*.json）で1件ずつ確認して追加:
+#  SgbdDump実ダンプ（$SGBD_DUMP_DIR/*.json）で1件ずつ確認して追加:
 #    MSS54DS0 : IO_STATUS_VORGEBEN / IO_STATUS_LESEN（生I/Oピン強制/読取）
 #    DSC_E46  : DRUCKABBAU_*/DRUCKAUFBAU_*/DRUCKHALTEN/PUMPENFOERDERLEISTUNG_*/
 #               ABS_REGELSIMULATION/NA_ENTLUEFTUNG_*/ENTLUEFTUNG_SERVICE

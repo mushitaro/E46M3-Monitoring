@@ -14,7 +14,10 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from sgbd.specs import CLUTCH_ABBREV, parse_cross_field, parse_spec  # noqa: E402
 
-DUMP = os.path.join(os.path.dirname(__file__), "..", "SgbdDump", "out")
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import paths                                                # noqa: E402
+
+DUMP = paths.require_dump_dir()   # リポジトリ外。理由は tools/paths.py
 FAILS: list[str] = []
 
 

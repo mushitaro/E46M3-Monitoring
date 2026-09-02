@@ -4,7 +4,7 @@
 #  gen_adaptation_blocks.py — MSS54 適応ブロック表を TypeScript として生成
 # ----------------------------------------------------------------------------
 #  入力: 逆コンパイル済み DmeAdaptationProfiles.cs（オフセット/スケール）
-#        ＋ tools/SgbdDump/out/MSS54DS0.json（本物の独語名・単位・ジョブ）
+#        ＋ $SGBD_DUMP_DIR/MSS54DS0.json（本物の独語名・単位・ジョブ）
 #  出力: packages/ds2-mss54/src/adaptationBlocks.generated.ts
 #
 #  ## 2つの出所を突き合わせる理由
@@ -52,7 +52,10 @@ SRC = os.environ.get(
     r"C:\Users\kazuh\MSS54-DS2-Tool-Public-1.2.1\decompiled-source\Core\Mss54Ds2Tool.Core"
     r"\DmeAdaptationProfiles.cs",
 )
-DUMP = os.path.join(os.path.dirname(__file__), "SgbdDump", "out")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths                                                # noqa: E402
+
+DUMP = paths.require_dump_dir()   # リポジトリ外。理由は tools/paths.py
 OUT = os.path.join(os.path.dirname(__file__), "..", "packages", "ds2-mss54", "src",
                    "adaptationBlocks.generated.ts")
 

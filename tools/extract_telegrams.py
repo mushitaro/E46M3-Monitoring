@@ -179,4 +179,4 @@ if __name__ == "__main__":
         sys.stderr.write(f"\n[FATAL] {len(failed)} module(s) failed: "
                          + ", ".join(m for m, _ in failed) + "\n")
         sys.exit(1)
-    print(f"wrote {len(MODULES)} telegram tables to tools/SgbdDump/out/")
+    print(f"wrote {len(MODULES)} telegram tables to {OUT}")

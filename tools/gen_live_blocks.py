@@ -56,7 +56,10 @@ SRC = os.environ.get(
     "MSS54_CATALOG",
     r"C:\Users\kazuh\MSS54-DS2-Tool-Public-1.2.1\decompiled-source\Core\Mss54Ds2Tool.Core\DmeLiveValueCatalog.cs",
 )
-DUMP = os.path.join(os.path.dirname(__file__), "SgbdDump", "out")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths                                                # noqa: E402
+
+DUMP = paths.require_dump_dir()   # リポジトリ外。理由は tools/paths.py
 ECU_DIR = os.environ.get("EDIABAS_ECU_DIR", r"C:\EDIABAS\ECU")
 SGBD_PRG = "MSS54DS0.prg"
 SGBD_ADDR = 0x12

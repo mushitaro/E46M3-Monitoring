@@ -13,7 +13,10 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from sgbd import classify, model  # noqa: E402
 
-DUMP = os.path.join(os.path.dirname(__file__), "..", "SgbdDump", "out")
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import paths                                                # noqa: E402
+
+DUMP = paths.require_dump_dir()   # リポジトリ外。理由は tools/paths.py
 SGBDS = ("MSS54DS0", "SMG2", "DSC_E46")
 FAILS: list[str] = []
 

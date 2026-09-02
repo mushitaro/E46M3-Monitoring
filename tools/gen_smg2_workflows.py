@@ -3,7 +3,7 @@
 # ============================================================================
 #  gen_smg2_workflows.py — SMG II サービス機能（ワークフロー）定義を生成
 # ----------------------------------------------------------------------------
-#  入力: tools/SgbdDump/out/SMG2.json の tables（EdiabasLib で SGBD から権威抽出）
+#  入力: $SGBD_DUMP_DIR/SMG2.json の tables（EdiabasLib で SGBD から権威抽出）
 #        - TESTPRG        : テストプログラム番号→名称・所要時間（＝サービス手順一覧）
 #        - STELLGLIEDER   : 駆動可能アクチュエータ→PIN
 #        - STATTESTTEXTE  : テスト状態(STB)→テキスト
@@ -21,7 +21,10 @@ sys.path.insert(0, os.path.dirname(__file__))
 from translate import translate
 
 HERE = os.path.dirname(__file__)
-DUMP = os.path.join(HERE, "SgbdDump", "out", "SMG2.json")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths                                                # noqa: E402
+
+DUMP = os.path.join(paths.require_dump_dir(), "SMG2.json")   # リポジトリ外。tools/paths.py
 # public/ 配下が配信ルート。旧 ecu-data/ を指したままだと生成物がどこにも
 # 届かず、しかも FileNotFoundError で落ちるまで気付けない。
 OUT = os.path.join(HERE, "..", "public", "ecu-data", "smg2-workflows.json")
@@ -167,11 +170,17 @@ DESC = {
           "Establishes clutch valve characteristics to enable engine start (emergency start aid)."),
 }
 
-# --- 厳選フレーズ辞書（進行状態・エラー・前提の独→ja/en） --------------------
-# PHRASES was here: German->ja/en pairs whose KEYS are verbatim SGBD
-# strings. Removed from the published history for the same reason
-# tools/terms/ is not published. See docs/PRESERVED.md.
-from terms.smg2_workflows import PHRASES  # noqa: E402
+# 対訳表は tools/terms/smg2_workflows.py にある。キーが SGBD のドイツ語原文
+# そのものなので、この公開リポジトリには含まれない（docs/PRESERVED.md）。
+# 訳文はこちらの著作物だが、キーはそうではない。
+try:
+    from terms.smg2_workflows import PHRASES     # noqa: E402
+except ImportError as _e:                        # pragma: no cover
+    raise SystemExit(
+        "[FATAL] tools/terms/smg2_workflows.py not found. The SMG II phrase "
+        "table is BMW SGBD-derived and is not published with this repository. "
+        "See docs/PRESERVED.md.  (" + str(_e) + ")"
+    )
 
 # PHRASES に無く translate.py に落ちた独文。これが1件でもあれば出荷しない。
 #

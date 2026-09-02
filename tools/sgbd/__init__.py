@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """SGBD ダンプを読み解くための共通レイヤ。
 
-`tools/SgbdDump/out/<SGBD>.json`（EdiabasLib の仮想ジョブで取得した権威データ）を
+`$SGBD_DUMP_DIR/<SGBD>.json`（EdiabasLib の仮想ジョブで取得した権威データ）を
 唯一の入力とし、アプリ用 JSON の生成器はここを通してのみダンプに触れる。
 
 分割の理由: 従来 `gen_from_dump.py` が「読み込み・分類・翻訳・出力」を1ファイルで

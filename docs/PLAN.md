@@ -8,7 +8,7 @@
 ## Context
 
 現行 `C:\EC-APPS\OldBMW-Diag-PWA` は E46 M3 用 DS2 診断 PWA（バニラJS・ビルド無し）＋ ローカル .NET ブリッジ（EdiabasLib）。
-デモ/mock 経路は完成し、実車での**読取は成功済み**（`recordings/*-real.json`、2026-07-18、実 ZB `***REMOVED***`）。
+デモ/mock 経路は完成し、実車での**読取は成功済み**（`recordings/*-real.json`、2026-07-18）。
 一方 **書込系は一度も実車で動いていない** — `js/ecu-generic.js:101,151` が全131ジョブに `verified:false` を
 リテラルで与え、`js/calibration.js:140` / `js/testjobs.js:259` が実機を一律ブロックするため。
 両 recording の `"jobs": {}` がそれを裏付けている。

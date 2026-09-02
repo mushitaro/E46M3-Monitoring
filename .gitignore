@@ -45,8 +45,10 @@ tools/terms/
 tools/SgbdDump/out/
 !tools/SgbdDump/out.manifest.json
 
-# (2) Privacy, not licensing. Real ZB numbers (***REMOVED*** / ***REMOVED***) and real fault
-#     history from a 2026-07-18 vehicle session.
+# (2) Privacy, not licensing. These carry the vehicle's own identifiers and its
+#     real fault history from a 2026-07-18 session. The identifiers are not
+#     repeated here: a comment explaining why something is private is a poor
+#     place to publish the thing it protects.
 recordings/
 !host/recordings/test-mss54.json
 

@@ -32,21 +32,28 @@ STRIPES = [
 TOP, BOTTOM = 2 / 32, 30 / 32
 
 
-def render(size):
-    """4x スーパーサンプリングしてから平均。斜めのエッジがジャギらないように。"""
+def render(size, inset=1.0):
+    """4x スーパーサンプリングしてから平均。斜めのエッジがジャギらないように。
+
+    inset < 1.0 で図形を中心に向けて縮める。maskable アイコン用。Android の
+    ランチャーは maskable を円などに**切り抜く**ので、外側 ~20% は消える前提で
+    描かねばならない。同じファイルを any と maskable の両方に宣言すると、
+    一方では正しく、もう一方では両端のストライプが切り落とされる — どちらも
+    「アイコンが出ている」ので、間違っている側に気づく機会が無い。
+    """
     ss = 4
     n = size * ss
     acc = [[[0, 0, 0] for _ in range(size)] for _ in range(size)]
 
     for sy in range(n):
-        y = sy / n
+        y = sy / n if inset == 1.0 else 0.5 + (sy / n - 0.5) / inset
         # y=BOTTOM で下端、y=TOP で上端。傾きは線形補間。
         if y < TOP or y > BOTTOM:
             frac = None
         else:
             frac = (BOTTOM - y) / (BOTTOM - TOP)  # 0=下端, 1=上端
         for sx in range(n):
-            x = sx / n
+            x = sx / n if inset == 1.0 else 0.5 + (sx / n - 0.5) / inset
             color = BLACK
             if frac is not None:
                 for (b0, b1), (t0, t1), c in STRIPES:
@@ -81,11 +88,26 @@ def png(size, data):
             + chunk(b"IEND", b""))
 
 
+# maskable の安全域。仕様上ランチャーが保証するのは中央 80% の円に収まる範囲だけ。
+MASKABLE_INSET = 0.8
+
 if __name__ == "__main__":
     os.makedirs(OUT, exist_ok=True)
-    for size in (192, 512):
-        dest = os.path.abspath(os.path.join(OUT, f"icon-{size}.png"))
+    jobs = [
+        ("icon-192.png", 192, 1.0),
+        ("icon-512.png", 512, 1.0),
+        # any と別ファイルにする。同じファイルを両方の purpose で宣言すると、
+        # ランチャーが切り抜いた側でトリコロールの両端が消える。
+        ("icon-maskable-192.png", 192, MASKABLE_INSET),
+        ("icon-maskable-512.png", 512, MASKABLE_INSET),
+        # iOS はこれしか読まず、しかも透過を尊重しない。この描画は元から黒地なので
+        # 合成済みと同じことになる。180 は iOS の標準サイズ。
+        ("apple-touch-icon.png", 180, 1.0),
+    ]
+    for name, size, inset in jobs:
+        dest = os.path.abspath(os.path.join(OUT, name))
         with open(dest, "wb") as f:
-            f.write(png(size, render(size)))
-        print(f"  wrote {os.path.relpath(dest)}  ({size}x{size})")
+            f.write(png(size, render(size, inset)))
+        note = "" if inset == 1.0 else f"  inset {inset}"
+        print(f"  wrote {os.path.relpath(dest)}  ({size}x{size}){note}")
     print("done")

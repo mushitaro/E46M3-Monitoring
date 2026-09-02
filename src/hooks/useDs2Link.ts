@@ -17,6 +17,9 @@
  */
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useHiddenWitness } from './useHiddenWitness';
+import { useScreenWakeLock } from './useScreenWakeLock';
+import { useUnloadGuard } from './useUnloadGuard';
 import {
     Ds2Address,
     Ds2Link,
@@ -557,15 +560,34 @@ export function useDs2Link() {
         return () => clearInterval(id);
     }, []);
 
-    // Do not let the tab close mid-operation without a word. The old app had no
-    // beforeunload handler at all, which is how a held actuator could be left
-    // energised by closing a tab.
-    useEffect(() => {
-        if (state !== 'busy' && state !== 'logging') return;
-        const onBeforeUnload = (e: BeforeUnloadEvent) => e.preventDefault();
-        window.addEventListener('beforeunload', onBeforeUnload);
-        return () => window.removeEventListener('beforeunload', onBeforeUnload);
-    }, [state]);
+    /**
+     * The three things that protect an operation in flight, all derived from one state.
+     *
+     * `inFlight` is computed, never stored: there is no flag for a failure path to forget to
+     * clear, and every operation here returns the link to `connected` on both its success and its
+     * catch path, so a throw releases all three by itself.
+     *
+     * This replaces an inline `beforeunload` that had neither a `returnValue` — which older
+     * engines still read, and this is the one place where a silently ignored call costs a held
+     * actuator its warning — nor a watchdog, so a transport that hung rather than threw would
+     * have trapped the tab for the rest of the day.
+     *
+     * The budget is sized to the operation, which is why it is not one constant: a job run is
+     * seconds, a datalog is a drive. One figure taken from the longer would let a hang hold the
+     * tab for hours; taken from the shorter it would drop the guard in the middle of a real run.
+     */
+    const inFlight = state === 'busy' || state === 'logging';
+    useUnloadGuard(inFlight, state === 'logging' ? 6 * 60 * 60 * 1000 : 5 * 60 * 1000);
+    // Android's screen timeout is the ordinary way a phone interrupts itself. On desktop this is
+    // close to a no-op, which is the right amount of effort for the platform that does not need
+    // it. Best-effort throughout: a run must never fail because the screen could not be pinned.
+    useScreenWakeLock(inFlight);
+    // Cannot prevent a frozen tab; records that it happened, so a failure names its cause instead
+    // of sending the next reader to look at the cable. Read at failure time, never rendered.
+    const wasHidden = useHiddenWitness(inFlight);
+    // Handed out rather than consumed here: this hook classifies the LINK, and whether the app was
+    // backgrounded is a fact about the session. The surfaces that report a failure ask for it.
+    void wasHidden;
 
     const clearLog = useCallback(() => {
         logRef.current = [];

@@ -26,6 +26,20 @@
 :root {
   --background: #000000;
   --foreground: #F2F2F5;
+
+  /* The CSS property, not just the meta tag. This is what cascades into native
+     controls — a <select>'s option sheet is drawn by the UA, and mobile UAs
+     ignore author styling on <option> entirely. Without it, choosing an ECU on
+     Android opens a full-screen WHITE sheet, at night, in a car. */
+  color-scheme: dark;
+}
+
+/* This layout never scrolls the document — every pane scrolls inside itself. On a
+   page that does not scroll, a downward swipe goes straight to Chrome's
+   pull-to-refresh, and mid-session that reload costs the link, the comms log and
+   whatever run was in progress. There is no undo for it and no warning before it. */
+html, body {
+  overscroll-behavior: none;
 }
 
 /* Fonts. Both must point at variables the app actually defines (Next.js
@@ -137,6 +151,23 @@
   --color-orange-400: #9B84E8; /*  6.9:1 */
   --color-orange-500: #7E63DB; /*  4.7:1 - accent-* on secondary controls */
   --color-orange-600: #6547C2;
+
+  /* Datalog series. A separate registry from the semantic ramps above, because a
+     trace's colour answers a different question: not "how serious is this" but
+     "which quantity am I looking at". Assigned by ROLE, so the same kind of
+     channel is the same colour in every module — rpm is always the primary blue,
+     temperature always the warm red, an angle or a position always violet.
+
+     The -2 variants are the second series of the same role, drawn dashed. Two
+     temperatures on one chart need to be distinguishable without inventing a
+     colour that would then mean something in the semantic ramp too. */
+  --color-series-primary: #0A9BDB;
+  --color-series-heat: #F87A7F;
+  --color-series-feedback: #B9A6EE;
+  --color-series-feedback-2: #CBBCF2;
+  --color-series-derived: #9B84E8;
+  --color-series-neutral: #9A9AA8;
+  --color-series-neutral-2: #70707E;
 }
 
 body {

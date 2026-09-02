@@ -28,7 +28,10 @@ import struct
 import sys
 
 ECU_DIR = os.environ.get("EDIABAS_ECU_DIR", r"C:\EDIABAS\ECU")
-OUT = os.path.join(os.path.dirname(__file__), "SgbdDump", "out")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import paths                                                # noqa: E402
+
+OUT = paths.SGBD_DUMP_DIR   # リポジトリ外。理由は tools/paths.py
 
 # id : (SGBD ファイル名, DS2 アドレス)
 MODULES = {

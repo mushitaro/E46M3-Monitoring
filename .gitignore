@@ -3,17 +3,22 @@ node_modules/
 .pnp
 .pnp.*
 
-# next.js — anchored to the repo root on purpose. An unanchored `out/` also
-# matches tools/SgbdDump/out/, which holds the authoritative SGBD dumps that
-# gen_from_dump.py reads. Those are inputs and must be committed.
+# next.js — `/out/` is anchored to the repo root. It used to be anchored for the
+# OPPOSITE reason: an unanchored `out/` would also have matched
+# tools/SgbdDump/out/, and those dumps were committed on purpose. That reasoning
+# is now inverted — this repository is public and the dumps are BMW-derived — so
+# the dumps live outside the tree entirely (see tools/paths.py). The anchor
+# stays, but it is now only about the Next.js export.
 /.next/
 /out/
 /build/
 next-env.d.ts
 *.tsbuildinfo
 
-# .NET build-time tooling (host/ and tools/SgbdDump are data generators, not
-# runtime dependencies — their build output must never enter the repo)
+# .NET build-time tooling. tools/SgbdDump links EdiabasLib, which is GPLv3.
+# Building it produces a combined work: the source here is MIT but the BINARY is
+# not redistributable. Keeping bin/obj out of the repo is what makes that
+# distinction hold in practice — see THIRD-PARTY-NOTICES.md §2.
 [Bb]in/
 [Oo]bj/
 
@@ -21,8 +26,31 @@ next-env.d.ts
 __pycache__/
 *.py[cod]
 
-# EDIABAS interface traces. These contain real vehicle identifiers (ZB numbers,
-# fault history) and are large. Keep them out of version control entirely.
+# ---------------------------------------------------------------------------
+#  Not ours to publish. This repository is PUBLIC and carries CODE ONLY.
+#  Three different grounds, kept apart on purpose — see docs/PRESERVED.md.
+# ---------------------------------------------------------------------------
+
+# (1) BMW SGBD derivative — THIRD-PARTY-NOTICES.md §3.1. Generated from
+#     C:\EDIABAS\ECU\*.prg, which is not ours to relicense. tools/terms/ is here
+#     too: its dictionary KEYS are verbatim German SGBD strings.
+#     Regenerate locally: tools/dump_modules.py, then tools/gen_ecu_data.py.
+public/ecu-data/
+tools/terms/
+
+# Belt and braces. The dumps now live in $SGBD_DUMP_DIR outside the tree, but a
+# stray copy here must never be committed. The manifest is hashes and counts
+# only — no SGBD strings — so it IS published, and it is what makes the absent
+# data reviewable.
+tools/SgbdDump/out/
+!tools/SgbdDump/out.manifest.json
+
+# (2) Privacy, not licensing. Real ZB numbers (***REMOVED*** / ***REMOVED***) and real fault
+#     history from a 2026-07-18 vehicle session.
+recordings/
+!host/recordings/test-mss54.json
+
+# EDIABAS interface traces. Same reason, and they are large (696 KB).
 *.trc
 trace/
 

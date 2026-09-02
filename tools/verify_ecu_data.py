@@ -15,7 +15,10 @@ import sys
 
 HERE = os.path.dirname(__file__)
 DATA = os.path.join(HERE, "..", "public", "ecu-data")
-DUMP = os.path.join(HERE, "SgbdDump", "out")
+sys.path.insert(0, os.path.abspath(HERE))
+import paths                                                # noqa: E402
+
+DUMP = paths.require_dump_dir()   # リポジトリ外。理由は tools/paths.py
 MODULES = {"mss54": "MSS54DS0", "smg2": "SMG2", "dsc_mk60": "DSC_E46"}
 TOTAL_JOBS = 323
 TOTAL_RESULTS = 2311

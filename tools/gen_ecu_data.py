@@ -31,9 +31,10 @@ sys.path.insert(0, os.path.dirname(__file__))
 from sgbd import classify, model, specs                      # noqa: E402
 from sgbd.model import ROLE_TEXT, ROLE_UNIT, ROLE_VALUE      # noqa: E402
 from translate import leftover_ratio, translate              # noqa: E402
+import paths                                                # noqa: E402
 
 HERE = os.path.dirname(__file__)
-DUMP = os.path.join(HERE, "SgbdDump", "out")
+DUMP = paths.require_dump_dir()   # リポジトリ外。理由は tools/paths.py
 OUT = os.path.join(HERE, "..", "public", "ecu-data")
 GENERATOR = "tools/gen_ecu_data.py"
 SCHEMA = 2

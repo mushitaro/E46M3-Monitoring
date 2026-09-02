@@ -23,7 +23,10 @@ for _s in (sys.stdout, sys.stderr):
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-DUMP_DIR = os.path.join(HERE, "SgbdDump", "out")
+sys.path.insert(0, HERE)
+import paths                                                # noqa: E402
+
+DUMP_DIR = paths.SGBD_DUMP_DIR   # リポジトリ外。理由は tools/paths.py
 ECU_DATA = os.path.join(ROOT, "public", "ecu-data")
 
 # --- 外部の正 ---------------------------------------------------------------

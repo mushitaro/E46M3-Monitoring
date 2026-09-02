@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "dev": "next dev -p 5046",
-    "build": "next build && node scripts/build-id.mjs",
+    "build": "next build && node scripts/build-id.mjs && node scripts/gen-sw.mjs && node scripts/verify-export.mjs",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",

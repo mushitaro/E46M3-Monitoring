@@ -1,8 +1,8 @@
 # Cloudflare Pages headers.
 #
-# The app is a static export that talks only to a serial port. It makes NO
-# network requests of its own at runtime, which is what lets the policy below be
-# this tight: connect-src is 'self' purely so the page can fetch its own assets.
+# The app is a static export that talks only to the cable. It makes NO network
+# requests of its own at runtime, which is what lets the policy below be this
+# tight: connect-src is 'self' purely so the page can fetch its own assets.
 #
 # If a feedback endpoint is added later (plan §8-1), connect-src gains exactly
 # that origin and nothing else — widening it to https: would give away the one
@@ -13,7 +13,20 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
   Cross-Origin-Opener-Policy: same-origin
-  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  # Both hardware permissions are stated, and both are stated as (self).
+  #
+  # `usb=()` is an EMPTY allowlist, not a default: it makes
+  # navigator.usb.requestDevice() throw SecurityError on the deployed origin.
+  # That is the Android path — Chrome for Android exposes a navigator.serial
+  # that enumerates only Bluetooth RFCOMM, so a USB K+DCAN cable is unreachable
+  # there and has to be driven over WebUSB. With `usb=()` every Android session
+  # would fail in a way indistinguishable from an OTG or cable fault on the
+  # phone, which is the worst place to spend an afternoon.
+  #
+  # `serial` is listed even though omitting it currently permits it. Once
+  # someone is editing this line, an unstated permission is one deletion away
+  # from breaking desktop, and the deletion would look deliberate.
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(self), serial=(self)
 
 # The generated data is the part with a provenance question attached
 # (THIRD-PARTY-NOTICES.md §3). Keep it out of search indexes even while the

@@ -178,6 +178,7 @@ interface Catalog {
     /** Why a run control will not fire. One key per RunBlockKey — see runGate.ts. */
     runBlock: Record<
         | 'run_block_programming'
+        | 'run_block_identity'
         | 'run_block_noTelegram'
         | 'run_block_needsArgs'
         | 'run_block_notRead'
@@ -506,6 +507,7 @@ export const STRINGS: Record<Lang, Catalog> = {
         op_blocked_args: '引数が必要です',
         runBlock: {
             run_block_programming: '書換系のジョブに実行操作はありません。本アプリはフラッシュ/EEPROM 書換を送信しません。',
+            run_block_identity: '車両の同一性を書き換えるジョブに実行操作はありません。本アプリは車台番号・鍵材料・積算距離を送信しません。',
             run_block_noTelegram: 'このジョブの要求テレグラムが一意に確定していません。何を送るか分からないものは送りません。',
             run_block_needsArgs: '引数を取るジョブです。抽出したテレグラムには私たちが選んでいない引数値が埋まっているため、そのままでは送れません。',
             run_block_notRead: '読取ジョブではありません。本アプリが実車に送れるのは読取だけです（作動テスト・較正書込・手順の実行経路はまだありません）。',
@@ -603,6 +605,7 @@ export const STRINGS: Record<Lang, Catalog> = {
             test: '作動テスト',
             calibration: '較正・学習値',
             coding: 'コーディング',
+            identity: '車両の同一性（非対応）',
             programming: '書換（非対応）',
             protocol: '手順の部品',
             unclassified: '不明',
@@ -612,6 +615,7 @@ export const STRINGS: Record<Lang, Catalog> = {
             test: '部品を一時的に動かして確かめます。終われば元の状態に戻ります（ラッチするものだけは戻りません。個別に明示しています）。',
             calibration: '学習値・調整値を書き換えます。イグニッションを切っても残り、元の値に戻す手段はありません。',
             coding: '車両の装備構成を書き換えます。他の ECU との整合が崩れると警告灯や機能停止につながります。',
+            identity: '車台番号・受注データ・イモビライザの鍵材料・積算距離——「この車がどの車か」を決めている値を書き換えます。**このアプリからは実行しません。** 他の ECU との整合が崩れれば機能停止や始動不能になり、復旧にはディーラーの鍵データが要ります（NCS / WinKFP の領域）。',
             programming: 'ECU のプログラム領域そのものを扱います。**このアプリからは実行しません。** 失敗した ECU は起動しなくなり、復旧はベンチ作業か交換です（WinKFP の領域）。',
             protocol: '他のジョブの手順の一部です。単体で実行しても意味がありません。',
             unclassified: 'この ECU の SGBD が、このジョブについて何も述べていません。何をするものか分からないので、**実車では実行できません。** 名前から推測して読取扱いにはしません。',
@@ -929,6 +933,8 @@ export const STRINGS: Record<Lang, Catalog> = {
         op_blocked_args: 'Arguments required',
         runBlock: {
             run_block_programming: 'Programming jobs get no run control. This app does not send flash or EEPROM writes.',
+            run_block_identity:
+                'Vehicle-identity jobs get no run control. This app does not send a chassis number, key material or an odometer value.',
             run_block_noTelegram: "This job's request telegram is not uniquely established. We do not send what we cannot name.",
             run_block_needsArgs: 'This job takes arguments. The extracted telegram embeds argument values we did not choose, so it cannot be sent as it stands.',
             run_block_notRead: 'Not a read job. Reads are all this app can send to a car so far — there is no execution path yet for actuator tests, calibration writes or procedures.',
@@ -1029,6 +1035,7 @@ export const STRINGS: Record<Lang, Catalog> = {
             test: 'Actuator test',
             calibration: 'Calibration',
             coding: 'Coding',
+            identity: 'Vehicle identity (not run here)',
             programming: 'Programming (not run here)',
             protocol: 'Procedure step',
             unclassified: 'Unclassified',
@@ -1039,6 +1046,8 @@ export const STRINGS: Record<Lang, Catalog> = {
             calibration:
                 'Rewrites a learned or adjusted value. It survives an ignition cycle and there is no way back to the old value.',
             coding: "Rewrites the car's equipment configuration. Getting it out of step with other modules means warning lights or lost functions.",
+            identity:
+                "Rewrites what says which car this is — chassis number, order and manufacturing data, immobiliser key material, odometer. **This app does not run these.** Out of step with the other modules it means lost functions or an engine that will not start, and recovery needs the dealer's key data. NCS / WinKFP territory.",
             programming:
                 "Operates on the ECU's own program area. **This app does not run these.** An ECU whose write fails will not boot; recovery is bench work or replacement. WinKFP territory.",
             protocol: "A step inside another job's procedure. Running it on its own means nothing.",

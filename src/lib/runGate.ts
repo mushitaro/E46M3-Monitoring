@@ -92,6 +92,7 @@ export const READ_ONLY_CONTROLS: ReadonlySet<number> = new Set([
 
 export type RunBlockKey =
     | 'run_block_programming'
+    | 'run_block_identity'
     | 'run_block_noTelegram'
     | 'run_block_needsArgs'
     | 'run_block_notRead'
@@ -137,6 +138,10 @@ export function mayRun(
     ctx: { moduleId: string },
 ): RunVerdict {
     if (job.class === 'programming') return { allowed: false, reason: 'run_block_programming' };
+    // Same shape as the line above, and a different sentence. "we do not flash ECUs" and
+    // "we do not write your car's identity" are not the same refusal, and a reader who is
+    // told the wrong one will go looking for the wrong thing.
+    if (job.class === 'identity') return { allowed: false, reason: 'run_block_identity' };
 
     // Anything that is not a read needs evidence, and even with evidence this
     // app has no execution path for it yet. Both refusals are real and they are

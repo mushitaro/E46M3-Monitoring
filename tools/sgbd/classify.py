@@ -46,6 +46,68 @@ CLASS_READ = "read"                # 読むだけ。車両状態は変わらな�
 CLASS_TEST = "test"                # 一時的に動かす。終われば元に戻る
 CLASS_CALIBRATION = "calibration"  # 学習値・調整値を書き換える
 CLASS_CODING = "coding"            # 車両コーディング（装備構成）
+# 車両の**同一性**を決める値。車台番号・受注/製造データ・イモビライザの鍵材料・
+# 積算距離。学習値ではないので calibration ではなく、装備構成でもないので coding
+# でもなく、プログラム領域でもないので programming でもない。
+#
+# この class が要る理由は、無いときに何が起きていたかで説明できる。`_SCHREIBEN$`
+# という総称規則が拾って `calibration / audience=owner` にしていたので、
+# EWS3 の `ISN_SCHREIBEN`（イモビライザの秘密鍵）と `FGNR_SCHREIBEN`（車台番号）が
+# 「学習値・調整値を書き換えます」という説明付きで、**オーナー向け**として並んでいた。
+# 説明文が事実と違う。43 ジョブ。
+CLASS_IDENTITY = "identity"        # 車台番号・受注データ・鍵材料・積算距離
+
+# 同一性を書き換えるジョブと、そう判断した根拠（SGBD 原文）。**名前ではなく本文で
+# 決めている**ことを、表そのものが示している必要がある——値は provenance で、
+# `sgbd-comment` は「コメントがそう言っている」、`sgbd-args` は「コメントは言って
+# いないが引数が言っている」。
+IDENTITY_JOBS: dict[str, str] = {
+    # 車台番号
+    "C_FG_AUFTRAG": "sgbd-comment",                  # Schreiben der 17-stelligen Fahrgestellnummer (incl. Pruefziffer)
+    "C_FG_SCHREIBEN": "sgbd-comment",                # Fahrgestellnummer schreiben / Standard Codierjob
+    "FGNR_SCHREIBEN": "sgbd-comment",                # Schreiben der 17-stelligen Fahrgestellnummer inkl. PZ
+    "FGNR_K_SCHREIBEN": "sgbd-comment",              # Schreiben der 7-stelligen Fahrgestellnummer
+    "FAHRGESTELL_NR_SMC_SCHREIBEN": "sgbd-comment",  # Schreiben der VIN in die linke SMC
+
+    # ALC の車台番号。**コメントは "Status von ALC schreiben" と言っていて、自分の
+    # 名前と食い違う。** 決めたのは引数のほう: FGNR_ALC は "7stellige
+    # Fahrgestellnummer" で、対になる FGNR_ALC_LESEN が同じものを読み返す。
+    # SGBD 側のコメントの取り違えで、名前と引数が一致している側が正しい。
+    "FGNR_ALC_SCHREIBEN": "sgbd-args",
+
+    # 受注データ・ZCS（中央コーディングキー）
+    "C_FA_AUFTRAG": "sgbd-comment",                  # Fahrzeugauftrag schreiben
+    "C_FA_LOESCHEN": "sgbd-comment",                 # Fahrzeugauftrag Löschen
+    "C_ZCS_AUFTRAG": "sgbd-comment",                 # Schreiben des Zentralen Codierschluessels in die KD-Daten
+    "C_AZCS_AUFTRAG": "sgbd-comment",                # Write the Rover Additional ZCS into customer-data block
+
+    # 製造・ディーラーデータ
+    "HERSTELLDATEN_SCHREIBEN": "sgbd-comment",       # Beschreiben der Herstellerdaten
+    "KFZ_DATEN_SCHREIBEN": "sgbd-comment",           # KFZ-Herstellerdaten schreiben
+    "SCHEINWERFERHERSTELLERDATEN_SCHREIBEN": "sgbd-comment",  # Beschreiben der Scheinwerfer-Herstellerdaten
+    "KD_DATEN_SCHREIBEN": "sgbd-comment",            # Schreiben der Kundendienst in die EWS
+    "KD_POLSTER_LACK_SCHREIBEN": "sgbd-comment",     # Schreiben der Kundendienstdaten POLSTER und LACK in die EWS3
+    # "Block (Codierdaten, Herstellerdanten) schreiben"。生ブロック書込で、コーディング
+    # データと製造データの**両方**を名指ししている。製造データを名指ししている以上、
+    # 出す先はこちら側で正しい。
+    "BLOCK_SMC_ALC_SCHREIBEN": "sgbd-comment",
+
+    # イモビライザの鍵材料
+    "ISN_SCHREIBEN": "sgbd-comment",                 # Schreiben der ISN-Nummer in die EWS
+    "PASSWORT_SCHREIBEN": "sgbd-comment",            # Schreiben des Passworts in die EWS
+    "SCHL_DATEN_SCHREIBEN": "sgbd-comment",          # Schreiben der Schluesseldaten in die EWS
+    "SCHL_SPERREN_FREIGEBEN": "sgbd-comment",        # Schluessel freischalten und sperren
+    "VERRIEGELUNG_SCHREIBEN": "sgbd-comment",        # Verriegelungsbytes setzen
+
+    # 積算距離
+    "GWSZ_OFFSET_SCHREIBEN": "sgbd-comment",         # OFFSET-Wert des GWSZ in EEPROM schreiben
+
+    # 車種。**コメントは "Umschreiben eines Bytes"（1 バイトを書き換える）としか
+    # 言っていない。** 決めたのは引数で、FZG_TYP の説明が "E38 oder E39"——取れる値が
+    # 他車種の名前なので、モジュールに「自分は別の車にいる」と名乗らせる書込である。
+    # この車 (E46) はどちらでもない。
+    "MABIKI_MODE_SCHREIBEN": "sgbd-args",
+}
 CLASS_PROGRAMMING = "programming"  # フラッシュ／EEPROM／検査スタンプ。WinKFP 領域
 CLASS_PROTOCOL = "protocol"        # 他ジョブの手順の一部。単体では意味を持たない
 # どの規則にも当たらなかった。**既定値がこれである必要がある。**
@@ -274,6 +336,26 @@ OVERRIDES: dict[str, dict] = {
         actor=ACTOR_APP, termination=TERM_COMPANION, stop_job="STEUERN_TRANSPORTSICHERUNG_AN",
         preconditions=["voltage_ok", "stationary"]),
 
+    # EWS3 のみ（実測: 1 SGBD）。"SK in das EWS4.3 Steuergeraet schreiben" で、
+    # 引数は MODE = WRITE_SERVER_SK / LOCK_SERVER_SK、DATA = 16 バイトの SecretKey。
+    # イモビライザの秘密鍵を書き込む、あるいは**恒久的にロックする**。
+    # `STEUERN_` という接頭辞のせいで `test / owner / pulse`（一時的に動かす）として
+    # 出ていた。名前が嘘をついている 2 件目。
+    "STEUERN_EWS4_SK": dict(
+        cls=CLASS_IDENTITY, kind="write", audience=AUD_TECH, risk=RISK_HIGH,
+        irreversible="irr_write", preconditions=["voltage_ok", "engine_off"],
+        provenance="sgbd-comment"),
+
+    # NAVMK4_2 のみ（実測: 1 SGBD）。"Flottenmodus Status"、引数 BYTE1 は 0x00-0x02。
+    # 3 値のモード設定で、`STATUS_FLOTTENMODUS` が読み返せる——あとから読める値は、
+    # ジョブが終わった時点で戻ってはいない。UEB2 の輸送ロックと同じ形。
+    "STEUERN_FLOTTENMODUS": dict(
+        cls=CLASS_CALIBRATION, kind="write", audience=AUD_TECH, risk=RISK_HIGH,
+        irreversible="irr_write", preconditions=["voltage_ok"],
+        # SGBD は 3 値のモードだと述べているが、**残るとは述べていない**。
+        # 残ると読んだのは STATUS_FLOTTENMODUS が読み返せるからで、そこは我々の推論。
+        provenance="authored"),
+
     # UEB2 のロールオーバーバー。"Ausfahren des Buegels"——出す方向だけ。32 ジョブを
     # 全部読んで、戻すジョブは無い（zurueck / RESET / einfahr / retract のいずれも 0 件）。
     # SGBD は戻し方について何も述べていない。その沈黙が事実なので、irr_latching
@@ -408,6 +490,34 @@ def describes_actuation(comment: str) -> bool:
     return bool(_ACTUATION_VERB.search(comment or ""))
 
 
+# 「書込アクセス」と自分で述べているジョブ。**名前が何と言っていても書込である。**
+#
+# 実測: 全 63 SGBD・1,524 ジョブのうち該当は 2 件で、どちらも EWS の
+# `STEUERN_SELBSTTEST`——名前は「自己診断」、コメントは
+# `Schreibzugriff auf den Transponder via EWS-SG`（EWS を通した**トランスポンダへの
+# 書込アクセス**）、引数は BLOCK(0-7) / POSITION(0-15) / DATENBYTE。鍵の中の
+# トランスポンダの任意のバイトを書き換える。
+#
+# `STEUERN_` で始まるので、名前だけを見る規則はこれを
+# `test / owner / pulse`——「一時的に動かして確かめる。終われば元に戻る」——として
+# 出していた。**終わりも戻りも無い。**
+#
+# 名前キーの上書きでは直せない: `STEUERN_SELBSTTEST` は 8 つの SGBD にあり、
+# KOMBI46 / NAVMK3 / NAVMK4 / NAVMK4_2 / VIDEOMOD の 5 つでは本当に自己診断である
+# （"SG - Selbsttest ausloesen" / "Selbsttest Navigationsrechner"）。同じ名前で違う
+# ものを名前で直すと、直っていない側が黙って壊れる。だからコメントで判定する。
+#
+# これは describes_actuation の鏡である: あちらは「読取と名乗っているが起こすと
+# 書いてある」、こちらは「試験と名乗っているが書き込むと書いてある」。どちらも
+# **SGBD の本文が名前に勝つ**という同じ規則。
+_WRITE_ACCESS = re.compile(r"schreibzugriff", re.I)
+
+
+def describes_write(comment: str) -> bool:
+    """SGBD のコメントが、このジョブは書き込むと述べているか。"""
+    return bool(_WRITE_ACCESS.search(comment or ""))
+
+
 def classify(sgbd: str, job: str, comment: str, args: list[str]) -> JobClassification:
     """1ジョブを分類する。`args` は引数名の大文字リスト。"""
     n = job.upper()
@@ -446,6 +556,16 @@ def classify(sgbd: str, job: str, comment: str, args: list[str]) -> JobClassific
     # ここは完全一致で、それらは自分の分岐と override を持っている。
     if n == "INITIALISIERUNG":
         c.cls, c.audience, c.kind, c.risk = CLASS_PROTOCOL, AUD_PROTOCOL, "read", RISK_LOW
+        c.provenance = "sgbd-comment"
+        return _apply_override(n, c, argset, de)
+
+    # --- 自分で「書込アクセス」と述べているもの ---------------------------
+    # 名前より本文。EWS の鍵トランスポンダへの書込が `STEUERN_SELBSTTEST` という名前で
+    # 出ていた件（describes_write の注記）。書く先が鍵の中身なので identity。
+    if describes_write(de):
+        c.cls, c.kind, c.audience, c.risk = CLASS_IDENTITY, "write", AUD_TECH, RISK_HIGH
+        c.irreversible = "irr_write"
+        c.preconditions = ["voltage_ok", "engine_off"]
         c.provenance = "sgbd-comment"
         return _apply_override(n, c, argset, de)
 
@@ -587,6 +707,56 @@ def classify(sgbd: str, job: str, comment: str, args: list[str]) -> JobClassific
             c.preconditions = ["voltage_ok", "engine_off"]
         return _apply_override(n, c, argset, de)
 
+    # --- 生メモリの読み書き。WinKFP 領域 ------------------------------------
+    # `SPEICHER_SCHREIBEN` は上の書換系分岐で既に programming になっているのに、
+    # `SPEICHER_LOESCHEN` は下の総称規則で calibration になっていた。同じ領域を
+    # 触る対の片方だけが「学習値の書換」を名乗るのは、単に食い違いである。
+    if re.match(r"^(EEPROM|RAM)_SCHREIBEN$|^SPEICHER_LOESCHEN$|^QUICK_ERASE$|"
+                r"^(SET|REMOVE)_NO_SAVE_NVR$", n):
+        c.cls, c.kind, c.audience, c.risk = CLASS_PROGRAMMING, "write", AUD_TECH, RISK_HIGH
+        c.irreversible = "irr_eeprom"
+        c.preconditions = ["voltage_ok", "engine_off"]
+        return _apply_override(n, c, argset, de)
+
+    # --- 車両の同一性 -------------------------------------------------------
+    # 名前ではなく **SGBD のコメントで裏を取った 24 件**。表に原文を併記してあるのは、
+    # 次にこれを触る人が「なぜこの名前がここにあるか」を repo の中だけで確かめられる
+    # ようにするため。総称の正規表現で書くと、名前が似ているだけの別物を巻き込む——
+    # 実際、最初に正規表現で書いたときは C_C_* / C_S_*（コーディングデータ）と
+    # C_FS_LOESCHEN（エアバッグのクラッシュ記録）を巻き込んでいた。
+    if n in IDENTITY_JOBS:
+        c.cls, c.kind, c.audience, c.risk = CLASS_IDENTITY, "write", AUD_TECH, RISK_HIGH
+        c.irreversible = "irr_write"
+        c.preconditions = ["voltage_ok", "engine_off"]
+        c.provenance = IDENTITY_JOBS[n]
+        return _apply_override(n, c, argset, de)
+
+    # --- コーディングデータ（`C_C_*` / `C_S_*`）-----------------------------
+    # 名前は上の同一性の族とそっくりだが、SGBD の言うことが違う:
+    #   C_C_AUFTRAG    "Codierdaten schreiben und verifizieren"
+    #   C_C_SCHREIBEN  "Codierdaten schreiben ohne Verifikation"
+    #   C_S_AUFTRAG    "Codierdaten schreiben und verifizieren"
+    # 装備構成の書換なので coding。`^(CODIERDATEN|CODIER|COD_)` の分岐はこの綴りを
+    # 拾わないので、ここで受ける（拾わなかった結果、以前は unclassified だった）。
+    if re.match(r"^C_[CS]_(AUFTRAG|SCHREIBEN)$", n):
+        c.cls, c.kind, c.audience, c.risk = CLASS_CODING, "write", AUD_TECH, RISK_HIGH
+        c.irreversible = "irr_write"
+        c.preconditions = ["voltage_ok", "engine_off"]
+        c.provenance = "sgbd-comment"
+        return _apply_override(n, c, argset, de)
+
+    # --- エアバッグのクラッシュ記録の消去 -----------------------------------
+    # MRS の `C_FS_LOESCHEN` は "Crashtelegram loeschen"。名前が `C_F*_LOESCHEN` の
+    # 形をしているので同一性の族に見えるが、消えるのは車台番号ではなく**衝突の記録**
+    # である。学習値でも装備構成でもないので、総称の書換（calibration）に置いたうえで
+    # 整備者向けにする。文面は cautions.py が持つ。
+    if n == "C_FS_LOESCHEN":
+        c.cls, c.kind, c.audience, c.risk = CLASS_CALIBRATION, "write", AUD_TECH, RISK_HIGH
+        c.irreversible = "irr_write"
+        c.preconditions = ["voltage_ok", "engine_off"]
+        c.provenance = "sgbd-comment"
+        return _apply_override(n, c, argset, de)
+
     # --- 較正・適応の書換 ---------------------------------------------------
     if re.search(r"_SCHREIBEN$|_LOESCHEN$|^SG_RESET$|^EDIC_RESET$|^DDS_RESET$|"
                  r"^INITIALISIER|^ADAPT|^ABGLEICH|ABGLEICHEN$|^TRIG_SCHREIBEN$", n):
@@ -717,5 +887,10 @@ def _apply_override(name: str, c: JobClassification, argset: set[str] | None = N
         return c
     for k, v in ov.items():
         setattr(c, k, v)
-    c.provenance = "authored"
+    # 既定は `authored`——上書きの大半は、SGBD が述べていないことを人が決めたものだから。
+    # ただし**上書きが自分で来歴を名乗っているなら、それが勝つ**。SGBD の本文や引数を
+    # 引いて書いた上書きまで「人が決めた」と記録するのは、根拠を一段弱く言うことになる。
+    # 例: STEUERN_EWS4_SK は SGBD が "SK in das EWS4.3 Steuergeraet schreiben" と述べ、
+    # 引数に 16 バイトの SecretKey と LOCK_SERVER_SK を並べている。
+    c.provenance = ov.get("provenance", "authored")
     return c

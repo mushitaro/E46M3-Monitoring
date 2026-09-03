@@ -144,6 +144,45 @@ describe('no job classified read describes an actuation', () => {
     });
 });
 
+describe('what writes the car’s identity is never addressed to its owner', () => {
+    // 48 jobs write a VIN, a ZCS, the immobiliser's key material or the odometer offset.
+    // Before the `identity` class existed the generic `_SCHREIBEN` rule filed all of them
+    // as `calibration` with `audience: 'owner'`, so EWS3's ISN_SCHREIBEN was listed for a
+    // car's owner under the sentence “rewrites a learned or adjusted value”.
+    //
+    // Two separate claims, because they can regress separately: who it is shown to, and
+    // whether the gate has a sentence of its own for it.
+    it('every identity job is addressed to a technician', () => {
+        const owned: string[] = [];
+        for (const [id, p] of profiles) {
+            for (const j of p.jobs) {
+                if (j.class === 'identity' && j.audience !== 'technician') owned.push(`${id}.${j.id}`);
+            }
+        }
+        expect(owned).toEqual([]);
+    });
+
+    it('and mayRun refuses it by its class, before anything about the session', () => {
+        // Not `run_block_notRead`/`notVerified`: those say “nobody has proven this”, which
+        // would send a reader to the ledger. The refusal here is about the job.
+        const wrong: string[] = [];
+        for (const [id, p] of profiles) {
+            for (const j of p.jobs) {
+                if (j.class !== 'identity') continue;
+                const v = mayRun(j, null, EMPTY_LEDGER, { moduleId: id });
+                if (v.allowed || v.reason !== 'run_block_identity') wrong.push(`${id}.${j.id}`);
+            }
+        }
+        expect(wrong).toEqual([]);
+    });
+
+    it('and there are still some — a rule that matches nothing proves nothing', () => {
+        let n = 0;
+        for (const [, p] of profiles) n += p.jobs.filter((j) => j.class === 'identity').length;
+        expect(n).toBeGreaterThan(40);
+    });
+});
+
 describe('nothing outside the three telegram-bearing modules can run today', () => {
     it('refuses every non-read job in every module, with no telegram and an empty ledger', () => {
         // runGate.test.ts makes this assertion over the three modules it has telegram tables

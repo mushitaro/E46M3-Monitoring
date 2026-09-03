@@ -60,6 +60,18 @@ export type JobClass =
     | 'calibration'
     /** Vehicle coding — the equipment configuration. */
     | 'coding'
+    /**
+     * The values that say which car this is: VIN, order and manufacturing data, the
+     * immobiliser's key material, the odometer.
+     *
+     * Not `calibration` — nothing here was learned. Not `coding` — this is not the
+     * equipment list. Not `programming` — the program area is untouched. The class exists
+     * because without it the generic `_SCHREIBEN` rule filed all 43 of them as calibration
+     * addressed to the OWNER, so EWS3's `ISN_SCHREIBEN` (the immobiliser secret) and
+     * `FGNR_SCHREIBEN` (the chassis number) were listed for a car's owner under the
+     * sentence "rewrites a learned or adjusted value". That sentence was not true of them.
+     */
+    | 'identity'
     /** Flash / EEPROM / inspection stamp. WinKFP territory; this app does not run it. */
     | 'programming'
     /** A step inside another job's procedure. Meaningless on its own. */
@@ -150,6 +162,7 @@ const JOB_CLASSES = Object.keys({
     test: true,
     calibration: true,
     coding: true,
+    identity: true,
     programming: true,
     protocol: true,
     unclassified: true,

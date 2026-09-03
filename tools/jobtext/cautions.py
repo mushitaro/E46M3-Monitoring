@@ -258,9 +258,15 @@ _RAW: list[tuple[str, str, str]] = [
     # どのバイトが何を制御するのかは書かれていない。分からないことは分からないと書く。
     (r"^MABIKI_MODE_SCHREIBEN$",
      "SGBD の説明は「1 バイトを書き換える」だけで、**どのバイトが何を制御するのかを述べて"
-     "いません。** 何が変わるか分からない状態で不可逆の書込を行うことになります。",
+     "いません。** 分かっているのは引数 FZG_TYP の説明だけで、そこには "
+     "**\"E38 oder E39\"**——つまり取れる値は E38 か E39 で、**この車 (E46) はどちらでも"
+     "ありません。** 何が変わるか分からない状態で、車種を名乗り直す不可逆の書込を"
+     "行うことになります。",
      "The SGBD says only that this rewrites a byte. **It does not say which byte, or what that "
-     "byte controls.** You would be making an irreversible write without knowing what changes."),
+     "byte controls.** All it does say is the argument: FZG_TYP is **\"E38 oder E39\"** — the "
+     "only values on offer are two other cars, and **this one is an E46.** That is an "
+     "irreversible write telling the module it is in a different vehicle, with no statement of "
+     "what else changes."),
 
     # UEB2。掛かっている間ロールオーバー保護が働かない。SGBD は前提条件を何も述べて
     # いないが、STATUS_TRANSPORTSICHERUNG_LESEN で状態を読み戻せることは述べている。

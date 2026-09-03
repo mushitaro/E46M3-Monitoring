@@ -57,7 +57,7 @@ import { bestTelegram, type TelegramTable } from '@/lib/telegrams';
 import { useLang } from '@/lib/i18n';
 
 /** The class order is the order of consequence, not alphabetical. */
-const CLASS_ORDER: JobClass[] = ['read', 'test', 'calibration', 'coding', 'programming', 'protocol'];
+const CLASS_ORDER: JobClass[] = ['read', 'test', 'calibration', 'coding', 'identity', 'programming', 'protocol'];
 const AUDIENCE_ORDER: Audience[] = ['owner', 'technician', 'protocol'];
 
 export function ServicePane({
@@ -123,7 +123,7 @@ export function ServicePane({
                 // Programming is excluded by default even under "all classes":
                 // this app does not run it, and thirteen rows that cannot be
                 // acted on at the top of a list is how a list stops being read.
-                if (cls === 'all' && job.class === 'programming') return false;
+                if (cls === 'all' && (job.class === 'programming' || job.class === 'identity')) return false;
                 if (audience !== 'all' && job.audience !== audience) return false;
                 if (system !== 'all' && job.system !== system) return false;
                 if (onlyRunnable && !runnable.has(job.id)) return false;

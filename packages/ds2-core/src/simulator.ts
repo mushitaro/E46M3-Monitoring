@@ -18,6 +18,7 @@
  */
 
 import { Ds2Status, buildDs2Frame, parseDs2Frame, type Ds2Frame } from './frame';
+import { SimulatedFtdiDevice, SimulatedUsb, type SimulatedFtdiOptions } from './ftdiSimulator';
 import type { SerialOptions, SerialPortLike } from './webSerialTypes';
 
 /** What the device does with one incoming request. */
@@ -65,13 +66,100 @@ export interface TraceEntry {
 }
 
 /**
+ * The DS2 slave itself, with no idea how bytes reach it.
+ *
+ * Lifted out of SimulatedSerialPort when a second backend arrived, so the SAME device answers
+ * over Web Serial and over the FTDI packet framing. Two copies of a scripted ECU would drift,
+ * and the drift would show up as one backend passing a test the other fails for reasons that
+ * have nothing to do with the protocol.
+ */
+export class SimulatedEcu {
+    readonly trace: TraceEntry[] = [];
+    private scriptIndex = 0;
+    private busyRemaining = 0;
+
+    constructor(private readonly options: SimulatedEcuOptions) {}
+
+    /**
+     * What the device would put on the wire in reply, in order.
+     *
+     * An array rather than a callback: a dead device returns nothing, a silent one returns the
+     * echo alone, and an answering one returns the echo AND the response as two separate
+     * emissions — which is what they are on the wire, and what lets the FTDI bridge packetise
+     * them the way the chip would.
+     */
+    handle(chunk: Uint8Array): Uint8Array[] {
+        let request: Ds2Frame;
+        try {
+            request = parseDs2Frame(chunk);
+        } catch {
+            // A malformed request is echoed and ignored, like a device that
+            // could not make sense of it.
+            return [chunk];
+        }
+
+        const behavior = this.nextBehavior();
+        this.trace.push({ request, bytes: Uint8Array.from(chunk), behavior: behavior.kind });
+
+        switch (behavior.kind) {
+            case 'dead':
+                return [];
+
+            case 'corruptEcho': {
+                const corrupted = Uint8Array.from(chunk, (b) => b & behavior.mask);
+                const zeros = behavior.trailingZeros ?? 0;
+                for (let i = 0; i < zeros && i < corrupted.length; i++) {
+                    corrupted[corrupted.length - 1 - i] = 0;
+                }
+                return [corrupted];
+            }
+
+            case 'staleResponse':
+                // A previous reply arriving where the echo belonged.
+                return [buildDs2Frame(this.options.address, Ds2Status.ACKNOWLEDGE, new Uint8Array([0x00]))];
+
+            case 'silent':
+                return [chunk]; // echo only
+
+            case 'respond':
+            default: {
+                const scripted =
+                    behavior.kind === 'respond'
+                        ? { status: behavior.status, payload: behavior.payload }
+                        : null;
+                const custom = this.options.respond?.(request) ?? null;
+                const status = scripted?.status ?? custom?.status ?? Ds2Status.ACKNOWLEDGE;
+                const payload = scripted?.payload ?? custom?.payload ?? new Uint8Array(0);
+                return [chunk, buildDs2Frame(this.options.address, status, payload)];
+            }
+        }
+    }
+
+    private nextBehavior(): ExchangeBehavior {
+        const script = this.options.script ?? [];
+        if (this.busyRemaining > 0) {
+            this.busyRemaining--;
+            return { kind: 'respond', status: Ds2Status.BUSY };
+        }
+        if (this.scriptIndex < script.length) {
+            const b = script[this.scriptIndex++];
+            if (b.kind === 'busy') {
+                this.busyRemaining = Math.max(0, b.times - 1);
+                return { kind: 'respond', status: Ds2Status.BUSY };
+            }
+            return b;
+        }
+        return { kind: 'respond' };
+    }
+}
+
+/**
  * A SerialPortLike backed by an in-memory DS2 slave.
  *
  * Pass `port.requestPort` to a WebSerialTransport and the whole real stack runs
  * against it.
  */
 export class SimulatedSerialPort implements SerialPortLike {
-    readonly trace: TraceEntry[] = [];
     /** Every option set the port was opened with, so a reopen can be asserted. */
     readonly opens: SerialOptions[] = [];
     /** Signals set on the port, so the DTR/RTS discipline can be asserted. */
@@ -80,11 +168,18 @@ export class SimulatedSerialPort implements SerialPortLike {
     private controller: ReadableStreamDefaultController<Uint8Array> | null = null;
     private _readable: ReadableStream<Uint8Array> | null = null;
     private _writable: WritableStream<Uint8Array> | null = null;
-    private scriptIndex = 0;
-    private busyRemaining = 0;
     private opened = false;
+    private readonly ecu: SimulatedEcu;
 
-    constructor(private readonly options: SimulatedEcuOptions) {}
+    constructor(options: SimulatedEcuOptions) {
+        this.ecu = new SimulatedEcu(options);
+    }
+
+    /** The device's own record. A getter, not a copy — a copy taken at construction would stop
+     *  growing, and every assertion in the suite reads it after the exchange. */
+    get trace(): TraceEntry[] {
+        return this.ecu.trace;
+    }
 
     get readable(): ReadableStream<Uint8Array> | null {
         return this._readable;
@@ -140,78 +235,9 @@ export class SimulatedSerialPort implements SerialPortLike {
         }
     }
 
-    private nextBehavior(): ExchangeBehavior {
-        const script = this.options.script ?? [];
-        if (this.busyRemaining > 0) {
-            this.busyRemaining--;
-            return { kind: 'respond', status: Ds2Status.BUSY };
-        }
-        if (this.scriptIndex < script.length) {
-            const b = script[this.scriptIndex++];
-            if (b.kind === 'busy') {
-                this.busyRemaining = Math.max(0, b.times - 1);
-                return { kind: 'respond', status: Ds2Status.BUSY };
-            }
-            return b;
-        }
-        return { kind: 'respond' };
-    }
-
     private handleRequest(chunk: Uint8Array): void {
         if (!this.opened || !this.controller) return;
-        let request: Ds2Frame;
-        try {
-            request = parseDs2Frame(chunk);
-        } catch {
-            // A malformed request is echoed and ignored, like a device that
-            // could not make sense of it.
-            this.controller.enqueue(chunk);
-            return;
-        }
-
-        const behavior = this.nextBehavior();
-        this.trace.push({ request, bytes: Uint8Array.from(chunk), behavior: behavior.kind });
-
-        switch (behavior.kind) {
-            case 'dead':
-                return;
-
-            case 'corruptEcho': {
-                const corrupted = Uint8Array.from(chunk, (b) => b & behavior.mask);
-                const zeros = behavior.trailingZeros ?? 0;
-                for (let i = 0; i < zeros && i < corrupted.length; i++) {
-                    corrupted[corrupted.length - 1 - i] = 0;
-                }
-                this.controller.enqueue(corrupted);
-                return;
-            }
-
-            case 'staleResponse': {
-                // A previous reply arriving where the echo belonged.
-                this.controller.enqueue(
-                    buildDs2Frame(this.options.address, Ds2Status.ACKNOWLEDGE, new Uint8Array([0x00])),
-                );
-                return;
-            }
-
-            case 'silent':
-                this.controller.enqueue(chunk); // echo only
-                return;
-
-            case 'respond':
-            default: {
-                this.controller.enqueue(chunk); // echo
-                const scripted =
-                    behavior.kind === 'respond'
-                        ? { status: behavior.status, payload: behavior.payload }
-                        : null;
-                const custom = this.options.respond?.(request) ?? null;
-                const status = scripted?.status ?? custom?.status ?? Ds2Status.ACKNOWLEDGE;
-                const payload = scripted?.payload ?? custom?.payload ?? new Uint8Array(0);
-                this.controller.enqueue(buildDs2Frame(this.options.address, status, payload));
-                return;
-            }
-        }
+        for (const out of this.ecu.handle(chunk)) this.controller.enqueue(out);
     }
 }
 
@@ -225,4 +251,30 @@ export function simulatedPort(options: SimulatedEcuOptions): {
 } {
     const port = new SimulatedSerialPort(options);
     return { port, requestPort: async () => port };
+}
+
+/**
+ * The same DS2 device, reached over the FTDI vendor protocol instead.
+ *
+ * Stub `navigator.usb` with the returned `usb`, and a WebUsbFtdiTransport talks to this ECU
+ * through the real packet framing — two status bytes per packet, short packets terminating a
+ * transfer, the lot. That is the point: the link's echo verification, retries and resync were
+ * proven against a byte stream that arrives in arbitrary chunks, and this asks whether they still
+ * hold when the chunks are packets with headers in them.
+ *
+ * The echo and the response are pushed as two emissions, so they land in two transfers — which is
+ * what happens on the wire, and is the case that broke bulk reads in the reference app.
+ */
+export function simulatedFtdiEcu(
+    options: SimulatedEcuOptions,
+    ftdi: SimulatedFtdiOptions = {},
+): { ecu: SimulatedEcu; device: SimulatedFtdiDevice; usb: SimulatedUsb } {
+    const ecu = new SimulatedEcu(options);
+    const device: SimulatedFtdiDevice = new SimulatedFtdiDevice({
+        ...ftdi,
+        onWrite: (bytes) => {
+            for (const out of ecu.handle(bytes)) device.pushBytes(out);
+        },
+    });
+    return { ecu, device, usb: new SimulatedUsb([device], device) };
 }

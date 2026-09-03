@@ -51,6 +51,9 @@ export interface SimulatedFtdiOptions {
     statusPeriodMs?: number;
     vendorId?: number;
     manufacturerName?: string;
+    /** Called with everything written to the bulk OUT endpoint. This is the seam a DS2 slave hangs
+     *  off — see simulatedFtdiEcu. */
+    onWrite?: (bytes: Uint8Array) => void;
 }
 
 interface Emission {
@@ -88,6 +91,7 @@ export class SimulatedFtdiDevice implements USBDevice {
 
     private readonly packetSize: number;
     private readonly statusPeriodMs: number;
+    private readonly onWrite?: (bytes: Uint8Array) => void;
     private emissions: Emission[] = [];
     private pendingLatch = 0;
     private idleCount = 0;
@@ -99,6 +103,7 @@ export class SimulatedFtdiDevice implements USBDevice {
         this.manufacturerName = opts.manufacturerName ?? 'FTDI';
         this.packetSize = opts.packetSize ?? 64;
         this.statusPeriodMs = opts.statusPeriodMs ?? 1;
+        this.onWrite = opts.onWrite;
         const endpoints = (opts.bulkEndpoints ?? true)
             ? [
                   { endpointNumber: 1, direction: 'in' as const, type: 'bulk' as const, packetSize: this.packetSize },
@@ -197,7 +202,9 @@ export class SimulatedFtdiDevice implements USBDevice {
             data instanceof ArrayBuffer
                 ? new Uint8Array(data)
                 : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-        this.written.push(Uint8Array.from(view));
+        const copy = Uint8Array.from(view);
+        this.written.push(copy);
+        this.onWrite?.(copy);
         void endpointNumber;
         return { bytesWritten: view.byteLength, status: 'ok' };
     }

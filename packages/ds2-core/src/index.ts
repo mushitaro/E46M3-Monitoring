@@ -127,8 +127,10 @@ export type { LinkTiming } from './timing';
 // Test-time only, but exported so the app's own integration tests can drive the
 // real stack too. Simulating the DEVICE beats mocking the link.
 export {
+    SimulatedEcu,
     SimulatedSerialPort,
     simulatedPort,
+    simulatedFtdiEcu,
     type ExchangeBehavior,
     type SimulatedEcuOptions,
     type TraceEntry,

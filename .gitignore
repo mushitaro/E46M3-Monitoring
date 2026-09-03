@@ -65,3 +65,9 @@ trace/
 *.swp
 .vscode/
 .idea/
+
+# 一時的な調査の書き出し。SGBD ダンプの断片や測定結果を UTF-8 で吐くのに使う。
+# Windows の cp932 な stdout に非 ASCII を直接出すと落ちるので、ファイル経由で
+# 読むことになる——そのファイルがコミットに紛れ込んだことが実際にあった。
+/scratch*.txt
+/scratch*.json

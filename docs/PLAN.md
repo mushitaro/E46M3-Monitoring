@@ -389,53 +389,52 @@ tuner が既に `output: 'export'`（static export）なので、同じ形で出
 こちらは DS2 直結で、SGBD から抽出したフレームの再送しかできない。**能力の形が違う**ので、
 向こうの能力に合わせて作られた UI をそのまま写すと、あるものを捨ててないものを作ることになる。
 
-### SMG II ウィザードは作る — 一度「作らない」と書いたのは誤り（step 51）
+### SMG II ウィザード — 作った（step 51）
 
-**訂正。** 最初に「RUN 段が撃てないから作らない」と結論した。根拠は
-`smg2.telegrams.json` に `TESTPRG_*` のフレームが 1 件も無いことだった。
-これは**世界についての事実ではなく、抽出器のフィルタについての事実**だった。
+一度「RUN 段が撃てないから作らない」と結論したが、**誤りだった**。根拠にした
+「`smg2.telegrams.json` に `TESTPRG_*` のフレームが無い」は、世界についての事実ではなく
+`extract_telegrams.py` のフィルタについての事実だった（訂正は `a5635d4`）。
 
-`.prg` を**コマンドバイトの白リスト無しで**走査すると、フレームはそこにある:
-
-```
-TESTPRG_STARTEN          32 06 32 00 00 06     cmd 0x32、データ 2 バイト
-TESTPRG_STOP             32 04 33 05           cmd 0x33、データ 0
-ANSTEUERUNG_VORBEREITEN  32 04 60 56           cmd 0x60、データ 0
-STEUERN_STELLGLIED       32 07 0c 00 00 00 39  cmd 0x0c、データ 3
-ADAPTIONSWERTE_LESEN     32 05 40 00 77        cmd 0x40、データ 1
-```
-
-`extract_telegrams.py` の `CMD` は 18 個の白リストで、`0x32`/`0x33`/`0x60`/`0x40` は
-そこに無い。あの表は **MSS54 の形**で書かれていて、他モジュール固有のコマンドを
-黙って落としていた。全 51 モジュールで測ると:
+SGBD 自身が、これが単発のボタンでは表現できない手順だと書いている:
 
 ```
-今テレグラムを 1 件も持たないが、白リストを外せば得られるジョブ: 317
-ASCII 文字列との偶然一致として弾かれた候補: 94
-白リスト外のコマンドバイト（使うジョブ数）: 0x70:90  0x08:56  0x0e:29  0x0f:22
-                                            0x1d:19  0x1c:18  0x1b:14  0x30:12 …
+TESTPRG_STOP      「TESTPRG_STARTEN の前に送らねばならない」
+TESTPRG_STARTEN   「ジョブを連続して送り続けねばならない。この result が 1 以外を
+                   返すまで送り続けること」  → 進捗は再送でしか取れない
+(4 ジョブ共通)     「Steuergeraete-Timeout: 10s!」
+STEUERN_STELLGLIED「油圧ポンプは自動では止まらない」
 ```
 
-しかも `TESTPRG_STARTEN` のデータ 2 バイトは `00 00` のプレースホルダで、
-SGBD が宣言する引数 2 個（TESTPRG_NR / AUSWAHLBYTE）とちょうど対応する。
-`STEUERN_STELLGLIED` は 3 バイト・3 引数、`TESTPRG_STOP` は 0 バイト・0 引数。
-**ペイロード長と宣言引数数の一致は、白リストとは独立した裏付け**であり、
-引数から実フレームを組む根拠になる。
+**停止 → 開始 → 再送で状態取得 → 終了で停止**、10 秒のタイムアウトを跨いで最大 16 分。
+ウィザードはこれを表示するために在る。
 
-そして SGBD 自身が、この手順が**単発のボタンでは表現できない**ことを書いている:
+| ファイル | 役割 |
+|---|---|
+| `src/lib/argFrame.ts` | 引数 → フレーム。テンプレートの該当バイトが全部 `0x00` で、かつ引数数が一致するときだけ組む |
+| `src/lib/procedureRun.ts` | プロトコル本体。SGBD の原文を規則の隣に引用 |
+| `src/hooks/useProcedureRun.ts` | 再送ループ。`setInterval` ではなく await ループ |
+| `src/views/service/WizardDialog.tsx` | 4 段の UI |
+| `src/lib/wizardSteps.ts` | 既存のリデューサ。`canDismiss` が一方通行規則 |
 
-- `TESTPRG_STOP` のコメント: 「TESTPRG_STARTEN の**前に**送らねばならない」
-- `ANSTEUERUNG_VORBEREITEN`: 「SG タイムアウト 10 秒。診断を維持して再トリガすれば
-  最大 60 秒まで作動が保たれる」
-- `STEUERN_STELLGLIED`: 「油圧ポンプは**自動では止まらない**」
+**実車の門は動かしていない。** `mayRun` も `mayActuate` も無改変。`TESTPRG_STARTEN` は
+読取ではなく `READ_ONLY_CONTROLS` に `0x32` は無いので実車では拒否され、ウィザードは
+その拒否を**理由付きで表示する**（`proc_block_vehicle`）。PRACTICE でのみ走る。
 
-停止 → 開始 → 保活 → 状態読み → 結果、という順序と時間制約を持つ手順。
-これはウィザードが**存在する理由そのもの**であって、儀式ではない。
+ブラウザ実測（PRACTICE・smg2・手順 0x01 / 0x0A）:
 
-安全境界は動かない。実車に送ってよいものを決めるのは `runGate.ts` の
-`READ_ONLY_CONTROLS`（10 個の読取コマンド）であって、抽出器の白リストではない。
-抽出器にフレームが増えても、`0x32` は読取ではないので実車では拒否され続ける。
-PRACTICE でのみ撃てる——step 50 で承認された設計のとおり。
+```
+32 04 33 05          TESTPRG_STOP
+32 06 32 01 00 07    TESTPRG_STARTEN ×6（1 秒間隔）
+32 04 33 05          TESTPRG_STOP
+```
+
+ギア 4 を選ぶと `32 06 32 0a 04 08` — AUSWAHLBYTE に 04 が乗る。
+実行中は Escape でも背景でも閉じず、ボタンは ABORT だけ。ABORT は結果段で
+「中止しました」と出し、ECU が最後に返した状態（実行中 / `01 00`）をそのまま見せる。
+
+**応答のバイト位置は推定**（SGBD の「Byte 5 / Byte 6」の読み）。画面には解読結果の隣に
+生バイトと `推定` の来歴チップを出す。シミュレータも同じ推定でしか答えられないので、
+確定させられるのはベンチか実車だけ。
 
 ### SequenceDialog・Toast も作らない（step 51）
 

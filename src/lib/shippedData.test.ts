@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { assertLoadableProfile, type EcuIndex, type EcuProfile } from './ecuCatalog';
 import { STRINGS } from './i18n';
-import { mayRun } from './runGate';
+import { READ_ONLY_CONTROLS, mayRun } from './runGate';
 import { EMPTY_LEDGER } from './ledger';
 
 /**
@@ -250,8 +250,8 @@ describe('a telegram table only ever addresses its own module', () => {
         // They share 24 frames, and that is correct: both speak DS2 to the same address, so
         // IDENT really is `56 04 00 52` on each. Common frames are the protocol, not a leak.
         //
-        // What proves they came from two different .prg files is where they DIFFER. Nine of
-        // the 26 shared job names have different frame sets, and the differences sit in the
+        // What proves they came from two different .prg files is where they DIFFER. Several of
+        // the 27 shared job names have different frame sets, and the differences sit in the
         // hydraulic valve byte — ASCMK20 drives `f3` where DSC_E46 drives `f1`. A table
         // copied from its neighbour could not disagree about that.
         const a = telegrams.get('ascmk20')!;
@@ -264,7 +264,7 @@ describe('a telegram table only ever addresses its own module', () => {
         const differing = shared.filter(
             (j) => JSON.stringify(hexes(a, j)) !== JSON.stringify(hexes(d, j)),
         );
-        expect(shared.length).toBe(26);
+        expect(shared.length).toBe(27);
         expect(differing).toContain('DRUCKAUFBAU_VL');
         expect(differing.length).toBeGreaterThan(5);
     });
@@ -291,8 +291,14 @@ describe('what a real car would accept today', () => {
         }
     }
 
-    it('is 86 jobs across 36 modules', () => {
-        expect(allowed.length).toBe(86);
+    it('is 96 jobs across 36 modules', () => {
+        // Was 86 across 36. The ten that arrived are seven `IS_LESEN` /
+        // `FS_SHADOW_LESEN` (control 0x14) and two
+        // `STATUS_AUSSCHWINGZEIT_LESEN` (0x0d) — both control bytes already
+        // named in `READ_ONLY_CONTROLS`, whose frames the extractor had been
+        // dropping. Nothing was lost, and the policy did not move: the gate was
+        // already willing to send these, and now their frames exist.
+        expect(allowed.length).toBe(96);
         expect(new Set(allowed.map((a) => a.split('.')[0])).size).toBe(36);
     });
 
@@ -303,6 +309,80 @@ describe('what a real car would accept today', () => {
             const j = byId.get(mid)!.get(jid)!;
             expect(j.class).toBe('read');
             expect(j.args).toEqual([]);
+        }
+    });
+});
+
+describe('reads whose control byte we cannot vouch for', () => {
+    /**
+     * The extractor used to filter frames through an 18-entry command whitelist
+     * written for MSS54, so this list was empty by construction. With that
+     * filter replaced by an evidence model, 47 jobs we classify `read` turn out
+     * to use seven command bytes nobody has established as reads.
+     *
+     * A FINDING, not a violation, and the two must not be confused:
+     *
+     *   - `READ_ONLY_CONTROLS` is NOT extended to cover them. Fourteen modules
+     *     spelling `PRUEFSTEMPEL_LESEN` as 0x0e is strong evidence that 0x0e
+     *     reads an inspection stamp — and evidence is not verification. That
+     *     list decides what a real car receives.
+     *   - so `mayRun` refuses all 42, and its wording is already careful: the
+     *     frame COULD change the car, not does.
+     *
+     * What is pinned is the SET of command bytes. A new one is a new question
+     * about the wire and fails here; the seven known ones do not.
+     */
+    const UNVOUCHED: ReadonlyMap<number, string> = new Map([
+        [0x02, 'lsz.FG_NR_LESEN, SIA_LESEN'],
+        [0x08, 'smg2.CODIERDATEN_LESEN, mrs4.BARCODE_*_LESEN'],
+        [0x0e, 'PRUEFSTEMPEL_LESEN on 14 modules — an inspection stamp, evidently'],
+        [0x1b, 'BETRIEBSSTUNDENZAEHLER_LESEN, STATUS_LESEN'],
+        [0x40, 'SYSTEM_PARAMETER_LESEN on the nav units'],
+        [0x63, 'cdc_46.SER_NR_DOM_LESEN'],
+        [0x80, 'mrs4.C_FS_LESEN'],
+    ]);
+
+    const found = new Map<number, string[]>();
+    for (const [id, p] of profiles) {
+        const table = telegrams.get(id)!;
+        for (const j of p.jobs) {
+            if (j.class !== 'read') continue;
+            const entries = table.jobs[j.id] ?? [];
+            if (entries.length !== 1 || entries[0].confidence !== 'single') continue;
+            const control = Number.parseInt(entries[0].hex.split(' ')[2], 16);
+            if (READ_ONLY_CONTROLS.has(control)) continue;
+            if (!found.has(control)) found.set(control, []);
+            found.get(control)!.push(`${id}.${j.id}`);
+        }
+    }
+
+    it('names every one of the command bytes involved', () => {
+        const surprises = [...found.keys()].filter((c) => !UNVOUCHED.has(c));
+        expect(surprises.map((c) => `0x${c.toString(16)}`)).toEqual([]);
+    });
+
+    it('pins nothing that has since disappeared', () => {
+        const gone = [...UNVOUCHED.keys()].filter((c) => !found.has(c));
+        expect(gone.map((c) => `0x${c.toString(16)}`)).toEqual([]);
+    });
+
+    it('covers 47 jobs', () => {
+        expect([...found.values()].reduce((n, a) => n + a.length, 0)).toBe(47);
+    });
+
+    it('refuses all of them, rather than trusting the name', () => {
+        // `_LESEN` is German for read. It does not mean the byte on the wire is
+        // a read, and this is the assertion that keeps those two apart.
+        const byId = new Map(profiles.map(([id, p]) => [id, new Map(p.jobs.map((j) => [j.id, j]))]));
+        for (const [, list] of found) {
+            for (const ref of list) {
+                const mid = ref.slice(0, ref.indexOf('.'));
+                const jid = ref.slice(ref.indexOf('.') + 1);
+                const table = telegrams.get(mid)!;
+                const tel = { hex: table.jobs[jid][0].hex, confidence: 'single' as const };
+                const v = mayRun(byId.get(mid)!.get(jid)!, tel as never, EMPTY_LEDGER, { moduleId: mid });
+                expect(v.allowed, ref).toBe(false);
+            }
         }
     });
 });

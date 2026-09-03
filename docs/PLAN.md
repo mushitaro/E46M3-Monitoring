@@ -389,30 +389,53 @@ tuner が既に `output: 'export'`（static export）なので、同じ形で出
 こちらは DS2 直結で、SGBD から抽出したフレームの再送しかできない。**能力の形が違う**ので、
 向こうの能力に合わせて作られた UI をそのまま写すと、あるものを捨ててないものを作ることになる。
 
-### SMG II ウィザードは作らない（step 51）
+### SMG II ウィザードは作る — 一度「作らない」と書いたのは誤り（step 51）
 
-`src/lib/wizardSteps.ts` は 4 段（PREREQ / SAFETY / RUN / RESULT）の純リデューサとして
-書いてあり、「動作中の唯一の出口は ABORT」を `canDismiss` として証明できる形にしてあった。
-UI を載せる段で測った:
+**訂正。** 最初に「RUN 段が撃てないから作らない」と結論した。根拠は
+`smg2.telegrams.json` に `TESTPRG_*` のフレームが 1 件も無いことだった。
+これは**世界についての事実ではなく、抽出器のフィルタについての事実**だった。
+
+`.prg` を**コマンドバイトの白リスト無しで**走査すると、フレームはそこにある:
 
 ```
-smg2 の手順: 14、シーケンス: 2
-TESTPRG_STARTEN | 引数 2 | class calibration | mayRun: run_block_notVerified
-TESTPRG_STOP    | 引数 0 | class test        | mayRun: run_block_notVerified
-smg2.telegrams.json に TESTPRG_* のフレームは 1 件も無い
+TESTPRG_STARTEN          32 06 32 00 00 06     cmd 0x32、データ 2 バイト
+TESTPRG_STOP             32 04 33 05           cmd 0x33、データ 0
+ANSTEUERUNG_VORBEREITEN  32 04 60 56           cmd 0x60、データ 0
+STEUERN_STELLGLIED       32 07 0c 00 00 00 39  cmd 0x0c、データ 3
+ADAPTIONSWERTE_LESEN     32 05 40 00 77        cmd 0x40、データ 1
 ```
 
-引数リストから DS2 フレームを組む符号化器はこの repo のどこにも無い（`actuatorArgs.ts` の
-ヘッダがその理由を書いている）。だから RUN 段は**実車でも PRACTICE でも押せない**。
-4 段踏ませて押せないボタンに着く儀式は、この repo が拒否している「theatre」そのもの。
+`extract_telegrams.py` の `CMD` は 18 個の白リストで、`0x32`/`0x33`/`0x60`/`0x40` は
+そこに無い。あの表は **MSS54 の形**で書かれていて、他モジュール固有のコマンドを
+黙って落としていた。全 51 モジュールで測ると:
 
-**そして中身は既に画面に出ている。** `ProcedureDetail`（`JobDetail.tsx`）が所要時間・エンジン状態・
-21 個の activity ステップ・前提条件・故障コード・期待値の帯と来歴を、モーダル無しで右カラムに
-出している。ウィザードが足せるのは RUN 段だけで、それが撃てない。
+```
+今テレグラムを 1 件も持たないが、白リストを外せば得られるジョブ: 317
+ASCII 文字列との偶然一致として弾かれた候補: 94
+白リスト外のコマンドバイト（使うジョブ数）: 0x70:90  0x08:56  0x0e:29  0x0f:22
+                                            0x1d:19  0x1c:18  0x1b:14  0x30:12 …
+```
 
-→ `wizardSteps.ts` とそのテストは**削除**した（`git log` に残る）。引数が送れるようになったら
-そこから戻せる。「動作中は ABORT だけ」という規則を書き直す必要があるときのために、ここに
-理由ごと残す。
+しかも `TESTPRG_STARTEN` のデータ 2 バイトは `00 00` のプレースホルダで、
+SGBD が宣言する引数 2 個（TESTPRG_NR / AUSWAHLBYTE）とちょうど対応する。
+`STEUERN_STELLGLIED` は 3 バイト・3 引数、`TESTPRG_STOP` は 0 バイト・0 引数。
+**ペイロード長と宣言引数数の一致は、白リストとは独立した裏付け**であり、
+引数から実フレームを組む根拠になる。
+
+そして SGBD 自身が、この手順が**単発のボタンでは表現できない**ことを書いている:
+
+- `TESTPRG_STOP` のコメント: 「TESTPRG_STARTEN の**前に**送らねばならない」
+- `ANSTEUERUNG_VORBEREITEN`: 「SG タイムアウト 10 秒。診断を維持して再トリガすれば
+  最大 60 秒まで作動が保たれる」
+- `STEUERN_STELLGLIED`: 「油圧ポンプは**自動では止まらない**」
+
+停止 → 開始 → 保活 → 状態読み → 結果、という順序と時間制約を持つ手順。
+これはウィザードが**存在する理由そのもの**であって、儀式ではない。
+
+安全境界は動かない。実車に送ってよいものを決めるのは `runGate.ts` の
+`READ_ONLY_CONTROLS`（10 個の読取コマンド）であって、抽出器の白リストではない。
+抽出器にフレームが増えても、`0x32` は読取ではないので実車では拒否され続ける。
+PRACTICE でのみ撃てる——step 50 で承認された設計のとおり。
 
 ### SequenceDialog・Toast も作らない（step 51）
 

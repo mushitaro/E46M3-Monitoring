@@ -63,17 +63,80 @@ def resolve_prg(name: str) -> str:
             return os.path.join(ECU_DIR, f)
     return exact   # 呼び出し側が FileNotFoundError にする
 
+def arg_counts(prg: str) -> dict[str, int]:
+    """ジョブ名 → SGBD が宣言する引数の個数。
+
+    テンプレートのデータ部が何バイトあるかと突き合わせるために要る。
+    ここだけが `.prg` の外を見る——ダンプ（`$SGBD_DUMP_DIR/<SGBD>.json`）は
+    `SgbdDump.exe` が EDIABAS 自身に問い合わせて書いたもので、引数リストは
+    そこにしかない。ダンプが無ければ空を返す（突き合わせ結果は `null` になり、
+    「一致しなかった」ではなく「照合していない」と読める）。"""
+    stem = os.path.splitext(os.path.basename(prg))[0]
+    d = paths.SGBD_DUMP_DIR
+    if not os.path.isdir(d):
+        return {}
+    hit = next((f for f in os.listdir(d) if f.lower() == f"{stem.lower()}.json"), None)
+    if hit is None:
+        return {}
+    with open(os.path.join(d, hit), encoding="utf-8") as f:
+        dump = json.load(f)
+    return {j["job"]: len(j.get("args") or []) for j in dump.get("jobs", [])}
+
+
+# ============================================================================
+#  コマンドバイト表は「名前」であって「フィルタ」ではない
+# ----------------------------------------------------------------------------
+#  以前ここは 18 個の白リストで、リストに無いコマンドのフレームは**捨てられて**
+#  いた。その表は MSS54 の形で書かれていたので、他モジュール固有のコマンドが
+#  黙って消えていた。全 51 モジュールで測った実害:
+#
+#      テレグラムを 1 件も持たないが、白リストを外せば得られるジョブ: 317
+#      白リスト外のコマンド（使うジョブ数）: 0x70:90 0x08:56 0x0e:29 0x0f:22
+#                                             0x1d:19 0x1c:18 0x1b:14 0x30:12 …
+#
+#  最悪だったのは SMG II の試験プログラムで、`TESTPRG_STARTEN`(0x32)・
+#  `TESTPRG_STOP`(0x33)・`ANSTEUERUNG_VORBEREITEN`(0x60)・
+#  `ADAPTIONSWERTE_LESEN`(0x40) が全部落ちていた。つまり「フレームが無い」は
+#  世界についての事実ではなく、この表についての事実だった。
+#
+#  **`0x0d` と `0x14` は `runGate.READ_ONLY_CONTROLS` に載っている読取なのに、
+#  ここには無かった。** 送ってよいと宣言しているコマンドのフレームを、抽出器が
+#  捨てていたということ。
+#
+#  安全境界はここではない。実車に何を送ってよいかを決めるのは
+#  `src/lib/runGate.ts` の `READ_ONLY_CONTROLS`（10 個の読取コマンド）ひとつで、
+#  ここにフレームが増えても実車で撃てるものは 1 件も増えない——増えるのは
+#  「何を送ることになるのか画面に出せる」ジョブの数である。
+# ============================================================================
 CMD = {
     0x00: "identification", 0x04: "read fault memory", 0x05: "CLEAR fault memory",
     0x06: "read memory", 0x07: "write memory", 0x0A: "coding checksum",
-    0x0B: "read status/IO block", 0x0C: "IO control (actuator)", 0x1A: "read ident",
+    0x0B: "read status/IO block", 0x0C: "IO control (actuator)",
+    0x0D: "read system addresses", 0x14: "read shadow fault memory",
+    0x1A: "read ident",
     0x43: "CLEAR adaptations", 0x53: "mfr-specific data", 0x6C: "EWS init",
     0x6D: "EWS status", 0x90: "login (seed/key)", 0x91: "baud switch",
     0x9E: "keepalive", 0x9F: "end diagnostics",
+    # 以下は本 repo の実測で名前が付いたもの。根拠は「そのコマンドを含む
+    # フレームが、その名前のジョブのコード領域にだけ現れる」こと。推測で
+    # 名前を付けたものはひとつも無い——名前が付かないものは付けずに出す。
+    0x32: "start test program",       # SMG2 TESTPRG_STARTEN
+    0x33: "stop test program",        # SMG2 TESTPRG_STOP
+    0x40: "read adaptation values",   # SMG2 ADAPTIONSWERTE_LESEN
+    0x60: "prepare actuation",        # SMG2 ANSTEUERUNG_VORBEREITEN
 }
 
 # テレグラム長の窓。4未満は不正、24超はリテラルの偶然一致がほとんど。
 MIN_LEN, MAX_LEN = 4, 24
+
+# ASCII の文字列リテラルが、たまたまアドレスバイトで始まってしまう事故。
+# `32 0a 52 45 53 55 4c 54 3a 0b` は "RESULT:" であってテレグラムではない。
+# 51 モジュールで 94 件。名前の付いたコマンドは通す（`0x53` は 'S' でもある）。
+MIN_ASCII_RUN = 3
+
+
+def looks_like_text(payload: bytes) -> bool:
+    return len(payload) >= MIN_ASCII_RUN and all(0x20 <= b < 0x7F for b in payload)
 
 
 def dexor(b):
@@ -113,7 +176,8 @@ def owner(jobs, pos):
     return name
 
 
-def extract(path, addr):
+def extract(path, addr, arg_counts=None):
+    arg_counts = arg_counts or {}
     raw = open(path, "rb").read()
     dec = dexor(raw)
     jobs = jobtable(raw)
@@ -126,10 +190,12 @@ def extract(path, addr):
         if ll < MIN_LEN or ll > MAX_LEN:
             continue
         cmd = dec[i + 2]
-        if cmd not in CMD:
-            continue
         stored = dec[i:i + ll - 1]          # チェックサム抜きのテレグラム
         if len(stored) < 3:
+            continue
+        # 名前の付かないコマンドは、ペイロードが可読 ASCII なら文字列リテラル
+        # として捨てる。名前が付いているものは通す（下の表を参照）。
+        if cmd not in CMD and looks_like_text(stored[3:]):
             continue
         tel = stored + bytes([xorck(stored)])
         seen.setdefault((owner(jobs, i), tel), 0)
@@ -156,13 +222,27 @@ def extract(path, addr):
                 confidence = "multiple"
             else:
                 confidence = "single"
+            payload = len(tel) - 4          # addr, len, cmd, …payload…, checksum
+            declared = arg_counts.get(job)
             entries.append({
                 "hex": tel.hex(" "),
                 "cmd": tel[2],
-                "cmdName": CMD.get(tel[2], "?"),
+                # 名前が付かないものは `null`。以前は `"?"` を書いていたが、
+                # それは「調べたが分からない」と「表に無い」を同じ字面にする。
+                "cmdName": CMD.get(tel[2]),
+                "named": tel[2] in CMD,
                 "occurrences": count,
                 "sharedWithJobs": sharers - 1,
                 "confidence": confidence,
+                # 引数との突き合わせ。白リストとは**独立した**裏付けで、
+                # 引数値から実フレームを組む根拠でもある: SGBD が 2 引数と
+                # 宣言し、テンプレートのデータ部が 2 バイトなら、その 2 バイトが
+                # その 2 引数である。`declaredArgs` が null なのはダンプに
+                # そのジョブが無い場合（抽出器はジョブ表を .prg から読むので、
+                # ダンプ側に無い名前が出ることがある）。
+                "payloadBytes": payload,
+                "declaredArgs": declared,
+                "argsAgree": None if declared is None else declared == payload,
             })
         out[job] = entries
     return out
@@ -183,7 +263,7 @@ if __name__ == "__main__":
         try:
             if not os.path.exists(path):
                 raise FileNotFoundError(path)
-            data = extract(path, addr)
+            data = extract(path, addr, arg_counts(prg))
             dest = os.path.join(OUT, f"{mid}.telegrams.json")
             tmp = dest + ".tmp"
             with open(tmp, "w", encoding="utf-8") as f:

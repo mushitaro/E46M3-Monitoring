@@ -81,10 +81,13 @@ describe('PRACTICE opens the actuator surface, with three refusals kept', () => 
         }
     });
 
-    it('leaves 55 actuator jobs actually runnable, so the surface is not empty', () => {
+    it('leaves 63 actuator jobs actually runnable, so the surface is not empty', () => {
         // The refusals above are only meaningful if something survives them. All
-        // 55 are zero-argument test jobs with one certain telegram: 53 pulses,
-        // and the STEUERN_EKP pair, which exercises the two-button hold path.
+        // 63 are zero-argument test jobs with one certain telegram, and the
+        // STEUERN_EKP pair among them exercises the two-button hold path. It was
+        // 55 until the telegram extractor stopped filtering frames through a
+        // command whitelist written for MSS54 — the eight that arrived are jobs
+        // whose frames existed all along and were being discarded.
         let n = 0;
         for (const m of index.modules) {
             const p = read<EcuProfile>(`${m.id}.jobs.json`);
@@ -97,7 +100,7 @@ describe('PRACTICE opens the actuator surface, with three refusals kept', () => 
                 if (mayActuate(j, t, EMPTY_LEDGER, { moduleId: m.id, mode: 'practice' }).allowed) n++;
             }
         }
-        expect(n).toBe(55);
+        expect(n).toBe(63);
     });
 
     it('refuses when the telegram is missing or not certain', () => {

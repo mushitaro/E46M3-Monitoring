@@ -52,7 +52,7 @@ describe('every job belongs to exactly one tab', () => {
 });
 
 describe('SERVICE carries the whole of what a real car will accept', () => {
-    it('holds every job mayRun permits on a vehicle — 86 of them, all reads', () => {
+    it('holds every job mayRun permits on a vehicle — 96 of them, all reads', () => {
         // This is why SERVICE is not deleted. DIAGNOSIS, ADAPTATION and DATALOG
         // send frames built from the protocol, not catalogue jobs; the hub's
         // SERVICE branch is the only path that sends one. If these ever moved to
@@ -68,6 +68,10 @@ describe('SERVICE carries the whole of what a real car will accept', () => {
                 }
             }
         }
-        expect(runnable.length).toBe(86);
+        // 86 until the telegram extractor stopped filtering frames through a
+        // command whitelist written for MSS54. The ten that arrived are reads
+        // on control bytes `READ_ONLY_CONTROLS` already named — 0x14 and 0x0d —
+        // whose frames had simply never been recovered.
+        expect(runnable.length).toBe(96);
     });
 });

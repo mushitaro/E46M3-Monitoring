@@ -207,6 +207,21 @@ export function practiceEcu(): SimulatedEcuOptions {
                 case Ds2Control.END_DIAGNOSTIC_MODE:
                     return null; // bare ACK
 
+                // Two reads the gate has always been willing to send and that
+                // the simulator could not answer, because the extractor was
+                // dropping their frames and so nothing ever asked. They are in
+                // `READ_ONLY_CONTROLS`; ten jobs across seven modules use them.
+                //
+                // A BARE ACK for the same reason as 0x0c: the shadow fault
+                // memory's record layout is not the fault memory's — it is a
+                // DIFFERENT store, and assuming they share a shape is precisely
+                // the invention the note above refuses. Answering
+                // "acknowledged" says the ECU replied and claims nothing about
+                // what it replied with.
+                case Ds2Control.READ_SHADOW_ERROR_MEMORY: // 0x14
+                case Ds2Control.READ_SYSTEM_ADDRESSES: // 0x0d
+                    return null; // bare ACK
+
                 default:
                     // An unimplemented job is REFUSED, not quietly acknowledged.
                     // A mock that says OKAY to everything is why the tuner's

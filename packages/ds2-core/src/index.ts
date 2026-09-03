@@ -91,6 +91,16 @@ export {
     FTDI_DATA_8E1_TX_BREAK,
 } from './webUsbFtdiTransport';
 
+export {
+    createDs2Transport,
+    detectTransportKind,
+    readTransportEnv,
+    isAndroidPlatform,
+    latencyTimerOf,
+    type TransportKind,
+    type TransportEnv,
+} from './transportSelect';
+
 export { isWebUsbSupported, getUsb } from './webUsbTypes';
 export type { USBDevice, USBLike, USBConnectionEvent } from './webUsbTypes';
 

@@ -24,12 +24,16 @@ import {
     Ds2Address,
     Ds2Link,
     WebSerialTransport,
+    createDs2Transport,
+    detectTransportKind,
     isDs2Error,
-    isWebSerialSupported,
+    latencyTimerOf,
     simulatedPort,
     toHex,
+    type Ds2ByteTransport,
     type Ds2ErrorKind,
     type Ds2Frame,
+    type TransportKind,
 } from '@tsunagi/ds2-core';
 import {
     ERROR_MEMORY_ENTRIES,
@@ -154,22 +158,46 @@ export interface AdaptationRead {
  */
 const LOG_CAPACITY = 5000;
 
+/** What the connect log calls each backend. It has to name the one actually in use: the two do
+ *  not measure the same thing, so a session that says the wrong one makes every timing in it
+ *  unattributable. */
+const TRANSPORT_LABEL: Record<Exclude<TransportKind, 'none'>, string> = {
+    'web-serial': 'Web Serial',
+    'web-usb-ftdi': 'WebUSB (FTDI)',
+};
+
 /**
- * Web Serial support, read in a way that survives a static export.
+ * A dismissed device chooser, from either backend.
  *
- * `isWebSerialSupported()` is false during prerender (there is no navigator) and
- * true in a supporting browser, so reading it directly during render produced a
- * hydration mismatch — and React then abandoned that subtree's attributes,
- * which left the connect buttons inert. useSyncExternalStore with an explicit
- * server snapshot makes the first client render agree with the HTML and the
- * second render tell the truth.
+ * `navigator.serial.requestPort()` and `navigator.usb.requestDevice()` both reject with a
+ * NotFoundError when the picker is closed without choosing. Neither transport wraps that
+ * rejection — deliberately, and both say so in a comment — so the name survives to here. The
+ * message test is a belt-and-braces for an engine that gets the name wrong.
+ */
+function isUserCancel(e: unknown): boolean {
+    if (!(e instanceof Error)) return false;
+    return e.name === 'NotFoundError' || /no (port|device) selected/i.test(e.message);
+}
+
+/**
+ * Which backend can reach a car here, read in a way that survives a static export.
+ *
+ * The detection is 'none' during prerender (there is no navigator) and a real backend in a
+ * supporting browser, so reading it directly during render produced a hydration mismatch — and
+ * React then abandoned that subtree's attributes, which left the connect buttons inert.
+ * useSyncExternalStore with an explicit server snapshot makes the first client render agree with
+ * the HTML and the second render tell the truth.
+ *
+ * This answers a different question from the one `connect()` asks. This one is "can anything
+ * reach a car", for enabling a control; connect() re-detects at the moment of the tap, so a phone
+ * that gains an OTG adapter in between does not need a reload.
  */
 const noopSubscribe = () => () => {};
-function useWebSerialSupported(): boolean {
+function useTransportKind(): TransportKind {
     return useSyncExternalStore(
         noopSubscribe,
-        () => isWebSerialSupported(),
-        () => false,
+        () => detectTransportKind(),
+        () => 'none' as const,
     );
 }
 
@@ -185,9 +213,12 @@ export function useDs2Link() {
     const [adaptations, setAdaptations] = useState<AdaptationRead[] | null>(null);
     const [lastRun, setLastRun] = useState<JobRunResult | null>(null);
 
-    const webSerialSupported = useWebSerialSupported();
+    const transportKind = useTransportKind();
 
     const linkRef = useRef<Ds2Link | null>(null);
+    /** Held alongside the link because the latency timer is a BACKEND capability, not a link one,
+     *  and the run boundary that operates it lives here. */
+    const transportRef = useRef<Ds2ByteTransport | null>(null);
     const logRef = useRef<CommsLogLine[]>([]);
     const pollingRef = useRef(false);
     const finishedRef = useRef(true);
@@ -222,24 +253,40 @@ export function useDs2Link() {
             clearError();
             setState('connecting');
             try {
-                const transport =
+                // PRACTICE deliberately does not go through createDs2Transport: it wraps the
+                // simulated port in a REAL WebSerialTransport, so the simulator drives the actual
+                // transport class rather than a mock of it.
+                const selected =
                     nextMode === 'practice'
-                        ? new WebSerialTransport({ requestPort: simulatedPort(practiceEcu()).requestPort })
-                        : new WebSerialTransport();
-                const link = new Ds2Link(transport, { address: Ds2Address.DME });
+                        ? {
+                              kind: 'web-serial' as const,
+                              transport: new WebSerialTransport({
+                                  requestPort: simulatedPort(practiceEcu()).requestPort,
+                              }),
+                          }
+                        : createDs2Transport();
+                const link = new Ds2Link(selected.transport, { address: Ds2Address.DME });
                 await link.connect();
                 linkRef.current = link;
+                transportRef.current = selected.transport;
                 setMode(nextMode);
                 setState('connected');
                 append(
                     'info',
                     nextMode === 'practice'
                         ? 'PRACTICE mode — no vehicle attached. Values are synthetic.'
-                        : 'Connected over Web Serial at 9600 8E1.',
+                        : `Connected over ${TRANSPORT_LABEL[selected.kind]} at 9600 8E1.`,
                 );
             } catch (e) {
                 linkRef.current = null;
+                transportRef.current = null;
                 setState('disconnected');
+                // Closing the picker is not a failure. Turning "changed their mind" into a red
+                // error line is how people learn to ignore the red line that means something.
+                if (isUserCancel(e)) {
+                    append('info', 'Connection cancelled — no device selected.');
+                    return;
+                }
                 failWith(e);
             }
         },
@@ -250,6 +297,7 @@ export function useDs2Link() {
         pollingRef.current = false;
         const link = linkRef.current;
         linkRef.current = null;
+        transportRef.current = null;
         setState('disconnected');
         if (link) {
             try {
@@ -486,6 +534,21 @@ export function useDs2Link() {
             const t0 = performance.now();
             append('info', `Recording ${channels.length} channel(s) across ${blocks.length} block(s).`);
 
+            // Arm the low latency timer for the duration of the run.
+            //
+            // The 16 ms default was ruled out as a throughput lever by a sweep on the BULK READ,
+            // and that conclusion does not carry here: a bulk read moves 122-byte chunks where the
+            // packetisation tail is a small share of a long response, while a datalog exchange is
+            // 13 to 94 bytes and there are two or three of them per sample, so the tail dominates
+            // and is paid several times a second. The price is real — 4 ms is 250 idle wakeups a
+            // second against 62.5, each one a transferIn resolving on this thread — which is why it
+            // is armed for a run rather than made the default.
+            //
+            // Null on Web Serial: no equivalent knob exists there, so a run gets whatever the
+            // driver does. That is worth knowing when comparing sample rates across backends.
+            const latency = transportRef.current ? latencyTimerOf(transportRef.current) : null;
+            void latency?.('log');
+
             void (async () => {
                 let failure: string | null = null;
                 try {
@@ -537,6 +600,12 @@ export function useDs2Link() {
                     // failed run cannot quietly return the link to idle.
                     pollingRef.current = false;
                     setState('connected');
+                    // Restored HERE and nowhere else, for the reason the comment above gives: a
+                    // run that ended by failing must not leave the chip waking four times a
+                    // second more than it needs to for the rest of the session, and stopLog is
+                    // not that place — it only asks the loop to stop, and the loop is still
+                    // finishing a sample when it returns.
+                    void latency?.('idle');
                     if (!finishedRef.current) {
                         finishedRef.current = true;
                         onEnd(failure);
@@ -604,7 +673,7 @@ export function useDs2Link() {
         faults,
         quickTest,
         adaptations,
-        webSerialSupported,
+        transportKind,
         connect,
         disconnect,
         readIdent,

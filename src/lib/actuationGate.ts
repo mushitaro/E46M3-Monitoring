@@ -20,8 +20,16 @@
  *     not run these**. Building a working run path for them would make the app's
  *     own sentence false, and the next person to widen the gate would find the
  *     path already built.
- *   - Refused: a job with arguments the operator has not filled in. The point of
- *     practising is to practise the real call.
+ *   - Refused: **any job that takes arguments** — not "not filled in yet", but at
+ *     all, in either mode. This app builds no frame from an argument list. The
+ *     only frames it can send are the ones it derives from the protocol and the
+ *     ones the static scrape recovered, and a scraped frame embeds whatever
+ *     values the SGBD's bytecode happened to hold. Sending it while the gate
+ *     dialog showed the operator's values would disclose a call that is not the
+ *     call — which is worse than refusing, because it looks like it worked.
+ *     `mayRun` has refused these all along for the same reason; PRACTICE gains
+ *     nothing by pretending otherwise, since the bytes would be equally wrong
+ *     against a simulator.
  *   - Refused: no telegram. There is nothing to send.
  *   - Allowed: everything else, including the non-read control bytes — that IS
  *     the surface being exercised.
@@ -44,8 +52,6 @@ const NEVER_RUN = new Set<CatalogJob['class']>(['programming', 'identity']);
 export interface ActuationContext {
     moduleId: string;
     mode: ActuationMode;
-    /** What the operator has filled in, by argument name. */
-    args?: Readonly<Record<string, string>>;
 }
 
 export function mayActuate(
@@ -68,10 +74,9 @@ export function mayActuate(
         return { allowed: false, reason: 'run_block_noTelegram' };
     }
 
-    const filled = ctx.args ?? {};
-    if (job.args.some((a) => !filled[a.name])) {
-        return { allowed: false, reason: 'run_block_needsArgs' };
-    }
+    // Not "the operator has not filled these in". There is no encoder from an
+    // argument list to a DS2 frame anywhere in this repo — see the note above.
+    if (job.args.length > 0) return { allowed: false, reason: 'run_block_needsArgs' };
 
     const bytes = telegramBytes(telegram.hex);
     if (!bytes) return { allowed: false, reason: 'run_block_noTelegram' };

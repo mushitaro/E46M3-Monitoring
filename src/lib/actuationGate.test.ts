@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { mayActuate, whyNotSendable } from './actuationGate';
-import type { EcuProfile } from './ecuCatalog';
+import type { EcuIndex, EcuProfile } from './ecuCatalog';
 import { EMPTY_LEDGER } from './ledger';
 import { mayRun } from './runGate';
 import type { Telegram } from './telegrams';
@@ -10,6 +10,9 @@ import type { Telegram } from './telegrams';
 const DATA = path.resolve(import.meta.dirname, '..', '..', 'public', 'ecu-data');
 const read = <T,>(f: string) => JSON.parse(readFileSync(path.join(DATA, f), 'utf-8')) as T;
 const mss54 = read<EcuProfile>('mss54.jobs.json');
+const index = read<EcuIndex>('index.json');
+
+type TelegramTable = { jobs: Record<string, { hex: string; cmd: number; confidence: string }[]> };
 
 const tel = (hex: string): Telegram => ({ hex, cmd: 0, confidence: 'single' } as Telegram);
 const shaky = (hex: string): Telegram => ({ hex, cmd: 0, confidence: 'shared' } as Telegram);
@@ -63,14 +66,38 @@ describe('PRACTICE opens the actuator surface, with three refusals kept', () => 
         if (!w.allowed) expect(w.reason).toBe('run_block_identity');
     });
 
-    it('refuses a job whose arguments are not filled in, and allows it once they are', () => {
-        const withArgs = mss54.jobs.find((j) => j.class === 'test' && j.args.length > 0)!;
-        const empty = mayActuate(withArgs, ACTUATE, EMPTY_LEDGER, ctx);
-        expect(empty.allowed).toBe(false);
-        if (!empty.allowed) expect(empty.reason).toBe('run_block_needsArgs');
+    it('refuses EVERY job that takes arguments, filled in or not', () => {
+        // Not a form-validation rule. There is no encoder from an argument list
+        // to a DS2 frame in this repo: the only frames it can send are derived
+        // from the protocol or replayed from the static scrape, and a scraped
+        // frame embeds whatever values the SGBD's bytecode happened to hold.
+        // Sending it while the gate showed the operator's values would disclose
+        // a call that is not the call — and it would look like it worked.
+        const withArgs = mss54.jobs.filter((j) => j.args.length > 0);
+        expect(withArgs.length).toBeGreaterThan(10);
+        for (const j of withArgs) {
+            const v = mayActuate(j, ACTUATE, EMPTY_LEDGER, ctx);
+            expect(v.allowed, `${j.id} must not be runnable`).toBe(false);
+        }
+    });
 
-        const filled = Object.fromEntries(withArgs.args.map((a) => [a.name, '1']));
-        expect(mayActuate(withArgs, ACTUATE, EMPTY_LEDGER, { ...ctx, args: filled }).allowed).toBe(true);
+    it('leaves 55 actuator jobs actually runnable, so the surface is not empty', () => {
+        // The refusals above are only meaningful if something survives them. All
+        // 55 are zero-argument test jobs with one certain telegram: 53 pulses,
+        // and the STEUERN_EKP pair, which exercises the two-button hold path.
+        let n = 0;
+        for (const m of index.modules) {
+            const p = read<EcuProfile>(`${m.id}.jobs.json`);
+            const tels = read<TelegramTable>(`${m.id}.telegrams.json`);
+            for (const j of p.jobs) {
+                if (j.class !== 'test') continue;
+                const es = tels.jobs[j.id] ?? [];
+                if (es.length !== 1 || es[0].confidence !== 'single') continue;
+                const t = { hex: es[0].hex, cmd: es[0].cmd, confidence: 'single' } as Telegram;
+                if (mayActuate(j, t, EMPTY_LEDGER, { moduleId: m.id, mode: 'practice' }).allowed) n++;
+            }
+        }
+        expect(n).toBe(55);
     });
 
     it('refuses when the telegram is missing or not certain', () => {

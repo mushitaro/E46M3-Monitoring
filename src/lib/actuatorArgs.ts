@@ -14,6 +14,22 @@
  * Both are now `op.startArgs` / `op.stopArgs`, quoted from the SGBD's own
  * argument comments (`Werte: 'ein', 'aus'` and `00 Stellglied nicht angesteuert`).
  * The behaviour is identical and the source of the values is now checkable.
+ *
+ * ## What these can and cannot do here
+ *
+ * **This app sends no job that takes arguments** — not on a vehicle, not in
+ * PRACTICE. It has no encoder from an argument list to a DS2 frame; the only
+ * frames it can send are derived from the protocol or replayed from the static
+ * scrape, and a scraped frame carries whatever values the SGBD's bytecode held.
+ * `mayRun` and `mayActuate` both refuse them, with that as the stated reason.
+ *
+ * So these functions serve DISCLOSURE. The row shows what a job would take and
+ * why it cannot run; the gate shows the exact call for the jobs that can (which
+ * are the zero-argument ones, where `buildArgs` returns `{}` and the plan line is
+ * the bare job id). They are written for the general case because the general
+ * case is what the data describes, and because a disclosure that quietly omits
+ * an argument is the failure this module exists to prevent — but nothing here
+ * makes an argument-taking job sendable, and nothing here should.
  */
 import type { CatalogArg, CatalogJob } from './ecuCatalog';
 import type { JobOperation } from './jobOps';

@@ -126,7 +126,7 @@ def collect(d):
 
 def main():
     results = {}
-    for fname in ("mss54.json", "smg2.json", "dsc_mk60.json"):
+    for fname in ("mss54.json", "smg2.json", "dsc_e46.json"):
         path = os.path.join(ECU_DIR, fname)
         if not os.path.exists(path):
             sys.stderr.write(f"[FATAL] {path} not found — this check would measure nothing.\n")

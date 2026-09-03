@@ -63,7 +63,7 @@ import {
     loadEcuIndex,
     text as resolveText,
     type CatalogJob,
-    type EcuIndexEntry,
+    type EcuIndex,
     type EcuProfile,
 } from '@/lib/ecuCatalog';
 import { PROCEDURE_OP, PROCEDURE_PREFIX, hasStopControl, operationFor } from '@/lib/jobOps';
@@ -126,7 +126,7 @@ export default function Home() {
     const link = useDs2Link();
     const [tab, setTab] = useState<Tab>('diagnosis');
 
-    const [ecuIndex, setEcuIndex] = useState<EcuIndexEntry[]>([]);
+    const [ecuIndex, setEcuIndex] = useState<EcuIndex | null>(null);
     const [ecuId, setEcuId] = useState('mss54');
     const [loaded, setLoaded] = useState<{ id: string; catalog: EcuProfile } | null>(null);
     const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -1704,13 +1704,23 @@ function useDatalog(link: Link) {
     };
 }
 
+/**
+ * The module selector.
+ *
+ * Grouped, because a flat list of 51 is a list nobody reads to the end of. The group labels
+ * and the fitment hints come out of the index itself rather than a table here: two modules can
+ * share a DS2 address and differ only in which cars have them — 0x56 is ASCMK20 on an early
+ * car and DSC_E46 on a later one, never both — so the hint is the only thing separating two
+ * otherwise identical-looking rows, and a second copy of it here would be the copy that goes
+ * stale.
+ */
 function EcuSelect({
     index,
     value,
     disabled,
     onChange,
 }: {
-    index: EcuIndexEntry[];
+    index: EcuIndex | null;
     value: string;
     disabled: boolean;
     onChange: (id: string) => void;
@@ -1729,15 +1739,24 @@ function EcuSelect({
         <div className="flex items-center rounded bg-slate-800 px-2 py-0.5">
             <select
                 value={value}
-                disabled={disabled || index.length === 0}
+                disabled={disabled || !index || index.modules.length === 0}
                 onChange={(e) => onChange(e.target.value)}
                 className="max-w-52 cursor-pointer bg-transparent text-[10px] font-bold text-blue-400 outline-none disabled:cursor-not-allowed disabled:opacity-60"
             >
-                {index.map((e) => (
-                    <option key={e.id} value={e.id} className="bg-slate-900 text-slate-300">
-                        {e.name_en || e.name}
-                    </option>
-                ))}
+                {(index?.groups ?? []).map((g) => {
+                    const rows = (index?.modules ?? []).filter((e) => e.group === g.key);
+                    if (rows.length === 0) return null;
+                    return (
+                        <optgroup key={g.key} label={g.en} className="bg-slate-900">
+                            {rows.map((e) => (
+                                <option key={e.id} value={e.id} className="bg-slate-900 text-slate-300">
+                                    {e.name_en || e.name}
+                                    {index?.fit[e.fit] ? ` — ${index.fit[e.fit].en}` : ''}
+                                </option>
+                            ))}
+                        </optgroup>
+                    );
+                })}
             </select>
         </div>
     );

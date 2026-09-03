@@ -15,7 +15,7 @@ import { ADAPTATION_ERASE_ID, ADAPTATION_RESET_JOBS, resetJobsFor } from './adap
  */
 
 const DATA = path.resolve(import.meta.dirname, '..', '..', 'public', 'ecu-data');
-const MODULES = ['mss54', 'smg2', 'dsc_mk60'] as const;
+const MODULES = ['mss54', 'smg2', 'dsc_e46'] as const;
 
 function jobIds(module: string): string[] {
     const raw = readFileSync(path.join(DATA, `${module}.jobs.json`), 'utf-8');
@@ -61,7 +61,7 @@ describe('the adaptation-erase table matches the catalogue', () => {
 
 describe('an unlisted module is unknown, not empty', () => {
     it('distinguishes "checked, none" from "never looked"', () => {
-        expect(resetJobsFor('dsc_mk60')).toEqual({ known: true, ids: [] });
+        expect(resetJobsFor('dsc_e46')).toEqual({ known: true, ids: [] });
         expect(resetJobsFor('ews3')).toEqual({ known: false, ids: [] });
     });
 });

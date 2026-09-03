@@ -600,6 +600,7 @@ const STRINGS: Record<Lang, Catalog> = {
             coding: 'コーディング',
             programming: '書換（非対応）',
             protocol: '手順の部品',
+            unclassified: '不明',
         },
         jobClassNote: {
             read: '値を読み出すだけです。車両の状態は変わらず、何度実行しても構いません。',
@@ -608,6 +609,7 @@ const STRINGS: Record<Lang, Catalog> = {
             coding: '車両の装備構成を書き換えます。他の ECU との整合が崩れると警告灯や機能停止につながります。',
             programming: 'ECU のプログラム領域そのものを扱います。**このアプリからは実行しません。** 失敗した ECU は起動しなくなり、復旧はベンチ作業か交換です（WinKFP の領域）。',
             protocol: '他のジョブの手順の一部です。単体で実行しても意味がありません。',
+            unclassified: 'この ECU の SGBD が、このジョブについて何も述べていません。何をするものか分からないので、**実車では実行できません。** 名前から推測して読取扱いにはしません。',
         },
         audience: { owner: 'オーナー', technician: '整備者', protocol: 'プロトコル内部' },
         audienceNote: {
@@ -1008,6 +1010,7 @@ const STRINGS: Record<Lang, Catalog> = {
             coding: 'Coding',
             programming: 'Programming (not run here)',
             protocol: 'Procedure step',
+            unclassified: 'Unclassified',
         },
         jobClassNote: {
             read: 'Reads a value. Nothing about the car changes, and it is safe to repeat.',
@@ -1018,6 +1021,8 @@ const STRINGS: Record<Lang, Catalog> = {
             programming:
                 "Operates on the ECU's own program area. **This app does not run these.** An ECU whose write fails will not boot; recovery is bench work or replacement. WinKFP territory.",
             protocol: "A step inside another job's procedure. Running it on its own means nothing.",
+            unclassified:
+                "This ECU's SGBD says nothing about this job. Because we cannot say what it does, **it cannot be run on a vehicle.** We do not guess from the name and file it under reads.",
         },
         audience: { owner: 'Owner', technician: 'Technician', protocol: 'Protocol' },
         audienceNote: {

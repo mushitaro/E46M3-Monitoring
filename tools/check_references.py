@@ -56,14 +56,14 @@ DUMPS = {
     "DSC_E46.json":            "7ea3e00f6a9513a2844b9ad5aad7f44e0b780c7801f8d0626e94689d1a1d0197",
     "mss54.telegrams.json":    "bf26e507634898272e53a4607be68bd76f31a0a394d762d2f1f00eac1f811d3d",
     "smg2.telegrams.json":     "a5142fcdf816f302ce74901576c9e0f6a5de6e6615f77ab0289c3da115a9939d",
-    "dsc_mk60.telegrams.json": "b689200fd988278b9b4d5490f97f16164f272c1482c3670a455d85b1f8bf3e0a",
+    "dsc_e46.telegrams.json": "b689200fd988278b9b4d5490f97f16164f272c1482c3670a455d85b1f8bf3e0a",
 }
 
 # 生成物が「どのダンプから出たか」を主張している箇所。ダンプを差し替えて
 # 再生成し忘れると、ここだけが古い値のまま残る。
 PROVENANCE = [
     ("mss54.jobs.json", "MSS54DS0.json"),
-    ("dsc_mk60.hydraulics.json", "DSC_E46.json"),
+    ("dsc_e46.hydraulics.json", "DSC_E46.json"),
 ]
 
 VERBOSE = "-v" in sys.argv

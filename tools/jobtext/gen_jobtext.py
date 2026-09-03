@@ -35,7 +35,7 @@ from jobtext import cautions                 # noqa: E402
 from jobtext.overrides import OVERRIDES      # noqa: E402
 
 DATA = os.path.join(HERE, "..", "..", "public", "ecu-data")
-MODULES = ("mss54", "smg2", "dsc_mk60")
+MODULES = ("mss54", "smg2", "dsc_e46")
 SCHEMA = 2
 
 # 注意文が必須なジョブ。押した結果が残る、あるいは戻せないもの。

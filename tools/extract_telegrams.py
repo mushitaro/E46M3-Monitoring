@@ -37,7 +37,7 @@ OUT = paths.SGBD_DUMP_DIR   # リポジトリ外。理由は tools/paths.py
 MODULES = {
     "mss54":    ("MSS54DS0.prg", 0x12),
     "smg2":     ("SMG2.prg",     0x32),
-    "dsc_mk60": ("DSC_E46.prg",  0x56),
+    "dsc_e46": ("DSC_E46.prg",  0x56),
 }
 
 CMD = {

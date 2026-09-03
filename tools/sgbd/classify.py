@@ -48,6 +48,13 @@ CLASS_CALIBRATION = "calibration"  # 学習値・調整値を書き換える
 CLASS_CODING = "coding"            # 車両コーディング（装備構成）
 CLASS_PROGRAMMING = "programming"  # フラッシュ／EEPROM／検査スタンプ。WinKFP 領域
 CLASS_PROTOCOL = "protocol"        # 他ジョブの手順の一部。単体では意味を持たない
+# どの規則にも当たらなかった。**既定値がこれである必要がある。**
+# 以前の既定は CLASS_READ で、当たらなかったジョブは「読むだけ」を名乗って出てきた。
+# 3 モジュールでは当たらないジョブが 0 件だったので誰も気付かなかったが、51 では 181 件
+# あり、その中には EWS の車台番号書込・コーディング書込・ASC の電磁弁ラッチ駆動が入る。
+# 実車ゲート mayRun は class=='read' を最初の関門にしているので、既定が read だという
+# ことは「分類できなかった」が「安全」を意味していたということ。逆でなければならない。
+CLASS_UNCLASSIFIED = "unclassified"
 
 AUD_OWNER = "owner"
 AUD_TECH = "technician"
@@ -113,11 +120,14 @@ SYSTEMS: list[tuple[str, str]] = [
     (r"KLOPF|LAUFUNRUHE|^STATUS_TZ\d", "ignition"),
     (r"KUEHL|LUEFTER|THERMOSTAT|OEKV|OEL|TABG|TUMG", "cooling"),
     (r"KUPPL|SCHLEIF", "clutch"),
-    (r"GETRIEBE|GANG|SCHALT|WAEHL|SMG|TESTPRG|STELLGLIED|ANSTEUERUNG", "gearbox"),
+    # SCHALT(?!ER): SCHALTER is a SWITCH, not a gear change. The two words share five letters
+    # and nothing else, and the substring match sent LSZ's STEUERN_SCHALTERSPANNUNG_BLINKER —
+    # the indicator switch supply voltage — to the gearbox.
+    (r"GETRIEBE|GANG|SCHALT(?!ER)|WAEHL|SMG|TESTPRG|STELLGLIED|ANSTEUERUNG", "gearbox"),
     # DSC の STEUERN_DIGITAL は 8 個の電磁弁とポンプを駆動する。SGBD テーブル
     # `STEUERN` が EVVL/AVVL/EVVR/... のビット割当を持っており、ブレーキ油圧系。
     # 機械翻訳が「デジタル」と訳して中身を隠していたのがこのジョブ。
-    (r"DRUCK|BREMS|ABS|PUMPEN|ENTLUEFT|DSC_SIM|NA_|^STEUERN_DIGITAL", "brakes"),
+    (r"DRUCK|BREMS|ABS|PUMPEN|ENTLUEFT|DSC_SIM|NA_", "brakes"),
     # DDS = Deflation Detection System（タイヤ空気圧警報）
     (r"^DDS|REIFEN", "tyres"),
     (r"^DSC|ASC|MSR|GIER|QUER|REGEL", "stability"),
@@ -128,18 +138,101 @@ SYSTEMS: list[tuple[str, str]] = [
     (r"CODIER|^COD_|IDENT|AIF|ZIF|ISN|EWS|HERSTELL|ID_|HW_|SW_|DATEN_REFERENZ|BLOCKLAENGE", "ecu"),
     (r"FLASH|SPEICHER|RAM|ROM|EEPROM|PRUEFSTEMPEL|SEED|LOGIN|DIAGNOSE|BAUDRATEN|EDIC|MCS|"
      r"^INFO|ECU_CONFIG|SYS_ADR|SG_PRUEFLAUF|SYNC|UEBERGABE", "ecu"),
-    (r"ADAPT|ABGLEICH|INITIALISIER|SG_RESET|CO_EINZEL", "engine"),
+    # INITIALISIER / SG_RESET / ADAPT / ABGLEICH say WHAT is being done, never to what. They
+    # were in this bucket, so every module's INITIALISIERUNG came out as "engine" — true of one
+    # ECU in 51, and wrong for SMG II and DSC even at three. They now fall through to the
+    # module's own domain (HOME_SYSTEM). CO_EINZEL stays: CO adjustment names its subject.
+    (r"CO_EINZEL", "engine"),
     # 燃料補正(ADD/INT/MUL/LFR)、充填率(RF)、負荷、車速・回転数の上限記録
     (r"MOTOR|DREHZAHL|FAHRZEUG|GESCHWIND|^STATUS_(ADD|INT|MUL|LFR|RF|LAST|VMAX|NMAX|"
      r"TNMAX|V_CAN|PUMG|DME|N_LL)", "engine"),
 ]
 
 
-def system_of(job: str) -> str:
+# ---------------------------------------------------------------------------
+# モジュール自身の持ち場。ジョブ名が主題を言わないときの帰属先
+# ---------------------------------------------------------------------------
+#
+# 上の SYSTEMS は「ジョブ名が何について語っているか」を読む表で、名前が何も
+# 語らないジョブ——INITIALISIERUNG, STEUERN_DIGITAL, ADAPTIONSWERTE_LESEN——には
+# 何も言えない。3 モジュールの間はそれが 0 件だったのではなく、engine に落ちて
+# それらしく見えていた。51 モジュールでは 492 件が unknown になる。
+#
+# 帰属先は ECU 自身が決まれば決まる。ラジオの初期化はラジオの話で、それ以上の
+# 詮索は要らない。だから表は SGBD 名で引く——アプリ側の id ではなく ECU の
+# ソフトウェア自身の名前で、ダンプ一覧と 1 対 1 に突き合わせられる。
+HOME_SYSTEM: dict[str, str] = {
+    "MSS54DS0": "engine",
+    "SMG2": "gearbox",
+    "ASCMK20": "stability",
+    "DSC_E46": "stability",
+    "LWS5": "steering",
+    "RDC": "tyres",
+    # 乗員保護。ZUENDKREIS（スクイブ回路）が engine の ZUEND に当たる誤りも
+    # ここで受ける——点火とスクイブは同じ語で別の物。
+    "MRS3": "restraint",
+    "MRS4": "restraint",
+    "UEB2": "restraint",
+    "EWS3": "security",
+    "EWS3D": "security",
+    "ZKE5": "body",
+    "ZKE5_S12": "body",
+    "KOMBI46": "cluster",
+    "KOMBI46R": "cluster",
+    "LSZ": "lighting",
+    "LSZ_2": "lighting",
+    "MFL": "controls",
+    "MFL2": "controls",
+    "SZM46": "controls",
+    "AIC": "sensors",
+    "RLS_DS2": "sensors",
+    "ALC_DS2": "lighting",
+    "XENON_L": "lighting",
+    "XENON_R": "lighting",
+    "CVM_II": "body",
+    "IHKA46": "climate",
+    "IHKA46_2": "climate",
+    "IHKA46_3": "climate",
+    "PDCE38": "parking",
+    "PDCACT": "parking",
+    "SHD46": "body",
+    "SHD46_2": "body",
+    "SM46_4": "seats",
+    "SM46C_5": "seats",
+    "B_SM46_4": "seats",
+    "SPM46FT": "seats",
+    "SPM46BT": "seats",
+    "RADIO": "av",
+    "BMBT46RN": "av",
+    "BMBT46TN": "av",
+    "BMBT_MIR": "av",
+    "BM46WIDE": "av",
+    "CDC_46": "av",
+    "NAVMK3": "av",
+    "NAVMK4": "av",
+    "NAVMK4_2": "av",
+    "NAV_JAP": "av",
+    "SES": "av",
+    "TELEFON": "av",
+    "VIDEOMOD": "av",
+}
+
+# ブレーキ油圧のモジュレータを駆動するのはこの2つの ECU だけ。他の12モジュールの
+# STEUERN_DIGITAL は名前が同じだけの汎用デジタル出力で、ブレーキとは関係が無い。
+# 規則ではなく所属で決まる事実なので、パターン表から出してここに置く。
+BRAKE_MODULATORS = {"DSC_E46", "ASCMK20"}
+
+
+def system_of(job: str, sgbd: str | None = None) -> str:
+    if sgbd in BRAKE_MODULATORS and job.upper().startswith("STEUERN_DIGITAL"):
+        return "brakes"
     for pat, sys_ in SYSTEMS:
         if re.search(pat, job, re.I):
             return sys_
-    return "unknown"
+    # 名前が主題を言わないジョブは、そのモジュールの持ち場のもの。表に無い SGBD だけが
+    # unknown になる——つまり unknown は「分類できなかった」ではなく「表に足し忘れた」
+    # を意味するようになり、検査が直せる指摘を出せる。
+    return HOME_SYSTEM.get(sgbd or "", "unknown")
 
 
 # ---------------------------------------------------------------------------
@@ -232,7 +325,10 @@ def classify(sgbd: str, job: str, comment: str, args: list[str]) -> JobClassific
     argset = {a.upper() for a in args}
 
     c = JobClassification(
-        cls=CLASS_READ, audience=AUD_OWNER, system=system_of(n), risk=RISK_MED,
+        # 既定は「分類できていない」。当たった規則だけが read を名乗れる——CLASS_UNCLASSIFIED
+        # の注記を参照。audience も technician 側に置く: 何をするか言えないものを
+        # オーナー向けの一覧に出さない。
+        cls=CLASS_UNCLASSIFIED, audience=AUD_TECH, system=system_of(n, sgbd), risk=RISK_MED,
         actor=ACTOR_ECU, termination=TERM_SELF, result_delivery=DELIVER_INLINE,
         kind="unknown",
     )
@@ -340,7 +436,11 @@ def classify(sgbd: str, job: str, comment: str, args: list[str]) -> JobClassific
         return _apply_override(n, c, argset, de)
 
     # --- ラッチ: 作動して保持、解除ジョブ無し ------------------------------
-    if n.startswith("DSC_SIM_"):
+    # ASCMK20 は同じ物を ASC_SIM_ と呼ぶ。ECU 自身のコメントが
+    # "Steuern_Digital ansteueren u. halten"（駆動して保持）で、DSC_SIM_ と同じ
+    # ラッチ動作。名前だけが違うものを別扱いにすると、前期車でだけ電磁弁が
+    # 「読取」として出てくる。
+    if n.startswith(("DSC_SIM_", "ASC_SIM_")):
         c.cls, c.kind, c.audience, c.risk = CLASS_TEST, "latching", AUD_TECH, RISK_HIGH
         c.actor, c.termination, c.result_delivery = ACTOR_ECU, TERM_NONE, DELIVER_NONE
         c.irreversible = "irr_latching"
@@ -420,7 +520,18 @@ def classify(sgbd: str, job: str, comment: str, args: list[str]) -> JobClassific
         return _apply_override(n, c, argset, de)
 
     # --- ここに来たものは SGBD が何も言っていない --------------------------
-    c.cls, c.kind, c.audience, c.risk = CLASS_READ, "unknown", AUD_TECH, RISK_MED
+    #
+    # ここは CLASS_READ を返していた。「何も言っていない」と書いた次の行で、
+    # 一番安全に見える答えを名乗らせていた。3 モジュールでは 0 件だったので
+    # 誰も気付かず、51 モジュールでは 177 件が落ちる——EWS3 の車台番号書込
+    # (C_FG_AUFTRAG)、コーディング書込 (C_C_AUFTRAG)、MRS の CONTROLLER_RESET、
+    # 引数を取らない ueb2.LOGIN。実車ゲート mayRun の最初の関門は
+    # class == "read" なので、これは「分類できなかった」が「送ってよい」を
+    # 意味していたということ。
+    #
+    # risk も medium ではなく high。何をするか言えないものの危険度を
+    # 「中くらい」と申告する根拠がどこにも無い。
+    c.cls, c.kind, c.audience, c.risk = CLASS_UNCLASSIFIED, "unknown", AUD_TECH, RISK_HIGH
     c.provenance = "name-heuristic"
     return _apply_override(n, c, argset, de)
 

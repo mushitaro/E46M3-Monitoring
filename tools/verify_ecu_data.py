@@ -19,9 +19,20 @@ sys.path.insert(0, os.path.abspath(HERE))
 import paths                                                # noqa: E402
 
 DUMP = paths.require_dump_dir()   # リポジトリ外。理由は tools/paths.py
-MODULES = {"mss54": "MSS54DS0", "smg2": "SMG2", "dsc_mk60": "DSC_E46"}
-TOTAL_JOBS = 323
-TOTAL_RESULTS = 2311
+# モジュール一覧は index.json から来る。ここに写しを持つと、生成器に足したのに
+# 検査器に足し忘れたモジュールが「検査に通った」ことになる。実際、3 モジュール分の
+# 写しを持ったまま 51 モジュールを生成し、この検査器は 323 件を数えて ok と言った。
+INDEX = json.load(open(os.path.join(DATA, "index.json"), encoding="utf-8"))
+MODULE_IDS = [m["id"] for m in INDEX["modules"]]
+
+# 員数の期待値もリテラルではなく台帳から。323 はスナップショットであって不変条件では
+# なかった。真の不変条件は「モジュール毎に、出力ジョブ数 == ダンプの jobCount」で、
+# 台帳はその上に載る二段目——生成器の設定が変わって全体が動いたことを差分で見せる。
+LEDGER = json.load(open(os.path.join(HERE, "ecu_data_counts.json"), encoding="utf-8"))
+
+# 故障本文を1件も持たない SGBD。FORTTEXTE テーブルが無いだけで、欠損ではない。
+# 実測: この2つだけ。増えたら検査が落ちる。
+NO_FAULT_TABLE = {"mfl2", "telefon"}
 
 FAILS: list[str] = []
 
@@ -35,13 +46,22 @@ def load(name: str) -> dict:
     return json.load(open(os.path.join(DATA, name), encoding="utf-8"))
 
 
-profiles = {mid: load(f"{mid}.jobs.json") for mid in MODULES}
-dumps = {mid: json.load(open(os.path.join(DUMP, f"{d}.json"), encoding="utf-8"))
-         for mid, d in MODULES.items()}
+profiles = {mid: load(f"{mid}.jobs.json") for mid in MODULE_IDS}
+# ダンプ名はプロファイル自身が名乗るものを使う。表で持つと、あるダンプから生成した
+# ファイルを別のダンプと突き合わせて「一致」と言える。
+dumps = {mid: json.load(open(os.path.join(DUMP, p["generatedFrom"]["dump"]), encoding="utf-8"))
+         for mid, p in profiles.items()}
 
 # --- 1. 件数。これが無かったから 192 件が消えた -----------------------------
 total = sum(len(p["jobs"]) for p in profiles.values())
-check(total == TOTAL_JOBS, f"expected {TOTAL_JOBS} jobs across all modules, got {total}")
+want_total = LEDGER["totals"]["jobs"]
+check(total == want_total, f"ledger says {want_total} jobs across all modules, got {total}")
+for mid in sorted(set(LEDGER["modules"]) | set(MODULE_IDS)):
+    w = LEDGER["modules"].get(mid)
+    n = ({"jobs": len(profiles[mid]["jobs"]),
+          "results": sum(len(j["results"]) for j in profiles[mid]["jobs"])}
+         if mid in profiles else None)
+    check(w == n, f"{mid}: ledger {w} but generated {n}")
 for mid, p in profiles.items():
     check(len(p["jobs"]) == p["jobCount"],
           f"{mid}: {len(p['jobs'])} jobs emitted but jobCount says {p['jobCount']}")
@@ -60,11 +80,13 @@ for mid, p in profiles.items():
 
 # --- 3. 結果が全部出ていること、各1ロール ------------------------------------
 res_total = sum(len(j["results"]) for p in profiles.values() for j in p["jobs"])
-check(res_total == TOTAL_RESULTS, f"expected {TOTAL_RESULTS} results, got {res_total}")
+want_res = LEDGER["totals"]["results"]
+check(res_total == want_res, f"ledger says {want_res} results, got {res_total}")
 roles = collections.Counter(r["role"] for p in profiles.values() for j in p["jobs"] for r in j["results"])
 check(sum(roles.values()) == res_total, "some result carries no role")
 # ロール分布を固定する。分類器を変えたら件数差分で必ず見える。
-check(roles["status"] == 317, f"JOB_STATUS-family count changed: {roles['status']} (was 317)")
+check(roles == collections.Counter(LEDGER["roles"]),
+      f"role distribution moved: ledger={LEDGER['roles']} now={dict(roles)}")
 
 # --- 4. 単位/平文行のリンク先が実在すること ----------------------------------
 for mid, p in profiles.items():
@@ -111,7 +133,7 @@ check(r and r["spec"]["min"] == -15.875 and r["spec"]["max"] == 15.875,
       f"DIFF_V_ACHS_WERT (German decimal comma): {r and r.get('spec')}")
 r = find("smg2", "ADAPTIONSWERTE_LESEN", "M_KUPPL_MAX_WERT")
 check(r and r["spec"].get("always") == 700.0, f"M_KUPPL_MAX_WERT always: {r and r.get('spec')}")
-r = find("dsc_mk60", "STATUS_LESEN_DDS", "STATUS_KM")
+r = find("dsc_e46", "STATUS_LESEN_DDS", "STATUS_KM")
 check(r and r["spec"]["max"] == 524280.0, f"DSC STATUS_KM range: {r and r.get('spec')}")
 
 # --- 6. フィールド間制約 -----------------------------------------------------
@@ -140,19 +162,38 @@ for mid, p in profiles.items():
     for facet in ("class", "audience", "system"):
         ctr = collections.Counter(j[facet] for j in p["jobs"])
         check(sum(ctr.values()) == n, f"{mid}: facet {facet} covers {sum(ctr.values())} of {n}")
-        check("unknown" not in ctr or facet == "system",
-              f"{mid}: facet {facet} has unknown entries")
+    # system の unknown は「HOME_SYSTEM の表に足し忘れた SGBD」しか意味しない。
     unk = [j["id"] for j in p["jobs"] if j["system"] == "unknown"]
-    check(not unk, f"{mid}: jobs with no system: {unk}")
-    check(all(j["op"].get("kind") != "unknown" for j in p["jobs"]),
-          f"{mid}: jobs with unknown operation kind: "
-          f"{[j['id'] for j in p['jobs'] if j['op'].get('kind') == 'unknown']}")
+    check(not unk, f"{mid}: jobs with no system (add the SGBD to classify.HOME_SYSTEM): {unk}")
+    check("unknown" not in collections.Counter(j["audience"] for j in p["jobs"]),
+          f"{mid}: facet audience has unknown entries")
+
+# 分類できなかったジョブは、必ず class=unclassified と kind=unknown の両方で
+# そう言う。片方だけを言う状態は、UI とゲートが別のことを信じている状態そのもの——
+# 生成器は「SGBD が何も言っていない」と書いた次の行で class を read にしていた。
+unclassified = [(mid, j["id"]) for mid, p in profiles.items() for j in p["jobs"]
+                if j["class"] == "unclassified"]
+unknown_kind = [(mid, j["id"]) for mid, p in profiles.items() for j in p["jobs"]
+                if j["op"].get("kind") == "unknown"]
+check(set(unclassified) == set(unknown_kind),
+      "class=unclassified and kind=unknown must name the same jobs; "
+      f"only-unclassified={sorted(set(unclassified) - set(unknown_kind))[:5]} "
+      f"only-unknown-kind={sorted(set(unknown_kind) - set(unclassified))[:5]}")
+
+# 未分類の数はコミットされた台帳と突き合わせる。減らすのは普通のコミット、
+# 増やすには理由が要る。0 でないことを許すのは、SGBD が本当に何も言っていない
+# ジョブが実在するから——「分からない」を「読取」に書き換えて 0 にするのが
+# まさにこの検査が防ぐ操作。
+check(len(unclassified) == LEDGER["unclassified"],
+      f"unclassified jobs: ledger {LEDGER['unclassified']}, now {len(unclassified)}")
 
 # --- 9. 故障本文がコード付きであること ---------------------------------------
 # 旧版は 0xF7 XOR スクレイプで、コードが付かず 250 件で打ち切られていた。
 for mid, p in profiles.items():
     ft = p["faultText"]
-    check(len(ft) > 0, f"{mid}: no fault text")
+    check(bool(ft) or mid in NO_FAULT_TABLE,
+          f"{mid}: no fault text (if the SGBD genuinely has no FORTTEXTE, "
+          f"add it to NO_FAULT_TABLE with that stated)")
     check(len(ft) != 250, f"{mid}: exactly 250 fault entries - that is the old truncation, not a coincidence")
     check(all("code" in e and "text" in e for e in ft), f"{mid}: fault entries without a code")
     codes = [e["code"] for e in ft]

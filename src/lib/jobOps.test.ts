@@ -27,7 +27,7 @@ import type { CatalogJob, EcuProfile } from './ecuCatalog';
  */
 
 const DATA = path.resolve(import.meta.dirname, '..', '..', 'public', 'ecu-data');
-const MODULES = ['mss54', 'smg2', 'dsc_mk60'] as const;
+const MODULES = ['mss54', 'smg2', 'dsc_e46'] as const;
 type ModuleId = (typeof MODULES)[number];
 
 const profiles = new Map<ModuleId, EcuProfile>();
@@ -90,7 +90,7 @@ describe('operation shape', () => {
     // DSC_SIM_* actuates and holds, and the SGBD exposes no release job. The UI
     // must not offer a STOP that cannot work.
     it('marks DSC_SIM_* as latching with NO stop control', () => {
-        const o = op('dsc_mk60', 'DSC_SIM_VA');
+        const o = op('dsc_e46', 'DSC_SIM_VA');
         expect(o.kind).toBe('latching');
         expect(o.termination).toBe('none');
         expect(hasStopControl(o)).toBe(false);
@@ -268,7 +268,7 @@ describe('only shapes that can genuinely be stopped offer a stop', () => {
     ];
     const notStoppable: Array<[ModuleId, string]> = [
         ['mss54', 'STEUERN_EV1'],
-        ['dsc_mk60', 'DSC_SIM_VA'],
+        ['dsc_e46', 'DSC_SIM_VA'],
         ['mss54', 'ABGLEICHWERTE_LESEN'],
         ['mss54', 'SG_RESET'],
     ];

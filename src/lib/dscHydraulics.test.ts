@@ -5,13 +5,13 @@ import { dscStopFrame, type DscHydraulics } from './dscHydraulics';
 
 const H: DscHydraulics = JSON.parse(
     readFileSync(
-        path.resolve(import.meta.dirname, '..', '..', 'public', 'ecu-data', 'dsc_mk60.hydraulics.json'),
+        path.resolve(import.meta.dirname, '..', '..', 'public', 'ecu-data', 'dsc_e46.hydraulics.json'),
         'utf-8',
     ),
 );
 const TELEGRAMS: { jobs: Record<string, Array<{ hex: string; cmd: number }>> } = JSON.parse(
     readFileSync(
-        path.resolve(import.meta.dirname, '..', '..', 'public', 'ecu-data', 'dsc_mk60.telegrams.json'),
+        path.resolve(import.meta.dirname, '..', '..', 'public', 'ecu-data', 'dsc_e46.telegrams.json'),
         'utf-8',
     ),
 );

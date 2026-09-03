@@ -57,11 +57,17 @@ BMW ツールチェーンの導入物として `C:\EC-APPS` に置いてある�
 
 ## 2. repo の中にある「正」
 
+> **この節の見出しは「repo の中」だが、上の 2 行はもう repo の中に無い。**
+> repo が public になった時点で、SGBD ダンプとその派生物はコミットできなくなった
+> （BMW SGBD 由来。`THIRD-PARTY-NOTICES.md` §3）。置き場は `$SGBD_DUMP_DIR`
+> （既定 `C:\EDIABAS-derived\sgbd-dumps`）で、理由は `tools/paths.py` に書いてある。
+> 用語表 `tools/terms/` も同じ理由で ignore されている。
+
 | もの | パス | 性質 |
 |---|---|---|
-| SGBD ダンプ | `tools/SgbdDump/out/{MSS54DS0,SMG2,DSC_E46}.json` | **コミット済み。** `.gitignore` の `/out/` は repo ルートに錨を打ってあり、ここは無視されない |
-| テレグラム抽出 | `tools/SgbdDump/out/{mss54,smg2,dsc_mk60}.telegrams.json` | 同上 |
-| 用語表 | `tools/terms/{common,mss54,smg2,dsc_mk60}.py` | 手書き 1,718 語。失っても再生成は通るが、訳が機械翻訳まで劣化する |
+| SGBD ダンプ | `$SGBD_DUMP_DIR/<SGBD>.json`（51 モジュール分＋除外候補） | **repo の外。** BMW SGBD 由来なのでコミットしない |
+| テレグラム抽出 | `$SGBD_DUMP_DIR/{mss54,smg2,dsc_e46}.telegrams.json` | 同上 |
+| 用語表 | `tools/terms/*.py` | 手書き。SGBD の独語原文を含むので ignore。失っても再生成は通るが、訳が機械翻訳まで劣化する |
 | ライブ値の和名 | `tools/terms/live_channels.py` | 手書き 213ch ＋ ブロック名 8。**機械生成できない**（英→日の経路をこの repo は持たない） |
 | 注意文 | `tools/jobtext/cautions.py` ＋ `jobtext/overrides/*` | `gen_jobtext.py` は高リスク/不可逆ジョブに注意文が無いと非ゼロ終了する |
 | 分類規則 | `tools/sgbd/{classify,model,specs}.py` | ジョブの risk / class の単一の正 |
@@ -75,11 +81,11 @@ be85f6362bffe427513f104c64c51dcb56ef3b318a2f11ce8e53ca90307644f1  SMG2.json
 7ea3e00f6a9513a2844b9ad5aad7f44e0b780c7801f8d0626e94689d1a1d0197  DSC_E46.json
 bf26e507634898272e53a4607be68bd76f31a0a394d762d2f1f00eac1f811d3d  mss54.telegrams.json
 a5142fcdf816f302ce74901576c9e0f6a5de6e6615f77ab0289c3da115a9939d  smg2.telegrams.json
-b689200fd988278b9b4d5490f97f16164f272c1482c3670a455d85b1f8bf3e0a  dsc_mk60.telegrams.json
+b689200fd988278b9b4d5490f97f16164f272c1482c3670a455d85b1f8bf3e0a  dsc_e46.telegrams.json
 ```
 
 `MSS54DS0.json` と `DSC_E46.json` のハッシュは
-`public/ecu-data/mss54.jobs.json` と `dsc_mk60.hydraulics.json` の `generatedFrom.dumpSha256`
+`public/ecu-data/mss54.jobs.json` と `dsc_e46.hydraulics.json` の `generatedFrom.dumpSha256`
 にも書かれていて、一致することを確認済み。生成物が **どのダンプから出たか** を主張できる。
 
 ---
@@ -88,18 +94,18 @@ b689200fd988278b9b4d5490f97f16164f272c1482c3670a455d85b1f8bf3e0a  dsc_mk60.teleg
 
 | 生成器 | 入力 | 出力 |
 |---|---|---|
-| `tools/SgbdDump/Program.cs` | #1 ＋ #2（EdiabasLib 経由） | `tools/SgbdDump/out/<SGBD>.json` |
-| `extract_telegrams.py` | #1 | `tools/SgbdDump/out/<id>.telegrams.json` |
+| `tools/SgbdDump/Program.cs` | #1 ＋ #2（EdiabasLib 経由） | `$SGBD_DUMP_DIR/<SGBD>.json` |
+| `extract_telegrams.py` | #1 | `$SGBD_DUMP_DIR/<id>.telegrams.json` |
 | `gen_ecu_data.py` | ダンプ ＋ `sgbd/*` ＋ `translate.py` | `public/ecu-data/<id>.jobs.json`, `index.json` |
 | `gen_smg2_workflows.py` | `SMG2.json` | `public/ecu-data/smg2-workflows.json` |
-| `gen_dsc_hydraulics.py` | `DSC_E46.json` ＋ `dsc_mk60.telegrams.json` | `public/ecu-data/dsc_mk60.hydraulics.json` |
+| `gen_dsc_hydraulics.py` | `DSC_E46.json` ＋ `dsc_e46.telegrams.json` | `public/ecu-data/dsc_e46.hydraulics.json` |
 | `jobtext/gen_jobtext.py` | `<id>.jobs.json` ＋ `cautions.py` | `public/ecu-data/<id>.jobtext.json` |
 | `gen_live_blocks.py` | **#4** ＋ `MSS54DS0.json` ＋ #1 ＋ `terms/live_channels.py` | `packages/ds2-mss54/src/liveValueBlocks.generated.ts` |
 | `gen_adaptation_blocks.py` | **#4** ＋ `MSS54DS0.json` | `packages/ds2-mss54/src/adaptationBlocks.generated.ts` |
 | `gen_from_dump.py` | ダンプ ＋ #1（故障本文のみ） | `public/ecu-data/<id>.json`（**旧 schema**） |
 | `gen_icons.py` | 無し（幾何はコードに直書き） | `public/icon-{192,512}.png` |
 
-`gen_from_dump.py` の 3 出力（`mss54.json` / `smg2.json` / `dsc_mk60.json`）は
+`gen_from_dump.py` の 3 出力（`mss54.json` / `smg2.json` / `dsc_e46.json`）は
 **アプリが読んでいない**。今も読んでいるのは `verify_translation_quality.py` だけ。
 
 検査側:

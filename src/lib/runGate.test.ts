@@ -15,7 +15,7 @@ import { bestTelegram, type TelegramTable } from './telegrams';
 import type { CatalogJob, EcuProfile } from './ecuCatalog';
 
 const DATA = path.resolve(import.meta.dirname, '..', '..', 'public', 'ecu-data');
-const MODULES = ['mss54', 'smg2', 'dsc_mk60'] as const;
+const MODULES = ['mss54', 'smg2', 'dsc_e46'] as const;
 type ModuleId = (typeof MODULES)[number];
 
 const read = <T,>(f: string) => JSON.parse(readFileSync(path.join(DATA, f), 'utf-8')) as T;
@@ -53,6 +53,48 @@ describe('the run gate', () => {
     };
     const verdict = (m: ModuleId, id: string, ledger: Ledger = EMPTY_LEDGER) =>
         mayRun(job(m, id), bestTelegram(telegrams(m), id), ledger, ctx(m));
+
+    /**
+     * The finding that made `unclassified` a class.
+     *
+     * The generator's last line used to read "anything that got here, the SGBD said nothing
+     * about" and then classify it `read` — on the reasoning that read is the safe thing to be.
+     * At three modules that fell on nothing. At 51 it falls on 177 jobs, among them EWS3's
+     * C_FG_AUFTRAG (writes the VIN), C_C_AUFTRAG (writes coding data) and MRS3's
+     * CONTROLLER_RESET — several of which take no arguments, which is exactly the shape that
+     * reaches the control-byte check.
+     *
+     * This pins the gate side of it: everything else about the job is perfect — a certain
+     * telegram, no arguments, a control byte on the read allowlist — and it is still refused,
+     * because not knowing what a job does is not evidence that it is harmless.
+     */
+    it('refuses an unclassified job even when everything else about it is perfect', () => {
+        const base = job('mss54', 'STATUS_DIGITAL');
+        const tele = bestTelegram(telegrams('mss54'), 'STATUS_DIGITAL');
+        expect(mayRun(base, tele, EMPTY_LEDGER, ctx('mss54')).allowed).toBe(true);
+
+        const unclassified: CatalogJob = { ...base, class: 'unclassified' };
+        const v = mayRun(unclassified, tele, EMPTY_LEDGER, ctx('mss54'));
+        expect(v.allowed).toBe(false);
+        if (!v.allowed) expect(v.reason).toBe('run_block_notVerified');
+    });
+
+    it('does not ship a single job that claims to be a read without an operation kind', () => {
+        // The data half of the same finding, over every module rather than a sample: the two
+        // ways of saying "we could not classify this" must never disagree, because the UI reads
+        // one and the gate reads the other.
+        const index = read<{ modules: { id: string }[] }>('index.json');
+        const bad: string[] = [];
+        for (const m of index.modules) {
+            const p = read<EcuProfile>(`${m.id}.jobs.json`);
+            for (const j of p.jobs) {
+                if ((j.class === 'unclassified') !== (j.op?.kind === 'unknown')) {
+                    bad.push(`${m.id}.${j.id} class=${j.class} kind=${j.op?.kind}`);
+                }
+            }
+        }
+        expect(bad).toEqual([]);
+    });
 
     it('lets an argument-free read with a certain telegram through', () => {
         const v = verdict('mss54', 'STATUS_DIGITAL');
@@ -183,7 +225,7 @@ describe('clearing fault memory', () => {
      * derivations must agree, on every module, or one of them is wrong.
      */
     it('matches the frame the SGBD scrape recovered, on all three modules', () => {
-        const addresses: Record<ModuleId, number> = { mss54: 0x12, smg2: 0x32, dsc_mk60: 0x56 };
+        const addresses: Record<ModuleId, number> = { mss54: 0x12, smg2: 0x32, dsc_e46: 0x56 };
         const { control, payload } = clearFaultsCommand();
         expect(control).toBe(Ds2Control.CLEAR_ERROR_MEMORY);
         expect(payload).toHaveLength(0);

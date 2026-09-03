@@ -1,0 +1,222 @@
+{
+ "note": "tools/gen_ecu_data.py --write-counts で更新。差分はレビュー対象。",
+ "modules": {
+  "mss54": {
+   "jobs": 223,
+   "results": 966
+  },
+  "smg2": {
+   "jobs": 46,
+   "results": 1052
+  },
+  "ascmk20": {
+   "jobs": 35,
+   "results": 165
+  },
+  "dsc_e46": {
+   "jobs": 54,
+   "results": 293
+  },
+  "lws5": {
+   "jobs": 24,
+   "results": 165
+  },
+  "rdc": {
+   "jobs": 21,
+   "results": 221
+  },
+  "mrs3": {
+   "jobs": 21,
+   "results": 160
+  },
+  "mrs4": {
+   "jobs": 29,
+   "results": 239
+  },
+  "ueb2": {
+   "jobs": 32,
+   "results": 150
+  },
+  "ews3": {
+   "jobs": 47,
+   "results": 217
+  },
+  "ews3d": {
+   "jobs": 34,
+   "results": 175
+  },
+  "zke5": {
+   "jobs": 30,
+   "results": 370
+  },
+  "zke5_s12": {
+   "jobs": 38,
+   "results": 412
+  },
+  "kombi46": {
+   "jobs": 53,
+   "results": 305
+  },
+  "kombi46r": {
+   "jobs": 55,
+   "results": 303
+  },
+  "lsz": {
+   "jobs": 30,
+   "results": 270
+  },
+  "lsz_2": {
+   "jobs": 42,
+   "results": 296
+  },
+  "mfl": {
+   "jobs": 8,
+   "results": 54
+  },
+  "mfl2": {
+   "jobs": 5,
+   "results": 40
+  },
+  "szm46": {
+   "jobs": 11,
+   "results": 76
+  },
+  "aic": {
+   "jobs": 13,
+   "results": 54
+  },
+  "rls_ds2": {
+   "jobs": 20,
+   "results": 103
+  },
+  "alc_ds2": {
+   "jobs": 56,
+   "results": 321
+  },
+  "xenon_l": {
+   "jobs": 11,
+   "results": 52
+  },
+  "xenon_r": {
+   "jobs": 11,
+   "results": 52
+  },
+  "cvm_ii": {
+   "jobs": 19,
+   "results": 115
+  },
+  "ihka46": {
+   "jobs": 36,
+   "results": 185
+  },
+  "ihka46_2": {
+   "jobs": 38,
+   "results": 196
+  },
+  "ihka46_3": {
+   "jobs": 39,
+   "results": 193
+  },
+  "pdce38": {
+   "jobs": 12,
+   "results": 80
+  },
+  "pdcact": {
+   "jobs": 22,
+   "results": 195
+  },
+  "shd46": {
+   "jobs": 16,
+   "results": 101
+  },
+  "shd46_2": {
+   "jobs": 20,
+   "results": 120
+  },
+  "sm46_4": {
+   "jobs": 21,
+   "results": 138
+  },
+  "sm46c_5": {
+   "jobs": 17,
+   "results": 112
+  },
+  "b_sm46_4": {
+   "jobs": 20,
+   "results": 121
+  },
+  "spm46ft": {
+   "jobs": 16,
+   "results": 126
+  },
+  "spm46bt": {
+   "jobs": 16,
+   "results": 126
+  },
+  "radio": {
+   "jobs": 35,
+   "results": 101
+  },
+  "bmbt46rn": {
+   "jobs": 23,
+   "results": 93
+  },
+  "bmbt46tn": {
+   "jobs": 27,
+   "results": 108
+  },
+  "bmbt_mir": {
+   "jobs": 23,
+   "results": 94
+  },
+  "bm46wide": {
+   "jobs": 14,
+   "results": 63
+  },
+  "cdc_46": {
+   "jobs": 11,
+   "results": 44
+  },
+  "navmk3": {
+   "jobs": 30,
+   "results": 173
+  },
+  "navmk4": {
+   "jobs": 34,
+   "results": 179
+  },
+  "navmk4_2": {
+   "jobs": 41,
+   "results": 205
+  },
+  "nav_jap": {
+   "jobs": 11,
+   "results": 43
+  },
+  "ses": {
+   "jobs": 7,
+   "results": 36
+  },
+  "telefon": {
+   "jobs": 5,
+   "results": 26
+  },
+  "videomod": {
+   "jobs": 22,
+   "results": 96
+  }
+ },
+ "totals": {
+  "jobs": 1524,
+  "results": 9580
+ },
+ "roles": {
+  "raw": 36,
+  "status": 1417,
+  "telegram": 587,
+  "text": 451,
+  "unit": 782,
+  "value": 6307
+ },
+ "unclassified": 177
+}

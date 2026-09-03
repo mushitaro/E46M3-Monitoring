@@ -11,10 +11,10 @@ from __future__ import annotations
 
 from .mss54 import MSS54
 from .smg2 import SMG2
-from .dsc_mk60 import DSC_MK60
+from .dsc_e46 import DSC_MK60
 
 OVERRIDES: dict[str, dict[str, tuple[str, str]]] = {
     "mss54": MSS54,
     "smg2": SMG2,
-    "dsc_mk60": DSC_MK60,
+    "dsc_e46": DSC_MK60,
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # ============================================================================
-#  gen_dsc_hydraulics.py — DSC の油圧操作面 → dsc_mk60.hydraulics.json
+#  gen_dsc_hydraulics.py — DSC の油圧操作面 → dsc_e46.hydraulics.json
 # ----------------------------------------------------------------------------
 #  DSC の per-wheel 操作は**引数ではなくジョブ名**に入っている。`DRUCKABBAU_VL`
 #  と `DRUCKABBAU_VR` は引数を1つも取らず、車輪は名前の接尾辞である。
@@ -37,7 +37,7 @@ import paths                                                # noqa: E402
 
 DUMP = paths.require_dump_dir()   # リポジトリ外。理由は tools/paths.py
 DATA = os.path.join(HERE, "..", "public", "ecu-data")
-OUT = os.path.join(DATA, "dsc_mk60.hydraulics.json")
+OUT = os.path.join(DATA, "dsc_e46.hydraulics.json")
 GENERATOR = "tools/gen_dsc_hydraulics.py"
 
 IO_CONTROL = 0x0C
@@ -127,7 +127,7 @@ def actuated(hex_frame: str, valves: list[dict]) -> set[str]:
 
 def main() -> int:
     dump = model.load(DUMP, "DSC_E46")
-    tel = json.load(open(os.path.join(DATA, "dsc_mk60.telegrams.json"), encoding="utf-8"))
+    tel = json.load(open(os.path.join(DATA, "dsc_e46.telegrams.json"), encoding="utf-8"))
     valves = valve_table(dump)
     jobs = {j.name for j in dump.jobs}
 
@@ -206,10 +206,10 @@ def main() -> int:
 
     doc = {
         "schema": 1,
-        "module": "dsc_mk60",
+        "module": "dsc_e46",
         "generatedFrom": {
             "dump": "DSC_E46.json", "dumpSha256": dump.sha256,
-            "telegrams": "dsc_mk60.telegrams.json",
+            "telegrams": "dsc_e46.telegrams.json",
             "generator": GENERATOR,
             "generatedAt": datetime.datetime.now(datetime.timezone.utc)
             .replace(microsecond=0).isoformat(),

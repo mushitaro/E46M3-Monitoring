@@ -63,7 +63,16 @@ export type JobClass =
     /** Flash / EEPROM / inspection stamp. WinKFP territory; this app does not run it. */
     | 'programming'
     /** A step inside another job's procedure. Meaningless on its own. */
-    | 'protocol';
+    | 'protocol'
+    /**
+     * The SGBD says nothing about it, so neither do we.
+     *
+     * This is a real answer and it is load-bearing. The generator used to call these `read`,
+     * on the reasoning that read is the safe thing to be — which put EWS3's VIN write and the
+     * coding writes into the same class as reading a coolant temperature, and past the first
+     * gate in `mayRun`. Not knowing what a job does is not evidence that it is harmless.
+     */
+    | 'unclassified';
 
 /** Who this is for. Not everything in an ECU is addressed to a car's owner. */
 export type Audience = 'owner' | 'technician' | 'protocol';
@@ -350,11 +359,50 @@ export interface EcuIndexEntry {
     name: string;
     name_en: string;
     sgbd: string;
+    address: number;
+    addressHex: string;
+    /** Which selector optgroup this module sits in. Keys are defined by `EcuIndex.groups`. */
+    group: string;
+    /** Which cars have it. Two modules can share an address and differ only here — 0x56 is
+     *  ASCMK20 on an early car and DSC_E46 on a later one, and they are never both fitted. */
+    fit: string;
+    note: string;
+    note_en: string;
+    /** What the ECU calls itself in its own INFO job, e.g.
+     *  "ABS/ASC, ITT_Industries, MK20E_I, E36,E46". Empty when no trace was ever taken from
+     *  the module, which is itself worth showing: the address is then a declaration, not a
+     *  measurement. */
+    ecuDesc: string;
     jobs: number;
     results: number;
     faults: number;
     envFields: number;
     byClass: Partial<Record<JobClass, number>>;
+    /**
+     * The extra files that exist beside `<id>.jobs.json`, by NAME.
+     *
+     * Names rather than suffixes because one of them is spelt differently
+     * (`smg2-workflows.json`), and a rule with an exception in it is a rule someone gets
+     * wrong. Fetching only what is listed is what stops 51 modules producing a hundred
+     * avoidable 404s a session — `mss54.hydraulics.json` was being requested on every load
+     * and has never existed.
+     */
+    sidecars: string[];
+}
+
+/**
+ * The index, as an object rather than a bare array.
+ *
+ * It was an array, which left nowhere to put the schema number, the generation time, or the
+ * group and fitment tables — so a reader had only "it is an array" to go on, and the selector
+ * had to carry its own copy of the group labels.
+ */
+export interface EcuIndex {
+    schema: number;
+    generatedAt: string;
+    groups: { key: string; ja: string; en: string }[];
+    fit: Record<string, { ja: string; en: string }>;
+    modules: EcuIndexEntry[];
 }
 
 /** Re-exported so `jobOps` stays the one place that names the operation shapes. */
@@ -367,10 +415,16 @@ export type { OpKind };
 
 const cache = new Map<string, EcuProfile>();
 
-export async function loadEcuIndex(): Promise<EcuIndexEntry[]> {
+export async function loadEcuIndex(): Promise<EcuIndex> {
     const res = await fetch('./ecu-data/index.json', { cache: 'no-store' });
     if (!res.ok) throw new Error(`Could not load the ECU index (HTTP ${res.status})`);
-    return res.json();
+    const index = (await res.json()) as EcuIndex;
+    // A schema check at the door, not a crash three screens later. The array form has no
+    // `modules`, so this is also what an old cached index fails on.
+    if (!Array.isArray(index?.modules)) {
+        throw new Error('The ECU index is not in the expected shape (schema 2 object).');
+    }
+    return index;
 }
 
 export async function loadEcuCatalog(id: string): Promise<EcuProfile> {

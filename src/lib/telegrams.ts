@@ -23,7 +23,7 @@
  * the bytes every time and the run gate treats anything below `single` as
  * unknown.
  *
- * DSC MK60 has ZERO single-graded telegrams — not in its 15 reads, not anywhere:
+ * DSC (E46) has ZERO single-graded telegrams — not in its 15 reads, not anywhere:
  * all 124 rows in its table are `shared` or `multiple`. That is a real result
  * about the module, not a gap to paper over, and it is why nothing in DSC is
  * runnable.

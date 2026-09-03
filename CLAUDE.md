@@ -1,8 +1,14 @@
 # E46M3///Diagnosis
 
-BMW E46 M3 を DS2 で読むブラウザ専用ツール。Web Serial で K+DCAN ケーブルに直接話す。
-サーバもローカルホストも無い（理由は `README.md`）。対象 ECU は MSS54 `0x12` /
-SMG II `0x32` / DSC MK60 `0x56`。
+BMW E46 M3 を DS2 で読むブラウザ専用ツール。K+DCAN ケーブルに直接話す——デスクトップは
+Web Serial、Android は WebUSB（Chrome for Android の `navigator.serial` は Bluetooth の
+シリアルポート模倣しか列挙しないので、USB ケーブルはそちらの選択肢に現れない）。
+サーバもローカルホストも無い（理由は `README.md`）。
+
+対象は **E46 M3 の 51 モジュール**。エンジン MSS54 `0x12` / 変速機 SMG II `0x32` から
+ボディ・快適装備・AV まで、INPA の E46 メニュー × M3 の装備で列挙してある
+（`tools/gen_ecu_data.py` の `MODULES`）。`0x56` は年式で中身が入れ替わる: 前期は
+ASCMK20、後期は DSC_E46 で、同時装着は無い。
 
 Next.js 16 / React 19 / Tailwind v4、`output: 'export'` の静的書き出し。
 

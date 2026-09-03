@@ -26,7 +26,7 @@ export const ADAPTATION_RESET_JOBS: Readonly<Record<string, readonly string[]>> 
     // None. DSC's erase-shaped jobs are something else: FS_LOESCHEN and FS_INIT
     // are fault memory, DDS_RESET is the tyre-pressure system, INITIALISIERUNG is
     // the generic controller init every module has.
-    dsc_mk60: [],
+    dsc_e46: [],
 };
 
 export type ResetJobs =

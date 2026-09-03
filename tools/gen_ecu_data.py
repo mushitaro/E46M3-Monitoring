@@ -39,16 +39,141 @@ OUT = os.path.join(HERE, "..", "public", "ecu-data")
 GENERATOR = "tools/gen_ecu_data.py"
 SCHEMA = 2
 
-# id : (ダンプ名, (ja名, en名), DS2アドレス, SGBDファイル)
-MODULES = {
-    "mss54": ("MSS54DS0", ("MSS54 (S54 / E46 M3 エンジン)", "MSS54 (S54 / E46 M3 Engine)"), 0x12, "MSS54DS0.prg"),
-    "smg2": ("SMG2", ("SMG II (E46 M3 変速機)", "SMG II (E46 M3 Gearbox)"), 0x32, "SMG2.prg"),
-    # E46 の DSC は DSC_E46.prg が正（汎用 dsc_mk60.prg ではない）。
-    "dsc_mk60": ("DSC_E46", ("DSC (E46 M3)", "DSC (E46 M3)"), 0x56, "DSC_E46.prg"),
+# ============================================================================
+#  モジュール表 — 3 から 51 へ。
+# ----------------------------------------------------------------------------
+#  INPA の E46 メニュー × M3 の装備で列挙する。同じ物理モジュールに SGBD の
+#  世代違いがある場合（IHKA46 / _2 / _3 等）は INPA と同様に別エントリとして
+#  持ち、fit / note で年式・装備を示す。利用者が車両で選ぶ。
+#
+#  除外したものと理由は docs/FITMENT.md にある。理由の書かれていない除外は
+#  一つも残さない——ASCMK20 が「従来決定どおり」だけで 50 モジュールから
+#  外れていた実例があり、実際には 0x56 で唯一トレース検証されているのは
+#  そちらだった。
+#
+#  addr は _addresses.json（EdiabasLib の実送信テレグラム）と突き合わせる。
+#  食い違ったらトレースが勝つ。宣言はいくらでも間違えられるが、送られた
+#  バイトは間違えようがない。
+# ============================================================================
+GROUPS = [
+    ("engine",     "エンジン",   "Engine"),
+    ("drivetrain", "駆動系",     "Drivetrain"),
+    ("chassis",    "シャシ",     "Chassis"),
+    ("safety",     "安全・保安", "Safety & security"),
+    ("body",       "ボディ電装", "Body electronics"),
+    ("comfort",    "快適装備",   "Comfort"),
+    ("comm",       "通信・AV",   "Communication / AV"),
+]
+
+FIT = {
+    "std":    ("標準",            "standard"),
+    "smg":    ("SMG 車",          "SMG cars"),
+    "opt":    ("オプション装備",   "optional equipment"),
+    "cabrio": ("カブリオレ",       "convertible"),
+    "early":  ("前期型",          "early cars"),
+    "late":   ("後期型",          "later cars"),
+    "jp":     ("日本仕様",         "Japan market"),
 }
+
+def M(dump, ja, en, addr, group, fit, note_ja="", note_en="", prg=None):
+    return dict(dump=dump, ja=ja, en=en, addr=addr, group=group, fit=fit,
+                note_ja=note_ja, note_en=note_en, prg=prg or (dump + ".prg"))
+
+MODULES = {
+    # --- engine / drivetrain / chassis ------------------------------------------
+    "mss54":    M("MSS54DS0", "MSS54 (S54 / E46 M3 エンジン)", "MSS54 (S54 / E46 M3 Engine)", 0x12, "engine", "std"),
+    "smg2":     M("SMG2",     "SMG II (E46 M3 変速機)",        "SMG II (E46 M3 Gearbox)",     0x32, "drivetrain", "smg"),
+    # 0x56 は年式で中身が入れ替わる。前期は ASCMK20.prg、後期は DSC_E46.prg。同時装着は無い。
+    # 旧 id は "dsc_mk60" だった。DSC_E46.prg を指しながら MK60 を名乗っており、MK20 の車では
+    # 持っていない部品番号を主張することになる。
+    "ascmk20":  M("ASCMK20",  "ABS/ASC MK20 (前期)",           "ABS/ASC MK20 (early cars)",   0x56, "chassis", "early",
+                  "6 km/h 超では診断不可（ECU の COMMENT より）", "no diagnosis above 6 km/h (from the ECU's own COMMENT)"),
+    "dsc_e46":  M("DSC_E46",  "DSC (E46・後期)",               "DSC (E46, later cars)",       0x56, "chassis", "late"),
+    "lws5":     M("LWS5",     "舵角センサ LWS5",                "Steering angle sensor LWS5",  0x57, "chassis", "std", "DSC MK60 と対", "paired with DSC MK60"),
+    "rdc":      M("RDC",      "タイヤ空気圧 RDC",               "Tyre pressure control RDC",   0x70, "chassis", "opt"),
+    # --- safety & security -------------------------------------------------------
+    "mrs3":     M("MRS3",     "エアバッグ MRS3",                "Airbag MRS3",                 0xA4, "safety", "early", "〜03/2003", "up to 03/2003"),
+    "mrs4":     M("MRS4",     "エアバッグ MRS4",                "Airbag MRS4",                 0xA4, "safety", "late",  "03/2003〜", "from 03/2003"),
+    "ueb2":     M("UEB2",     "ロールオーバー保護 UEB2",        "Rollover protection UEB2",    0x9E, "safety", "cabrio"),
+    "ews3":     M("EWS3",     "イモビライザ EWS 3.3",           "Immobiliser EWS 3.3",         0x44, "safety", "std"),
+    "ews3d":    M("EWS3D",    "イモビライザ EWS 3.3D",          "Immobiliser EWS 3.3D",        0x44, "safety", "late"),
+    # --- body electronics ---------------------------------------------------------
+    "zke5":     M("ZKE5",     "ボディ電装 GM5 (ZKE5)",          "Body electronics GM5 (ZKE5)", 0x00, "body", "std"),
+    "zke5_s12": M("ZKE5_S12", "ボディ電装 GM5 (ZKE5 S12)",      "Body electronics GM5 (S12)",  0x00, "body", "late"),
+    "kombi46":  M("KOMBI46",  "メーターパネル KOMBI",           "Instrument cluster KOMBI",    0x80, "body", "std"),
+    "kombi46r": M("KOMBI46R", "メーターパネル KOMBI (Redesign)", "Instrument cluster (Redesign)", 0x80, "body", "late", "後期型メーター", "facelift cluster"),
+    "lsz":      M("LSZ",      "ライトスイッチセンター LSZ",     "Light switch centre LSZ",     0xD0, "body", "std"),
+    "lsz_2":    M("LSZ_2",    "ライトスイッチセンター LSZ_2",   "Light switch centre LSZ_2",   0xD0, "body", "late"),
+    "mfl":      M("MFL",      "マルチファンクションステアリング MFL", "Multifunction steering wheel MFL", 0x50, "body", "std"),
+    "mfl2":     M("MFL2",     "マルチファンクションステアリング MFL2", "Multifunction steering wheel MFL2", 0x50, "body", "late"),
+    "szm46":    M("SZM46",    "センターコンソールスイッチ SZM", "Centre console switch centre SZM", 0xF5, "body", "std"),
+    "aic":      M("AIC",      "レインセンサ AIC",               "Rain sensor AIC",             0xE8, "body", "early"),
+    "rls_ds2":  M("RLS_DS2",  "レイン/ライトセンサ RLS",        "Rain/light sensor RLS",       0xE8, "body", "late"),
+    "alc_ds2":  M("ALC_DS2",  "アダプティブライト ALC",         "Adaptive light control ALC",  0x66, "body", "opt"),
+    "xenon_l":  M("XENON_L",  "キセノン 左",                    "Xenon left",                  0x98, "body", "opt"),
+    "xenon_r":  M("XENON_R",  "キセノン 右",                    "Xenon right",                 0x86, "body", "opt"),
+    "cvm_ii":   M("CVM_II",   "ソフトトップ CVM II",            "Convertible top module CVM II", 0x9C, "body", "cabrio"),
+    # --- comfort -----------------------------------------------------------------
+    "ihka46":   M("IHKA46",   "エアコン IHKA",                  "Climate control IHKA",        0x5B, "comfort", "early", "〜PU98", "up to PU98"),
+    "ihka46_2": M("IHKA46_2", "エアコン IHKA (PU98/99)",        "Climate control IHKA (PU98/99)", 0x5B, "comfort", "std"),
+    "ihka46_3": M("IHKA46_3", "エアコン IHKA (PU03/2003)",      "Climate control IHKA (PU03/2003)", 0x5B, "comfort", "late"),
+    "pdce38":   M("PDCE38",   "パークディスタンス PDC",         "Park distance control PDC",   0x60, "comfort", "opt"),
+    "pdcact":   M("PDCACT",   "パークディスタンス PDC (ACT)",   "Park distance control PDC (ACT)", 0x60, "comfort", "opt"),
+    "shd46":    M("SHD46",    "サンルーフ SHD",                 "Sunroof SHD",                 0x08, "comfort", "opt"),
+    "shd46_2":  M("SHD46_2",  "サンルーフ SHD (2)",             "Sunroof SHD (2)",             0x08, "comfort", "opt"),
+    "sm46_4":   M("SM46_4",   "シートメモリ 運転席",            "Seat memory, driver",         0x72, "comfort", "opt"),
+    "sm46c_5":  M("SM46C_5",  "シートメモリ 運転席 (カブリオレ)", "Seat memory, driver (convertible)", 0x72, "comfort", "cabrio"),
+    "b_sm46_4": M("B_SM46_4", "シートメモリ 助手席",            "Seat memory, passenger",      0xDA, "comfort", "opt"),
+    "spm46ft":  M("SPM46FT",  "ミラーメモリ 運転席ドア",        "Mirror memory, driver door",  0x9B, "comfort", "opt"),
+    "spm46bt":  M("SPM46BT",  "ミラーメモリ 助手席ドア",        "Mirror memory, passenger door", 0x51, "comfort", "opt"),
+    # --- communication / AV -------------------------------------------------------
+    "radio":    M("RADIO",    "ラジオ",                         "Radio",                       0x68, "comm", "opt"),
+    "bmbt46rn": M("BMBT46RN", "ボードモニター (Radio Nav)",     "On-board monitor (Radio Nav)", 0xF0, "comm", "opt"),
+    "bmbt46tn": M("BMBT46TN", "ボードモニター (Top Nav)",       "On-board monitor (Top Nav)",  0xF0, "comm", "opt"),
+    "bmbt_mir": M("BMBT_MIR", "ボードモニター MIR",             "On-board monitor MIR",        0xF0, "comm", "opt"),
+    "bm46wide": M("BM46WIDE", "ワイドスクリーンモニター",       "Widescreen monitor",          0xF0, "comm", "opt"),
+    "cdc_46":   M("CDC_46",   "CDチェンジャー",                 "CD changer",                  0x76, "comm", "opt"),
+    "navmk3":   M("NAVMK3",   "ナビゲーション MK3",             "Navigation computer MK3",     0x7F, "comm", "opt"),
+    "navmk4":   M("NAVMK4",   "ナビゲーション MK4",             "Navigation computer MK4",     0x7F, "comm", "opt"),
+    "navmk4_2": M("NAVMK4_2", "ナビゲーション MK4 (2)",         "Navigation computer MK4 (2)", 0x7F, "comm", "opt"),
+    "nav_jap":  M("NAV_JAP",  "日本仕様ナビゲーション",         "Japan navigation system",     0xBB, "comm", "jp"),
+    "ses":      M("SES",      "音声入力 SES",                   "Speech input SES",            0xB0, "comm", "opt"),
+    "telefon":  M("TELEFON",  "電話",                           "Telephone",                   0xC8, "comm", "opt"),
+    "videomod": M("VIDEOMOD", "ビデオモジュール",               "Video module",                0xED, "comm", "opt"),
+}
+
+GROUP_TEXT = {key: (ja, en) for key, ja, en in GROUPS}
+
+# アプリが <id>.jobs.json の隣で取りにいくファイル。実在するものだけを index に載せる。
+# 接尾辞の規則ではなくファイル名そのものを並べる: smg2-workflows.json だけ命名が違い、
+# 規則を書けばその規則を間違える側が必ず出る。
+SIDECAR_NAMES = ("{id}.telegrams.json", "{id}.jobtext.json", "{id}.hydraulics.json",
+                 "{id}-workflows.json")
+
+
+def sidecars_for(mid: str) -> list[str]:
+    return [n.format(id=mid) for n in SIDECAR_NAMES
+            if os.path.exists(os.path.join(OUT, n.format(id=mid)))]
+
+
+# 生成物の員数台帳。ジョブが黙って消えないことが不変条件で、総数はその見張り。
+# 増減そのものは正当でありうる（モジュールを足せば増える）ので、禁止ではなく
+# 「意図した変更か」を問う: --write-counts を付けた実行だけが台帳を書き換える。
+COUNTS = os.path.join(HERE, "ecu_data_counts.json")
 
 # 汎用すぎて情報価値のない説明文（この場合は識別子から作る方が良い）
 GENERIC = {"", "ergebnis", "result", "wert", "value", "status", "job"}
+
+# 値域だけを述べた説明文（"0 oder 1" / "-32 bis 31" / "0-255 bzw. 0x00-0xFF" 等）。
+# 「その値が何か」を一切語らないのでラベルには使えない。しかも完全に訳せてしまうため
+# leftover_ratio() では識別子分解に勝ってしまい、そのまま採ると「0または1」という
+# ラベルが出る。3 モジュールでは当たらなかったが、ボディ系に当たった瞬間に出る。
+# 値域そのものは実機読取時の判断材料なので desc としては残す。
+# ※ 数値と接続語だけの文字列のみが対象。単位や語が付くもの（"0 bis 255 s" /
+#   "8 Byte" / "1 wenn Okay"）は情報があるので対象外。
+_NUM = r"[+-]?(?:0[xX][0-9A-Fa-f]+|\d+)"
+_RSEP = r"(?:\s*(?:oder|bis|und|bzw\.?|[-–/,])\s*|\s*\.{2,3}\s*)"
+GENERIC_RANGE = re.compile(rf"^{_NUM}(?:{_RSEP}{_NUM})+$", re.I)
 
 
 def lbl_for(name: str, comment: str | None) -> tuple[str, str, dict | None]:
@@ -60,7 +185,9 @@ def lbl_for(name: str, comment: str | None) -> tuple[str, str, dict | None]:
     自信満々の誤訳は操作事故に直結する（DSC の STEUERN_DIGITAL が「デジタル」）。
     """
     c = (comment or "").strip()
-    meaningful = bool(c) and c.lower() not in GENERIC and len(c) > 3
+    keep = bool(c) and c.lower() not in GENERIC and len(c) > 3
+    # 値域だけの説明文は desc には残すが、ラベル候補にはしない（GENERIC_RANGE 参照）。
+    meaningful = keep and not GENERIC_RANGE.match(c)
 
     base = re.sub(r"_(WERT)$", "", name)
     ja_id, en_id = translate(base, "ja"), translate(base, "en")
@@ -79,7 +206,7 @@ def lbl_for(name: str, comment: str | None) -> tuple[str, str, dict | None]:
 
     desc = (
         {"de": c, "ja": translate(c, "ja", decompose=False), "en": translate(c, "en", decompose=False)}
-        if meaningful
+        if keep
         else None
     )
     return ja, en, desc
@@ -371,7 +498,27 @@ def arg_options(dump: model.SgbdDump, job_name: str, arg_name: str) -> tuple[lis
     return opts, origin
 
 
-def build(mid: str, dumpname: str, name: tuple[str, str], addr: int, prg: str) -> dict:
+def load_addresses() -> dict:
+    """DS2 アドレスの実測。tools/dump_modules.py が EdiabasLib の実送信テレグラム
+    "(Send sim): 56 04 00" から取ったもので、59 モジュール分ある。
+
+    無い場合は空で返す——宣言だけで生成はできる。ただしその場合、アドレスは
+    「誰かがそう書いた」以上の根拠を持たない。"""
+    p = os.path.join(DUMP, "_addresses.json")
+    return json.load(open(p, encoding="utf-8")) if os.path.exists(p) else {}
+
+
+def build(mid: str, m: dict, addrs: dict) -> dict:
+    dumpname, prg = m["dump"], m["prg"]
+    name = (m["ja"], m["en"])
+    addr = m["addr"]
+    # トレースが勝つ。黙って直さず、必ず出す——アドレスが変わったということは、
+    # これまでとは別の ECU と話していたか、これから別の ECU と話すということ。
+    a = addrs.get(dumpname, {})
+    if a.get("addr") is not None and a["addr"] != addr:
+        print(f"  !! {mid}: MODULES addr 0x{addr:02X} != trace 0x{a['addr']:02X} (trace wins)")
+        addr = a["addr"]
+    ecu_desc = (a.get("info") or {}).get("ECU", "")
     d = model.load(DUMP, dumpname)
     pool = TextPool()
     jobs_out: list[dict] = []
@@ -489,6 +636,19 @@ def build(mid: str, dumpname: str, name: tuple[str, str], addr: int, prg: str) -
         "name_en": name[1],
         "sgbd": prg,
         "address": addr,
+        "addressHex": f"0x{addr:02X}",
+        "group": m["group"],
+        "groupJa": GROUP_TEXT[m["group"]][0],
+        "groupEn": GROUP_TEXT[m["group"]][1],
+        "fit": m["fit"],
+        "fitJa": FIT[m["fit"]][0],
+        "fitEn": FIT[m["fit"]][1],
+        "note": m["note_ja"],
+        "note_en": m["note_en"],
+        # ECU 自身が INFO ジョブで名乗る文字列。ダンプがどの実機系列のものかを
+        # 言える唯一の欄で、"ABS/ASC, ITT_Industries, MK20E_I, E36,E46" のように
+        # 型式まで入る。トレースが無いモジュールでは空。
+        "ecuDesc": ecu_desc,
         "verified": False,
         # 古いダンプから生成したことを黙って出荷できないようにする
         "generatedFrom": {
@@ -513,10 +673,28 @@ def build(mid: str, dumpname: str, name: tuple[str, str], addr: int, prg: str) -
         by_class[job["class"]] = by_class.get(job["class"], 0) + 1
     return {
         "id": mid, "name": name[0], "name_en": name[1], "sgbd": prg,
+        "address": addr, "addressHex": f"0x{addr:02X}",
+        "group": m["group"], "fit": m["fit"],
+        "note": m["note_ja"], "note_en": m["note_en"], "ecuDesc": ecu_desc,
         "jobs": d.job_count, "results": sum(len(x["results"]) for x in jobs_out),
         "faults": len(prof["faultText"]), "envFields": len(prof["envFields"]),
         "byClass": by_class,
+        "roles": _count_roles(jobs_out),
+        "unclassified": sum(1 for j in jobs_out if j["class"] == "unclassified"),
+        # 実在するサイドカーを名指しする。無いと 51 モジュールで毎セッション
+        # 100 回超の 404 を取りに行く（現に mss54.hydraulics.json がそうなっていた）。
+        # 接尾辞ではなく FILE NAME を並べるのは、smg2-workflows.json だけ命名が
+        # 違うから——規則を書くと、その規則を間違える側が必ず出る。
+        "sidecars": sidecars_for(mid),
     }
+
+
+def _count_roles(jobs_out: list[dict]) -> dict[str, int]:
+    n: dict[str, int] = {}
+    for j in jobs_out:
+        for r in j["results"]:
+            n[r["role"]] = n.get(r["role"], 0) + 1
+    return n
 
 
 def _write_json(path: str, obj) -> None:
@@ -530,14 +708,54 @@ def _write_json(path: str, obj) -> None:
     os.replace(tmp, path)
 
 
+def check_counts(idx: list[dict], write: bool) -> int:
+    """員数を、コミットされた台帳と突き合わせる。
+
+    ここに 323 というリテラルがあった。それはスナップショットであって不変条件ではなく、
+    モジュールが 3 から 51 になった時点で意味を失う。本当の不変条件は build() が
+    モジュール毎に見ている「出力ジョブ数 == ダンプの jobCount」で、この台帳はその上に
+    載る二段目——生成器の設定が変わって全体が動いたことを、差分として見せる。"""
+    now = {r["id"]: {"jobs": r["jobs"], "results": r["results"]} for r in idx}
+    roles: dict[str, int] = {}
+    for r in idx:
+        for k, v in r["roles"].items():
+            roles[k] = roles.get(k, 0) + v
+    if write or not os.path.exists(COUNTS):
+        _write_json(COUNTS, {
+            "note": "tools/gen_ecu_data.py --write-counts で更新。差分はレビュー対象。",
+            "modules": now,
+            "totals": {k: sum(v[k] for v in now.values()) for k in ("jobs", "results")},
+            # 結果ロールの分布。分類器を触れば必ずここが動くので、意図しない変更が差分で出る。
+            "roles": dict(sorted(roles.items())),
+            # SGBD が何も述べていないジョブの数。0 が目標だが、0 にするために
+            # 「分からない」を「読取」と書くのが、この数字が防いでいる操作そのもの。
+            "unclassified": sum(r["unclassified"] for r in idx),
+        })
+        print(f"wrote {os.path.relpath(COUNTS)} ({len(now)} modules)")
+        return 0
+    want = json.load(open(COUNTS, encoding="utf-8"))["modules"]
+    diffs = [(k, want.get(k), now.get(k)) for k in sorted(set(want) | set(now))
+             if want.get(k) != now.get(k)]
+    for k, w, n in diffs:
+        print(f"  != {k:12} ledger={w} now={n}")
+    return len(diffs)
+
+
 if __name__ == "__main__":
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     os.makedirs(OUT, exist_ok=True)
+    only = ([a for a in sys.argv[sys.argv.index("--only") + 1:] if not a.startswith("--")]
+            if "--only" in sys.argv else None)
+    addrs = load_addresses()
     idx, failed = [], []
-    for mid, (dumpname, nm, addr, prg) in MODULES.items():
+    for mid, m in MODULES.items():
+        if only and mid not in only:
+            continue
         try:
-            r = build(mid, dumpname, nm, addr, prg)
+            r = build(mid, m, addrs)
             idx.append(r)
-            print(f"  {mid:10} jobs={r['jobs']:<4} results={r['results']:<5} "
+            print(f"  {mid:10} 0x{r['address']:02X} jobs={r['jobs']:<4} results={r['results']:<5} "
                   f"faults={r['faults']:<4} env={r['envFields']:<3} {r['byClass']}")
         except Exception as e:
             failed.append((mid, e))
@@ -551,9 +769,31 @@ if __name__ == "__main__":
             + "\nindex.json was NOT rewritten.\n")
         sys.exit(1)
 
-    _write_json(os.path.join(OUT, "index.json"), idx)
+    if only:
+        print(f"regenerated {len(idx)} profile(s); index.json and the counts ledger untouched")
+        sys.exit(0)
+
+    # グループ順 → MODULES 宣言順（ECU セレクタの並びそのもの）。
+    gorder = {g[0]: i for i, g in enumerate(GROUPS)}
+    morder = {k: i for i, k in enumerate(MODULES)}
+    idx.sort(key=lambda e: (gorder.get(e.get("group"), 99), morder.get(e["id"], 999)))
+
+    # 配列ではなくオブジェクトの外殻。配列だとスキーマ番号も生成時刻もグループ表も
+    # 置く場所が無く、読む側は「配列であること」だけを頼りに形を推測することになる。
+    _write_json(os.path.join(OUT, "index.json"), {
+        "schema": SCHEMA,
+        "generatedAt": datetime.datetime.now(datetime.timezone.utc)
+        .replace(microsecond=0).isoformat(),
+        "groups": [{"key": k, "ja": ja, "en": en} for k, ja, en in GROUPS],
+        "fit": {k: {"ja": ja, "en": en} for k, (ja, en) in FIT.items()},
+        "modules": idx,
+    })
     total = sum(r["jobs"] for r in idx)
     print(f"wrote {len(idx)} profiles, {total} jobs total")
-    if total != 323:
-        sys.stderr.write(f"[FATAL] expected 323 jobs across all modules, got {total}\n")
+
+    drift = check_counts(idx, "--write-counts" in sys.argv)
+    if drift:
+        sys.stderr.write(
+            f"[FATAL] {drift} module(s) differ from tools/ecu_data_counts.json.\n"
+            "If the change is intended, re-run with --write-counts and let the diff be reviewed.\n")
         sys.exit(1)

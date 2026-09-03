@@ -140,6 +140,16 @@ export interface JobOperation {
     /** The job that ends this one, when a named counterpart exists. */
     stopJob?: string;
     /** When stopping is the same job with different arguments. */
+    /**
+     * What START and STOP impose on the arguments.
+     *
+     * An argument named in BOTH is one the buttons decide, not the operator —
+     * `visibleArgs` keeps it out of the form on that basis rather than on a
+     * hardcoded name. One named only in `stopArgs` (a duty cycle the operator
+     * chooses to start and the ECU's own "not driven" value to end) stays
+     * visible, because the start value is still theirs to pick.
+     */
+    startArgs?: Record<string, string>;
     stopArgs?: Record<string, string>;
     /** The job that carries the answer, when this one does not. */
     resultJob?: string;
@@ -258,6 +268,7 @@ export function jobOperation(job: CatalogJob): JobOperation {
         resultDelivery: op.resultDelivery,
         steps,
         stopJob: op.stopJob,
+        startArgs: op.startArgs,
         stopArgs: op.stopArgs,
         resultJob: op.resultJob,
         ecuTimeoutSec: op.ecuTimeoutSec,

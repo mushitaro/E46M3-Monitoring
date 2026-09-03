@@ -296,6 +296,8 @@ export interface JobOperationData {
      * stop the hydraulic pump. It used to be recorded as `stopJob: 'INAKTIV'`,
      * which named a job that does not exist.
      */
+    /** Argument values the START phase imposes, whatever the operator typed. */
+    startArgs?: Record<string, string>;
     stopArgs?: Record<string, string>;
     /** For `resultDelivery: 'companion-job'`: the job that reads the answer. */
     resultJob?: string;

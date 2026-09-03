@@ -154,6 +154,9 @@ class JobClassification:
     stop_job: str | None = None
     # 停止が「同じジョブ＋別の引数」である場合の引数。別ジョブではない。
     stop_args: dict | None = None
+    # 開始時に押し込む引数値。`stop_args` の対で、両方に現れる引数は「開始/停止の
+    # ボタンそのものが値を決める」ことを意味する——操作者に選ばせるものではない。
+    start_args: dict | None = None
     result_job: str | None = None
     ecu_timeout_sec: int | None = None
     max_hold_sec: int | None = None
@@ -793,9 +796,21 @@ def classify(sgbd: str, job: str, comment: str, args: list[str]) -> JobClassific
         return _apply_override(n, c, argset, de)
 
     # --- ON/OFF 引数を持つ保持型 -------------------------------------------
+    #
+    # 実測: 全 63 SGBD で `SCHALTEN` を取るジョブは 1 つだけ——MSS54 の
+    # `STEUERN_DMTL_HEIZUNG`。値は SGBD が引数コメントで述べている:
+    #
+    #     Werte: 'ein', 'aus' oder '1', '0'
+    #
+    # 開始と停止を**データにする**。前身アプリはここを UI 側の分岐で持っており
+    # （`if (job.style === "hold" && nm === "SCHALTEN")`）、値の出所が
+    # コードに埋まっていた。両方に現れる引数は操作者に見せない、という規則が
+    # これで導けるようになる——見せる/見せないが分岐ではなくデータから出る。
     if "SCHALTEN" in argset:
         c.cls, c.kind, c.audience = CLASS_TEST, "hold", AUD_OWNER
         c.actor, c.termination, c.stop_job = ACTOR_APP, TERM_APP_STOP, job
+        c.start_args = {"SCHALTEN": "ein"}
+        c.stop_args = {"SCHALTEN": "aus"}
         c.preconditions = ["voltage_ok"]
         c.provenance = "sgbd-comment"
         return _apply_override(n, c, argset, de)

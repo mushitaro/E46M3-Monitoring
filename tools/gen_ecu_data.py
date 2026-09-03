@@ -667,6 +667,7 @@ def build(mid: str, m: dict, addrs: dict) -> dict:
                 "resultDelivery": cls.result_delivery,
                 "prerequisiteJobs": cls.prerequisite_jobs or None,
                 "stopJob": cls.stop_job,
+                "startArgs": cls.start_args,
                 "stopArgs": cls.stop_args,
                 "resultJob": cls.result_job,
                 "ecuTimeoutSec": cls.ecu_timeout_sec,

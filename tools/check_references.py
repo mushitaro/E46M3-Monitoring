@@ -13,7 +13,7 @@
 #
 #  使い方: python tools/check_references.py [-v]
 # ============================================================================
-import hashlib, os, sys
+import hashlib, json, os, sys
 
 # stdout **と stderr の両方**。失敗の本文は stderr に出るので、片方だけ直すと
 # 「緑のときは読めるが、赤いときだけ文字化けする」——一番読みたい瞬間に読めなくなる。
@@ -49,25 +49,22 @@ EXTERNAL = [
 # 文書用のみの参照は、欠けても再生成は止まらない。WARN であって FAIL ではない。
 ADVISORY = {"INPA 画面ソース (文書用のみ)"}
 
-# --- repo 内のダンプ ---------------------------------------------------------
-DUMPS = {
-    "MSS54DS0.json":           "10cfdd8ed5ba084463bfd4cb3987a9c5615d2c7c067c14665df399c7b2e2dbe9",
-    "SMG2.json":               "be85f6362bffe427513f104c64c51dcb56ef3b318a2f11ce8e53ca90307644f1",
-    "DSC_E46.json":            "7ea3e00f6a9513a2844b9ad5aad7f44e0b780c7801f8d0626e94689d1a1d0197",
-    "mss54.telegrams.json":    "bf26e507634898272e53a4607be68bd76f31a0a394d762d2f1f00eac1f811d3d",
-    "smg2.telegrams.json":     "a5142fcdf816f302ce74901576c9e0f6a5de6e6615f77ab0289c3da115a9939d",
-    "dsc_e46.telegrams.json": "b689200fd988278b9b4d5490f97f16164f272c1482c3670a455d85b1f8bf3e0a",
-}
-
-# 生成物が「どのダンプから出たか」を主張している箇所。ダンプを差し替えて
-# 再生成し忘れると、ここだけが古い値のまま残る。
-PROVENANCE = [
-    ("mss54.jobs.json", "MSS54DS0.json"),
-    ("dsc_e46.hydraulics.json", "DSC_E46.json"),
-]
+# --- リポジトリ外のダンプ、コミットされた台帳と照合 --------------------------
+#
+# ここには以前 SHA-256 が 6 個リテラルで並んでいた。3 モジュールのときは 6 行で
+# 足りたが、51 モジュール = 87 ファイルになると手で維持する表になり、維持されない。
+# `tools/gen_dump_manifest.py` が書く台帳（中身を持たない——名前・ハッシュ・員数
+# だけなので public repo にコミットできる）と照合する。
+#
+# 台帳は二方向に効く。**台帳→ディスク**はダンプが差し替わったことを教え、
+# **ディスク→台帳**はダンプが増えたのに台帳を書き直していないことを教える。
+# 後者が要るのは、この台帳が public repo に対して「何がどれだけ欠けているか」を
+# 主張しているから——増えた分を黙って落とすと、その主張が静かに偽になる。
+MANIFEST = os.path.join(HERE, "SgbdDump", "out.manifest.json")
 
 VERBOSE = "-v" in sys.argv
 fails, warns, ran = [], [], 0
+provenance_ok: list[str] = []
 
 
 def sha256(path):
@@ -101,39 +98,66 @@ for name, env, default, kind, members in EXTERNAL:
         else:
             ok(f"  {m}  {os.path.getsize(p):,} B")
 
-for fname, want in DUMPS.items():
+# --- 台帳 → ディスク ---------------------------------------------------------
+LEDGER: dict[str, str] = {}
+if not os.path.isfile(MANIFEST):
+    fails.append(f"ダンプ台帳が無い: {MANIFEST}\n"
+                 f"        python tools/gen_dump_manifest.py で書ける")
+else:
     ran += 1
-    p = os.path.join(DUMP_DIR, fname)
-    if not os.path.isfile(p):
-        fails.append(f"ダンプ {fname} が無い（{DUMP_DIR}）")
-        continue
-    got = sha256(p)
-    if got != want:
-        fails.append(f"ダンプ {fname} のハッシュ不一致\n"
-                     f"        期待 {want}\n"
-                     f"        実際 {got}\n"
-                     f"        再ダンプしたなら docs/REFERENCES.md §2 の表も直すこと")
-    else:
-        ok(f"{fname}  {got[:16]}…")
+    manifest = json.load(open(MANIFEST, encoding="utf-8"))
+    LEDGER = {e["path"]: e["sha256"] for e in manifest["dumps"]}
+    sizes = {e["path"]: e["bytes"] for e in manifest["dumps"]}
+    ok(f"台帳 {os.path.relpath(MANIFEST, ROOT)}  {len(LEDGER)} 件")
+    for fname, want in LEDGER.items():
+        ran += 1
+        p = os.path.join(DUMP_DIR, fname)
+        if not os.path.isfile(p):
+            fails.append(f"ダンプ {fname} が無い（{DUMP_DIR}）")
+            continue
+        got = sha256(p)
+        if got != want:
+            fails.append(f"ダンプ {fname} のハッシュ不一致\n"
+                         f"        台帳 {want} ({sizes[fname]:,} B)\n"
+                         f"        現物 {got} ({os.path.getsize(p):,} B)\n"
+                         f"        再ダンプしたなら python tools/gen_dump_manifest.py も回すこと")
+        else:
+            ok(f"{fname}  {got[:16]}…")
 
-for generated, dump in PROVENANCE:
+    # --- ディスク → 台帳 -----------------------------------------------------
+    # 台帳に無いダンプは、台帳を書き直さずに増やしたということ。台帳の
+    # 「何がどれだけ欠けているか」という主張が黙って偽になる経路はここしかない。
     ran += 1
-    p = os.path.join(ECU_DATA, generated)
-    if not os.path.isfile(p):
-        fails.append(f"生成物 {generated} が無い（{ECU_DATA}）")
+    extra = sorted(f for f in os.listdir(DUMP_DIR)
+                   if f.endswith(".json") and f not in LEDGER)
+    if extra:
+        fails.append("ダンプが台帳に無い（python tools/gen_dump_manifest.py を回すこと）:\n"
+                     + "\n".join(f"        {f}" for f in extra))
+
+# --- 生成物 → 台帳 -----------------------------------------------------------
+# 「どのダンプから出たか」を名乗っている生成物を**全部**当たる。以前は 2 件を
+# 手で並べていたので、名乗り始めた 50 個目の生成物は誰にも見られていなかった。
+# 名簿を持たないことがここでは正しい——名乗っているものが対象、という規則で足りる。
+for fname in sorted(os.listdir(ECU_DATA)):
+    if not fname.endswith(".json"):
         continue
-    import json
-    with open(p, encoding="utf-8") as f:
-        claimed = (json.load(f).get("generatedFrom") or {}).get("dumpSha256")
-    if claimed is None:
-        fails.append(f"{generated} に generatedFrom.dumpSha256 が無い")
-    elif claimed != DUMPS[dump]:
-        fails.append(f"{generated} は古いダンプから作られている\n"
+    with open(os.path.join(ECU_DATA, fname), encoding="utf-8") as f:
+        doc = json.load(f)
+    gen = (doc.get("generatedFrom") or {}) if isinstance(doc, dict) else {}
+    claimed, dump = gen.get("dumpSha256"), gen.get("dump")
+    if not claimed:
+        continue
+    ran += 1
+    if dump not in LEDGER:
+        fails.append(f"{fname} が台帳に無いダンプを名乗っている: {dump}")
+    elif claimed != LEDGER[dump]:
+        fails.append(f"{fname} は古いダンプから作られている\n"
                      f"        主張 {claimed}\n"
-                     f"        現物 {DUMPS[dump]} ({dump})\n"
+                     f"        現物 {LEDGER[dump]} ({dump})\n"
                      f"        再生成が要る")
     else:
-        ok(f"{generated} ← {dump}")
+        provenance_ok.append(fname)
+        ok(f"{fname} ← {dump}")
 
 # 「検査しない検査」への防波堤。
 if ran == 0:
@@ -149,5 +173,6 @@ if fails:
     sys.stderr.write("\n    所在の一覧は docs/REFERENCES.md\n")
     sys.exit(1)
 
-print(f"ok - 参照物 {ran} 件（外部 {len(EXTERNAL)} 種・ダンプ {len(DUMPS)} 件・出所 {len(PROVENANCE)} 件）"
+print(f"ok - 参照物 {ran} 件（外部 {len(EXTERNAL)} 種・ダンプ {len(LEDGER)} 件・"
+      f"出所を名乗る生成物 {len(provenance_ok)} 件）"
       + (f" / WARN {len(warns)} 件" if warns else ""))

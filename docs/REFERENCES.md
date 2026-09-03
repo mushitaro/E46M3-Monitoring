@@ -73,20 +73,31 @@ BMW ツールチェーンの導入物として `C:\EC-APPS` に置いてある�
 | 分類規則 | `tools/sgbd/{classify,model,specs}.py` | ジョブの risk / class の単一の正 |
 | 実車記録 | `recordings/m3-{mss54,smg2}-real.json` | テスト用。生成器の入力ではない |
 
-ダンプの SHA256（`check_references.py` が突き合わせる）:
+### ダンプの台帳 — `tools/SgbdDump/out.manifest.json`
 
-```
-10cfdd8ed5ba084463bfd4cb3987a9c5615d2c7c067c14665df399c7b2e2dbe9  MSS54DS0.json
-be85f6362bffe427513f104c64c51dcb56ef3b318a2f11ce8e53ca90307644f1  SMG2.json
-7ea3e00f6a9513a2844b9ad5aad7f44e0b780c7801f8d0626e94689d1a1d0197  DSC_E46.json
-bf26e507634898272e53a4607be68bd76f31a0a394d762d2f1f00eac1f811d3d  mss54.telegrams.json
-a5142fcdf816f302ce74901576c9e0f6a5de6e6615f77ab0289c3da115a9939d  smg2.telegrams.json
-b689200fd988278b9b4d5490f97f16164f272c1482c3670a455d85b1f8bf3e0a  dsc_e46.telegrams.json
-```
+ダンプ本体は repo の外にあるが、**台帳はコミットされている**。名前・SHA-256・
+バイト数・ジョブ数・テーブル数だけで、SGBD の文字列は 1 つも入らない。だから
+public repo を clone した人が、**何がどれだけ欠けているか**を形と大きさで確認できる。
 
-`MSS54DS0.json` と `DSC_E46.json` のハッシュは
-`public/ecu-data/mss54.jobs.json` と `dsc_e46.hydraulics.json` の `generatedFrom.dumpSha256`
-にも書かれていて、一致することを確認済み。生成物が **どのダンプから出たか** を主張できる。
+87 ファイル（51 モジュール＋装備違いの候補＋テレグラム抽出 3 件）。更新は
+`python tools/gen_dump_manifest.py` で、差分はレビュー対象。
+
+ここには以前 SHA-256 が 6 個、この文書とチェッカーの両方にリテラルで並んでいた。
+3 モジュールのうちは 2 箇所 × 6 行で足りたが、51 では手で維持する表になり、
+維持されなくなる。**同じ値を 2 箇所に書くのをやめた**のがこの台帳である。
+
+`check_references.py` はこれを**二方向**に使う。台帳→ディスクでダンプが差し替わった
+ことを、ディスク→台帳で**台帳を書き直さずにダンプを増やした**ことを検出する。後者が
+無いと、上の「何がどれだけ欠けているか」という主張が黙って偽になる。
+
+あわせて、`generatedFrom.dumpSha256` を名乗る生成物 **52 件**（`*.jobs.json` 51 ＋
+`dsc_e46.hydraulics.json`）を全部その場で照合する。以前は 2 件を手で並べていたので、
+名乗り始めた 50 個目の生成物は誰にも見られていなかった。
+
+**台帳に入っていない 2 つの欄。** `dumpedAt` と `sgbdSha256`（元の `.prg` のハッシュ）
+はダンプ側が名乗っていないので、台帳には作れない——作ればそれは我々がでっち上げた値
+になる。SgbdDump を直して全数を取り直したときに入る。それまでは「どのダンプから出たか」
+は言えるが、「そのダンプがいつ、どの `.prg` から出たか」は言えない。
 
 ---
 
@@ -95,6 +106,7 @@ b689200fd988278b9b4d5490f97f16164f272c1482c3670a455d85b1f8bf3e0a  dsc_e46.telegr
 | 生成器 | 入力 | 出力 |
 |---|---|---|
 | `tools/SgbdDump/Program.cs` | #1 ＋ #2（EdiabasLib 経由） | `$SGBD_DUMP_DIR/<SGBD>.json` |
+| `gen_dump_manifest.py` | `$SGBD_DUMP_DIR/*.json` | `tools/SgbdDump/out.manifest.json`（**コミットされる**） |
 | `extract_telegrams.py` | #1 | `$SGBD_DUMP_DIR/<id>.telegrams.json` |
 | `gen_ecu_data.py` | ダンプ ＋ `sgbd/*` ＋ `translate.py` | `public/ecu-data/<id>.jobs.json`, `index.json` |
 | `gen_smg2_workflows.py` | `SMG2.json` | `public/ecu-data/smg2-workflows.json` |

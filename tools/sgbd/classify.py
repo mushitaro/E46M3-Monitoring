@@ -240,6 +240,72 @@ def system_of(job: str, sgbd: str | None = None) -> str:
 # ---------------------------------------------------------------------------
 
 OVERRIDES: dict[str, dict] = {
+    # ------------------------------------------------------------------
+    #  前身の表が cat="adapt"（永続書込）と言い、この分類器が class="test",
+    #  kind="pulse"（一時的、終われば戻る）と言っていた 9 件。SGBD に聞いた。
+    #
+    #  どれも「永続」「一時的」とは書いていない。書いていないことを認めた上で、
+    #  6 件は書かれている内容が保存された状態についてしか意味を成さない。
+    #  RADIO が自分で物差しを出しているのが決め手だった: STEUERN_RADIO_SCHALTEN の
+    #  コメントだけが "$07 inputOutputControlParameter - ShortTermAdjustment" と
+    #  書いており、RADIO.json 全体で "ShortTerm" はその 1 箇所しかない。この SGBD は
+    #  短時間のときは短時間と書く。下の 5 件には書いていない。
+    #
+    #  名前はどれも 1 つの SGBD にしか無い（実測）ので、名前キーで安全に効く。
+    #
+    #  provenance は書いていない。_apply_override が override を当てたものを一律
+    #  "authored" にするからで、それがこの 9 件については正しい——SGBD は永続性を
+    #  明言していない。述べられていることから人が判断した、と名乗るのが正確である。
+    # ------------------------------------------------------------------
+
+    # UEB2。"Transportsicherung setzen" / "entfernen" で、状態は
+    # STATUS_TRANSPORTSICHERUNG_LESEN の STAT_TRANSPORTSICHERUNG_EIN
+    # （"1, wenn Transportsicherung gesetzt, sonst 0"）で読み戻せる。あとから読める値は、
+    # ジョブが終わった時点で戻ってはいない。
+    #
+    # risk=high なのは、掛かっている間ロールオーバー保護が働かないため。これを
+    # 「一時的な作動テスト」として出していたのが元の状態だった。
+    "STEUERN_TRANSPORTSICHERUNG_AN": dict(
+        cls=CLASS_CALIBRATION, kind="write", audience=AUD_TECH, risk=RISK_HIGH,
+        actor=ACTOR_APP, termination=TERM_COMPANION, stop_job="STEUERN_TRANSPORTSICHERUNG_AUS",
+        preconditions=["voltage_ok", "stationary"]),
+    "STEUERN_TRANSPORTSICHERUNG_AUS": dict(
+        cls=CLASS_CALIBRATION, kind="write", audience=AUD_TECH, risk=RISK_HIGH,
+        actor=ACTOR_APP, termination=TERM_COMPANION, stop_job="STEUERN_TRANSPORTSICHERUNG_AN",
+        preconditions=["voltage_ok", "stationary"]),
+
+    # UEB2 のロールオーバーバー。"Ausfahren des Buegels"——出す方向だけ。32 ジョブを
+    # 全部読んで、戻すジョブは無い（zurueck / RESET / einfahr / retract のいずれも 0 件）。
+    # SGBD は戻し方について何も述べていない。その沈黙が事実なので、irr_latching
+    # （イグニッションサイクルで戻る、と主張する）は使えない。
+    "STEUERN_BUEGEL": dict(
+        risk=RISK_HIGH, irreversible="irr_no_counterpart", audience=AUD_TECH,
+        preconditions=["voltage_ok", "stationary"]),
+
+    # RADIO。値を「増やす/減らす」と書いてあり、その値は STATUS_LESEN が
+    # STAT_GAL_KURVE / STAT_VF_LAUT_WERT として設定値の形で報告する。
+    "STEUERN_GAL_INK": dict(cls=CLASS_CALIBRATION, kind="write", audience=AUD_TECH,
+                            termination=TERM_COMPANION, stop_job="STEUERN_GAL_DEK"),
+    "STEUERN_GAL_DEK": dict(cls=CLASS_CALIBRATION, kind="write", audience=AUD_TECH,
+                            termination=TERM_COMPANION, stop_job="STEUERN_GAL_INK"),
+    "STEUERN_VF_INK": dict(cls=CLASS_CALIBRATION, kind="write", audience=AUD_TECH,
+                           termination=TERM_COMPANION, stop_job="STEUERN_VF_DEK"),
+    "STEUERN_VF_DEK": dict(cls=CLASS_CALIBRATION, kind="write", audience=AUD_TECH,
+                           termination=TERM_COMPANION, stop_job="STEUERN_VF_INK"),
+
+    # "Balance, Fader und Volume Defaulteinstellung"。既定値に戻す＝それまでの値は
+    # 失われる。戻す相手のジョブは無い。
+    "STEUERN_DEFAULT_SOUND": dict(cls=CLASS_CALIBRATION, kind="write", audience=AUD_TECH,
+                                  risk=RISK_HIGH, irreversible="irr_write"),
+
+    # SHD46_2。EIN と AUS の**コメントが一字一句同じ**（"SG Autoinit durchführen"）。
+    # SGBD は 2 つの違いを述べていないので、どちらが何をするか言えない。言えないことを
+    # 言わないのが unclassified の意味で、EIN/AUS という名前から意味を作らない。
+    "STEUERN_AUTO_INIT_EIN": dict(cls=CLASS_UNCLASSIFIED, kind="unknown", audience=AUD_TECH,
+                                  risk=RISK_HIGH),
+    "STEUERN_AUTO_INIT_AUS": dict(cls=CLASS_UNCLASSIFIED, kind="unknown", audience=AUD_TECH,
+                                  risk=RISK_HIGH),
+
     # 検査スタンプ書込。名前が `_SCHREIBEN` なので較正に見えるが、同じ操作が
     # `PRUEFSTEMPEL_SCHREIBEN` という名でも存在し、そちらは除外されていた。
     # 片方だけ露出しているのは分類ではなく事故。

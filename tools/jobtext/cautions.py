@@ -262,6 +262,31 @@ _RAW: list[tuple[str, str, str]] = [
      "The SGBD says only that this rewrites a byte. **It does not say which byte, or what that "
      "byte controls.** You would be making an irreversible write without knowing what changes."),
 
+    # UEB2。掛かっている間ロールオーバー保護が働かない。SGBD は前提条件を何も述べて
+    # いないが、STATUS_TRANSPORTSICHERUNG_LESEN で状態を読み戻せることは述べている。
+    (r"^STEUERN_TRANSPORTSICHERUNG_(AN|AUS)$",
+     "輸送用ロックを掛け／解きます。**掛かっている間、ロールオーバー保護は作動しません。**"
+     "ジョブが終わっても状態は残ります——STATUS_TRANSPORTSICHERUNG_LESEN で現在の状態を"
+     "確認できるので、作業の前後で必ず読んでください。",
+     "This sets or clears the transport lock. **While it is set, the rollover protection does "
+     "not deploy.** The state survives the job — read it back with "
+     "STATUS_TRANSPORTSICHERUNG_LESEN before and after."),
+
+    # UEB2。"Ausfahren des Buegels"。32 ジョブ中に戻すジョブが無いことを実測で確認した。
+    (r"^STEUERN_BUEGEL$",
+     "ロールオーバーバーを展開します。**この SGBD には戻すジョブがありません**——32 個の"
+     "ジョブを調べて、収納・リセットに当たるものは 1 つもありませんでした。展開後に何が"
+     "必要かは SGBD が述べていないので、このアプリからは言えません。",
+     "This deploys the rollover bar. **The SGBD has no job that puts it back** — all 32 of its "
+     "jobs were checked and none retracts or resets. What it takes to restore it afterwards is "
+     "not stated anywhere, so this app cannot tell you."),
+
+    (r"^STEUERN_DEFAULT_SOUND$",
+     "バランス・フェーダー・音量を既定値に戻します。**現在の設定は失われ、戻すジョブは"
+     "ありません。** 必要なら実行前に控えてください。",
+     "This resets balance, fader and volume to their defaults. **The current settings are lost "
+     "and there is no job that restores them.** Note them first if you want them back."),
+
     (r"^(SLEEP_MODE|ENERGIESPARMODE)$",
      "ECU をスリープ/省電力状態にします。診断通信が切れ、以後の応答が返らなくなります。"
      "復帰にはイグニッションの入れ直しが要る場合があります。",

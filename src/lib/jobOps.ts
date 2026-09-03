@@ -102,7 +102,23 @@ export type WhyKey =
     | 'why_unknown';
 
 /** Why an operation cannot be taken back. Also safety copy, also a key. */
-export type IrreversibleKey = 'irr_latching' | 'irr_pin' | 'irr_write' | 'irr_eeprom';
+export type IrreversibleKey =
+    | 'irr_latching'
+    | 'irr_pin'
+    | 'irr_write'
+    | 'irr_eeprom'
+    /**
+     * The SGBD provides no counterpart job, and does not say how the effect is undone.
+     *
+     * Distinct from `irr_latching`, which asserts something stronger — that the effect
+     * persists and comes back on an ignition cycle. That claim is true of DSC_SIM_* because
+     * the DSC SGBD says so. UEB2's STEUERN_BUEGEL ("Ausfahren des Buegels" — deploy the
+     * rollover bar) says nothing of the kind: all 32 of its jobs were read and there is no
+     * retract, no reset, no Einfahren, no counterpart of any name. The silence is the fact,
+     * and borrowing irr_latching's wording would have the app assert a recovery route the
+     * ECU never described.
+     */
+    | 'irr_no_counterpart';
 
 /** One step in the plan, in the order it goes out on the wire. */
 export interface OpStep {

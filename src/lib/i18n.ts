@@ -571,6 +571,7 @@ export const STRINGS: Record<Lang, Catalog> = {
             irr_latching: 'DSC_SIM_* には SGBD 上に解除ジョブが存在しません。一度作動させると作動したままになり、復帰はコマンドではなくイグニッションサイクルです。',
             irr_pin: '任意の出力ピンを強制駆動します。SGBD 側にピンの制約が無いため、無害なピンと破損させうるピンをこのアプリでは区別できません。',
             irr_write: 'イグニッションサイクルをまたいで残る状態を書き換えます。事前に元の値を読み戻す手段がこのアプリには無いため、取り消せません。',
+            irr_no_counterpart: 'SGBD にこれを元に戻すジョブが存在せず、どう戻すのかも書かれていません。作動させたあと何が要るのかは、このアプリからは言えません。',
             irr_eeprom: 'RAM 上の値を EEPROM へ確定書込します。ここまでは書き戻せましたが、この操作以降は戻せません。',
         },
 
@@ -996,6 +997,8 @@ export const STRINGS: Record<Lang, Catalog> = {
                 'Writes state that survives an ignition cycle. Nothing in this app can read the previous value back first, so there is no undo.',
             irr_eeprom:
                 'Commits the RAM value into EEPROM. Everything up to here could be written back; from here it cannot.',
+            irr_no_counterpart:
+                'The SGBD offers no job that undoes this, and does not say how it is undone. What it takes to restore things afterwards is not something this app can tell you.',
         },
 
         step_order: {

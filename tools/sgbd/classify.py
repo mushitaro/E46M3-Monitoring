@@ -318,6 +318,30 @@ SMG2_ECU_TIMEOUT_SEC = 10
 SMG2_MAX_HOLD_SEC = 60
 
 
+# ジョブが「何かを起こす」と SGBD 自身が述べている語。
+#
+# 名前より強い。名前は BMW の命名規約で、規約はときどき守られていない——MSS54 の
+# STATUS_TANK_DICHTHEIT はコメントが "Tankleckpruefung mit DMTL anstossen"（DMTL で
+# タンク漏れ検査を起動）で、生成される英文も "Start fuel tank leak test with DMTL" な
+# のに、名前が STATUS_ で始まるという理由だけで読取に分類されていた。
+#
+# 下の「測定の起動」「単発作動」の分岐が同じ語を見ているが、そこへ到達する前に読取
+# 分岐が return してしまう。ECU 自身の説明を、我々の名前の読み方より下に置かない。
+_ACTUATION_VERB = re.compile(
+    "anstossen|" + chr(97) + "nstoßen|durchfuehren|durchführen|ansteuern|starten|"
+    "ausloesen|auslösen|einleiten|aktivieren", re.I)
+
+
+def describes_actuation(comment: str) -> bool:
+    """SGBD のコメントが、このジョブは何かを起こすと述べているか。
+
+    51 モジュール実測で該当は 3 件——MSS54 の STATUS_TANK_DICHTHEIT と、ミラー記憶
+    2 モジュールの SPEICHER_LESEN（"Ansteuern von Funktionen des Steuergeraetes"）。
+    少数だが 1 件目は実車ゲート mayRun の第 1 層を通り、引数を取らないので制御バイト
+    検査まで到達する形をしている。"""
+    return bool(_ACTUATION_VERB.search(comment or ""))
+
+
 def classify(sgbd: str, job: str, comment: str, args: list[str]) -> JobClassification:
     """1ジョブを分類する。`args` は引数名の大文字リスト。"""
     n = job.upper()
@@ -365,7 +389,10 @@ def classify(sgbd: str, job: str, comment: str, args: list[str]) -> JobClassific
     # --- 読取 --------------------------------------------------------------
     # `_LESEN$` だけでは `FS_LESEN_TEXT` / `FS_LESEN_KB90` を取り逃がす。
     # 語尾ではなく語として見る。
-    if re.search(r"_LESEN(_|$)|^STATUS|^LESEN_|^SYS_ADR|^ECU_CONFIG$|^ABGAS_VARIANTE", n):
+    # SGBD 自身が「起こす」と述べているものは読取ではない。名前ではなく説明を採り、
+    # 下の分岐に落とす（describes_actuation 参照）。
+    if (re.search(r"_LESEN(_|$)|^STATUS|^LESEN_|^SYS_ADR|^ECU_CONFIG$|^ABGAS_VARIANTE", n)
+            and not describes_actuation(de)):
         c.cls, c.kind, c.risk = CLASS_READ, "read", RISK_LOW
         c.audience = AUD_TECH if n.startswith("STATUS") else AUD_OWNER
         # SYSTEMCHECK の読み手は「別ジョブが始めた試験の結果」を返す

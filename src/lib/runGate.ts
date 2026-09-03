@@ -9,23 +9,45 @@
  * ## The layers, and why the last one is the bytes
  *
  * Our classification of a job (`class: 'read'`) is a judgement made by a regex
- * over an SGBD comment. The final check is therefore made against the CONTROL
+ * over an SGBD name and comment. The final check is made against the CONTROL
  * BYTE OF THE FRAME THAT WOULD ACTUALLY GO OUT, which does not depend on our
- * opinion of the job at all. If the classifier were ever wrong, this is the
- * check that stops the car being touched.
+ * opinion of the job at all.
  *
- * How much that has actually been checked, precisely — an earlier version of
- * this comment said "right about all 323 today", which was inflation:
+ * **That check is NOT the backstop this comment used to claim it was.** It said
+ * "if the classifier were ever wrong, this is the check that stops the car being
+ * touched", and on this ECU that is false. Measured, on the shipped data:
  *
- *   150 jobs are classified `read`.
+ *   - `12 05 0b 13 0f` is emitted by EIGHT MSS54 jobs. Five are classified
+ *     `read`; three are classified `test`, including START_SYSTEMCHECK_DMTL_ECOS,
+ *     STEUERN_SLS_CHECK and STEUERN_TEV_CHECK. An actuating job and a reading job
+ *     are byte-for-byte identical.
+ *   - The reason is that `0x0b` is not "a read command". It is *invoke status/IO
+ *     block N*, and the discriminator is byte 3 — the Auswahlbyte — which this
+ *     file never looks at (`bytes[2]` only). An allowlist of control bytes cannot
+ *     separate reads from actuations inside that family.
+ *   - STEUERN_SG_AUTOSYNC ("perform automatic idle synchronisation") has a
+ *     `single`-graded telegram, no arguments, and control `0x0b` — on the
+ *     allowlist. It is stopped by the CLASS check and by nothing else.
+ *
+ * So the layers are not redundant, and the class check is load-bearing rather
+ * than advisory. What the byte check does buy is real but narrower: it refuses a
+ * frame whose command is outright mutating (`0x0c` actuator, `0x05` clear), and
+ * it refuses a malformed frame. It cannot vouch for a `0x0b`.
+ *
+ * How much of it is exercised, precisely — an earlier version of this comment
+ * said "right about all 323 today", which was inflation:
+ *
+ *   149 jobs are classified `read`.
  *     8 of those have a `single`-graded telegram, so we know their bytes.
  *     5 of those take no arguments and reach the control-byte check.
  *     0 of those carry a control byte outside the allowlist.
  *
- * So the backstop is UNEXERCISED, not demonstrated redundant. For the other 142
- * reads the bytes are simply unknown — 84 MSS54 reads have no telegram entry at
- * all — and a check that five jobs happen to pass is not a check that a hundred
- * and fifty made unnecessary. It is here for the case that has not arrived.
+ * The one job that made the shortfall concrete was STATUS_TANK_DICHTHEIT, whose
+ * own SGBD comment reads "Tankleckpruefung mit DMTL anstossen" — trigger the tank
+ * leak test — and which was classified `read` because its NAME begins with
+ * STATUS_. It is a `test` now (classify.py reads the comment before the name), and
+ * on the day it was not, the only thing between it and the car was its telegram
+ * happening to be graded `shared`.
  *
  * ## What is allowed out of the box
  *

@@ -114,6 +114,36 @@ describe('every facet value the data ships has a label in both locales', () => {
  * about missing data, not about the gate. Asserting it here anyway is what makes the day
  * those tables arrive (Phase 4 step 39) a visible change rather than a silent one.
  */
+/**
+ * The SGBD's own words about a job outrank our reading of its name.
+ *
+ * MSS54's STATUS_TANK_DICHTHEIT was classified `read` because the name starts with
+ * STATUS_, while its SGBD comment says "Tankleckpruefung mit DMTL anstossen" — trigger the
+ * tank leak test. It took no arguments, so the only layer of mayRun between it and the car
+ * was its telegram happening to be graded `shared`. Two mirror-memory modules had the same
+ * shape: SPEICHER_LESEN, "Ansteuern von Funktionen des Steuergeraetes".
+ *
+ * BMW's naming convention is not a promise, and where it disagrees with BMW's own
+ * description, the description is the one that says what the job does.
+ */
+describe('no job classified read describes an actuation', () => {
+    // The same verbs classify.py keys on. Repeated here rather than imported — a test that
+    // shares its rule with the code under test can only ever agree with it.
+    const ACTUATES = /anstossen|anstoßen|durchfuehren|durchführen|ansteuern|starten|ausloesen|auslösen|einleiten|aktivieren/i;
+
+    it('across every module', () => {
+        const bad: string[] = [];
+        for (const [id, p] of profiles) {
+            for (const j of p.jobs) {
+                if (j.class !== 'read' || j.desc === undefined) continue;
+                const de = p.texts[j.desc]?.de ?? '';
+                if (ACTUATES.test(de)) bad.push(`${id}.${j.id}: ${de}`);
+            }
+        }
+        expect(bad).toEqual([]);
+    });
+});
+
 describe('nothing outside the three telegram-bearing modules can run today', () => {
     it('refuses every non-read job in every module, with no telegram and an empty ledger', () => {
         // runGate.test.ts makes this assertion over the three modules it has telegram tables

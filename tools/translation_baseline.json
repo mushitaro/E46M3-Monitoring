@@ -1,0 +1,189 @@
+{
+ "note": "出荷される日本語に残った独語の件数（相異なる文字列）。更新は python tools/verify_translation_quality.py --write-baseline。増えたら失敗する。差分はレビュー対象——増やすなら理由をコミットに書くこと。",
+ "generator": "tools/verify_translation_quality.py",
+ "categories": [
+  "label",
+  "desc",
+  "argComment",
+  "resultComment",
+  "faultText",
+  "envField",
+  "vocabulary"
+ ],
+ "total": 360,
+ "modules": {
+  "alc_ds2": {
+   "argComment": 1
+  },
+  "ascmk20": {
+   "faultText": 5,
+   "resultComment": 12
+  },
+  "b_sm46_4": {
+   "resultComment": 1
+  },
+  "bmbt46rn": {
+   "faultText": 1
+  },
+  "bmbt_mir": {
+   "faultText": 1
+  },
+  "cdc_46": {
+   "faultText": 2
+  },
+  "cvm_ii": {
+   "argComment": 1,
+   "resultComment": 7
+  },
+  "dsc_e46": {
+   "faultText": 5,
+   "resultComment": 2
+  },
+  "ews3": {
+   "argComment": 1,
+   "desc": 1,
+   "faultText": 3,
+   "resultComment": 1
+  },
+  "ews3d": {
+   "faultText": 3,
+   "resultComment": 2
+  },
+  "ihka46": {
+   "faultText": 8
+  },
+  "ihka46_2": {
+   "faultText": 8
+  },
+  "ihka46_3": {
+   "faultText": 8
+  },
+  "kombi46": {
+   "argComment": 2,
+   "faultText": 3,
+   "resultComment": 3
+  },
+  "kombi46r": {
+   "argComment": 2,
+   "faultText": 2,
+   "resultComment": 3
+  },
+  "lsz": {
+   "faultText": 2
+  },
+  "lsz_2": {
+   "faultText": 2,
+   "resultComment": 3
+  },
+  "lws5": {
+   "argComment": 1,
+   "faultText": 1,
+   "resultComment": 2
+  },
+  "mrs3": {
+   "faultText": 1
+  },
+  "mrs4": {
+   "faultText": 12
+  },
+  "mss54": {
+   "desc": 1,
+   "envField": 8,
+   "faultText": 42,
+   "label": 1,
+   "resultComment": 8,
+   "vocabulary": 20
+  },
+  "nav_jap": {
+   "faultText": 1,
+   "resultComment": 1
+  },
+  "navmk3": {
+   "desc": 1,
+   "faultText": 1,
+   "label": 1
+  },
+  "navmk4": {
+   "desc": 1,
+   "faultText": 1,
+   "label": 1
+  },
+  "navmk4_2": {
+   "desc": 1,
+   "faultText": 1,
+   "label": 1
+  },
+  "pdcact": {
+   "desc": 3,
+   "faultText": 1,
+   "label": 1,
+   "resultComment": 3
+  },
+  "pdce38": {
+   "desc": 1,
+   "label": 1,
+   "resultComment": 1
+  },
+  "radio": {
+   "faultText": 1
+  },
+  "rdc": {
+   "resultComment": 1
+  },
+  "rls_ds2": {
+   "faultText": 3,
+   "resultComment": 1
+  },
+  "ses": {
+   "faultText": 2,
+   "resultComment": 1
+  },
+  "shd46": {
+   "desc": 1,
+   "faultText": 1,
+   "resultComment": 1
+  },
+  "shd46_2": {
+   "desc": 1,
+   "faultText": 1,
+   "resultComment": 1
+  },
+  "sm46_4": {
+   "resultComment": 1
+  },
+  "smg2": {
+   "argComment": 1,
+   "desc": 3,
+   "envField": 1,
+   "faultText": 8,
+   "label": 3,
+   "resultComment": 44
+  },
+  "ueb2": {
+   "desc": 1,
+   "label": 1
+  },
+  "videomod": {
+   "faultText": 1
+  },
+  "xenon_l": {
+   "faultText": 3
+  },
+  "xenon_r": {
+   "faultText": 3
+  },
+  "zke5": {
+   "desc": 1,
+   "faultText": 23,
+   "label": 1,
+   "resultComment": 3
+  },
+  "zke5_s12": {
+   "argComment": 1,
+   "desc": 1,
+   "faultText": 27,
+   "label": 1,
+   "resultComment": 3
+  }
+ }
+}

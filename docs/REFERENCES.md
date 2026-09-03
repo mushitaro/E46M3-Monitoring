@@ -118,16 +118,19 @@ public repo を clone した人が、**何がどれだけ欠けているか**を
 | `gen_icons.py` | 無し（幾何はコードに直書き） | `public/icon-{192,512}.png` |
 
 `gen_from_dump.py` の 3 出力（`mss54.json` / `smg2.json` / `dsc_e46.json`）は
-**アプリが読んでいない**。今も読んでいるのは `verify_translation_quality.py` だけ。
+**アプリが読んでいない**。唯一の読者だった `verify_translation_quality.py` が
+schema 2 に向き直したので、**読者はもういない**。退役させる。
 
 検査側:
 
 | 検査 | 何を見るか |
 |---|---|
-| `verify_ecu_data.py` | `TOTAL_JOBS = 323`, `TOTAL_RESULTS = 2311` などの不変条件 |
-| `verify_translation_quality.py` | 出力 JSON の `ja` に残った独語の割合（上限 1.0%） |
+| `verify_ecu_data.py` | モジュール毎の出力数 == ダンプの `jobCount`、＋ `tools/ecu_data_counts.json` との員数照合 |
+| `verify_translation_quality.py` | **`<id>.jobs.json` の `ja` に残った独語**（51 モジュール × 7 区分、`tools/translation_baseline.json` から増えたら失敗） |
 | `check_ui_tokens.mjs` | ///M のトークン規則（型サイズ・枠線・行の作法） |
-| `check_references.py` | **この文書**（外部 5 件の存在と、ダンプ 6 件のハッシュ） |
+| `check_references.py` | **この文書**（外部 5 件の存在、ダンプ台帳 87 件、出所を名乗る生成物 52 件） |
+| `check_term_scope.py` | 族の用語ファイルが、族外の SGBD の識別子を主張していないこと |
+| `jobtext/gen_jobtext.py --check` | 高リスク/不可逆ジョブに注意文があること、＋生成物がディスクと一致すること |
 
 ---
 

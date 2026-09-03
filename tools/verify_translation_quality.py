@@ -1,25 +1,46 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # ============================================================================
-#  verify_translation_quality.py — ecu-data/*.json の「未訳の独語残り」を定量測定する。
-#  gen_from_dump.py / gen_smg2_workflows.py 再生成後に実行し、対策前後の
-#  label/desc/faultText 各カテゴリの残存率(%)を比較する。
-#  ※ translate.py の内部(leftover_ratio)には依存しない — 出力JSONのja文字列を
-#     外形的に検査することで、生成ロジック自体のバグも検出できるようにする
-#    （生成側と同じロジックで自己採点しない）。
-#  使い方: python tools/verify_translation_quality.py [--json] [--list mss54 faultText]
+#  verify_translation_quality.py — 出荷される日本語に独語が残っていないかを測る。
+#
+#  **アプリが読むファイルを測る。** ここは長らく `mss54.json` / `smg2.json` /
+#  `dsc_e46.json`——schema 1、`gen_from_dump.py` の出力——を読んでいた。アプリが
+#  読むのは `<id>.jobs.json`（schema 2）のほうで、両者は別物である。9 区分すべて
+#  0.0% という合格は、**誰も開かないファイルについて正しかった**。
+#
+#  測る対象は 51 モジュール × 7 区分:
+#
+#      label          ジョブ名。操作画面の行そのもの
+#      desc           ジョブの説明
+#      argComment     引数の説明。押す前に読む
+#      resultComment  結果の説明。読んだ数字の隣に出る
+#      faultText      故障メモリの本文
+#      envField       フリーズフレームの見出し
+#      vocabulary     結果コード → 語（"OK" / "故障" 等）の対応表
+#
+#  数え方は**その区分に現れる相異なる文字列**。`texts` プールを共有しているので
+#  使用箇所で数えると 1 つの誤訳が 50 件に化ける。1 つ直せば 1 減る数え方でないと、
+#  台帳が作業リストにならない。
+#
+#  ※ `translate.py` の内部（`leftover_ratio`）には依存しない。出力 JSON の `ja`
+#    を外形的に検査することで、生成ロジック自体のバグも捕まえる——生成側と同じ
+#    ロジックで自己採点しない。
+#
+#  使い方:
+#      python tools/verify_translation_quality.py
+#      python tools/verify_translation_quality.py --list zke5 faultText
+#      python tools/verify_translation_quality.py --json
+#      python tools/verify_translation_quality.py --write-baseline
 # ============================================================================
 import json, os, re, sys
 
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")  # Windowsコンソール(cp932)でüäö等が落ちるのを防ぐ
+for _s in (sys.stdout, sys.stderr):
+    if hasattr(_s, "reconfigure"):
+        _s.reconfigure(encoding="utf-8")  # Windows コンソール(cp932)で üäö が落ちるのを防ぐ
 
-HERE = os.path.dirname(__file__)
-# データは public/ecu-data に移した。ここが古いままだったため、この検査は
-# 「ファイルが無ければ continue」で3件とも黙って飛ばし、ヘッダだけ出して
-# exit 0 していた——何も検査しない検査。下の「1件も読めなければ失敗」が
-# その再発を止める。
+HERE = os.path.dirname(os.path.abspath(__file__))
 ECU_DIR = os.path.join(HERE, "..", "public", "ecu-data")
+BASELINE = os.path.join(HERE, "translation_baseline.json")
 sys.path.insert(0, HERE)
 from translate import DICT  # ja==en の既存キー = 意図的な保持略語を自動で許可リスト化
 
@@ -82,16 +103,37 @@ _UNITS = {"BAR", "SEC", "MIN", "MSEC", "PPM", "MBAR", "RPM", "HZ", "KMH", "INK"}
 # それらは本当に壊れていた。
 _IDENTIFIER = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
-# 現状は9区分すべて 0.0%。上限は 1.0% ——1件混ざれば気付くが、1件で赤にはしない。
-# 下げるのは歓迎。**上げるときは、なぜ上げたのかをここに書くこと。**
-CEILING = 1.0
-
-
 # 16進リテラル。`0x00-0xFF` の `xFF` を独語と数えていた。
 _HEX_LITERAL = re.compile(r"0[xX][0-9a-fA-F]+")
 
+# **引用符の中は値であって散文ではない。**
+#
+# 51 モジュール化でボディ系が入って初めて量になった形:
+#
+#     "ein" = 生産モード ON / "aus" = 生産モード OFF (table DigitalArgument TEXT)
+#     '4 Zylinder' (4気筒) / '6 Zylinder' (6気筒) / 'unbekannter Code' (不明)
+#     ファイル名 / 例: "/EDIABAS/ECU/LWS5.cod"
+#
+# どれも**訳し終わっている**。引用符の中身は ECU に送る／ECU が返す文字列そのもので、
+# `'aus'` を `'オフ'` にしたら ECU が受け取らない値になる。上の全大文字規則と同じ
+# 理屈——値は語ではない——を、大小混在の値に広げたもの。
+#
+# 実測: これで説明が付くのは 265 出現・33 語。抜き取った 28 件はすべて、
+# 引用された独語のすぐ後ろに日本語の訳が括弧で付いていた。
+_QUOTED = re.compile(r"""['"‘’“”]([^'"‘’“”]{1,40})['"‘’“”]""")
 
-def _is_leftover(word, whole):
+# **K-Bus / I-Bus / D-Bus はネットワークの名前である。**
+#
+# E46 のボディ系バス。BMW の日本語資料もこの綴りで、訳す対象ではない。121 + 3 + 2
+# 出現で、`Bus` の残存はこの 3 つが全部だった。裸の `Bus` は引き続き減点する——
+# 許すのは名前であって、単語ではない。
+_BUS_NAME = re.compile(r"[KID]-$")
+
+CATEGORIES = ("label", "desc", "argComment", "resultComment",
+              "faultText", "envField", "vocabulary")
+
+
+def _is_leftover(word, whole, at=None):
     if word.upper() in ALLOW or word.upper() in _UNITS:
         return False
     if any(word in m for m in _HEX_LITERAL.findall(whole)):
@@ -99,75 +141,205 @@ def _is_leftover(word, whole):
     # 語そのものが全大文字なら識別子。周囲の `_` も識別子の一部として見る。
     if _IDENTIFIER.match(word):
         return False
+    if at is not None:
+        if any(a <= at and at + len(word) <= b
+               for a, b in (m.span(1) for m in _QUOTED.finditer(whole))):
+            return False
+        if word == "Bus" and _BUS_NAME.search(whole[:at]):
+            return False
     return True
 
 
 def has_leftover_german(ja_text):
     t = ja_text or ""
-    return any(_is_leftover(w, t) for w in _LATIN_RUN.findall(t))
+    return any(_is_leftover(m.group(0), t, m.start()) for m in _LATIN_RUN.finditer(t))
 
 
-def pct(items):
-    return round(100 * sum(1 for s in items if has_leftover_german(s)) / len(items), 1) if items else 0.0
+def leftover_words(ja_text):
+    t = ja_text or ""
+    return [m.group(0) for m in _LATIN_RUN.finditer(t) if _is_leftover(m.group(0), t, m.start())]
 
 
-def collect(d):
-    labels, descs = [], []
-    for g in d.get("groups", []):
-        for p in g.get("params", []):
-            labels.append(p.get("ja", ""))
-            if p.get("desc"): descs.append(p["desc"].get("ja", ""))
-    for a in d.get("actuators", []) + d.get("testJobs", []):
-        labels.append(a.get("ja", ""))
-        if a.get("desc"): descs.append(a["desc"].get("ja", ""))
-    faults = [f.get("ja", "") for f in d.get("faultText", [])]
-    return labels, descs, faults
+# --- 収集 -------------------------------------------------------------------
+def collect(doc):
+    """区分ごとの**相異なる文字列**を返す。
+
+    `texts` はプールなので、使用箇所で数えると 1 つの誤訳が使われた回数だけ
+    膨らむ。台帳を「直すべきものの一覧」として使うには 1 対 1 でなければならない。
+    """
+    texts = doc.get("texts") or []
+
+    def t(i):
+        return texts[i]["ja"] if isinstance(i, int) and 0 <= i < len(texts) else None
+
+    out = {c: set() for c in CATEGORIES}
+    for job in doc.get("jobs", []):
+        out["label"].add(job.get("ja") or "")
+        for key, cat in (("desc", "desc"),):
+            s = t(job.get(key))
+            if s is not None:
+                out[cat].add(s)
+        for arg in job.get("args", []):
+            s = t(arg.get("comment"))
+            if s is not None:
+                out["argComment"].add(s)
+        for res in job.get("results", []):
+            s = t(res.get("comment"))
+            if s is not None:
+                out["resultComment"].add(s)
+    for f in doc.get("faultText", []):
+        s = t(f.get("text"))
+        if s is not None:
+            out["faultText"].add(s)
+    for e in doc.get("envFields", []):
+        s = t(e.get("text"))
+        if s is not None:
+            out["envField"].add(s)
+    for items in (doc.get("vocabularies") or {}).values():
+        for it in items:
+            s = t(it.get("text"))
+            if s is not None:
+                out["vocabulary"].add(s)
+    return {c: sorted(v) for c, v in out.items()}
+
+
+def measure():
+    index = json.load(open(os.path.join(ECU_DIR, "index.json"), encoding="utf-8"))
+    per_module, strings = {}, {}
+    for m in index["modules"]:
+        path = os.path.join(ECU_DIR, f"{m['id']}.jobs.json")
+        doc = json.load(open(path, encoding="utf-8"))
+        items = collect(doc)
+        strings[m["id"]] = items
+        row = {}
+        for cat in CATEGORIES:
+            bad = [s for s in items[cat] if has_leftover_german(s)]
+            if bad:
+                row[cat] = len(bad)
+        per_module[m["id"]] = row
+    return per_module, strings
+
+
+# --- 台帳 -------------------------------------------------------------------
+#
+# 単一の 1.0% の天井を (モジュール × 区分) の台帳に置き換えた。天井は 3 モジュール
+# 全部 0.0% のときに置いた線で、51 モジュールでは「全部赤」にしかならない——全部赤は
+# 何も言っていないのと同じで、次に誰かがやるのは天井を上げることである。
+#
+# **増えたら失敗、減っても失敗しない。** 直すのは普通のコミットであってほしいから。
+# ただし減ったまま台帳を書き直さないと改善は固定されないので、そのときは
+# --write-baseline を促す（黙らない）。
+def load_baseline():
+    if not os.path.exists(BASELINE):
+        return None
+    return json.load(open(BASELINE, encoding="utf-8"))
+
+
+def write_baseline(per_module):
+    total = sum(sum(r.values()) for r in per_module.values())
+    doc = {
+        "note": ("出荷される日本語に残った独語の件数（相異なる文字列）。"
+                 "更新は python tools/verify_translation_quality.py --write-baseline。"
+                 "増えたら失敗する。差分はレビュー対象——増やすなら理由をコミットに書くこと。"),
+        "generator": "tools/verify_translation_quality.py",
+        "categories": list(CATEGORIES),
+        "total": total,
+        # 0 の欄は書かない。「今きれいな欄が汚れた」を失敗として拾いたいので、
+        # 欄が無いこと自体が 0 の主張になっている。
+        "modules": {k: dict(sorted(v.items())) for k, v in sorted(per_module.items()) if v},
+    }
+    tmp = BASELINE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(doc, f, ensure_ascii=False, indent=1)
+        f.write("\n")
+    os.replace(tmp, BASELINE)
+    return total
 
 
 def main():
-    results = {}
-    for fname in ("mss54.json", "smg2.json", "dsc_e46.json"):
-        path = os.path.join(ECU_DIR, fname)
-        if not os.path.exists(path):
-            sys.stderr.write(f"[FATAL] {path} not found — this check would measure nothing.\n")
-            return 1
-        d = json.load(open(path, encoding="utf-8"))
-        labels, descs, faults = collect(d)
-        results[fname[:-5]] = {
-            "label": pct(labels), "label_n": len(labels),
-            "desc": pct(descs), "desc_n": len(descs),
-            "faultText": pct(faults), "faultText_n": len(faults),
-        }
-    if "--list" in sys.argv:
-        i = sys.argv.index("--list"); mod, cat = sys.argv[i + 1], sys.argv[i + 2]
-        d = json.load(open(os.path.join(ECU_DIR, mod + ".json"), encoding="utf-8"))
-        items = dict(zip(("label", "desc", "faultText"), collect(d)))[cat]
-        for s in items:
-            if has_leftover_german(s): print(s)
-        return
-    if "--json" in sys.argv:
-        print(json.dumps(results, ensure_ascii=False, indent=1)); return
-    print(f"{'module':10} {'label%':>8} {'desc%':>8} {'fault%':>8}   (n=label/desc/fault)")
-    for mod, r in results.items():
-        print(f"{mod:10} {r['label']:>7}% {r['desc']:>7}% {r['faultText']:>7}%   "
-              f"(n={r['label_n']}/{r['desc_n']}/{r['faultText_n']})")
+    argv = sys.argv[1:]
+    per_module, strings = measure()
 
-    # --- 上限。ここを超えたら失敗する ------------------------------------
-    #
-    # 「測っているが誰も見ていない」が、この検査がパスを間違えたまま何ヶ月も
-    # 緑だった理由である。数字を出すだけでは同じことが起きる。現状値のすぐ上に
-    # 上限を置いて、悪化したらビルドを止める。
-    #
-    # 下げるのは歓迎。**上げるときは、なぜ上げたのかをここに書くこと。**
-    over = [f"{mod}.{cat} {r[cat]}% > {CEILING}%"
-            for mod, r in results.items()
-            for cat in ("label", "desc", "faultText")
-            if r[cat] > CEILING]
-    if over:
-        sys.stderr.write("[FATAL] untranslated German is above the ceiling:\n"
-                         + "".join(f"    {o}\n" for o in over)
-                         + "    python tools/verify_translation_quality.py --list <module> <category>\n")
+    # 「検査しない検査」への防波堤。ここが 3 だった頃、対象が消えても緑だった。
+    if len(per_module) < 51:
+        sys.stderr.write(f"[FATAL] モジュールを {len(per_module)} 件しか読めなかった"
+                         f"（51 のはず）。この検査自体が壊れている。\n")
         return 1
+
+    if "--list" in argv:
+        i = argv.index("--list")
+        mod, cat = argv[i + 1], argv[i + 2]
+        if cat not in CATEGORIES:
+            sys.stderr.write(f"区分は {', '.join(CATEGORIES)} のいずれか\n")
+            return 1
+        for s in strings[mod][cat]:
+            if has_leftover_german(s):
+                print(f"[{' '.join(sorted(set(leftover_words(s))))}] {s}")
+        return 0
+
+    if "--write-baseline" in argv:
+        old = (load_baseline() or {}).get("total")
+        total = write_baseline(per_module)
+        if old is None or old == total:
+            delta = ""
+        else:
+            delta = (f"（{old} → {total}、{abs(old - total)} 件"
+                     + ("減" if total < old else "増") + "）")
+        print(f"wrote {os.path.relpath(BASELINE, os.path.dirname(HERE))}: 合計 {total} 件{delta}")
+        return 0
+
+    if "--json" in argv:
+        print(json.dumps(per_module, ensure_ascii=False, indent=1))
+        return 0
+
+    # --- 人向けの表。0 の欄は出さない ---------------------------------------
+    total = sum(sum(r.values()) for r in per_module.values())
+    # 見出しは短縮形。正式名は CATEGORIES で、--list はそちらを取る。
+    SHORT = {"label": "label", "desc": "desc", "argComment": "arg",
+             "resultComment": "result", "faultText": "fault",
+             "envField": "env", "vocabulary": "vocab"}
+    print(f"{'module':12} " + " ".join(f"{SHORT[c]:>7}" for c in CATEGORIES))
+    for mid, row in sorted(per_module.items()):
+        if not row:
+            continue
+        print(f"{mid:12} " + " ".join(f"{row.get(c, 0) or '·':>7}" for c in CATEGORIES))
+    by_cat = {c: sum(r.get(c, 0) for r in per_module.values()) for c in CATEGORIES}
+    print(f"{'-' * 12} " + " ".join("-" * 7 for _ in CATEGORIES))
+    print(f"{'total':12} " + " ".join(f"{by_cat[c]:>7}" for c in CATEGORIES) + f"   = {total}")
+
+    base = load_baseline()
+    if base is None:
+        sys.stderr.write("[FATAL] 台帳が無い。--write-baseline で作ること。\n")
+        return 1
+
+    want = base["modules"]
+    up, down = [], []
+    for mid in sorted(set(want) | set(per_module)):
+        w, n = want.get(mid, {}), per_module.get(mid, {})
+        for cat in CATEGORIES:
+            a, b = w.get(cat, 0), n.get(cat, 0)
+            if b > a:
+                up.append(f"{mid}.{cat} {a} -> {b}")
+            elif b < a:
+                down.append(f"{mid}.{cat} {a} -> {b}")
+
+    if down:
+        print(f"\n[改善] {len(down)} 欄が減っている（合計 {base['total']} -> {total}）。"
+              f"固定するには:\n    python tools/verify_translation_quality.py --write-baseline")
+        for d in down[:10]:
+            print(f"    {d}")
+        if len(down) > 10:
+            print(f"    … 他 {len(down) - 10} 欄")
+
+    if up:
+        sys.stderr.write("\n[FATAL] 未訳の独語が増えている:\n"
+                         + "".join(f"    {u}\n" for u in up)
+                         + "    python tools/verify_translation_quality.py --list <module> <category>\n"
+                           "    増やすのが正しいなら --write-baseline で台帳を書き直し、"
+                           "理由をコミットに書くこと\n")
+        return 1
+
+    print(f"\nok - 51 モジュール × {len(CATEGORIES)} 区分、未訳 {total} 件（台帳 {base['total']} 件以下）")
     return 0
 
 

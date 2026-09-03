@@ -114,6 +114,36 @@ export const ja: Localised = {
     viz_response: '返ってくるもの',
     viz_responseNone: 'このジョブの応答内容は SGBD に宣言がありません。',
     actuator_none: '作動中のものはありません',
+    credits_title: 'このアプリが載っているもの',
+    credits_lede:
+        'このツールは、他の人が先にやった仕事の上に載っています。名前と、何をもらったかを書きます。',
+    credits_entries: [
+        {
+            name: 'MSS54 DS2 Tool — karter16',
+            what:
+                'ライブ値 213 チャンネルと適応ブロックの、**バイト位置・データ形式・スケール係数**。' +
+                'BMW の SGBD はジョブ名と結果名しか公表していないので、' +
+                'このアプリが出す数値は全部この仕事の上に載っています。',
+            url: 'https://github.com/karter16/MSS54-DS2-Tool-Public',
+            licence: '(c) 2026 karter16 · MSS54 DS2 Tool Freeware Licence',
+        },
+        {
+            name: 'EdiabasLib — Ulrich Holeschak',
+            what:
+                'SGBD からジョブ・引数・結果・故障テキストを取り出すのに使っています。' +
+                '**ビルド時のデータ生成のみ**で、アプリには一切入っていません（GPLv3）。',
+            url: 'https://github.com/uholeschak/ediabaslib',
+            licence: 'GPLv3',
+        },
+        {
+            name: 'BMW EDIABAS / SGBD',
+            what:
+                '51 モジュール分のジョブ・引数・結果・故障本文の出所。BMW の所有物で、' +
+                'このリポジトリには入っていません。生成には各自の EDIABAS が要ります。',
+            url: 'docs/REFERENCES.md',
+        },
+    ],
+    credits_notices: 'ライセンスと出所の全文は THIRD-PARTY-NOTICES.md にあります。',
     gate_verified: '実車確認済',
     gate_unverified: '実車未確認',
     gate_practiceOnly: '未検証のため実行できません。実車で1件ずつ検証し台帳に記録してから解禁します。',

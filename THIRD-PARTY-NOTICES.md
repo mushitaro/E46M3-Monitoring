@@ -79,12 +79,43 @@ the generator requires the operator to have their own EDIABAS installation.
 
 What *is* committed is the extracted metadata. That is a derived work of BMW's data.
 
-### 3.2 `MSS54-DS2-Tool-Public` decompiled source
+### 3.2 MSS54 DS2 Tool — karter16
 
-Live-value block layouts (offsets, scaling) and the DTC catalogue schema originate in
-a third-party tool's decompiled source. Byte offsets and scaling factors for a
-hardware protocol are arguably facts about the ECU rather than creative expression,
-but the route by which they were obtained is a decompilation.
+**MSS54 DS2 Tool**, by **karter16**.
+Official project: <https://github.com/karter16/MSS54-DS2-Tool-Public>
+Copyright © 2026 karter16. Licensed under the *MSS54 DS2 Tool Freeware Licence*.
+
+Two files of this project could not exist without it:
+
+| Generated here | What came from there |
+|---|---|
+| `packages/ds2-mss54/src/liveValueBlocks.generated.ts` | 8 live-measurement blocks, 213 fields — byte offset, data format and scaling for each |
+| `packages/ds2-mss54/src/adaptationBlocks.generated.ts` | the adaptation block layouts, and the DTC catalogue schema |
+
+**The SGBD cannot supply any of it.** BMW's `.prg` files publish job names and result
+names; they do not publish where in a response payload a value sits or what to
+multiply it by. Every live value this app shows, and every adaptation value it
+decodes, rests on that work.
+
+Stated plainly, because the alternative is to leave it vague:
+
+- The **route was a decompilation** of the published application. The licence grants
+  use and unmodified redistribution; it does not grant decompilation, and this
+  project did it anyway.
+- What is used are byte offsets and scaling factors for a hardware protocol —
+  arguably facts about a BMW ECU rather than that author's creative expression. That
+  is an argument, not a ruling, and it is recorded here as an argument.
+- **Neither the tool's source nor its binary is redistributed by this project.** No
+  file from it is committed here, and the generators read a local copy the operator
+  supplies (`docs/REFERENCES.md` §4).
+- The licence asks that attribution and project links stay intact. They are here, in
+  `README.md`, in the header of each generated file, and in the app's own credits
+  dialog — which is reachable at any time and is deliberately NOT inside the
+  disclaimer, because a disclaimer is dismissed once and then never seen again.
+
+If karter16 would prefer this project not derive from that work, that is a request
+this project will honour: the two generated files and their generators are separable,
+and removing them costs the live values and the adaptation decode, not the app.
 
 ### 3.3 What follows from this
 

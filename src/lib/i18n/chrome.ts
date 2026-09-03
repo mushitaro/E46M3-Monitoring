@@ -81,6 +81,7 @@ export const CHROME = {
     byte_len: 'LEN',
     byte_cmd: 'CMD',
     byte_ck: 'CK',
+    credits_open: 'Credits',
     wiz_next: 'Next',
     wiz_back: 'Back',
     wiz_close: 'Close',

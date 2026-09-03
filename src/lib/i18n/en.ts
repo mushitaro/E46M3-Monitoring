@@ -115,6 +115,36 @@ export const en: Localised = {
     viz_response: 'What comes back',
     viz_responseNone: 'The SGBD declares no results for this job.',
     actuator_none: 'Nothing is engaged',
+    credits_title: 'What this is built on',
+    credits_lede:
+        'This tool stands on work other people did first. Their names, and what each of them gave it.',
+    credits_entries: [
+        {
+            name: 'MSS54 DS2 Tool — karter16',
+            what:
+                'The **byte offsets, data formats and scaling** for 213 live channels and the ' +
+                "adaptation blocks. BMW's SGBD publishes job and result NAMES only, so every " +
+                "number this app shows rests on karter16's work.",
+            url: 'https://github.com/karter16/MSS54-DS2-Tool-Public',
+            licence: '(c) 2026 karter16 · MSS54 DS2 Tool Freeware Licence',
+        },
+        {
+            name: 'EdiabasLib — Ulrich Holeschak',
+            what:
+                'Used to extract jobs, arguments, results and fault text from the SGBD files. ' +
+                '**Build-time data generation only** — no part of it is in the app (GPLv3).',
+            url: 'https://github.com/uholeschak/ediabaslib',
+            licence: 'GPLv3',
+        },
+        {
+            name: 'BMW EDIABAS / SGBD',
+            what:
+                'The source of the jobs, arguments, results and fault text for all 51 modules. ' +
+                "BMW's property, not in this repository; generating the tables needs your own EDIABAS.",
+            url: 'docs/REFERENCES.md',
+        },
+    ],
+    credits_notices: 'The full licence and provenance position is in THIRD-PARTY-NOTICES.md.',
     gate_verified: 'Confirmed on a car',
     gate_unverified: 'Not confirmed on a car',
     gate_practiceOnly:

@@ -41,6 +41,16 @@
 #      19で "Injection blanking counter actual" ——同じシンボルの別物である。
 #      拒否は両方の名前ごと記録する（手書き時にそこを見れば足りる）。
 # ============================================================================
+# ============================================================================
+#  出所: **MSS54 DS2 Tool — karter16**
+#  https://github.com/karter16/MSS54-DS2-Tool-Public  ·  (c) 2026 karter16
+#
+#  この生成器が読む .cs は、そのツールを逆コンパイルしたもの。SGBD はジョブ名と
+#  結果名しか公表しておらず、**バイト位置・データ形式・スケール係数はここにしか
+#  無い**。アプリが出すライブ値と適応値は、全部この人の仕事の上に載っている。
+#  立場の全文は THIRD-PARTY-NOTICES.md §3.2。
+# ============================================================================
+
 import ast
 import json
 import os
@@ -422,10 +432,21 @@ def emit(blocks, counts, refusals):
         "//  byte, e.g. selection 35 (VANOS) is `12 05 0B 23 3F`. The whole block comes",
         "//  back in one response and every field below is an offset into that payload.",
         "//",
-        "//  PROVENANCE: derived from the decompiled DmeLiveValueCatalog.cs of a",
-        "//  third-party tool. Byte offsets and scaling are arguably facts about the",
-        "//  ECU rather than creative expression, but the route by which they were",
-        "//  obtained is a decompilation — see THIRD-PARTY-NOTICES.md §3.",
+        # The attribution is EMITTED, not written into the generated file by
+        # hand. A credit that only exists in the output is one regeneration away
+        # from being gone, and this one is required to stay intact by the
+        # licence it names.
+        "//  PROVENANCE — **MSS54 DS2 Tool, by karter16**.",
+        "//  https://github.com/karter16/MSS54-DS2-Tool-Public  ·  (c) 2026 karter16",
+        "//",
+        "//  Derived from that tool's decompiled catalogue. The SGBD publishes job",
+        "//  and result NAMES; it does not publish where a value sits in a payload",
+        "//  or what to scale it by. Everything below rests on karter16's work.",
+        "//",
+        "//  Byte offsets and scaling for a hardware protocol are arguably facts",
+        "//  about the ECU rather than creative expression — but the route by which",
+        "//  they were obtained is a decompilation, and that is stated rather than",
+        "//  glossed. THIRD-PARTY-NOTICES.md §3.2 carries the whole position.",
         "//",
         "//  NOT VERIFIED ON A VEHICLE. `expectedLength` below is the reference's",
         "//  declared block length and is advisory only: validate a response against",

@@ -11,6 +11,16 @@
 // The job-name suffixes are HEX. 06/16/26/83 are selections 6/22/38/131. Live
 // block 83 is decimal and is EGAS Measurements - a different thing entirely.
 //
+//
+// PROVENANCE — **MSS54 DS2 Tool, by karter16**.
+// https://github.com/karter16/MSS54-DS2-Tool-Public  ·  (c) 2026 karter16
+//
+// The offsets, formats and scales below come from that tool's decompiled
+// catalogue. The SGBD publishes result NAMES and nothing about where a
+// value sits or what to multiply it by, so the adaptation decode rests on
+// karter16's work. The route was a decompilation, and that is stated
+// rather than glossed. THIRD-PARTY-NOTICES.md §3.2.
+//
 // NOT VERIFIED ON A VEHICLE.
 
 import type { FieldFormat } from '@tsunagi/ds2-core';

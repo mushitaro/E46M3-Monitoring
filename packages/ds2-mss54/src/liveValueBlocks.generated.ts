@@ -10,10 +10,17 @@
 //  byte, e.g. selection 35 (VANOS) is `12 05 0B 23 3F`. The whole block comes
 //  back in one response and every field below is an offset into that payload.
 //
-//  PROVENANCE: derived from the decompiled DmeLiveValueCatalog.cs of a
-//  third-party tool. Byte offsets and scaling are arguably facts about the
-//  ECU rather than creative expression, but the route by which they were
-//  obtained is a decompilation — see THIRD-PARTY-NOTICES.md §3.
+//  PROVENANCE — **MSS54 DS2 Tool, by karter16**.
+//  https://github.com/karter16/MSS54-DS2-Tool-Public  ·  (c) 2026 karter16
+//
+//  Derived from that tool's decompiled catalogue. The SGBD publishes job
+//  and result NAMES; it does not publish where a value sits in a payload
+//  or what to scale it by. Everything below rests on karter16's work.
+//
+//  Byte offsets and scaling for a hardware protocol are arguably facts
+//  about the ECU rather than creative expression — but the route by which
+//  they were obtained is a decompilation, and that is stated rather than
+//  glossed. THIRD-PARTY-NOTICES.md §3.2 carries the whole position.
 //
 //  NOT VERIFIED ON A VEHICLE. `expectedLength` below is the reference's
 //  declared block length and is advisory only: validate a response against

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { AlertTriangle, Download, RotateCcw, Square } from 'lucide-react';
 import { AppHeader } from '@/components/AppHeader';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { CreditsDialog } from '@/components/CreditsDialog';
 import { DisclaimerDialog } from '@/components/DisclaimerDialog';
 import { ElectricalFaultDialog } from '@/components/ElectricalFaultDialog';
 import { LogPopover } from '@/components/LogPopover';
@@ -241,6 +242,7 @@ export default function Home() {
     // will get — which is also why it is disabled once a session is open.
     const [practiceArmed, setPracticeArmed] = useState(false);
     const [faultOpen, setFaultOpen] = useState(false);
+    const [creditsOpen, setCreditsOpen] = useState(false);
 
     // The SMG II guided procedure. It is a DIALOG rather than a send, because
     // the ECU's own comments describe a sequence — stop before start, a status
@@ -346,7 +348,13 @@ export default function Home() {
 
     return (
         <div className="flex h-dvh flex-col overflow-hidden bg-slate-950">
-            <AppHeader ident={link.ident} state={link.state} mode={link.mode} hasError={!!link.error} />
+            <AppHeader
+                ident={link.ident}
+                state={link.state}
+                mode={link.mode}
+                hasError={!!link.error}
+                onCredits={() => setCreditsOpen(true)}
+            />
 
             <main className="flex min-h-0 flex-1 flex-col overflow-hidden min-[900px]:flex-row">
                 {/* Both columns carry a faint fill. Left at /40, right at /20 over
@@ -482,6 +490,8 @@ export default function Home() {
                     onClose={() => setWizardOpen(false)}
                 />
             )}
+
+            {creditsOpen && <CreditsDialog onClose={() => setCreditsOpen(false)} />}
 
             {faultOpen && <ElectricalFaultDialog message={link.error ?? ''} onClose={() => setFaultOpen(false)} />}
 

@@ -91,6 +91,11 @@ export interface Localised {
     viz_response: string;
     viz_responseNone: string;
     actuator_none: string;
+    /** The credits dialog. Reachable always; never inside the disclaimer. */
+    credits_title: string;
+    credits_lede: string;
+    credits_entries: Array<{ name: string; what: string; url: string; licence?: string }>;
+    credits_notices: string;
     gate_verified: string;
     gate_unverified: string;
     gate_practiceOnly: string;

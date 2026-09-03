@@ -36,6 +36,16 @@
 #
 #  ⚠ 実車未検証。THIRD-PARTY-NOTICES.md §3 を参照。
 # ============================================================================
+# ============================================================================
+#  出所: **MSS54 DS2 Tool — karter16**
+#  https://github.com/karter16/MSS54-DS2-Tool-Public  ·  (c) 2026 karter16
+#
+#  この生成器が読む .cs は、そのツールを逆コンパイルしたもの。SGBD はジョブ名と
+#  結果名しか公表しておらず、**バイト位置・データ形式・スケール係数はここにしか
+#  無い**。アプリが出すライブ値と適応値は、全部この人の仕事の上に載っている。
+#  立場の全文は THIRD-PARTY-NOTICES.md §3.2。
+# ============================================================================
+
 from __future__ import annotations
 
 import ast
@@ -336,6 +346,17 @@ def _emit(blocks, divergences, total, matched, unmatched, unreadable) -> None:
         "//",
         "// The job-name suffixes are HEX. 06/16/26/83 are selections 6/22/38/131. Live",
         "// block 83 is decimal and is EGAS Measurements - a different thing entirely.",
+        "//",
+        # Emitted, not hand-written into the output — see gen_live_blocks.py.
+        "//",
+        "// PROVENANCE — **MSS54 DS2 Tool, by karter16**.",
+        "// https://github.com/karter16/MSS54-DS2-Tool-Public  ·  (c) 2026 karter16",
+        "//",
+        "// The offsets, formats and scales below come from that tool's decompiled",
+        "// catalogue. The SGBD publishes result NAMES and nothing about where a",
+        "// value sits or what to multiply it by, so the adaptation decode rests on",
+        "// karter16's work. The route was a decompilation, and that is stated",
+        "// rather than glossed. THIRD-PARTY-NOTICES.md §3.2.",
         "//",
         "// NOT VERIFIED ON A VEHICLE.",
         "",

@@ -32,11 +32,14 @@ export function AppHeader({
     state,
     mode,
     hasError,
+    onCredits,
 }: {
     ident: { hex: string; length: number } | null;
     state: LinkState;
     mode: LinkMode;
     hasError: boolean;
+    /** Opens the credits. The shell owns the dialog; the header owns the door. */
+    onCredits: () => void;
 }) {
     const { lang, t, setLang } = useLang();
 
@@ -75,7 +78,19 @@ export function AppHeader({
                 </div>
             </div>
 
+            {/* Credits, always reachable. The licence of the work this app
+                rests on asks that attribution stay intact, and a PWA user never
+                opens the README. It is NOT in the disclaimer — that is
+                acknowledged once and then gone, which is the worst home for
+                something that has to remain available. */}
             <div className="ml-auto flex items-center gap-1 border-l border-slate-800 pl-4">
+                <button
+                    type="button"
+                    onClick={onCredits}
+                    className={`px-1.5 py-0.5 ${LABEL} text-slate-600 transition-colors hover:text-slate-400`}
+                >
+                    {t.credits_open}
+                </button>
                 {(['ja', 'en'] as const).map((l) => (
                     <button
                         key={l}

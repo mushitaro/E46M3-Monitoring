@@ -155,6 +155,20 @@ public repo を clone した人が、**何がどれだけ欠けているか**を
 現在バイト一致している（`cmp` で確認済み）が、これは**手でコピーした結果**であって、
 そうし続ける仕組みは無い。`extract_telegrams.py` を再実行してもアプリには届かない。
 
+**(a2) `STEUERN_DIGITAL` 族の `kind` はまだ `pulse` と言っている。**
+6 ジョブ（LWS5 / SHD46 / SHD46_2 / ZKE5 / ZKE5_S12 ×2）の `STEUERN_DIGITAL` /
+`STEUERN_LIN_ASP` は `EIN` という引数を取り、その説明が
+`'1', wenn einschalten / '0', wenn ausschalten`——つまり **`0` を送るまで出力は
+駆動されたまま**である。IHKA の 38 ジョブは同じ性質を*ジョブのコメント*が述べていた
+ので `kind=hold` / `stop_job=DIAGNOSE_ENDE` に直せたが、こちらの根拠は**引数の
+コメント**にあり、`classify()` は引数の名前しか受け取っていない。
+
+危険度と対象読者は直っている（`high` / `technician`、`_drives_unbounded_set`）。
+残っているのは「押せば終わる」という `kind` の表示だけ。直す場所は計画の step 47
+（ACTUATOR の実行様式を `op` から導く）で、そこでは引数の値そのものが要るので、
+配管を通すのはそのときが正しい。7 件目の `ZKE5_S12.STEUERN_LIN_SZT` は `EIN` が
+1/0 ではなく `'auf'` 等の名前を取るので、同じ規則では直せない。
+
 **(b) 生成パイプラインは CI で一度も走っていない。**
 `.github/workflows/ci.yml` の `data-pipeline` ジョブは `if: false` で無効
 （コメント: "enable once `C:\EDIABAS` and the reference catalog are on a runner"）。

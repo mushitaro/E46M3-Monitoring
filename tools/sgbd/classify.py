@@ -855,6 +855,54 @@ def _is_direct_actuation(comment: str, argset: set[str]) -> bool:
     return "parameterliste" in comment.lower()
 
 
+# 駆動先が**表**で、その表を SGBD が列挙していないジョブ。
+#
+# `STEUERN_DIGITAL` / `STEUERN_IO` / `STEUERN_IO_STATUS` / `STEUERN_LIN_*` は、
+# `ORT` / `ORT1..15` / `AUSGANG` という引数に「部品の名前」を取り、その名前の一覧は
+# ECU の中の表にある。SGBD は一覧を持っていない——ZKE5 は逐語でこう言っている:
+#
+#   ! erlaubte Namen des Arguments 'ORT' ueber Tool XTRACT.exe
+#   ! Aufruf 'XTRACT [-F] ZKE5.prg'
+#
+# **別のツールで調べろ、と書いてある。** つまりアプリは、このジョブが何を動かすかを
+# 知ることができない。ZKE5 の表にはウィンドウとサンルーフとロックとミラーが入って
+# いて、CVM_II の引数コメントは駆動先を "Ventil, Pumpe oder Heckscheibe" と述べている。
+# 上限が分からない以上、上限の低い側に格付けはできない。
+#
+# `_is_direct_actuation`（DSC 油圧）と同じ論法を、ボディ系に広げたもの。あちらは
+# コメントが弁を**列挙している**ことを根拠にしたが、こちらは列挙が**無い**ことが根拠
+# である。実測 19 件。`TRIG_SCHREIBEN` は `ORTn` を持つが `Ansteuern` と述べないので
+# 当たらない（当たると、車輪速センサの閾値書込が「アクチュエータ駆動」になる）。
+_ACTUATOR_SLOT = re.compile(r"^(ORT\d*|AUSGANG)$", re.I)
+
+
+def _drives_unbounded_set(comment: str, argset: set[str]) -> bool:
+    if not any(_ACTUATOR_SLOT.match(a) for a in argset):
+        return False
+    return "ansteuer" in (comment or "").lower()
+
+
+# IHKA の駆動は 2 ジョブの手続きであって、単発ではない。
+#
+# 38 ジョブ（IHKA46 / _2 / _3）のコメントが同じ 2 行を持つ:
+#
+#   Vor dem Ansteuern den Job DIAGNOSE_AUFRECHT aufrufen
+#   Nach dem Ansteuern den Job DIAGNOSE_ENDE aufrufen
+#
+# そして相手側の 2 ジョブが自分で役割を名乗っている:
+#
+#   DIAGNOSE_AUFRECHT  "Diagnosemode aufrechterhalten / Vorbereitungsbefehl fuer Ansteuerbefehle"
+#   DIAGNOSE_ENDE      "Diagnose beenden / **Beenden von Ansteuerbefehlen**"
+#
+# ——DIAGNOSE_ENDE が駆動指令を**終わらせる**。38 件すべてが
+# `kind=pulse / termination=self`（「押せば終わる。終われば元に戻る」）として出て
+# いたが、ECU の言い分はその逆で、別のジョブを送るまで出力は駆動されたままである。
+# ブロワや補助ウォーターポンプが、リンクが切れても回り続ける形をしている。
+#
+# 推論ではない。3 つの SGBD が同じ文で述べていることを、そのまま持ってきている。
+_IHKA_PAIRED = re.compile(r"DIAGNOSE_AUFRECHT", re.I)
+
+
 def _apply_override(name: str, c: JobClassification, argset: set[str] | None = None,
                     comment: str = "") -> JobClassification:
     # 生ビットを直接叩けるジョブは、その部分集合しか駆動しないジョブより
@@ -875,6 +923,33 @@ def _apply_override(name: str, c: JobClassification, argset: set[str] | None = N
         if not c.note:
             c.note = ("drives raw actuator bits directly; a strict superset of what the "
                       "named hydraulic jobs drive")
+
+    # 駆動先の表を SGBD が列挙していない（_drives_unbounded_set の注記）。
+    if argset and _drives_unbounded_set(comment, argset):
+        c.risk = RISK_HIGH
+        c.audience = AUD_TECH
+        c.provenance = "sgbd-comment"
+        for p in ("voltage_ok", "stationary"):
+            if p not in c.preconditions:
+                c.preconditions.append(p)
+        if not c.note:
+            c.note = ("the component list for this job's target argument lives in the ECU, "
+                      "not in the SGBD — what it drives cannot be bounded from here")
+
+    # IHKA の 2 ジョブ手続き（_IHKA_PAIRED の注記）。
+    if _IHKA_PAIRED.search(comment or ""):
+        c.audience, c.risk = AUD_TECH, RISK_HIGH
+        c.actor, c.termination = ACTOR_APP, TERM_COMPANION
+        c.stop_job = "DIAGNOSE_ENDE"
+        c.prerequisite_jobs = ["DIAGNOSE_AUFRECHT"]
+        # 校正走行（STEUERN_EICHLAUF）は自分で終わる測定なので kind は動かさない。
+        # 終わらせる必要があるのは駆動ではなく診断モードのほうで、それは stop_job が言う。
+        if c.kind == "pulse":
+            c.kind = "hold"
+        c.provenance = "sgbd-comment"
+        for p in ("voltage_ok",):
+            if p not in c.preconditions:
+                c.preconditions.append(p)
 
     if _HAZARDOUS_ACTUATOR.match(name):
         c.risk = RISK_HIGH

@@ -14,7 +14,7 @@
 
 | # | もの | 実パス | 読むもの | 環境変数 | 失うと |
 |---|---|---|---|---|---|
-| 1 | SGBD バイナリ | `C:\EDIABAS\ECU\` | `SgbdDump/Program.cs`, `extract_telegrams.py`, `gen_live_blocks.py`, `gen_from_dump.py` | `EDIABAS_ECU_DIR` / `EDIABAS_ECU_PATH` | 再ダンプ・テレグラム再抽出・故障本文抽出が **不可** |
+| 1 | SGBD バイナリ | `C:\EDIABAS\ECU\` | `SgbdDump/Program.cs`, `extract_telegrams.py`, `gen_live_blocks.py`, `gen_ecu_data.py` | `EDIABAS_ECU_DIR` / `EDIABAS_ECU_PATH` | 再ダンプ・テレグラム再抽出・故障本文抽出が **不可** |
 | 2 | EDIABAS シミュレーション | `C:\EDIABAS\SIM` | `SgbdDump/Program.cs` | `EDIABAS_SIM_PATH` | 再ダンプ **不可**（`Simulation=1` が無いと仮想ジョブでも `IFH-0018`） |
 | 3 | EdiabasLib（GPLv3） | `C:\EC-APPS\ediabaslib` | `tools/SgbdDump/SgbdDump.csproj` の **ビルド時のみ** | `-p:EdiabasLibPath=<path>` | `SgbdDump.exe` の再ビルド不可。github.com/uholeschak/ediabaslib から再取得できる |
 | 4 | 逆コンパイル済みカタログ | `C:\Users\kazuh\MSS54-DS2-Tool-Public-1.2.1\decompiled-source\Core\Mss54Ds2Tool.Core\` | `gen_live_blocks.py`, `gen_adaptation_blocks.py` | `MSS54_CATALOG` / `MSS54_ADAPTATIONS` | **最も危険。下記参照** |
@@ -94,10 +94,11 @@ public repo を clone した人が、**何がどれだけ欠けているか**を
 `dsc_e46.hydraulics.json`）を全部その場で照合する。以前は 2 件を手で並べていたので、
 名乗り始めた 50 個目の生成物は誰にも見られていなかった。
 
-**台帳に入っていない 2 つの欄。** `dumpedAt` と `sgbdSha256`（元の `.prg` のハッシュ）
-はダンプ側が名乗っていないので、台帳には作れない——作ればそれは我々がでっち上げた値
-になる。SgbdDump を直して全数を取り直したときに入る。それまでは「どのダンプから出たか」
-は言えるが、「そのダンプがいつ、どの `.prg` から出たか」は言えない。
+**台帳に入っていない 2 つの欄。** `dumpedAt` と `sgbdSha256`（元の `.prg` のハッシュ）。
+`SgbdDump/Program.cs` は既に両方を書くが、**手元の 63 ダンプは 0 件しか持っていない**——
+古い exe で取ったものだから。無いものを台帳に書けばそれは我々がでっち上げた値になる。
+`python tools/dump_modules.py` で全数を取り直したときに入る。それまでは「どのダンプから
+出たか」は言えるが、「そのダンプがいつ、どの `.prg` から出たか」は言えない。
 
 ---
 
@@ -114,12 +115,23 @@ public repo を clone した人が、**何がどれだけ欠けているか**を
 | `jobtext/gen_jobtext.py` | `<id>.jobs.json` ＋ `cautions.py` | `public/ecu-data/<id>.jobtext.json` |
 | `gen_live_blocks.py` | **#4** ＋ `MSS54DS0.json` ＋ #1 ＋ `terms/live_channels.py` | `packages/ds2-mss54/src/liveValueBlocks.generated.ts` |
 | `gen_adaptation_blocks.py` | **#4** ＋ `MSS54DS0.json` | `packages/ds2-mss54/src/adaptationBlocks.generated.ts` |
-| `gen_from_dump.py` | ダンプ ＋ #1（故障本文のみ） | `public/ecu-data/<id>.json`（**旧 schema**） |
 | `gen_icons.py` | 無し（幾何はコードに直書き） | `public/icon-{192,512}.png` |
 
-`gen_from_dump.py` の 3 出力（`mss54.json` / `smg2.json` / `dsc_e46.json`）は
-**アプリが読んでいない**。唯一の読者だった `verify_translation_quality.py` が
-schema 2 に向き直したので、**読者はもういない**。退役させる。
+**退役済み**（`tools/deprecated/`。実行しても出荷物に届かない）:
+
+| 生成器 | 何だったか | なぜ退役したか |
+|---|---|---|
+| `gen_from_dump.py` | schema 1 の `ecu-data/<id>.json`（3 モジュール） | `gen_ecu_data.py`（schema 2、51 モジュール）が置き換えた。出力はアプリが一度も読んでおらず、唯一の読者だった `verify_translation_quality.py` が schema 2 に向き直った時点で読者がゼロになった |
+| `extract_sgbd.py` | `.prg` の正規表現スクレイピング | 推測だった。EdiabasLib の仮想ジョブが権威表を返す |
+| `detect_address.py` | DS2 アドレスの総当たり探索 | **負の結果**。既知 3 モジュールで全滅した。アドレスは実送信トレースから取る（`dump_modules.py`） |
+
+どちらも `__main__` を落とし `OUT` をスクラッチに向けてある。`gen_from_dump.py` の
+`__main__` は `index.json` を**3 モジュールで**書き直すので、置きっぱなしにすると
+51 モジュールの索引を一発で壊せた。
+
+除外していた SGBD とその理由は `tools/sgbd/fitment.py` と **`docs/FITMENT.md`** に移した。
+ヘッダに散文で書かれていたせいで、書き忘れた 5 件が理由ごと存在しなくなっていた——
+うち 1 件が `ASCMK20` で、前期車の 0x56 が丸ごと落ちていた。
 
 検査側:
 

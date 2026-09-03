@@ -17,6 +17,7 @@ Next.js 16 / React 19 / Tailwind v4、`output: 'export'` の静的書き出し�
 | 知りたいこと | 場所 |
 |---|---|
 | 外部の参照物がどこにあるか | **`docs/REFERENCES.md`** |
+| どの SGBD を載せ、どれを載せないか | `docs/FITMENT.md` ＋ `tools/sgbd/fitment.py` |
 | 何を作ってきたか・なぜそう決めたか | `docs/PLAN.md` |
 | ライセンスとデータの出所 | `THIRD-PARTY-NOTICES.md` |
 | ///M の意匠体系 | `tsunagi-m-design` スキル（`SKILL.md` だけでなく `references/` も） |
@@ -41,6 +42,7 @@ npm run lint && npm run typecheck && npm test
 node tools/check_ui_tokens.mjs
 python tools/check_references.py
 python tools/check_term_scope.py
+python tools/jobtext/gen_jobtext.py --check
 python tools/verify_ecu_data.py
 python tools/verify_translation_quality.py
 ```

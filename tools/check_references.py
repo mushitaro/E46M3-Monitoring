@@ -134,6 +134,46 @@ else:
         fails.append("ダンプが台帳に無い（python tools/gen_dump_manifest.py を回すこと）:\n"
                      + "\n".join(f"        {f}" for f in extra))
 
+# --- 台帳 → モジュール、あるいは除外理由 -------------------------------------
+#
+# ダンプ 1 個につき、モジュールになっているか、`sgbd/fitment.py` に理由が
+# 書かれているかのどちらかでなければならない。**黙って落とす経路を残さない。**
+#
+# これが無かったとき、`ASCMK20` は「従来決定どおり」という理由になっていない
+# 一言だけで除外され、前期車の 0x56 が丸ごと落ちていた。次に誰かがダンプを
+# 増やしたとき、同じことが起きないようにする側。
+if LEDGER:
+    ran += 1
+    from sgbd.fitment import NOT_FITTED, is_ecu_dump, unrecorded  # noqa: E402
+
+    index = json.load(open(os.path.join(ECU_DATA, "index.json"), encoding="utf-8"))
+    shipped = {m["sgbd"][:-4].upper(): m["id"] for m in index["modules"]}
+    excluded = {k.upper(): k for k in NOT_FITTED}
+
+    orphan, stale = [], []
+    for fname in sorted(LEDGER):
+        if not is_ecu_dump(fname):
+            continue
+        stem = fname[:-5].upper()
+        if stem not in shipped and stem not in excluded:
+            orphan.append(fname)
+    for stem in sorted(excluded):
+        if f"{excluded[stem]}.json" not in LEDGER:
+            stale.append(excluded[stem])
+        if stem in shipped:
+            stale.append(f"{excluded[stem]}（{shipped[stem]} として出荷されている）")
+
+    if orphan:
+        fails.append("ダンプがモジュールでも除外でもない"
+                     "（tools/sgbd/fitment.py に理由を書くこと）:\n"
+                     + "\n".join(f"        {f}" for f in orphan))
+    if stale:
+        fails.append("fitment.py の除外が現実と合っていない:\n"
+                     + "\n".join(f"        {f}" for f in stale))
+    if not orphan and not stale:
+        ok(f"ダンプの員数: モジュール {len(shipped)}・除外 {len(excluded)}"
+           f"（うち理由未記録 {len(unrecorded())}）")
+
 # --- 生成物 → 台帳 -----------------------------------------------------------
 # 「どのダンプから出たか」を名乗っている生成物を**全部**当たる。以前は 2 件を
 # 手で並べていたので、名乗り始めた 50 個目の生成物は誰にも見られていなかった。

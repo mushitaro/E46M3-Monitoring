@@ -1,18 +1,28 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # ============================================================================
-#  gen_from_dump.py — 「権威ある」SGBDジョブ表 → アプリ用 ecu-data/*.json
+#  gen_from_dump.py — 退役。schema 1 の `ecu-data/<id>.json` を書いていた生成器。
 # ----------------------------------------------------------------------------
-#  入力: $SGBD_DUMP_DIR/<SGBD>.json （EdiabasLibの仮想ジョブ _JOBS/_JOBCOMMENTS/
-#        _RESULTS で取得した実データ。ジョブ名・説明文・結果名・型・結果説明を含む）
-#  出力: ecu-data/<id>.json （バイリンガル {id, ja, en} 構造）
+#  ⚠ DEPRECATED — 実行しても `public/ecu-data/` には届かない（下の OUT を参照）。
 #
-#  ※ 従来の extract_sgbd.py（正規表現スクレイピング＝推測）を置き換える。
-#     ラベルは「識別子」ではなく SGBD の実説明文から生成するため精度が高い。
-#  ※ 故障テキストのみ SGBD 文字列から抽出（ジョブ表には無いため）。
+#  置き換えたもの: `tools/gen_ecu_data.py`（schema 2、51 モジュール）。
 #
-#  手順:  1) cd tools/SgbdDump && dotnet run -c Release -- MSS54DS0 SMG2 ASCMK20 dsc_mk60
-#         2) python tools/gen_from_dump.py
+#  **なぜ今まで残っていたか。** 出力（`mss54.json` / `smg2.json` / `dsc_e46.json`）は
+#  アプリが一度も読んでいなかったが、`verify_translation_quality.py` だけが読んでいた。
+#  その検査が schema 2 に向き直った時点で読者はゼロになり、退役できるようになった。
+#
+#  **なぜ __main__ を消してあるか。** ここの `__main__` は `index.json` を
+#  **3 モジュールで**書き直す。51 モジュールの索引を一発で壊せるスクリプトが
+#  `tools/` に置きっぱなしになっていた——`extract_sgbd.py` を無害化したときと同じ罠で、
+#  同じ処理をする。OUT はスクラッチに向け、`__main__` は落とした。
+#
+#  **何を残すために取ってあるか。** ラベル生成の考え方（識別子ではなく SGBD の
+#  説明文から作る）と、故障テキストを SGBD 文字列から抜く経路。どちらも
+#  `gen_ecu_data.py` に引き継がれているが、こちらのほうが短く読める。
+#
+#  除外していた SGBD とその理由は `tools/sgbd/fitment.py` と `docs/FITMENT.md` に
+#  移した。ここのヘッダに散文で書いてあったせいで、書き忘れた 5 件が理由ごと
+#  存在しなくなっていた——うち 1 件が `ASCMK20` で、前期車の 0x56 が丸ごと落ちていた。
 # ============================================================================
 import re, json, os, sys
 sys.path.insert(0, os.path.dirname(__file__))
@@ -23,8 +33,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths                                                # noqa: E402
 
 DUMP = paths.require_dump_dir()   # リポジトリ外。理由は tools/paths.py
-# public/ 配下が配信ルート（アプリは ./ecu-data/*.json を fetch する）。
-OUT = os.path.join(HERE, "..", "public", "ecu-data")
+# **`public/ecu-data/` には向けない。** 実行しても出荷物に触れないこと自体が、
+# この退役の中身である。`extract_sgbd.py` と同じ扱い。
+OUT = os.path.join(HERE, "_scratch-output")
 ECU_DIR = r"C:\EDIABAS\ECU"
 
 # id : (dump/SGBDファイル名, (ja名, en名), DS2アドレス, 実SGBDファイル)
@@ -195,27 +206,6 @@ def _write_json(path, obj):
     os.replace(tmp, path)
 
 
-if __name__ == '__main__':
-    os.makedirs(OUT, exist_ok=True)
-    idx, failed = [], []
-    for mid, (dumpname, name, addr, prg) in MODULES.items():
-        try:
-            r = build(mid, dumpname, name, addr, prg); idx.append(r)
-            print(f"  {mid:10} jobs={r['jobs']:<4} live={r['live']:<4} calib={r['act']:<3} test={r['test']:<3} <- {dumpname}.json")
-        except Exception as e:
-            failed.append((mid, e))
-            print(f"  {mid:10} ERR {e}")
-
-    # A failed module used to drop out of index.json while its stale <id>.json
-    # stayed on disk, and the script still exited 0 — so CI passed and the app
-    # quietly lost a module. Fail loudly instead, and don't rewrite the index
-    # from a partial run.
-    if failed:
-        sys.stderr.write(
-            f"\n[FATAL] {len(failed)} module(s) failed: "
-            + ', '.join(m for m, _ in failed)
-            + "\nindex.json was NOT rewritten; ecu-data is unchanged for the failed modules.\n")
-        sys.exit(1)
-
-    _write_json(os.path.join(OUT, 'index.json'), idx)
-    print(f"wrote {len(idx)} AUTHORITATIVE profiles to ecu-data/")
+# __main__ は削除した。ここにあったループは MODULES（3 件）から index.json を
+# 書き直すので、実行すれば 51 モジュールの索引が 3 モジュールになる。
+# 生成は tools/gen_ecu_data.py が行う。

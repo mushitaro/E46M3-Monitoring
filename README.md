@@ -1,7 +1,9 @@
 # E46M3///Diagnosis
 
 E46 M3 の診断・データログ・キャリブレーションを、**ブラウザから直接** DS2 / K-line で行うツール。
-対象モジュール: **MSS54**(エンジン 0x12) / **SMG II**(変速機 0x32) / **DSC**(0x56)。
+対象は **E46 M3 の 51 モジュール**。**MSS54**(エンジン 0x12) / **SMG II**(変速機 0x32) から
+ボディ・快適装備・AV まで。`0x56` は年式で入れ替わる（前期 ASCMK20 / 後期 DSC_E46。
+同時装着は無い）——載せたもの・載せなかったものと理由は [`docs/FITMENT.md`](docs/FITMENT.md)。
 
 TSUNAGI ///M の計器系サブブランド。DS2 通信は
 [MSS54HP CSL Convert Tuner](../E46M3CSL_TuningTool) と**同じリンク層**を共有する。

@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { AlertTriangle, Download, RotateCcw, Square } from 'lucide-react';
 import { AppHeader } from '@/components/AppHeader';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { DisclaimerDialog } from '@/components/DisclaimerDialog';
 import { ElectricalFaultDialog } from '@/components/ElectricalFaultDialog';
 import { LogPopover } from '@/components/LogPopover';
 import { BAR, ModuleRow, TabBar } from '@/components/shell/Chrome';
@@ -14,6 +15,7 @@ import { useActuatorArming } from '@/hooks/useActuatorArming';
 import { useDs2Link } from '@/hooks/useDs2Link';
 import { useHub } from '@/hooks/useHub';
 import { useUnloadGuard } from '@/hooks/useUnloadGuard';
+import { disclaimerStore } from '@/lib/disclaimer';
 import { exportCommsLog } from '@/lib/download';
 import {
     loadEcuCatalog,
@@ -238,6 +240,15 @@ export default function Home() {
     const [practiceArmed, setPracticeArmed] = useState(false);
     const [faultOpen, setFaultOpen] = useState(false);
 
+    // The one-time acknowledgement, read from storage as an external store so
+    // the prerender is dialog-free and nothing flashes at a reader who agreed
+    // months ago. `lib/disclaimer` explains why it is not a state-plus-effect.
+    const agreed = useSyncExternalStore(
+        disclaimerStore.subscribe,
+        disclaimerStore.snapshot,
+        disclaimerStore.serverSnapshot,
+    );
+
     // One verdict, computed once, used by the hub AND by the panel. They used to
     // reason about runnability separately, which is how a control that says it
     // can fire ends up beside a panel that says it cannot.
@@ -447,6 +458,8 @@ export default function Home() {
                     </div>
                 </aside>
             </main>
+
+            {!agreed && <DisclaimerDialog onAgree={() => disclaimerStore.agree()} />}
 
             {faultOpen && <ElectricalFaultDialog message={link.error ?? ''} onClose={() => setFaultOpen(false)} />}
 

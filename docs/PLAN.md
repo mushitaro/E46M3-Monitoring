@@ -379,3 +379,76 @@ tuner が既に `output: 'export'`（static export）なので、同じ形で出
 - 全車スキャン・モジュール在否プローブ
 - 診断内容の解釈レイヤ（基準値・故障→点検手順のマッピング）
 - **EdiabasLib の実行時利用**（ビルド時のデータ生成ツールとしてのみ残す）
+
+---
+
+## 統合 Phase 5 で測って決めたこと（2026-09-03）
+
+統合計画（`.claude/plans/tuner-pwa-…`）の step 51 と 53 は、**測ったら前提が違っていた**。
+前身の PWA は EdiabasLib ホスト経由で「ジョブ名＋引数」を渡せたので、任意のジョブを実行できた。
+こちらは DS2 直結で、SGBD から抽出したフレームの再送しかできない。**能力の形が違う**ので、
+向こうの能力に合わせて作られた UI をそのまま写すと、あるものを捨ててないものを作ることになる。
+
+### SMG II ウィザードは作らない（step 51）
+
+`src/lib/wizardSteps.ts` は 4 段（PREREQ / SAFETY / RUN / RESULT）の純リデューサとして
+書いてあり、「動作中の唯一の出口は ABORT」を `canDismiss` として証明できる形にしてあった。
+UI を載せる段で測った:
+
+```
+smg2 の手順: 14、シーケンス: 2
+TESTPRG_STARTEN | 引数 2 | class calibration | mayRun: run_block_notVerified
+TESTPRG_STOP    | 引数 0 | class test        | mayRun: run_block_notVerified
+smg2.telegrams.json に TESTPRG_* のフレームは 1 件も無い
+```
+
+引数リストから DS2 フレームを組む符号化器はこの repo のどこにも無い（`actuatorArgs.ts` の
+ヘッダがその理由を書いている）。だから RUN 段は**実車でも PRACTICE でも押せない**。
+4 段踏ませて押せないボタンに着く儀式は、この repo が拒否している「theatre」そのもの。
+
+**そして中身は既に画面に出ている。** `ProcedureDetail`（`JobDetail.tsx`）が所要時間・エンジン状態・
+21 個の activity ステップ・前提条件・故障コード・期待値の帯と来歴を、モーダル無しで右カラムに
+出している。ウィザードが足せるのは RUN 段だけで、それが撃てない。
+
+→ `wizardSteps.ts` とそのテストは**削除**した（`git log` に残る）。引数が送れるようになったら
+そこから戻せる。「動作中は ABORT だけ」という規則を書き直す必要があるときのために、ここに
+理由ごと残す。
+
+### SequenceDialog・Toast も作らない（step 51）
+
+- **Sequence**: `SequenceView` が SERVICE ペイン内に既に並んでいる。同じ内容に第二の面を作ると
+  「一度だけ言う」規則に反する。
+- **Toast**: 計画が与えていた唯一の仕事は「ハードゲートが拒否したときに理由を出す」。
+  だが拒否された行のボタンは `disabled` なので、その経路に到達できない。
+  併せて測った: PRACTICE で撃てる hold 系アクチュエータ 2 件は**両方とも停止テレグラムが引ける**
+  （`stopJob` が解決できず「点いたのに武装されない」ジョブは 51 モジュールで **0 件**）。
+  つまり Toast が知らせるべき沈黙は今の所存在しない。呼び出し元の無い部品は作らない。
+
+### DisclaimerDialog は作った（step 51）
+
+出口は AGREE ひとつ。`DialogFrame` に `onClose` を渡さないことがその表現で、Escape も背景も
+効かないことをブラウザで確認した。保存するのは真偽値ではなく**本文のバージョン**——真偽値は
+「押した日の本文」への同意でしかなく、文が強くなった時の改訂こそ誰にも読まれなくなる。
+
+26px の常設フッターを所有者の指示で消した判断とは矛盾しない。あの時の理由は
+「常設バナーは三つのうち最も弱い、一日で読まれなくなる」であり、それは
+**一度だけの承認**を支持する論拠。常設の主張は行ごとの `VERIFIED`／`UNVERIFIED`、
+`mayRun` の理由付き拒否、`Provenance` が担っている。
+
+帰属表示はここに入れない（step 63）。承認して消える面は、残り続けねばならない表示の置き場として
+最悪。
+
+### step 53 の削除対象は空だった
+
+- `ServicePane` — 残す（所有者判断。実車に送れる 86 件への唯一の UI 経路）。
+- `JobDetail` — `ServiceViz` の本体。呼び出し元あり。
+- `StepList` — 呼び出し元 3 箇所（`JobDetail` ×2・`DscHydraulics`）。
+- `GateModal` — 既に削除済み。`check_ui_tokens.mjs` の例外リストに名前だけ残っていたので、
+  リスト自身を検査するようにした。
+
+### step 52（来歴表示）は既に入っている
+
+`Provenance` は `JobDetail` に 9 箇所、`StepList`・`DscHydraulics` に各 1。
+`VerifiedBadge` は JSON の真偽値ではなく `mayRunOnVehicle`（台帳）を読む。
+ゲートは `t.gate_telegram[confidence]` でテレグラム等級（single / multiple / shared）を併記。
+ADAPTATION のリセット文は known / unknown / none の三値。

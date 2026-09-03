@@ -59,6 +59,10 @@ export interface Localised {
     risk_high: string;
     risk_medium: string;
     risk_low: string;
+    /** The one-time acknowledgement. Safety copy: language-switched, always. */
+    disclaimer_title: string;
+    disclaimer_lede: string;
+    disclaimer_points: string[];
     gate_verified: string;
     gate_unverified: string;
     gate_practiceOnly: string;

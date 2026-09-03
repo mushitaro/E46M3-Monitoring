@@ -67,6 +67,17 @@ export const en: Localised = {
     risk_high: 'High',
     risk_medium: 'Med',
     risk_low: 'Low',
+    disclaimer_title: 'About this tool',
+    disclaimer_lede:
+        'A personal tool for reading a BMW E46 M3 over DS2. **It is not a professional ' +
+        'diagnostic device.** Base repair decisions on the service manual (TIS) and on the car in front of you.',
+    disclaimer_points: [
+        'What it sends to a real car is **reads only**. The single exception is clearing the fault memory, and it asks first.',
+        "The classifications, translations and expected values come out of BMW's SGBD files mechanically. " +
+            '**Anything not confirmed against a car says so**, and an operation that has not been confirmed is refused with its reason stated.',
+        'PRACTICE mode talks to a simulator, not a car. It is the only mode in which an actuator test will fire.',
+        'Working on a car is dangerous. Jacking it up, running the engine, moving parts — this tool does none of that for you.',
+    ],
     gate_verified: 'Confirmed on a car',
     gate_unverified: 'Not confirmed on a car',
     gate_practiceOnly:

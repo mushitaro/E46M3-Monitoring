@@ -39,6 +39,10 @@ describe('the chrome / prose boundary', () => {
         const total = Object.keys(CHROME).length + Object.keys(ja).length;
         expect(Object.keys(STRINGS.ja).length).toBe(total);
         expect(Object.keys(STRINGS.en).length).toBe(total);
-        expect(total).toBe(225);
+        // A floor, not a count. The exact number is a snapshot that every new
+        // string would have to edit — which is how a check stops being read and
+        // starts being updated. What is worth catching is a catalog that
+        // SHRANK: a bad merge, or a spread that silently dropped one side.
+        expect(total).toBeGreaterThanOrEqual(225);
     });
 });

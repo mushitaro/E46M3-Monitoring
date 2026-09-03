@@ -70,6 +70,9 @@ export const CHROME = {
     clearFaults: 'Clear faults',
 
     tab_service: 'SERVICE',
+    // The one exit from the disclaimer. A verb, like every other verb in this
+    // file; the SENTENCES it agrees to are language-switched, in ja.ts / en.ts.
+    disclaimer_agree: 'Agree',
 } as const;
 
 export type Chrome = typeof CHROME;

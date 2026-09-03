@@ -27,7 +27,13 @@ export const Ds2Address = {
     DME: 0x12,
     /** SMG II gearbox */
     SMG: 0x32,
-    /** DSC (MK60 on the E46 M3) */
+    /**
+     * DSC. Early cars answer here as ASCMK20, late ones as DSC_E46 — one
+     * address, two SGBDs, never both fitted (`docs/FITMENT.md`).
+     *
+     * NOT MK60. `DSC_MK60.prg` is a different ECU on a different protocol:
+     * its IDENT is KWP2000 to 0xB8, so a DS2 tool cannot reach it at all.
+     */
     DSC: 0x56,
 } as const;
 

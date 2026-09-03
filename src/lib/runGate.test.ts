@@ -300,13 +300,30 @@ describe('PRACTICE answers everything the gate permits', () => {
         }
     });
 
-    // ...while still refusing what the app is NOT allowed to send. A simulator
-    // that says OKAY to everything is why the tuner's failure path never ran.
-    it('still refuses a control byte the gate would never emit', () => {
+    // The actuator control byte answers here now, and ONLY here: `mayActuate`
+    // opens 0x0c in PRACTICE so the send path, the argument builder and STOP
+    // execute before an M3 is the first thing they execute against. On a vehicle
+    // `whyNotSendable` still refuses it — see actuationGate.test.ts.
+    it('acknowledges the actuator control byte, with no invented payload', () => {
         const answer = ecu.respond!({
             address: 0x12,
             controlOrStatus: Ds2Control.SET_IO_STATUS,
-            payload: new Uint8Array([0x01]),
+            payload: new Uint8Array([0x01, 0xff]),
+        } as never);
+        // A bare ACK. A real ECU's reply to SET_IO_STATUS has a layout this repo
+        // has never decoded, so a payload here would be a shape the app learns to
+        // parse — and the first real car would be where the parser found out.
+        expect(answer).toBeNull();
+    });
+
+    // ...while still refusing what the app is NOT allowed to send, anywhere. A
+    // simulator that says OKAY to everything is why the tuner's failure path
+    // never ran.
+    it('still refuses a control byte no path in this app emits', () => {
+        const answer = ecu.respond!({
+            address: 0x12,
+            controlOrStatus: Ds2Control.WRITE_MEMORY,
+            payload: new Uint8Array([0x00, 0x00, 0x01]),
         } as never);
         expect(answer?.status).toBe(Ds2Status.REJECTED);
     });

@@ -190,6 +190,19 @@ export function practiceEcu(): SimulatedEcuOptions {
                     return { payload: new Uint8Array(Math.min(want, 64)).fill(0xa5) };
                 }
 
+                // --- the actuator control byte -------------------------
+                //
+                // PRACTICE exists so the send path, the argument builder, the
+                // arming state machine and STOP all execute before an M3 is the
+                // first thing they execute against. That needs 0x0c to answer.
+                //
+                // **A BARE ACK, and nothing else.** A real ECU's reply to
+                // SET_IO_STATUS carries a layout this repo has never decoded, so
+                // any payload invented here would be a shape the app then learns
+                // to parse — and the first real car would be where that parser
+                // discovers it was reading fiction. Answering "acknowledged" is
+                // the whole of what we actually know.
+                case Ds2Control.SET_IO_STATUS:
                 case Ds2Control.KEEP_ALIVE:
                 case Ds2Control.END_DIAGNOSTIC_MODE:
                     return null; // bare ACK

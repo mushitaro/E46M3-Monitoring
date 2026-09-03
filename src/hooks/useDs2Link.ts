@@ -53,8 +53,9 @@ import {
     type ErrorMemoryEntry,
     type ErrorMemoryQuickTest,
 } from '@tsunagi/ds2-mss54';
+import { whyNotSendable } from '@/lib/actuationGate';
 import { practiceEcu } from '@/lib/practiceEcu';
-import { READ_ONLY_CONTROLS, clearFaultsCommand, telegramBytes } from '@/lib/runGate';
+import { clearFaultsCommand, telegramBytes } from '@/lib/runGate';
 
 const KEEP_ALIVE_INTERVAL_MS = 2000;
 
@@ -204,6 +205,18 @@ function useTransportKind(): TransportKind {
 export function useDs2Link() {
     const [state, setState] = useState<LinkState>('disconnected');
     const [mode, setMode] = useState<LinkMode>('vehicle');
+    /**
+     * The same value, read at send time rather than at render time.
+     *
+     * The byte-level refusal in `runRead` is the last thing between a control
+     * byte and the car, and a `mode` captured in a closure can be stale in the
+     * one direction that matters: a callback created while PRACTICE was on,
+     * still held after a reconnect to a vehicle, would wave through 0x0c. A ref
+     * is read when the bytes go, so it cannot be older than the link.
+     *
+     * Written in exactly one place, next to `setMode`, so the two cannot drift.
+     */
+    const modeRef = useRef<LinkMode>('vehicle');
     const [error, setError] = useState<string | null>(null);
     const [errorKind, setErrorKind] = useState<Ds2ErrorKind | null>(null);
     const [log, setLog] = useState<CommsLogLine[]>([]);
@@ -269,6 +282,7 @@ export function useDs2Link() {
                 await link.connect();
                 linkRef.current = link;
                 transportRef.current = selected.transport;
+                modeRef.current = nextMode;
                 setMode(nextMode);
                 setState('connected');
                 append(
@@ -298,6 +312,10 @@ export function useDs2Link() {
         const link = linkRef.current;
         linkRef.current = null;
         transportRef.current = null;
+        // Back to the strict default. A ref left reading 'practice' after the
+        // link is gone would greet the next connection with the wrong answer if
+        // anything ever read it before connect() writes it.
+        modeRef.current = 'vehicle';
         setState('disconnected');
         if (link) {
             try {
@@ -462,13 +480,16 @@ export function useDs2Link() {
                     throw new Error(`${jobId}: telegram is not a well-formed frame: ${hex}`);
                 }
                 const control = bytes[2];
-                if (!READ_ONLY_CONTROLS.has(control)) {
-                    // Belt and braces. If this ever fires, the gate above it has
-                    // a hole and the car is one line away from being written to.
-                    throw new Error(
-                        `${jobId}: refusing to send control 0x${control.toString(16)} — not a read`,
-                    );
-                }
+                // Belt and braces. If this fires on a vehicle, the gate above it
+                // has a hole and the car is one line away from being written to.
+                //
+                // PRACTICE is the one thing that widens it, and it widens ONLY
+                // here — `mayActuate` still hands a vehicle whatever `mayRun`
+                // said, unchanged. The simulated ECU is where the actuator send
+                // path gets to execute before an M3 is the first thing it
+                // executes against.
+                const refusal = whyNotSendable(control, modeRef.current);
+                if (refusal) throw new Error(`${jobId}: ${refusal}`);
                 const payload = bytes.slice(3, bytes.length - 1);
                 append('tx', `${jobId}: ${hex}`);
                 const frame = await link.exchangeWithRetry(control, payload);

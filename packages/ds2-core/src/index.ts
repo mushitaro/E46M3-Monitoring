@@ -86,6 +86,15 @@ export {
 export type { Ds2ByteTransport } from './byteTransport';
 
 export {
+    WebUsbFtdiTransport,
+    FtdiLineError,
+    FTDI_DATA_8E1_TX_BREAK,
+} from './webUsbFtdiTransport';
+
+export { isWebUsbSupported, getUsb } from './webUsbTypes';
+export type { USBDevice, USBLike, USBConnectionEvent } from './webUsbTypes';
+
+export {
     Ds2Link,
     DS2_DEFAULT_TIMINGS,
     type Ds2Timings,
@@ -114,3 +123,12 @@ export {
     type SimulatedEcuOptions,
     type TraceEntry,
 } from './simulator';
+
+// The FTDI bench, for the same reason: the packet framing is the part of the WebUSB backend that
+// cannot be checked by reading it.
+export {
+    SimulatedFtdiDevice,
+    SimulatedUsb,
+    type SimulatedFtdiOptions,
+    type ControlRecord,
+} from './ftdiSimulator';

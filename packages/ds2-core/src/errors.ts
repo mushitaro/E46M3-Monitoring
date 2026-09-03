@@ -22,7 +22,16 @@ export type Ds2ErrorCode =
     | 'WRITE_COUNT_TOO_LARGE'
     | 'SEED_LENGTH_INVALID'
     // --- transport ---
+    /** The BROWSER cannot do this. Prescription: use a different browser. */
     | 'PORT_UNSUPPORTED'
+    /**
+     * The CABLE cannot do this — an H-series FTDI part, or something with no bulk endpoint
+     * pair. Prescription: use a different cable; changing browser cannot help.
+     *
+     * Separate from PORT_UNSUPPORTED because the two prescriptions are opposite and a user
+     * given the wrong one spends the afternoon on the thing that was already fine.
+     */
+    | 'DEVICE_UNSUPPORTED'
     | 'PORT_NOT_OPEN'
     | 'READ_TIMEOUT'
     | 'READ_FAILED'

@@ -49,7 +49,10 @@ _RAW: list[tuple[str, str, str]] = [
      "under or beside the vehicle."),
 
     # --- DSC 油圧。停止手段が SGBD に無い --------------------------------
-    (r"^DSC_SIM_",
+    # ASCMK20 spells the same thing ASC_SIM_. Same ECU comment ("Steuern_Digital
+    # ansteueren u. halten"), same latching behaviour — an early car must not get the
+    # solenoid latches without the warning a late one gets.
+    (r"^(DSC|ASC)_SIM_",
      "作動させたまま保持します。**SGBD に解除ジョブが存在しません。**"
      "一度作動させると作動したままになり、復帰はイグニッションを切ることであってコマンドではありません。"
      "ブレーキの効きが変わった状態が残るため、走行前に必ずイグニッションサイクルを行ってください。",
@@ -177,6 +180,89 @@ _RAW: list[tuple[str, str, str]] = [
      "何が駆動されるか分からない状態で実行することになります。",
      "This calls a manufacturer-specific self-test. **The SGBD does not say what it runs**, so you are firing "
      "something whose effects are not stated."),
+
+    # --- 車両の同一性を書き換えるもの。51 モジュール化でボディ系から入ってきた族 ----
+    #
+    # 車台番号・ZCS・製造データ・EWS の鍵材料。どれも「その ECU がどの車のものか」を
+    # 決めている値で、書き換えると他の ECU との整合が崩れる。ディーラー工具の領分。
+    (r"^(C_FG|C_FA|C_S|C_C|C_ZCS|C_AZCS)_(AUFTRAG|SCHREIBEN)$|^FGNR(_K)?_SCHREIBEN$|"
+     r"^HERSTELLDATEN_SCHREIBEN$",
+     "車両の同一性（車台番号・ZCS・製造データ）をこの ECU に書き込みます。**書き換えると"
+     "他の ECU との整合が崩れ、機能停止や警告灯につながります。** 元の値を控えずに実行しないで"
+     "ください。ディーラー工具（NCS / WinKFP）の領分です。",
+     "This writes the car's identity — chassis number, ZCS, manufacturing data — into this ECU. "
+     "**Getting it out of step with the other modules means lost functions or warning lights.** Do not "
+     "run it without a record of the current value. This is dealer-tool territory (NCS / WinKFP)."),
+
+    (r"^(ISN|PASSWORT|SCHL_DATEN|KD_DATEN|VERRIEGELUNG)_SCHREIBEN$|^SCHL_SPERREN_FREIGEBEN$",
+     "イモビライザの鍵材料を書き換えます。**間違えるとエンジンが始動しなくなり、復旧には"
+     "ディーラーの鍵データが要ります。** 現在値を控えずに実行しないでください。",
+     "This rewrites immobiliser key material. **Get it wrong and the engine will not start; recovery "
+     "needs the dealer's key data.** Do not run it without a record of the current value."),
+
+    (r"^(RAM|EEPROM)_SCHREIBEN$|^SPEICHER_LOESCHEN$|^QUICK_ERASE$|^(SET|REMOVE)_NO_SAVE_NVR$",
+     "ECU のメモリを直接書き換え・消去します。**アドレスを間違えると ECU が起動しなくなり、"
+     "復旧はベンチ作業か交換です。** 何をどこへ書くか分かっている場合以外、実行しないでください。",
+     "This writes or erases ECU memory directly. **A wrong address leaves an ECU that will not boot; "
+     "recovery is bench work or replacement.** Do not run it unless you know exactly what goes where."),
+
+    (r"^(CODIERUNG|COD_ZEIT_WS|COD_EWS_DME3)_SCHREIBEN(_DATEI)?$|^WRITE_CODING_DATA$|"
+     r"^WRITE_CONFIGURATION_DATA$",
+     "車両のコーディング（装備構成）を書き換えます。**他の ECU との整合が崩れると、警告灯や"
+     "機能停止につながります。** 書き込む前に現在のコーディングを読み出して控えてください。",
+     "This rewrites the car's coding — its equipment configuration. **Out of step with the other "
+     "modules, that means warning lights or lost functions.** Read and record the current coding first."),
+
+    (r"^(READ|WRITE)_PRODUCTION_STAMP|^PRUEFSTEMPEL_[A-Z_]*SCHREIBEN$",
+     "検査スタンプの領域を扱います。書き込む側は製造時の記録を上書きし、元には戻せません。",
+     "This touches the inspection-stamp area. The writing form overwrites a manufacturing record and "
+     "there is no way back to the old one."),
+
+    # 走行距離。SGBD: "OFFSET-Wert des GWSZ in EEPROM schreiben"
+    # GWSZ = Gesamtwegstreckenzähler（総走行距離計）。この 1 本だけ族から分けてあるのは、
+    # 結果が技術的ではなく法的なため。
+    (r"^GWSZ_",
+     "総走行距離計（GWSZ）のオフセット値を EEPROM に書き込みます。**表示される走行距離が"
+     "変わります。** 多くの国で、走行距離の書き換えは違法です。整備の必要から行う場合でも、"
+     "作業前後の値と理由を記録に残してください。",
+     "This writes the odometer (GWSZ) offset into EEPROM. **It changes the mileage the car "
+     "displays.** Altering recorded mileage is illegal in most countries. If service work "
+     "genuinely requires it, record the before and after values and the reason."),
+
+    # SGBD: "Fahrzeugauftrag Löschen" — 車両オーダー（その車の仕様そのもの）の消去。
+    (r"^C_F[AS]_LOESCHEN$",
+     "車両オーダー（Fahrzeugauftrag）を消去します。**その車がどういう仕様で作られたかの記録"
+     "そのものです。** 消すとコーディングの土台が失われ、再構築にはディーラーのデータが要ります。"
+     "消す前に必ず読み出して控えてください。",
+     "This erases the vehicle order (Fahrzeugauftrag) — the record of how this car was built. "
+     "**Coding is derived from it**, so erasing it removes the ground the coding stands on, and "
+     "rebuilding it needs dealer data. Read and record it first."),
+
+    # 従属モジュール（ヘッドライト SMC、ロールオーバー保護など）への同一性データ書込。
+    # SGBD の原文はそれぞれ "Schreiben der VIN in die linke SMC" /
+    # "Beschreiben der Scheinwerfer-Herstellerdaten" / "KFZ-Herstellerdaten schreiben"。
+    (r"^(FGNR_ALC|FAHRGESTELL_NR_SMC|BLOCK_SMC_ALC|SCHEINWERFERHERSTELLERDATEN|KFZ_DATEN|"
+     r"KD_POLSTER_LACK)_SCHREIBEN$",
+     "この部品に車両側の同一性データ（車台番号・製造データ）を書き込みます。部品交換時の"
+     "手順の一部で、**誤った値を書くとその部品が別の車のものとして振る舞います。** 現在値を"
+     "読み出して控えてから実行してください。",
+     "This writes vehicle identity data — chassis number, manufacturing data — into this "
+     "component. It belongs to a part-replacement procedure, and **a wrong value makes the part "
+     "behave as if it belonged to a different car.** Read and record the current value first."),
+
+    # SGBD が "Umschreiben eines Bytes"（1バイトを書き換える）としか述べていない。
+    # どのバイトが何を制御するのかは書かれていない。分からないことは分からないと書く。
+    (r"^MABIKI_MODE_SCHREIBEN$",
+     "SGBD の説明は「1 バイトを書き換える」だけで、**どのバイトが何を制御するのかを述べて"
+     "いません。** 何が変わるか分からない状態で不可逆の書込を行うことになります。",
+     "The SGBD says only that this rewrites a byte. **It does not say which byte, or what that "
+     "byte controls.** You would be making an irreversible write without knowing what changes."),
+
+    (r"^(SLEEP_MODE|ENERGIESPARMODE)$",
+     "ECU をスリープ/省電力状態にします。診断通信が切れ、以後の応答が返らなくなります。"
+     "復帰にはイグニッションの入れ直しが要る場合があります。",
+     "This puts the ECU into sleep or power-saving state. Diagnostic communication drops and it stops "
+     "answering; waking it may need an ignition cycle."),
 ]
 
 _COMPILED = [(re.compile(p, re.I), ja, en) for p, ja, en in _RAW]

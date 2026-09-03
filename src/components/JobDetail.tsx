@@ -43,13 +43,11 @@ import {
 } from '@/lib/ecuCatalog';
 import { deliversResultElsewhere, hasStopControl, operationFor, type OpKind } from '@/lib/jobOps';
 import { cautionFor, type JobTextTable } from '@/lib/jobText';
-import { bestTelegram, telegramIsCertain, type TelegramTable } from '@/lib/telegrams';
 import { readResultsFor, type ResultBlockRef, type Smg2Procedure, type Smg2Sequence, type Smg2Workflows } from '@/lib/smg2Workflows';
 import { GATE_CODE, GATE_OF, GEARS, MEASURES, PASSES, gearWindows } from '@/lib/gearWindows';
 import { stepsFromActivity, stepsFromSequence } from '@/lib/procedureSteps';
 import { StepList } from '@/components/StepList';
 import { useLang } from '@/lib/i18n';
-import type { RunVerdict } from '@/lib/runGate';
 import type { JobRunResult } from '@/hooks/useDs2Link';
 
 const KIND_TONE: Record<OpKind, 'neutral' | 'primary' | 'caution' | 'danger' | 'secondary'> = {
@@ -70,21 +68,18 @@ export function JobDetail({
     profile,
     job,
     jobText,
-    telegrams,
     workflows,
     procedure,
-    runVerdict,
     lastRun,
 }: {
     profile: EcuProfile;
     job: CatalogJob;
     jobText: JobTextTable | null;
-    telegrams: TelegramTable | null;
     workflows: Smg2Workflows | null;
     /** Set when the selected row is an SMG II test program rather than an SGBD job. */
     procedure: Smg2Procedure | null;
     /** Why this can or cannot be sent to a car. The same verdict the hub renders. */
-    runVerdict?: RunVerdict | null;
+    /** The gate's answer moved to `JobFrameViz`, which is where it is read. */
     /** What the last run of THIS job returned, if there was one. */
     lastRun?: JobRunResult | null;
 }) {
@@ -92,7 +87,6 @@ export function JobDetail({
     const op = operationFor(job);
     const risk = jobRiskOf(job);
     const d = description(profile, job, lang);
-    const tel = bestTelegram(telegrams, job.id);
     // An adapted SMG II procedure has no jobtext entry of its own — it is not an
     // SGBD job. It IS `TESTPRG_STARTEN` with a program number, so it inherits
     // that job's caution.
@@ -127,7 +121,10 @@ export function JobDetail({
     }, [job, argValues]);
 
     return (
-        <div className="flex h-full flex-col gap-5 overflow-y-auto pr-1">
+        // No scroller of its own. The visualization region owns one now, and
+        // two nested scrollers is the trap `check_ui_tokens` exists for: the
+        // wheel does nothing until the inner one bottoms out.
+        <div className="flex flex-col gap-5">
             <header>
                 {/* Name first, identifier second — the same rule the rows follow.
                     This is the panel's headline, and it was the loudest instance
@@ -164,7 +161,9 @@ export function JobDetail({
             {/* 2. The operation shape — four axes, because it was never one. */}
             <Section title={t.plan_kind}>
                 <div className="flex flex-wrap items-center gap-2">
-                    <Pill tone={KIND_TONE[op.kind]}>{t.opKind[op.kind]}</Pill>
+                    <Pill tone={KIND_TONE[op.kind]} title={t.opKindNote[op.kind]}>
+                        {t.opKind[op.kind]}
+                    </Pill>
                     {hasStopControl(op) && (
                         <span className="text-[11px] text-amber-400">
                             {t.plan_needsStop}
@@ -180,12 +179,28 @@ export function JobDetail({
                     )}
                     <Provenance title={t.provenance[job.op.provenance]}>{t.provenance[job.op.provenance]}</Provenance>
                 </div>
-                <p className="mt-1.5 text-[11px] leading-relaxed text-slate-400">{t.opKindNote[op.kind]}</p>
+                {/* The kind's explanation is the SAME SENTENCE for every job of
+                    that kind — 114 reads shared one paragraph. It is the pill's
+                    title now, where it costs nothing and is still there when
+                    someone wants it. */}
 
+                {/* Only the axes that DISTINGUISH this job.
+                    ────────────────────────────────────────────────────────────
+                    `ecu` / `self` / `inline` is the ordinary shape: the ECU runs
+                    it, it ends by itself, the answer is in its own reply. Three
+                    labelled rows saying that were rendered on every one of the
+                    114 reads — a status that is true every time carries no
+                    information, and it was pushing the bytes below the fold.
+                    An axis that departs from the ordinary is exactly the thing
+                    worth a row, so those still get one. */}
                 <dl className="mt-3 flex flex-col gap-1.5">
-                    <Axis term={t.op_actor} value={t.actor[op.actor]} />
-                    <Axis term={t.op_termination} value={t.termination[op.termination]} />
-                    <Axis term={t.op_delivery} value={t.delivery[op.resultDelivery]} />
+                    {op.actor !== 'ecu' && <Axis term={t.op_actor} value={t.actor[op.actor]} />}
+                    {op.termination !== 'self' && (
+                        <Axis term={t.op_termination} value={t.termination[op.termination]} />
+                    )}
+                    {op.resultDelivery !== 'inline' && (
+                        <Axis term={t.op_delivery} value={t.delivery[op.resultDelivery]} />
+                    )}
                     {(job.op.prerequisiteJobs ?? []).length > 0 && (
                         <Axis term={t.op_prerequisites} value={(job.op.prerequisiteJobs ?? []).join(' → ')} mono />
                     )}
@@ -320,37 +335,12 @@ export function JobDetail({
                 <SpecTable profile={profile} job={job} results={results} />
             </Section>
 
-            {/* 6. The bytes — or the honest reason there are none. */}
-            <Section title={t.plan_telegram}>
-                {tel ? (
-                    <>
-                        <code
-                            className={`block break-all rounded bg-slate-950 p-2 font-mono text-[11px] ${
-                                telegramIsCertain(tel) ? 'text-blue-400' : 'text-slate-500'
-                            }`}
-                        >
-                            {tel.hex}
-                        </code>
-                        <div className="mt-1 flex flex-wrap items-center gap-2">
-                            <Pill tone={telegramIsCertain(tel) ? 'ok' : 'caution'}>{t.confidence[tel.confidence]}</Pill>
-                            <span className="font-mono text-[10px] text-slate-600">{tel.cmdName}</span>
-                        </div>
-                        <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-                            {t.confidenceNote[tel.confidence]}
-                        </p>
-                    </>
-                ) : (
-                    <p className="text-[11px] leading-relaxed text-slate-500">{t.plan_noTelegram}</p>
-                )}
-                {/* Why this will or will not go out. The same verdict the hub
-                    renders, from the same call — so the button and the panel
-                    cannot tell the operator different things. */}
-                {runVerdict && !runVerdict.allowed && (
-                    <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
-                        {t.runBlock[runVerdict.reason]}
-                    </p>
-                )}
-            </Section>
+            {/* The bytes and the verdict were HERE, eight sections down, in a
+                388px window onto 820px of content — so the two things the
+                operator opens this panel for were the two below the fold. They
+                are now the first thing in the region, drawn as a frame rather
+                than as a hex string: `views/service/JobFrameViz`. What is left
+                here is the reference reading, and it is meant to be scrolled. */}
 
             {/* 7. What came back, if it has been run. */}
             {lastRun && (

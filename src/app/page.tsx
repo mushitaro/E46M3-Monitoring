@@ -35,13 +35,13 @@ import { loadSmg2Workflows, type Smg2Workflows } from '@/lib/smg2Workflows';
 import type { Tab } from '@/lib/tabs';
 import { bestTelegram, loadTelegrams, type TelegramTable } from '@/lib/telegrams';
 import { ActuatorView } from '@/views/actuator/ActuatorView';
+import { ActuatorViz } from '@/views/actuator/ActuatorViz';
 import { AdaptationView, AdaptationViz } from '@/views/adaptation/AdaptationView';
 import { DiagnosisView, DiagnosisViz } from '@/views/diagnosis/DiagnosisView';
 import { DatalogView, DatalogViz } from '@/views/datalog/DatalogView';
 import { useDatalog } from '@/views/datalog/useDatalog';
 import { ServiceView, ServiceViz, procedureForJob } from '@/views/service/ServiceView';
 import { WizardDialog } from '@/views/service/WizardDialog';
-import { CatalogSummary } from '@/views/shared/CatalogSummary';
 
 /**
  * The shell.
@@ -341,7 +341,7 @@ export default function Home() {
         // left to answer. It answers the only one remaining: what IS this
         // module. Same component SERVICE falls back to, because it is the same
         // question and the numbers are about the module, not the tab.
-        actuator: <CatalogSummary catalog={catalog} />,
+        actuator: <ActuatorViz profile={catalog} arming={arming} />,
     };
 
     return (

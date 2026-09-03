@@ -75,6 +75,12 @@ export const CHROME = {
     disclaimer_agree: 'Agree',
     // The wizard's navigation. Verbs, like every other verb in this file; the
     // sentences they move between are language-switched.
+    // The frame's byte roles. Machine identity, like every hex value beside
+    // them; translating ADDR would put a Japanese common noun under a byte.
+    byte_addr: 'ADDR',
+    byte_len: 'LEN',
+    byte_cmd: 'CMD',
+    byte_ck: 'CK',
     wiz_next: 'Next',
     wiz_back: 'Back',
     wiz_close: 'Close',

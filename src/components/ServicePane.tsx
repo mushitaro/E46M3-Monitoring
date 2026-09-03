@@ -273,7 +273,11 @@ export function ServicePane({
                 </ListControls>
 
                 <DataList className="mt-3">
-                    {rows.map(({ job, d }) => {
+                    {/* `d` is still built above — the search matches the German
+                        original, which is often the only string an operator
+                        reading a wiring diagram has. It is a SEARCH KEY, not a
+                        row line. */}
+                    {rows.map(({ job }) => {
                         // The LEDGER's answer — has a car ever confirmed this
                         // job's data. Deliberately not `mayRun`: that is the
                         // permission question, and it is answered by the
@@ -302,45 +306,22 @@ export function ServicePane({
                                     </>
                                 }
                                 detail={
-                                    <>
-                                        {/* Only when it says something the label
-                                            did not. `lbl_for` picks whichever of
-                                            the comment and the identifier reads
-                                            better, so the two are often the same
-                                            string — and printing it twice made
-                                            every row look like a rendering bug. */}
-                                        {d.text && d.text !== label(job, lang) && (
-                                            <p className="text-[11px] text-slate-400">{d.text}</p>
-                                        )}
-                                        {/* slate-500, not slate-700. slate-700 is
-                                            #2A2A33 — 1.48:1 on black, a BORDER
-                                            colour. The German original is the one
-                                            line that is non-negotiable, and it was
-                                            rendering as blank space. */}
-                                        {d.original && d.original !== d.text && (
-                                            <p className="font-mono text-[10px] text-slate-500">{d.original}</p>
-                                        )}
-                                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                                            <span className={`${LABEL} text-slate-600`}>
-                                                {t.system[job.system] ?? job.system}
-                                            </span>
-                                            {job.preconditions.map((c) => (
-                                                <span key={c} className="text-[11px] text-slate-500">
-                                                    {(t[`precond_${c}` as keyof typeof t] as string) ?? c}
-                                                </span>
-                                            ))}
-                                            {job.args.length > 0 && (
-                                                <span className="font-mono text-[10px] text-amber-400">
-                                                    {t.args_required(job.args.map((a) => a.name).join(', '))}
-                                                </span>
-                                            )}
-                                            {job.results.length > 0 && (
-                                                <span className={`${LABEL} text-slate-600`}>
-                                                    {t.det_resultCount(job.results.length)}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </>
+                                    // Nothing. A list is for finding and
+                                    // choosing, and this row was carrying ten
+                                    // pieces of metadata over four lines: the
+                                    // German comment, the German original, the
+                                    // system, the preconditions, the argument
+                                    // names, the result count. Every one of them
+                                    // is a fact about ONE job, which is what the
+                                    // visualization region is for — and half of
+                                    // them are already the facets above, where
+                                    // they are useful because you can filter on
+                                    // them.
+                                    //
+                                    // A one-line row fits 1.6x as many jobs on
+                                    // screen, and on a 138-row list that is the
+                                    // difference between scanning and scrolling.
+                                    undefined
                                 }
                             />
                         );

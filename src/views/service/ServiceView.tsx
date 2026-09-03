@@ -1,6 +1,7 @@
 'use client';
 
 import { memo } from 'react';
+import { MousePointerClick } from 'lucide-react';
 import { DscHydraulicsPane } from '@/components/DscHydraulics';
 import { JobDetail, SequenceView } from '@/components/JobDetail';
 import { ServicePane } from '@/components/ServicePane';
@@ -14,8 +15,9 @@ import { PROCEDURE_OP, PROCEDURE_PREFIX } from '@/lib/jobOps';
 import type { Ledger } from '@/lib/ledger';
 import type { RunVerdict } from '@/lib/runGate';
 import type { Smg2Procedure, Smg2Workflows } from '@/lib/smg2Workflows';
-import type { TelegramTable } from '@/lib/telegrams';
-import { CatalogSummary } from '@/views/shared/CatalogSummary';
+import { bestTelegram, type TelegramTable } from '@/lib/telegrams';
+import { Awaiting } from '@/views/shared/Awaiting';
+import { JobFrameViz } from './JobFrameViz';
 
 /**
  * SERVICE — the module's catalogue, and the one surface that sends a job to a
@@ -108,21 +110,34 @@ export function ServiceViz({
     workflows: Smg2Workflows | null;
     runVerdict: RunVerdict | null;
 }) {
+    const { t } = useLang();
     if (selectedJob && catalog) {
         return (
-            <JobDetail
-                profile={catalog}
-                job={selectedJob}
-                jobText={jobText}
-                telegrams={telegrams}
-                workflows={workflows}
-                procedure={procedureForJob(selectedJob, workflows)}
-                runVerdict={runVerdict}
-                lastRun={lastRun?.jobId === selectedJob.id ? lastRun : null}
-            />
+            // One scroller, and the order is the point: the frame and the
+            // verdict are above the fold, the reference reading is what you
+            // scroll to. It used to be the other way round.
+            <div className="flex h-full flex-col gap-4 overflow-y-auto pr-1">
+                <JobFrameViz
+                    job={selectedJob}
+                    telegram={bestTelegram(telegrams, selectedJob.id)}
+                    verdict={runVerdict}
+                />
+                <JobDetail
+                    profile={catalog}
+                    job={selectedJob}
+                    jobText={jobText}
+                    workflows={workflows}
+                    procedure={procedureForJob(selectedJob, workflows)}
+                    lastRun={lastRun?.jobId === selectedJob.id ? lastRun : null}
+                />
+            </div>
         );
     }
-    return <CatalogSummary catalog={catalog} />;
+    // Nothing focused. The canonical empty state, not a statistics dashboard:
+    // this region is about the job you are looking at, and a risk-mix bar
+    // nobody acts on was filling it with something to read instead of saying
+    // what it is waiting for.
+    return <Awaiting icon={MousePointerClick} label={t.plan_selectHint} />;
 }
 
 /**

@@ -110,6 +110,11 @@ export const en: Localised = {
         proc_block_selection: 'A gear must be chosen — neutral, 1 to 6, or reverse.',
         proc_block_frame: 'The frame cannot be built: the template and the declared arguments do not agree.',
     },
+    viz_willSend: 'This frame goes out',
+    viz_wontSend: 'Not sent',
+    viz_response: 'What comes back',
+    viz_responseNone: 'The SGBD declares no results for this job.',
+    actuator_none: 'Nothing is engaged',
     gate_verified: 'Confirmed on a car',
     gate_unverified: 'Not confirmed on a car',
     gate_practiceOnly:

@@ -19,7 +19,7 @@ import type { Ledger } from '@/lib/ledger';
 import { mayRun } from '@/lib/runGate';
 import { bestTelegram, type TelegramTable } from '@/lib/telegrams';
 import { Awaiting } from '@/views/shared/Awaiting';
-import { CountReadout } from '@/views/shared/CatalogSummary';
+import { CountReadout } from '@/views/shared/CountReadout';
 
 /**
  * The ECU's learned values, and the ECU's own way of throwing them away.

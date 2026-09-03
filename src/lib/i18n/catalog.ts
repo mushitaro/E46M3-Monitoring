@@ -85,6 +85,12 @@ export interface Localised {
     wiz_stopSent: string;
     wiz_offsetsInferred: string;
     procBlock: Record<'proc_block_vehicle' | 'proc_block_noJob' | 'proc_block_selection' | 'proc_block_frame', string>;
+    /** The visual frame block: what goes out, and whether it will. */
+    viz_willSend: string;
+    viz_wontSend: string;
+    viz_response: string;
+    viz_responseNone: string;
+    actuator_none: string;
     gate_verified: string;
     gate_unverified: string;
     gate_practiceOnly: string;

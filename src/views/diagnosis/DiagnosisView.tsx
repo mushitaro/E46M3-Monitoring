@@ -19,7 +19,7 @@ import { normCode } from '@/lib/faultCode';
 import { useLang, type Lang } from '@/lib/i18n';
 import { text as resolveText, type EcuProfile } from '@/lib/ecuCatalog';
 import { Awaiting } from '@/views/shared/Awaiting';
-import { CountReadout } from '@/views/shared/CatalogSummary';
+import { CountReadout } from '@/views/shared/CountReadout';
 
 /**
  * What the link read, and nothing else about the link.

@@ -36,6 +36,11 @@ export const TEST_ID = {
     gateCond: 'gate-cond',
     gateRun: 'gate-run',
     gateCancel: 'gate-cancel',
+
+    // --- the actuator list -------------------------------------------------
+    actuatorRun: 'tj-run',
+    actuatorStart: 'tj-start',
+    actuatorStop: 'tj-stop',
 } as const;
 
 export type TestIdKey = keyof typeof TEST_ID;

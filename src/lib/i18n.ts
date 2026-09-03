@@ -88,6 +88,11 @@ interface Catalog {
     faultRef_note: string;
     catalog_jobs: (n: number) => string;
     cancel: string;
+    tab_actuator: string;
+    /** How few of a module's actuator jobs this app can actually send. */
+    actuator_runnable: (n: number, total: number) => string;
+    actuator_onlyRunnable: string;
+    actuator_armed: string;
     gate_plan: string;
     gate_preconditions: string;
     gate_preconditions_none: string;
@@ -386,6 +391,10 @@ export const STRINGS: Record<Lang, Catalog> = {
             'SGBD の FORTTEXTE 表そのものです。故障コードと本文の対応が付いているので、読み取った故障には本文が直接付きます。ここはコード・訳文・独語原文のいずれでも引ける検索用の一覧です。',
         catalog_jobs: (n: number) => `${n} 件`,
         cancel: 'キャンセル',
+        tab_actuator: 'ACTUATOR',
+        actuator_runnable: (n, total) => `${total} 件中 ${n} 件が実行可能`,
+        actuator_onlyRunnable: '実行できるものだけ',
+        actuator_armed: '作動中',
         gate_plan: '送信内容',
         gate_preconditions: '前提条件（すべて確認）',
         gate_preconditions_none: 'この ECU の SGBD は、このジョブの前提条件を何も述べていません。',
@@ -836,6 +845,10 @@ export const STRINGS: Record<Lang, Catalog> = {
             "The SGBD's own FORTTEXTE table. It is keyed by fault code, so a fault that is read gets its text directly; this list is the searchable reference, by code, translation or German original.",
         catalog_jobs: (n: number) => `${n} job${n === 1 ? '' : 's'}`,
         cancel: 'Cancel',
+        tab_actuator: 'ACTUATOR',
+        actuator_runnable: (n, total) => `${n} of ${total} can be sent`,
+        actuator_onlyRunnable: 'Only what can run',
+        actuator_armed: 'Engaged',
         gate_plan: 'What will be sent',
         gate_preconditions: 'Preconditions (tick all)',
         gate_preconditions_none: "This ECU's SGBD states no preconditions for this job.",

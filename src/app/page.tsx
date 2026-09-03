@@ -36,6 +36,9 @@ import { JobDetail, SequenceView } from '@/components/JobDetail';
 import { ServicePane } from '@/components/ServicePane';
 import { DscHydraulicsPane } from '@/components/DscHydraulics';
 import { LogPopover } from '@/components/LogPopover';
+import { ActuatorView } from '@/views/actuator/ActuatorView';
+import { useActuatorArming } from '@/hooks/useActuatorArming';
+import { useUnloadGuard } from '@/hooks/useUnloadGuard';
 import {
     Chip,
     DataList,
@@ -89,7 +92,18 @@ import { bestTelegram, loadTelegrams, type TelegramTable } from '@/lib/telegrams
  * the thing it refuses, instead of a read hidden in a sub-action row and a reset
  * lost among 223 rows in SERVICE.
  */
-type Tab = 'diagnosis' | 'datalog' | 'adaptation' | 'service';
+/**
+ * ACTUATOR sits BESIDE service for now, not instead of it.
+ *
+ * The plan replaces the merged SERVICE pane with the predecessor's four tabs,
+ * and step 53 deletes ServicePane/JobDetail/StepList once the other three views
+ * have moved out of this file. Doing the swap and the extraction in one commit
+ * would mean a large change to the shell with no working state in between; this
+ * way the new surface is live and exercisable while the rest is still where it
+ * was. The faceted browse over all 1,524 jobs goes away with SERVICE, which is a
+ * product change and not a refactor — see the note in views/actuator.
+ */
+type Tab = 'diagnosis' | 'datalog' | 'adaptation' | 'service' | 'actuator';
 type Link = ReturnType<typeof useDs2Link>;
 
 /**
@@ -136,6 +150,37 @@ export default function Home() {
     // Datalog state lives here so the right column can visualise a run while
     // the datalog tab is not the one on the left.
     const datalog = useDatalog(link);
+
+    // Which outputs are energised. Held here, not in the ACTUATOR view, because
+    // the release has to survive that view unmounting — a tab change must not be
+    // the thing that forgets a solenoid is on.
+    const arming = useActuatorArming({ send: link.runRead });
+
+    /**
+     * Make leaving deliberate while a write is in flight OR an output is on.
+     *
+     * The second half is the one that matters here. A write is seconds; an armed
+     * actuator can sit energised indefinitely, and a Ctrl+R would take away the
+     * only page able to send its stop. `useUnloadGuard`'s own header explains why
+     * this is a nudge and not a lock, and what covers the rest.
+     */
+    useUnloadGuard(link.state === 'busy' || arming.anyArmed, 30 * 60_000);
+
+    /**
+     * Every exit from "we can send" releases what is engaged, and AWAITS it.
+     *
+     * Not an effect cleanup: a cleanup cannot await, so React would take the
+     * promise, drop it, and by the time it wanted the link the link would be
+     * closed — leaving the output on with nothing able to reach the ECU. So the
+     * release is spelled out at each door.
+     */
+    const releaseThen = useCallback(
+        async (then: () => void | Promise<void>) => {
+            await arming.stopAll();
+            await then();
+        },
+        [arming],
+    );
 
     // <html lang> is DERIVED from the resolved language, here, and nowhere else.
     // The attribute layout.tsx renders is a prerender placeholder: this is a
@@ -190,6 +235,11 @@ export default function Home() {
     const [selection, setSelection] = useState<{ ecuId: string; job: CatalogJob } | null>(null);
     const selectedJob = selection?.ecuId === ecuId ? selection.job : null;
     const selectJob = useCallback((job: CatalogJob) => setSelection({ ecuId, job }), [ecuId]);
+
+    // The three doors out of "this ECU, right now". Each one releases first.
+    const disconnect = useCallback(() => void releaseThen(link.disconnect), [releaseThen, link.disconnect]);
+    const changeEcu = useCallback((id: string) => void releaseThen(() => setEcuId(id)), [releaseThen]);
+    const changeTab = useCallback((next: Tab) => void releaseThen(() => setTab(next)), [releaseThen]);
 
     const [telegrams, setTelegrams] = useState<TelegramTable | null>(null);
     const [jobText, setJobText] = useState<JobTextTable | null>(null);
@@ -270,13 +320,14 @@ export default function Home() {
                                     ['datalog', t.tab_datalog],
                                     ['adaptation', t.tab_adaptation],
                                     ['service', t.tab_service],
+                                    ['actuator', t.tab_actuator],
                                 ] as const
                             ).map(([id, labelText]) => (
                                 <button
                                     key={id}
                                     role="tab"
                                     aria-selected={tab === id}
-                                    onClick={() => setTab(id)}
+                                    onClick={() => changeTab(id)}
                                     className={`flex h-full shrink-0 items-center whitespace-nowrap border-b-2 ${LABEL} transition-colors ${
                                         tab === id
                                             ? 'border-blue-400 text-blue-400'
@@ -344,6 +395,21 @@ export default function Home() {
                                         />
                                     )}
                                 </ServicePane>
+                            ) : (
+                                <p className="py-2 font-mono text-xs uppercase text-slate-600">{t.awaiting_catalog}</p>
+                            ))}
+
+                        {tab === 'actuator' &&
+                            (catalog ? (
+                                <ActuatorView
+                                    profile={catalog}
+                                    telegrams={telegrams}
+                                    ledger={ledger}
+                                    jobText={jobText}
+                                    mode={link.mode}
+                                    arming={arming}
+                                    onRun={(jobId, hex) => link.runRead(jobId, hex)}
+                                />
                             ) : (
                                 <p className="py-2 font-mono text-xs uppercase text-slate-600">{t.awaiting_catalog}</p>
                             ))}
@@ -427,7 +493,7 @@ export default function Home() {
                                         <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-slate-600">
                                             {link.mode} · {link.state}
                                         </span>
-                                        <TextButton onClick={() => void link.disconnect()} tone="danger">
+                                        <TextButton onClick={disconnect} tone="danger">
                                             {t.disconnect}
                                         </TextButton>
                                     </>
@@ -439,7 +505,7 @@ export default function Home() {
                                     // one under an open link would silently
                                     // retarget it.
                                     disabled={link.state !== 'disconnected'}
-                                    onChange={setEcuId}
+                                    onChange={changeEcu}
                                 />
                             </div>
                         </div>

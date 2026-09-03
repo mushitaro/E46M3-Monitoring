@@ -108,7 +108,7 @@ public repo を clone した人が、**何がどれだけ欠けているか**を
 |---|---|---|
 | `tools/SgbdDump/Program.cs` | #1 ＋ #2（EdiabasLib 経由） | `$SGBD_DUMP_DIR/<SGBD>.json` |
 | `gen_dump_manifest.py` | `$SGBD_DUMP_DIR/*.json` | `tools/SgbdDump/out.manifest.json`（**コミットされる**） |
-| `extract_telegrams.py` | #1 | `$SGBD_DUMP_DIR/<id>.telegrams.json` |
+| `extract_telegrams.py` | #1 | `public/ecu-data/<id>.telegrams.json`（51 モジュール） |
 | `gen_ecu_data.py` | ダンプ ＋ `sgbd/*` ＋ `translate.py` | `public/ecu-data/<id>.jobs.json`, `index.json` |
 | `gen_smg2_workflows.py` | `SMG2.json` | `public/ecu-data/smg2-workflows.json` |
 | `gen_dsc_hydraulics.py` | `DSC_E46.json` ＋ `dsc_e46.telegrams.json` | `public/ecu-data/dsc_e46.hydraulics.json` |
@@ -150,10 +150,14 @@ public repo を clone した人が、**何がどれだけ欠けているか**を
 
 直っていない。踏む前に読むこと。
 
-**(a) `out/` → `public/ecu-data/` のコピーを行うスクリプトが無い。**
-`tools/SgbdDump/out/*.telegrams.json` と `public/ecu-data/*.telegrams.json` は
-現在バイト一致している（`cmp` で確認済み）が、これは**手でコピーした結果**であって、
-そうし続ける仕組みは無い。`extract_telegrams.py` を再実行してもアプリには届かない。
+**(a) 塞いだ。** `extract_telegrams.py` は `public/ecu-data/` に直接書く。
+
+かつては `$SGBD_DUMP_DIR` に書いており、そこからアプリの読む場所へは**人が手で
+コピーしていた**。2 つの木がバイト一致していたのは仕組みがあったからではなく、
+直近のコピーが正しかったからで、実際 `dsc_e46.telegrams.json` の `module` 欄は
+`dsc_mk60` のまま——改名がコピーされていなかった。ダンプ側の 3 ファイルは削除した。
+
+対象は 3 → **51 モジュール**。モジュール一覧は表で持たず `index.json` から読む。
 
 **(a2) `STEUERN_DIGITAL` 族の `kind` はまだ `pulse` と言っている。**
 6 ジョブ（LWS5 / SHD46 / SHD46_2 / ZKE5 / ZKE5_S12 ×2）の `STEUERN_DIGITAL` /

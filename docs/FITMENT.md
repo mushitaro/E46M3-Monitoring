@@ -141,11 +141,12 @@ KWP2000 で、宛先は 0x82。DS2 のこのアプリからは届かない。Win
 
 ## 5. 除外していないもの
 
-`$SGBD_DUMP_DIR` の残り 24 ファイルは ECU のダンプではない:
+`$SGBD_DUMP_DIR` の残り 21 ファイルは ECU のダンプではない:
 
 - `_addresses.json` — `dump_modules.py` が実送信テレグラムから取った **63 件**のアドレス表（ECU のダンプ全部）
 - `_families.json` / `_phrases_*.json`（19 件）/ `_untranslated_tokens.json` — 用語抽出の中間物
-- `{mss54,smg2,dsc_e46}.telegrams.json` — `extract_telegrams.py` の出力
+（テレグラム抽出の出力はここには無い。`extract_telegrams.py` は
+`public/ecu-data/<id>.telegrams.json` に直接書く。）
 
 `fitment.is_ecu_dump()` がこの区別を持ち、`check_references.py` はこれらを
 ECU として数えない。

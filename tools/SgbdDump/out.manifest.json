@@ -547,21 +547,6 @@
    "path": "_untranslated_tokens.json",
    "sha256": "7582642f34c669ae676809236b244f590d04ef9e6efb5df8ab194cc1e9ac5aea",
    "bytes": 512225
-  },
-  {
-   "path": "dsc_e46.telegrams.json",
-   "sha256": "b689200fd988278b9b4d5490f97f16164f272c1482c3670a455d85b1f8bf3e0a",
-   "bytes": 24413
-  },
-  {
-   "path": "mss54.telegrams.json",
-   "sha256": "bf26e507634898272e53a4607be68bd76f31a0a394d762d2f1f00eac1f811d3d",
-   "bytes": 35981
-  },
-  {
-   "path": "smg2.telegrams.json",
-   "sha256": "a5142fcdf816f302ce74901576c9e0f6a5de6e6615f77ab0289c3da115a9939d",
-   "bytes": 7015
   }
  ]
 }

@@ -176,8 +176,14 @@ _UNRECORDED_GENERATION: dict[str, Fitment] = {
 
 NOT_FITTED: dict[str, Fitment] = {**_PROTOCOL, **_NOT_EQUIPPED, **_UNRECORDED_GENERATION}
 
-# 台帳にあるがモジュールでも ECU でもないファイル。ダンプ生成器の副産物と、
-# 用語抽出の中間物。`check_references.py` はこれらを ECU として数えない。
+# 台帳にあるがモジュールでも ECU でもないファイル。`_addresses.json` と用語抽出の
+# 中間物（`_phrases_*.json` ほか）。`check_references.py` はこれらを ECU として
+# 数えない。
+#
+# `.telegrams.json` はもうここには書かれない——`extract_telegrams.py` は
+# `public/ecu-data/` に直接書き、ダンプ側の 3 ファイルは削除した。除外は残して
+# ある: 古い木を持っている人のところで、消し忘れた 1 ファイルが「理由の無い
+# ダンプ」として検査を落とし、`fitment.py` に理由を書けという誤った指示を出す。
 NON_ECU_PREFIXES = ("_",)
 NON_ECU_SUFFIXES = (".telegrams.json",)
 

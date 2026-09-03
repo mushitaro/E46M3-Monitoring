@@ -31,14 +31,37 @@ ECU_DIR = os.environ.get("EDIABAS_ECU_DIR", r"C:\EDIABAS\ECU")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths                                                # noqa: E402
 
-OUT = paths.SGBD_DUMP_DIR   # リポジトリ外。理由は tools/paths.py
+# **アプリが読む場所に直接書く。**
+#
+# 出力先は `$SGBD_DUMP_DIR` だった。そこに書いてもアプリには届かないので、誰かが
+# `public/ecu-data/` に手でコピーしていた——2 つの木がバイト一致していたのは、
+# そうし続ける仕組みがあったからではなく、直近のコピーが正しかったからである
+# （`docs/REFERENCES.md` §4(a) に穴として記録されていた）。再実行がそのまま
+# 出荷物に反映されないと、抽出器を直しても何も変わらない。
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "public", "ecu-data")
 
-# id : (SGBD ファイル名, DS2 アドレス)
-MODULES = {
-    "mss54":    ("MSS54DS0.prg", 0x12),
-    "smg2":     ("SMG2.prg",     0x32),
-    "dsc_e46": ("DSC_E46.prg",  0x56),
-}
+# モジュールは表で持たず `index.json` から読む。`gen_ecu_data.py` に足したのに
+# ここに足し忘れたモジュールが「テレグラム表を持たない＝実車で何も送れない」まま
+# 静かに残るのを避ける。アドレスも同じ出所を使う（そこは実送信トレースで裏を
+# 取ってある——`docs/FITMENT.md`）。
+def modules() -> dict[str, tuple[str, int]]:
+    idx = json.load(open(os.path.join(OUT, "index.json"), encoding="utf-8"))
+    return {m["id"]: (m["sgbd"], m["address"]) for m in idx["modules"]}
+
+
+def resolve_prg(name: str) -> str:
+    r"""`.prg` を大文字小文字を跨いで解決する。
+
+    実在例: `C:\EDIABAS\ECU` には `ews3.prg` と `EWS3D.prg` が並んでいる。
+    素の `os.path.join` では 51 モジュールのうち何件かを取り逃がす。"""
+    exact = os.path.join(ECU_DIR, name)
+    if os.path.exists(exact):
+        return exact
+    low = name.lower()
+    for f in os.listdir(ECU_DIR):
+        if f.lower() == low:
+            return os.path.join(ECU_DIR, f)
+    return exact   # 呼び出し側が FileNotFoundError にする
 
 CMD = {
     0x00: "identification", 0x04: "read fault memory", 0x05: "CLEAR fault memory",
@@ -146,10 +169,17 @@ def extract(path, addr):
 
 
 if __name__ == "__main__":
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     os.makedirs(OUT, exist_ok=True)
+    MODULES = modules()
+    only = set(sys.argv[1:])
     failed = []
+    totals = {"single": 0, "multiple": 0, "shared": 0}
     for mid, (prg, addr) in MODULES.items():
-        path = os.path.join(ECU_DIR, prg)
+        if only and mid not in only:
+            continue
+        path = resolve_prg(prg)
         try:
             if not os.path.exists(path):
                 raise FileNotFoundError(path)
@@ -168,9 +198,11 @@ if __name__ == "__main__":
             for entries in data.values():
                 for e in entries:
                     counts[e["confidence"]] = counts.get(e["confidence"], 0) + 1
-            print(f"  {mid:10} jobs={len(data):<4} telegrams: "
+            for k in totals:
+                totals[k] += counts.get(k, 0)
+            print(f"  {mid:10} 0x{addr:02X} jobs={len(data):<4} telegrams: "
                   f"single={counts.get('single', 0):<4} multiple={counts.get('multiple', 0):<4} "
-                  f"shared={counts.get('shared', 0):<4} <- {prg}")
+                  f"shared={counts.get('shared', 0):<4} <- {os.path.basename(path)}")
         except Exception as e:
             failed.append((mid, e))
             print(f"  {mid:10} ERR {e}")
@@ -179,4 +211,6 @@ if __name__ == "__main__":
         sys.stderr.write(f"\n[FATAL] {len(failed)} module(s) failed: "
                          + ", ".join(m for m, _ in failed) + "\n")
         sys.exit(1)
-    print(f"wrote {len(MODULES)} telegram tables to {OUT}")
+    n = len(only) if only else len(MODULES)
+    print(f"wrote {n} telegram tables to public/ecu-data/  "
+          f"single={totals['single']} multiple={totals['multiple']} shared={totals['shared']}")

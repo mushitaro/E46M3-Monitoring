@@ -34,6 +34,15 @@ const index = read<EcuIndex>('index.json');
 const modules = index.modules.map((m) => m.id);
 const profiles = modules.map((id) => [id, read<EcuProfile>(`${id}.jobs.json`)] as const);
 
+type TelegramTable = {
+    module: string;
+    address: number;
+    jobs: Record<string, { hex: string; cmd: number; confidence: string }[]>;
+};
+const telegrams = new Map(
+    modules.map((id) => [id, read<TelegramTable>(`${id}.telegrams.json`)] as const),
+);
+
 describe('the shipped catalogue', () => {
     it('has modules to check at all', () => {
         // A guard on the guard: if index.json were empty or the wrong shape, every
@@ -183,26 +192,117 @@ describe('what writes the car’s identity is never addressed to its owner', () 
     });
 });
 
-describe('nothing outside the three telegram-bearing modules can run today', () => {
-    it('refuses every non-read job in every module, with no telegram and an empty ledger', () => {
-        // runGate.test.ts makes this assertion over the three modules it has telegram tables
-        // for. The port's largest classification changes landed on the other 48, where it
-        // never ran — including the 177 jobs that are `unclassified` because the SGBD says
-        // nothing about them, several of which write a VIN or reset a controller.
+describe('no non-read job can run, on any module, with any telegram', () => {
+    it('refuses every non-read job in every module', () => {
+        // runGate.test.ts makes this assertion over three modules. The port's largest
+        // classification changes landed on the other 48, and until the telegram tables
+        // arrived those 48 were also being held back by the missing table — so this had
+        // never actually exercised the classification gate on them. Now it does: every
+        // module has a table, and the class is the only thing refusing these.
         const allowed: string[] = [];
         for (const [id, p] of profiles) {
+            const table = telegrams.get(id)!;
             for (const j of p.jobs) {
                 if (j.class === 'read') continue;
-                if (mayRun(j, null, EMPTY_LEDGER, { moduleId: id }).allowed) allowed.push(`${id}.${j.id}`);
+                const entries = table.jobs[j.id] ?? [];
+                const tel =
+                    entries.length === 1
+                        ? { hex: entries[0].hex, confidence: entries[0].confidence as 'single' }
+                        : null;
+                if (mayRun(j, tel as never, EMPTY_LEDGER, { moduleId: id }).allowed) {
+                    allowed.push(`${id}.${j.id}`);
+                }
             }
         }
         expect(allowed).toEqual([]);
     });
+});
 
-    it('and the reason is the absent telegram table, not the classification', () => {
-        const withTelegrams = new Set(
-            index.modules.filter((m) => m.sidecars.some((s) => s.endsWith('.telegrams.json'))).map((m) => m.id),
+describe('a telegram table only ever addresses its own module', () => {
+    // 0x56 carries two SGBDs — ASCMK20 on early cars, DSC_E46 on late ones — and the
+    // extractor is driven by address, so this was the first time two tables could be built
+    // for one address. If a frame from one leaked into the other's table, mayRun would
+    // accept a neighbouring ECU's frame as this job's own and the app would send it.
+    //
+    // Checked over every frame in the catalogue, not just 0x56, because the property is not
+    // special to that address — it is what makes a per-module table mean anything.
+    it('every frame in every table starts with that module’s address', () => {
+        const wrong: string[] = [];
+        let frames = 0;
+        for (const m of index.modules) {
+            const table = telegrams.get(m.id)!;
+            expect(table.address).toBe(m.address);
+            for (const [job, entries] of Object.entries(table.jobs)) {
+                for (const e of entries) {
+                    frames++;
+                    if (parseInt(e.hex.split(' ')[0], 16) !== m.address) {
+                        wrong.push(`${m.id}.${job} ${e.hex}`);
+                    }
+                }
+            }
+        }
+        expect(wrong).toEqual([]);
+        // A property checked over nothing is not checked.
+        expect(frames).toBeGreaterThan(2000);
+    });
+
+    it('the two tables at 0x56 were extracted separately, and show it', () => {
+        // They share 24 frames, and that is correct: both speak DS2 to the same address, so
+        // IDENT really is `56 04 00 52` on each. Common frames are the protocol, not a leak.
+        //
+        // What proves they came from two different .prg files is where they DIFFER. Nine of
+        // the 26 shared job names have different frame sets, and the differences sit in the
+        // hydraulic valve byte — ASCMK20 drives `f3` where DSC_E46 drives `f1`. A table
+        // copied from its neighbour could not disagree about that.
+        const a = telegrams.get('ascmk20')!;
+        const d = telegrams.get('dsc_e46')!;
+        expect(a.address).toBe(d.address);
+
+        const hexes = (t: TelegramTable, job: string) =>
+            (t.jobs[job] ?? []).map((e) => e.hex).sort();
+        const shared = Object.keys(a.jobs).filter((j) => j in d.jobs);
+        const differing = shared.filter(
+            (j) => JSON.stringify(hexes(a, j)) !== JSON.stringify(hexes(d, j)),
         );
-        expect([...withTelegrams].sort()).toEqual(['dsc_e46', 'mss54', 'smg2']);
+        expect(shared.length).toBe(26);
+        expect(differing).toContain('DRUCKAUFBAU_VL');
+        expect(differing.length).toBeGreaterThan(5);
+    });
+});
+
+describe('what a real car would accept today', () => {
+    // Reads do not consult the ledger — mayRun's remaining gates for them are the class,
+    // a certain telegram, taking no arguments, and a read-only control byte. Until the
+    // telegram tables landed, 48 modules were held back by the third of those alone.
+    //
+    // This is a tripwire, not a rule: the number moves when the extractor or the classifier
+    // moves, and both of those are exactly when someone should look at the list. Same
+    // reasoning as tools/ecu_data_counts.json.
+    const allowed: string[] = [];
+    for (const [id, p] of profiles) {
+        const table = telegrams.get(id)!;
+        for (const j of p.jobs) {
+            const entries = table.jobs[j.id] ?? [];
+            if (entries.length !== 1 || entries[0].confidence !== 'single') continue;
+            const tel = { hex: entries[0].hex, confidence: 'single' as const };
+            if (mayRun(j, tel as never, EMPTY_LEDGER, { moduleId: id }).allowed) {
+                allowed.push(`${id}.${j.id}`);
+            }
+        }
+    }
+
+    it('is 86 jobs across 36 modules', () => {
+        expect(allowed.length).toBe(86);
+        expect(new Set(allowed.map((a) => a.split('.')[0])).size).toBe(36);
+    });
+
+    it('and every one of them is classified read and takes no arguments', () => {
+        const byId = new Map(profiles.map(([id, p]) => [id, new Map(p.jobs.map((j) => [j.id, j]))]));
+        for (const a of allowed) {
+            const [mid, jid] = [a.slice(0, a.indexOf('.')), a.slice(a.indexOf('.') + 1)];
+            const j = byId.get(mid)!.get(jid)!;
+            expect(j.class).toBe('read');
+            expect(j.args).toEqual([]);
+        }
     });
 });

@@ -57,8 +57,12 @@ covering what comes *out* of building it:
   `CheckEdiabasLib` target) and is never vendored. Clone it yourself from the URL
   above.
 
-If the `host/` tooling is ever revived as something users install, this decision must
-be revisited first.
+The `host/` bridge that linked EdiabasLib at RUNTIME is now deleted, not merely
+unused: the app talks to the cable itself over Web Serial and WebUSB, so there is
+no longer a component that could be distributed with EdiabasLib inside it. If
+anything of that shape is ever built again, this decision must be revisited
+first — the question it answers is about distribution, and a build-time tool and
+an installed one are not the same artifact.
 
 ---
 

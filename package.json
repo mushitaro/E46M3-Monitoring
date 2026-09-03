@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "deploy": "npm run build && wrangler pages deploy out --project-name e46m3-diagnosis --branch main"
+    "deploy": "node scripts/deploy.mjs",
+    "verify:deploy": "node scripts/verify-deploy.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.562.0",

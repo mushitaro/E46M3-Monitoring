@@ -36,7 +36,7 @@ worktree の tgz にしか無いのはそのため。片方だけでは復元で
 | **実車トレース** `ifh.trc` | PWA `host/trace/` | **696,320 B**、2026-07-18 | `$SGBD_DUMP_DIR` 隣接（git 外） | ✗ | 実車セッションの完全な IFH/API トレース。ZB 番号を含む。`IFH-00xx` の調査と、DS2 を直接実装し直す際の唯一の実挙動証拠 |
 | **実車記録** `m3-mss54-real.json` | 両木でバイト同一 | 30,578 B、実故障 5 件 | 保持・gitignore | ✗ **プライバシー** | 車・ケーブル・セッションが要る。**ECU の実 `_EINH` 単位が捕まっている唯一の場所** |
 | **実車記録** `m3-smg2-real.json` | 両木でバイト同一 | 11,577 B | 保持・gitignore | ✗ **プライバシー** | 同上 |
-| 合成記録 `test-mss54.json` | `E46M3-Diagnosis/host/recordings/` | 1,873 B、ZB 7831387（合成） | テスト fixture として保持 | **✓** | 合成なので公開可。ホスト削除後も残す |
+| 合成記録 `test-mss54.json` | `tools/deprecated/host-recording-test-mss54.json` | 1,873 B、ZB 7831387（合成） | 引退したホストの出力形式の記録として保持 | **✓** | 合成なので公開可。**読む物はもう無い**——`host/` は削除済みで、この形式のパーサはどこにも存在しない。残す理由は「唯一残った実例」であって「fixture」ではない |
 | **逆コンパイル由来のブロック表** | `packages/ds2-mss54/src/*.generated.ts` | 213 ライブ値のオフセット/スケール、適応値ブロック | 現状維持 | **✓**（帰属表示付き） | 生成元は `C:\Users\kazuh\MSS54-DS2-Tool-Public-1.2.1\decompiled-source\`。**この repo にコミット済みの中間物が無い**ので、あの木を失うと二度と生成できない |
 
 ## 負の結果 — 消すと同じ道を再発見される

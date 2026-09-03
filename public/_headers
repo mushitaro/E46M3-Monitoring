@@ -27,12 +27,15 @@
   # someone is editing this line, an unstated permission is one deletion away
   # from breaking desktop, and the deletion would look deliberate.
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(self), serial=(self)
-
-# The generated data is the part with a provenance question attached
-# (THIRD-PARTY-NOTICES.md §3). Keep it out of search indexes even while the
-# deployment itself is access-controlled.
-/*.json
-  X-Robots-Tag: noindex
-
-/ecu-data/*
+  # noindex on EVERYTHING, not only on the data.
+  #
+  # It used to be `/*.json` and `/ecu-data/*`, because those are the files with
+  # a provenance question attached (THIRD-PARTY-NOTICES.md §3). But the pages
+  # that LINK them are just as findable, and this whole deployment is meant to
+  # sit behind Cloudflare Access — a crawler reaching the index at all is a
+  # symptom worth not having. It costs one header on assets nobody would index
+  # anyway.
+  #
+  # This is a REQUEST, not access control. Access is what actually keeps the
+  # tables private; `noindex` and `robots.txt` only ask politely.
   X-Robots-Tag: noindex

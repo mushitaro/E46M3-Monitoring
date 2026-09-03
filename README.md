@@ -91,7 +91,7 @@ python tools/gen_ecu_data.py                             # public/ecu-data/ を�
 - 利用者全員に `C:\EDIABAS` の導入と .NET ホストの起動を要求していた
 - EdiabasLib は **GPLv3**。リンクしたホストを配布しつつリポジトリを非公開に保つのは無理がある
 
-いまは EdiabasLib を**ビルド時のデータ生成ツール**としてのみ使う（`tools/`, `host/`）。
+いまは EdiabasLib を**ビルド時のデータ生成ツール**としてのみ使う（`tools/SgbdDump`）。
 詳細は [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)（依存監査の評価も同ファイル §4）。
 
 ---
@@ -115,16 +115,23 @@ npm run typecheck
 
 ```
 src/app/          Next.js App Router。globals.css は TSUNAGI ///M テーマ(2026-07改訂)
-src/components/   UI コンポーネント
-src/hooks/        React 側の状態（リンク状態・キープアライブタイマ等）
-src/lib/          アプリ固有ロジック
-packages/         共有パッケージ（ds2-core 予定）
-ecu-data/         SGBD 由来の生成データ。indent=1 で committed（差分が読めること）
-recordings/       実車キャプチャ。テストフィクスチャとして使う
+src/components/   UI プリミティブと共有部品（ui.tsx が唯一の出所）
+src/components/shell/  枠・タブ・モジュール行・重ね合わせ
+src/views/        タブ 1 つにつき 1 ディレクトリ。ペインと可視化
+src/hooks/        React 側の状態（リンク状態・キープアライブ・武装）
+src/lib/          純粋なロジック。門・分類・プロトコル・i18n
+packages/ds2-core/    DS2 のフレーム・トランスポート（Web Serial / WebUSB-FTDI）
+packages/ds2-mss54/   MSS54 のブロック定義（生成物）
+public/ecu-data/  SGBD 由来の生成データ。**コミットしない**（下記）
 tools/            SGBD → ecu-data の生成パイプライン（Python / C#）
-tools/deprecated/ 旧・正規表現スクレイパ。実行不可にしてある
-host/             EdiabasLib ブリッジ。**ビルド時のデータ生成専用**（実行時依存ではない）
+tools/deprecated/ 引退したツールと、負の結果の記録
+docs/             決定と来歴。実車に繋ぐ手順は docs/CONNECT-VEHICLE.md
 ```
+
+`public/ecu-data/` と `recordings/` はこのリポジトリに**入っていない**。BMW の SGBD 由来
+なので `THIRD-PARTY-NOTICES.md` §3 の扱いに従い、別の private リポジトリに置いてある。
+欠けているものの**形と大きさ**だけは `tools/ecu_data_counts.json` と
+`tools/SgbdDump/out.manifest.json` から読める。
 
 ---
 

@@ -357,6 +357,32 @@ def classify(sgbd: str, job: str, comment: str, args: list[str]) -> JobClassific
         kind="unknown",
     )
 
+    # --- EDIABAS が自分で呼ぶ初期化 ---------------------------------------
+    #
+    # 全 51 SGBD にあり、全部が calibration / owner / write / high / irr_write で
+    # 出ていた——`^INITIALISIER` の名前規則から。つまり 51 のモジュールすべてで
+    # 「学習値を永久に書き換え、元に戻せない」とオーナーに表示していた。
+    #
+    # SGBD 自身の記述はその逆で、ZKE5_S12 が逐語でこう述べている:
+    #
+    #   "Dieser Job wird vom EDIABAS automatisch beim erstem Zugriff auf eine SGBD
+    #    aufgerufen. Bei weiteren Zugriffen auf die selbe SGBD wird dieser Job nicht
+    #    mehr aufgerufen. ... Hier: 1. Verbindung zum Interface aufbauen
+    #    2. Setzen des Wiederholungszaehlers fuer Fehler (gleich 2)
+    #    3. Setzen der SG-Kommunikationsparameter"
+    #
+    # ——EDIABAS が SGBD への最初のアクセス時に自分で呼ぶ。やることはインタフェース
+    # 接続・リトライ回数・通信パラメータの設定。実測: 51 の SGBD にある 26 通りの
+    # 文面のうち、schreiben / speichern / Adaption / loeschen / EEPROM のいずれかを
+    # 含むものは 0。引数もどれ 1 つ取らない。
+    #
+    # 名前が INITIALISIER で始まる別のジョブ（EWS3_INITIALISIEREN 等）は当たらない。
+    # ここは完全一致で、それらは自分の分岐と override を持っている。
+    if n == "INITIALISIERUNG":
+        c.cls, c.audience, c.kind, c.risk = CLASS_PROTOCOL, AUD_PROTOCOL, "read", RISK_LOW
+        c.provenance = "sgbd-comment"
+        return _apply_override(n, c, argset, de)
+
     # --- プロトコル部品 ---------------------------------------------------
     if PROTOCOL_JOBS.match(n):
         c.cls, c.audience, c.kind, c.risk = CLASS_PROTOCOL, AUD_PROTOCOL, "read", RISK_LOW

@@ -156,7 +156,11 @@ _RAW: list[tuple[str, str, str]] = [
      "This rewrites the wheel-speed sensor trigger thresholds — **it changes how ABS and DSC read wheel "
      "speed.** A wrong value means the control either does not intervene when it should, or does when it "
      "should not."),
-    (r"^(SG_RESET|EDIC_RESET|DDS_RESET|INITIALISIER)",
+    # INITIALISIER はここに居た。ECU を初期化して学習値が失われる、という文だが、
+    # SGBD 自身は INITIALISIERUNG について「EDIABAS が最初のアクセス時に自分で呼び、
+    # 通信パラメータを設定する」と述べている（classify.py の同名の分岐を参照）。
+    # 起きないことへの注意文は、注意文が無いより悪い——他の注意文まで信用を落とす。
+    (r"^(SG_RESET|EDIC_RESET|DDS_RESET)",
      "ECU の状態を初期化します。学習値が失われる場合があります。実行後に適応の状態を確認し、"
      "必要なら適応手順を実施してください。",
      "This resets the ECU's state; learned values may not survive. Check the adaptations afterwards and re-run "

@@ -14,10 +14,10 @@ SMG2: dict[str, tuple[str, str]] = {
         '適応手順を最後まで実施できる時間・場所・バッテリ電圧を確保してから消してください。途中で止まると走行できなくなる可能性があります。',
         'Only clear when you have the time, the place and the battery voltage to complete the adaptations. Stopping half-way can leave the car undriveable.',
     ),
-    'INITIALISIERUNG': (
-        '適応手順まで一続きで実施できる状況を用意してから始めてください。',
-        'Start only when you can carry on through the adaptations.',
-    ),
+    # 'INITIALISIERUNG' の注意文をここから外した。「較正/適応まで一続きで行える
+    # 状況を用意してから」という文だったが、SGBD は EDIABAS が最初のアクセス時に
+    # 自分で呼ぶ通信パラメータ設定だと述べている——較正は始まらない。前身アプリの
+    # 表がこのジョブを除外していたのは正しく、この 2 ファイルの注意文が誤りだった。
     'PRUEFSTEMPEL_SCHREIBEN': (
         '車両の来歴に関する情報を変えることになります。',
         "You are changing information about the car's history.",

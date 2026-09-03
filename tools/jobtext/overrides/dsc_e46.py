@@ -38,10 +38,10 @@ DSC_MK60: dict[str, tuple[str, str]] = {
         '同じ操作が PRUEFSTEMPEL_SCHREIBEN という名前でも存在します。片方だけを安全だと考えないでください。',
         'The same operation also exists as PRUEFSTEMPEL_SCHREIBEN. Do not assume one of them is the safe one.',
     ),
-    'INITIALISIERUNG': (
-        '較正まで一続きで行える時間と場所を確保してから始めてください。',
-        'Start only when you have the time and the level ground to complete the calibrations as well.',
-    ),
+    # 'INITIALISIERUNG' の注意文をここから外した。「較正/適応まで一続きで行える
+    # 状況を用意してから」という文だったが、SGBD は EDIABAS が最初のアクセス時に
+    # 自分で呼ぶ通信パラメータ設定だと述べている——較正は始まらない。前身アプリの
+    # 表がこのジョブを除外していたのは正しく、この 2 ファイルの注意文が誤りだった。
     'PRUEFSTEMPEL_SCHREIBEN': (
         '検査記録の書き換えは、車両の来歴に関する情報を変えることになります。',
         "Rewriting an inspection record changes information about the car's history.",

@@ -86,9 +86,11 @@ MODULES = {
     # 0x56 は年式で中身が入れ替わる。前期は ASCMK20.prg、後期は DSC_E46.prg。同時装着は無い。
     # 旧 id は "dsc_mk60" だった。DSC_E46.prg を指しながら MK60 を名乗っており、MK20 の車では
     # 持っていない部品番号を主張することになる。
-    "ascmk20":  M("ASCMK20",  "ABS/ASC MK20 (前期)",           "ABS/ASC MK20 (early cars)",   0x56, "chassis", "early",
+    # 年式は名前に書かない。fit が言うので、書くと選択肢が "ABS/ASC MK20 (early cars)
+    # — early cars" になる。名前は ECU が何か、fit はどの車が積んでいるか。
+    "ascmk20":  M("ASCMK20",  "ABS/ASC MK20",                  "ABS/ASC MK20",                0x56, "chassis", "early",
                   "6 km/h 超では診断不可（ECU の COMMENT より）", "no diagnosis above 6 km/h (from the ECU's own COMMENT)"),
-    "dsc_e46":  M("DSC_E46",  "DSC (E46・後期)",               "DSC (E46, later cars)",       0x56, "chassis", "late"),
+    "dsc_e46":  M("DSC_E46",  "DSC (E46)",                     "DSC (E46)",                   0x56, "chassis", "late"),
     "lws5":     M("LWS5",     "舵角センサ LWS5",                "Steering angle sensor LWS5",  0x57, "chassis", "std", "DSC MK60 と対", "paired with DSC MK60"),
     "rdc":      M("RDC",      "タイヤ空気圧 RDC",               "Tyre pressure control RDC",   0x70, "chassis", "opt"),
     # --- safety & security -------------------------------------------------------

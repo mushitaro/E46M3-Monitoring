@@ -133,8 +133,33 @@ export type ResultRole = 'value' | 'unit' | 'text' | 'status' | 'telegram' | 'ra
 /** How an argument is supplied. */
 export type ArgKind = 'enum' | 'number' | 'text' | 'flag' | 'unknown';
 
-const JOB_CLASSES: readonly JobClass[] = ['read', 'test', 'calibration', 'coding', 'programming', 'protocol'];
-const AUDIENCES: readonly Audience[] = ['owner', 'technician', 'protocol'];
+/**
+ * The runtime allowlists, derived from the types so they CANNOT fall behind them.
+ *
+ * They were plain arrays annotated `readonly JobClass[]`, which type-checks a subset happily.
+ * So when `unclassified` was added to JobClass the array kept six entries, the compiler said
+ * nothing, and `assertLoadable` rejected 41 of the 51 shipped modules at load — every one that
+ * has a job the SGBD says nothing about. It went unnoticed because the tests and the manual
+ * check all use mss54 / smg2 / dsc_e46, which are three of the ten modules with no such job.
+ *
+ * `Record<JobClass, true>` is exhaustive: adding a member to the union without adding it here
+ * is a compile error, which is the only version of this that stays true.
+ */
+const JOB_CLASSES = Object.keys({
+    read: true,
+    test: true,
+    calibration: true,
+    coding: true,
+    programming: true,
+    protocol: true,
+    unclassified: true,
+} satisfies Record<JobClass, true>) as readonly JobClass[];
+
+const AUDIENCES = Object.keys({
+    owner: true,
+    technician: true,
+    protocol: true,
+} satisfies Record<Audience, true>) as readonly Audience[];
 
 // ---------------------------------------------------------------------------
 // Shapes
@@ -433,7 +458,7 @@ export async function loadEcuCatalog(id: string): Promise<EcuProfile> {
     const res = await fetch(`./ecu-data/${id}.jobs.json`, { cache: 'no-store' });
     if (!res.ok) throw new Error(`Could not load the catalogue for ${id} (HTTP ${res.status})`);
     const profile = (await res.json()) as EcuProfile;
-    assertLoadable(profile);
+    assertLoadableProfile(profile);
     cache.set(id, profile);
     return profile;
 }
@@ -446,7 +471,10 @@ export async function loadEcuCatalog(id: string): Promise<EcuProfile> {
  * silently because nothing ever compared what was emitted against what the dump
  * declared.
  */
-function assertLoadable(p: EcuProfile): void {
+/** Exported so a test can put every shipped profile through it. It was private, and the
+ *  consequence was that the only profiles ever checked were the three the tests name —
+ *  which are three of the ten that happened to pass. See shippedData.test.ts. */
+export function assertLoadableProfile(p: EcuProfile): void {
     if (p.schema !== 2) throw new Error(`${p.id}: expected schema 2, got ${p.schema}`);
     if (p.jobs.length !== p.jobCount)
         throw new Error(`${p.id}: ${p.jobs.length} jobs in a file declaring ${p.jobCount}`);

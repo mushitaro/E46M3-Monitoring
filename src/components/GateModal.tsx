@@ -160,7 +160,14 @@ function GateDialog({
                                         }
                                         className="size-3 accent-blue-500"
                                     />
-                                    {t[`precond_${c}` as keyof typeof t] as string}
+                                    {/* `?? c` matches JobDetail and ServicePane, and matters
+                                        more here than in either: without it an unknown token
+                                        renders as nothing, and `allChecked` above still requires
+                                        the operator to tick the resulting blank box before RUN
+                                        enables — a confirmation of a condition the dialog never
+                                        states. The raw token is a poor label; an empty one is a
+                                        worse thing than a poor label. */}
+                                    {(t[`precond_${c}` as keyof typeof t] as string) ?? c}
                                 </label>
                             ))}
                         </div>

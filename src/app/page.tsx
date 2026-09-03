@@ -1725,6 +1725,17 @@ function EcuSelect({
     disabled: boolean;
     onChange: (id: string) => void;
 }) {
+    // The fitment hint is on the rows that NEED it — the ones sharing a DS2 address with
+    // another module, where the name alone cannot tell them apart. Everywhere else it is
+    // noise, and noise that costs: a native select shows the selected option in the closed
+    // chip, and "MSS54 (S54 / E46 M3 Engine) — standard" overflowed max-w-52 by a measured
+    // 1px, so the one module a user opens on was the one with a clipped label.
+    const sharesAddress = new Set(
+        (index?.modules ?? [])
+            .map((e) => e.address)
+            .filter((a, _i, all) => all.filter((b) => b === a).length > 1),
+    );
+
     // No label inside the chip: the status row it sits in already says MODULE,
     // and printing it twice on one 32px line is the sort of thing that makes a
     // panel look unread.
@@ -1751,7 +1762,8 @@ function EcuSelect({
                             {rows.map((e) => (
                                 <option key={e.id} value={e.id} className="bg-slate-900 text-slate-300">
                                     {e.name_en || e.name}
-                                    {index?.fit[e.fit] ? ` — ${index.fit[e.fit].en}` : ''}
+                                    {sharesAddress.has(e.address) && index?.fit[e.fit]
+                                        ? ` — ${index.fit[e.fit].en}` : ''}
                                 </option>
                             ))}
                         </optgroup>

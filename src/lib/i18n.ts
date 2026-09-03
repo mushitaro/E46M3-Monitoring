@@ -281,7 +281,11 @@ interface Catalog {
 
 const STORAGE_KEY = 'e46m3.lang';
 
-const STRINGS: Record<Lang, Catalog> = {
+/** Both catalogues, exported so a test can assert that every value the DATA ships has a
+ *  label here. The maps inside are keyed by `string`, so the compiler cannot: ten `system`
+ *  tokens arrived with the body/comfort/AV modules and 533 jobs rendered a raw English
+ *  token in the Japanese UI. See shippedData.test.ts. */
+export const STRINGS: Record<Lang, Catalog> = {
     ja: {
         appRole: 'DIAGNOSIS',
         tab_diagnosis: 'DIAGNOSIS',
@@ -635,6 +639,20 @@ const STRINGS: Record<Lang, Catalog> = {
             electrical: '電源・リレー・入出力',
             ecu: 'ECU 本体・識別',
             engine: 'エンジン制御',
+            // ボディ・快適装備・AV。3 モジュールの間は存在しなかった系統で、51 に
+            // 増やしたときラベルを足し忘れ、1,524 ジョブ中 533 件が日本語 UI に
+            // 生の英語トークンを出していた。`system: Record<string, string>` なので
+            // 型は何も言わない——i18n.test.ts がそれを検査する。
+            lighting: '灯火',
+            climate: '空調',
+            body: 'ボディ（ドア・窓・ルーフ）',
+            cluster: 'メーター・表示',
+            security: '保安・イモビライザ',
+            restraint: '乗員保護（エアバッグ・シートベルト）',
+            seats: 'シート・ミラー記憶',
+            controls: 'スイッチ・操作系',
+            parking: 'パークディスタンス',
+            av: 'オーディオ・ナビ・電話',
             unknown: '不明',
         },
 
@@ -1048,6 +1066,16 @@ const STRINGS: Record<Lang, Catalog> = {
             electrical: 'Power, relays, I/O',
             ecu: 'ECU identity',
             engine: 'Engine control',
+            lighting: 'Lighting',
+            climate: 'Climate control',
+            body: 'Body (doors, windows, roof)',
+            cluster: 'Instrument cluster and displays',
+            security: 'Security and immobiliser',
+            restraint: 'Occupant restraint (airbags, belts)',
+            seats: 'Seat and mirror memory',
+            controls: 'Switches and controls',
+            parking: 'Park distance control',
+            av: 'Audio, navigation, telephone',
             unknown: 'Unknown',
         },
 

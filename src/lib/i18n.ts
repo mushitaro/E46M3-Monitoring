@@ -90,6 +90,17 @@ interface Catalog {
     cancel: string;
     gate_plan: string;
     gate_preconditions: string;
+    gate_preconditions_none: string;
+    gate_caution: string;
+    /** The acknowledgement beside an irreversible job. Its own checkbox. */
+    gate_ack_irreversible: string;
+    gate_unreleasable_title: string;
+    gate_unreleasable_body: string;
+    gate_ack_unreleasable: string;
+    /** What the operator should do after it runs, whatever the answer was. */
+    gate_postNote: string;
+    /** How certain the frame about to go out is. */
+    gate_telegram: Record<'single' | 'multiple' | 'shared', string>;
     hub_connect: string;
     hub_connecting: string;
     hub_connected: string;
@@ -377,6 +388,19 @@ export const STRINGS: Record<Lang, Catalog> = {
         cancel: 'キャンセル',
         gate_plan: '送信内容',
         gate_preconditions: '前提条件（すべて確認）',
+        gate_preconditions_none: 'この ECU の SGBD は、このジョブの前提条件を何も述べていません。',
+        gate_caution: '押す前に',
+        gate_ack_irreversible: '元に戻せないことを理解しました',
+        gate_unreleasable_title: '解除ジョブがありません',
+        gate_unreleasable_body:
+            '作動させると保持されます。SGBD にこれを解除するジョブが無いため、このアプリからは止められません。',
+        gate_ack_unreleasable: '止める手段が無いことを理解しました',
+        gate_postNote: '実行後は結果と、必要なら故障メモリを読み直してください。応答が返らなかった場合も、車両側では実行されている可能性があります。',
+        gate_telegram: {
+            single: 'このジョブ専用のフレームです（抽出で 1 件のみ）。',
+            multiple: 'このジョブに複数のフレームが見つかっています。引数で変わる可能性があり、どれが正しいか確定していません。',
+            shared: '**このジョブ専用のフレームではありません。** 他のジョブと同じフレームで、テンプレートを拾った可能性が高いものです。',
+        },
         // --- The hub cluster's verbs. English in BOTH languages. ---
         //
         // These are the labels ON the controls: the hub's own verb and the
@@ -813,7 +837,22 @@ export const STRINGS: Record<Lang, Catalog> = {
         catalog_jobs: (n: number) => `${n} job${n === 1 ? '' : 's'}`,
         cancel: 'Cancel',
         gate_plan: 'What will be sent',
-        gate_preconditions: 'Preconditions (confirm all)',
+        gate_preconditions: 'Preconditions (tick all)',
+        gate_preconditions_none: "This ECU's SGBD states no preconditions for this job.",
+        gate_caution: 'Before you press',
+        gate_ack_irreversible: 'I understand this cannot be undone',
+        gate_unreleasable_title: 'There is no release job',
+        gate_unreleasable_body:
+            'It actuates and stays. The SGBD offers no job that releases it, so this app cannot stop it.',
+        gate_ack_unreleasable: 'I understand there is no way to stop it',
+        gate_postNote:
+            'Read the results afterwards, and the fault memory if it matters. Even with no reply, the car may have run it.',
+        gate_telegram: {
+            single: "A frame belonging to this job alone — the extraction found exactly one.",
+            multiple:
+                'Several frames were found for this job. They may vary with its arguments, and which one is right is not settled.',
+            shared: '**Not this job’s own frame.** Other jobs carry the identical frame, which usually means a template was picked up.',
+        },
         hub_connect: 'Connect',
         hub_connecting: 'Linking',
         hub_connected: 'Linked',

@@ -768,10 +768,26 @@ def classify(sgbd: str, job: str, comment: str, args: list[str]) -> JobClassific
         return _apply_override(n, c, argset, de)
 
     # --- I/O ピン直接駆動 ---------------------------------------------------
+    #
+    # 実測: 全 63 SGBD で `PIN_NUMMER` を取るジョブは 1 つだけ——MSS54 の
+    # `IO_STATUS_VORGEBEN`（`direkte Stellgliedansteuerung ueber Pin/Tastv./Periode`）。
     if "PIN_NUMMER" in argset:
         c.cls, c.kind, c.audience, c.risk = CLASS_TEST, "hold", AUD_TECH, RISK_HIGH
         c.actor, c.termination = ACTOR_APP, TERM_APP_STOP
         c.stop_job, c.irreversible = job, "irr_pin"
+        # **止め方は SGBD が引数の説明に書いている。**
+        #
+        #   TASTVERHAELTNIS: "00 Stellglied nicht angesteuert, ff staendig angesteuert"
+        #
+        # デューティ 0 が「駆動しない」。停止は別ジョブではなく、同じジョブを
+        # デューティ 0 で送り直すこと——SMG2 の `STEUERN_STELLGLIED` に
+        # `{STEUERART1: INAKTIV}` を渡すのと同じ形である。
+        #
+        # 部分上書きであることが重要: `PERIODENDAUER` は "00 ungueltig"（0 は不正）
+        # なので、停止フレームは操作者が選んだ周期をそのまま持っていく必要がある。
+        # ここで全引数を指定すると、不正な周期を送ることになる。
+        if "TASTVERHAELTNIS" in argset:
+            c.stop_args = {"TASTVERHAELTNIS": "0"}
         c.preconditions = ["voltage_ok", "stationary"]
         c.provenance = "sgbd-comment"
         return _apply_override(n, c, argset, de)
@@ -849,6 +865,12 @@ def _is_direct_actuation(comment: str, argset: set[str]) -> bool:
     `Parameterliste: E oder W,EVVL,AVVL,...` と**弁を列挙している**。
     `TRIG_SCHREIBEN` のコメントは `TRIGGERSCHWELLEN SCHREIBEN DSC_E46` で、
     何も列挙していない。
+
+    **`E_OR_W` を ON/OFF と読まないこと。** その `Parameterliste` の先頭にある
+    `E oder W` は、DSC/ASCMK20 の `STEUERN_DIGITAL` の第 1 引数 `E_OR_W` のことで、
+    引数コメントは `Einmal = E oder Wiederholung = W`——**一回か繰り返しか**である。
+    ON/OFF ではないので、`stop_args={"E_OR_W": ...}` で止めることはできない。
+    （`W` を渡すと繰り返し駆動になり、SGBD はその止め方を述べていない。）
     """
     if not any(_RAW_BIT_SLOT.match(a) for a in argset):
         return False
@@ -871,15 +893,39 @@ def _is_direct_actuation(comment: str, argset: set[str]) -> bool:
 #
 # `_is_direct_actuation`（DSC 油圧）と同じ論法を、ボディ系に広げたもの。あちらは
 # コメントが弁を**列挙している**ことを根拠にしたが、こちらは列挙が**無い**ことが根拠
-# である。実測 19 件。`TRIG_SCHREIBEN` は `ORTn` を持つが `Ansteuern` と述べないので
+# である。実測 21 件。`TRIG_SCHREIBEN` は `ORTn` を持つが `Ansteuern` と述べないので
 # 当たらない（当たると、車輪速センサの閾値書込が「アクチュエータ駆動」になる）。
-_ACTUATOR_SLOT = re.compile(r"^(ORT\d*|AUSGANG)$", re.I)
+#
+# **引数名の表だけでは 2 件取り逃がしていた。** 後から実測して分かったもの:
+#
+#   lws5.STEUERN_DIGITAL   駆動先の引数が `ORT` ではなく `FUNKTION`。コメントは
+#                          ZKE5 と一字一句同じ形で XTRACT を指している
+#   szm46.STEUERN_IO       `IO_ID`（table IOStatus）と `IO_BYTE`（'EIN','AUS'）。
+#                          動詞が `Ansteuern` ではなく `vorgeben`（値を押し込む）
+#
+# どちらも `medium / owner` で出ていた。名前の表は必ずこうなるので、**SGBD が自分で
+# 引数を名指ししている場合はそちらを採る**——`erlaubte Namen des Arguments 'X' ueber
+# Tool XTRACT.exe` は「その引数の取りうる値をここには書かない」という宣言そのもので、
+# 我々が探している事実を SGBD が自分の言葉で述べている。実測 5 件、すべて該当。
+#
+# なお `radio.STEUERN_RADIO_SCHALTEN` も引数 `SCHALTMODUS` を table から取るが、
+# **当たらないのが正しい**。動詞が `Ein-/Ausschalten des Radios` で、駆動先は
+# 「ラジオ」と決まっており、引数が選ぶのは駆動先ではなくモードである。しかも同じ
+# コメントが `$07 ShortTermAdjustment` と述べている（RADIO.json 全体で 1 箇所）。
+_ACTUATOR_SLOT = re.compile(r"^(ORT\d*|AUSGANG|FUNKTION|IO_ID)$", re.I)
+_ACTUATION_VERB_JOB = re.compile(r"ansteuer|vorgeb", re.I)
+# SGBD が「この引数に何を渡せるかは別のツールで調べろ」と言っている箇所。
+_XTRACT_ARG = re.compile(r"erlaubte\s+Namen\s+des\s+Arguments\s+'?([A-Z_0-9]+)'?", re.I)
 
 
 def _drives_unbounded_set(comment: str, argset: set[str]) -> bool:
+    c = comment or ""
+    named = _XTRACT_ARG.search(c)
+    if named and named.group(1).upper() in argset:
+        return True
     if not any(_ACTUATOR_SLOT.match(a) for a in argset):
         return False
-    return "ansteuer" in (comment or "").lower()
+    return bool(_ACTUATION_VERB_JOB.search(c))
 
 
 # IHKA の駆動は 2 ジョブの手続きであって、単発ではない。

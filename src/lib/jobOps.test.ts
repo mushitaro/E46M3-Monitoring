@@ -87,6 +87,21 @@ describe('operation shape', () => {
         expect(o.steps[0].why).toBe('why_pinDrive');
     });
 
+    it('stops the pin drive with duty zero, and changes nothing else', () => {
+        // The SGBD says how to stop it in the argument's own comment:
+        //   TASTVERHAELTNIS: "00 Stellglied nicht angesteuert, ff staendig angesteuert"
+        // so the release is this job again at duty 0, not a second job.
+        //
+        // It must stay a PARTIAL override. PERIODENDAUER is documented "00 ungueltig",
+        // so a stop frame that filled in every argument would send an invalid period;
+        // the operator's own period has to survive into the release.
+        const o = op('mss54', 'IO_STATUS_VORGEBEN');
+        expect(o.stopJob).toBe('IO_STATUS_VORGEBEN');
+        expect(o.stopArgs).toEqual({ TASTVERHAELTNIS: '0' });
+        expect(Object.keys(o.stopArgs!)).not.toContain('PERIODENDAUER');
+        expect(Object.keys(o.stopArgs!)).not.toContain('PIN_NUMMER');
+    });
+
     // DSC_SIM_* actuates and holds, and the SGBD exposes no release job. The UI
     // must not offer a STOP that cannot work.
     it('marks DSC_SIM_* as latching with NO stop control', () => {

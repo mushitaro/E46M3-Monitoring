@@ -168,10 +168,21 @@ public repo を clone した人が、**何がどれだけ欠けているか**を
 コメント**にあり、`classify()` は引数の名前しか受け取っていない。
 
 危険度と対象読者は直っている（`high` / `technician`、`_drives_unbounded_set`）。
-残っているのは「押せば終わる」という `kind` の表示だけ。直す場所は計画の step 47
-（ACTUATOR の実行様式を `op` から導く）で、そこでは引数の値そのものが要るので、
-配管を通すのはそのときが正しい。7 件目の `ZKE5_S12.STEUERN_LIN_SZT` は `EIN` が
-1/0 ではなく `'auf'` 等の名前を取るので、同じ規則では直せない。
+残っているのは「押せば終わる」という `kind` の表示だけ。
+
+**配管は要らない、と実測で分かった。** 引数コメントは既に出荷物に載っている——
+`<id>.jobs.json` の `texts[arg.comment].de` がドイツ語原文をそのまま持っており、
+`jobOps.operationFor()` は TypeScript 側でプロファイルを読んでいる。だから step 47
+（ACTUATOR の実行様式を `op` から導く）は、Python 側に何も足さずにこの判定ができる。
+`classify()` に引数コメントを渡す改造は**不要**。
+
+7 件目の `ZKE5_S12.STEUERN_LIN_SZT` は `EIN` が 1/0 ではなく `'auf'` / `'zu'` /
+`'maut-auf'` という名前を取るので、同じ規則では直せない。
+
+**やってはいけない読み替えが 1 つある。** DSC_E46 / ASCMK20 の `STEUERN_DIGITAL` の
+第 1 引数 `E_OR_W` は ON/OFF に見えるが、SGBD の説明は
+`Einmal = E oder Wiederholung = W`——**一回か繰り返しか**である。`stop_args` に
+使えない（`W` は繰り返し駆動で、止め方を SGBD は述べていない）。
 
 **(b) 生成パイプラインは CI で一度も走っていない。**
 `.github/workflows/ci.yml` の `data-pipeline` ジョブは `if: false` で無効

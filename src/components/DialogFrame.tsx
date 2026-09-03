@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { LABEL } from '@/components/ui';
+import { tid, type TestId } from '@/lib/testIds';
 
 /**
  * The one modal shell. Backdrop, card, title row, and the rules about how a
@@ -47,7 +48,8 @@ export function DialogFrame({
     children: React.ReactNode;
     footer?: React.ReactNode;
     width?: string;
-    testId?: string;
+    /** A declared hook, never a loose string — see `lib/testIds`. */
+    testId?: TestId;
 }) {
     const card = useRef<HTMLDivElement>(null);
 
@@ -69,7 +71,7 @@ export function DialogFrame({
                 aria-modal="true"
                 aria-label={title}
                 tabIndex={-1}
-                data-test={testId}
+                {...(testId ? tid(testId) : {})}
                 className={`flex max-h-full w-full ${width} flex-col bg-slate-900 outline-none`}
                 onKeyDown={(e) => {
                     if (e.key === 'Escape' && onClose) {

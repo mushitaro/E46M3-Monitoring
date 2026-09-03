@@ -8,6 +8,7 @@ import { planLines, type Phase } from '@/lib/actuatorArgs';
 import type { CatalogJob } from '@/lib/ecuCatalog';
 import { execStyleOf } from '@/lib/execStyle';
 import { allChecked, requiredChecks } from '@/lib/gateChecks';
+import { TEST_ID, tid } from '@/lib/testIds';
 import { useLang } from '@/lib/i18n';
 import { operationFor } from '@/lib/jobOps';
 import type { RunVerdict } from '@/lib/runGate';
@@ -96,16 +97,18 @@ export function GateDialog({
             Icon={job.risk === 'high' ? AlertTriangle : Play}
             onClose={onCancel}
             width="max-w-lg"
-            testId="gate-dialog"
+            testId={TEST_ID.gateDialog}
             footer={
                 <>
-                    <TextButton onClick={onCancel}>{t.cancel}</TextButton>
+                    <TextButton onClick={onCancel} {...tid(TEST_ID.gateCancel)}>
+                        {t.cancel}
+                    </TextButton>
                     <TextButton
                         onClick={onRun}
                         disabled={!ready}
                         tone={job.risk === 'high' ? 'danger' : 'primary'}
                         Icon={Play}
-                        data-test="gate-run"
+                        {...tid(TEST_ID.gateRun)}
                     >
                         {phase === 'start' ? t.op_start : t.op_run}
                     </TextButton>
@@ -204,7 +207,7 @@ function Check({
                 type="checkbox"
                 checked={checked}
                 onChange={onToggle}
-                data-test="gate-cond"
+                {...tid(TEST_ID.gateCond)}
                 className="size-3.5 accent-blue-500"
             />
             {label}

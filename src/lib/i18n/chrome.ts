@@ -73,6 +73,11 @@ export const CHROME = {
     // The one exit from the disclaimer. A verb, like every other verb in this
     // file; the SENTENCES it agrees to are language-switched, in ja.ts / en.ts.
     disclaimer_agree: 'Agree',
+    // The wizard's navigation. Verbs, like every other verb in this file; the
+    // sentences they move between are language-switched.
+    wiz_next: 'Next',
+    wiz_back: 'Back',
+    wiz_close: 'Close',
 } as const;
 
 export type Chrome = typeof CHROME;

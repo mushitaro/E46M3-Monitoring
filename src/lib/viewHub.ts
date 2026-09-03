@@ -79,6 +79,18 @@ export interface ViewHubState {
         /** From `mayRun`. The hub RENDERS this answer; it never derives one. */
         verdict: RunVerdict | null;
         run: () => void;
+        /**
+         * Open the guided procedure. Present only when the selection IS one.
+         *
+         * A procedure does not go out when the hub is pressed — the SMG II test
+         * program is a sequence with a mandatory stop-before-start, a ten-second
+         * ECU timeout and a status that has to be read by re-asking, so what the
+         * hub opens is the wizard that runs it. Which means the GATE's answer is
+         * not the right question for this button: opening a dialog sends
+         * nothing, and the dialog is where "may I, and why not" gets a full
+         * answer instead of a one-line refusal.
+         */
+        openProcedure?: () => void;
     };
 }
 
@@ -133,6 +145,16 @@ export function viewHubFor(s: ViewHubState): HubConfig | null {
                     tone: 'idle',
                     disabled: true,
                     notice: s.t.plan_selectHint,
+                };
+            }
+            // A procedure opens its wizard. Not `armed-danger`, whatever its
+            // risk: nothing is armed, because pressing this sends no frame.
+            if (sel.isProcedure && s.service.openProcedure) {
+                return {
+                    label: s.t.op_start,
+                    Icon: s.icons.start,
+                    tone: 'ready',
+                    onClick: s.service.openProcedure,
                 };
             }
             const v = s.service.verdict;

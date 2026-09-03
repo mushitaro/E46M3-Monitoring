@@ -121,7 +121,23 @@ function faultPayload(): Uint8Array {
     return new Uint8Array([0x02, ...record(0x2a, 0x08, 3), ...record(0xd1, 0x02, 1)]);
 }
 
+/**
+ * How many status polls the simulated test program runs for.
+ *
+ * The real ones take between ten seconds and sixteen minutes. This is not
+ * pretending to be that: it is long enough that the wizard's live view, its
+ * elapsed counter and its ABORT all actually execute, and short enough that
+ * someone exercising the app is not sitting through a gearbox adaptation.
+ */
+const SIM_TESTPRG_POLLS = 6;
+
 export function practiceEcu(): SimulatedEcuOptions {
+    // The simulated test program's own state. It lives in this closure because
+    // the protocol says it should: TESTPRG_STOP resets a run and TESTPRG_STARTEN
+    // advances it, so a counter reset by 0x33 and stepped by 0x32 IS the ECU's
+    // rule rather than a mock's convenience.
+    let testprgPolls = 0;
+
     return {
         address: 0x12,
         respond: (request) => {
@@ -202,6 +218,40 @@ export function practiceEcu(): SimulatedEcuOptions {
                 // to parse — and the first real car would be where that parser
                 // discovers it was reading fiction. Answering "acknowledged" is
                 // the whole of what we actually know.
+                // --- the SMG II test program ---------------------------
+                //
+                // 0x33 first, always: "Muss VOR TESTPRG_STARTEN geschickt
+                // werden!"  Here that is what resets the run, which is the
+                // ECU's own rule rather than a convenience of this mock.
+                case 0x33: // TESTPRG_STOP
+                    testprgPolls = 0;
+                    return null; // bare ACK — the SGBD declares no payload
+
+                // 0x32 answers with the status the wizard reads back. TWO bytes
+                // and no more:
+                //
+                //   [0] TEST_STATUS_BYTE — 1 running, 2 finished
+                //   [1] INFO_STATUS_BYTE — 0x00, which every procedure's own
+                //       activity table calls "initialization"
+                //
+                // The infobyte is a real code out of the shipped vocabulary, not
+                // an invented one, and it stays 0x00 because this simulator does
+                // not initialize anything and must not claim to. Infobyte 2 is
+                // omitted entirely rather than sent as zero: on procedure 0x04 it
+                // carries a pre-charge pressure, and a fabricated 0 bar would be
+                // a measurement this app has no business producing.
+                //
+                // **The byte POSITIONS are the app's own inference** from the
+                // SGBD's "Byte 5 (Lastenheft)" wording — see procedureRun.ts. So
+                // this simulator confirms the decoder's reading of a document and
+                // nothing more; a real gearbox is what settles it. The wizard
+                // prints the raw bytes beside the decode for exactly that reason.
+                case 0x32: // TESTPRG_STARTEN
+                    testprgPolls++;
+                    return {
+                        payload: new Uint8Array([testprgPolls >= SIM_TESTPRG_POLLS ? 0x02 : 0x01, 0x00]),
+                    };
+
                 case Ds2Control.SET_IO_STATUS:
                 case Ds2Control.KEEP_ALIVE:
                 case Ds2Control.END_DIAGNOSTIC_MODE:

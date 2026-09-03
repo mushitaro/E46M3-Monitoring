@@ -78,6 +78,38 @@ export const en: Localised = {
         'PRACTICE mode talks to a simulator, not a car. It is the only mode in which an actuator test will fire.',
         'Working on a car is dangerous. Jacking it up, running the engine, moving parts — this tool does none of that for you.',
     ],
+    wiz_title: (name: string) => `Procedure: ${name}`,
+    wiz_step: { prereq: 'Preconditions', safety: 'What will happen', run: 'Running', result: 'Result' },
+    wiz_prereq_note:
+        "The ECU's own preconditions, straight from the SGBD procedure table. Nothing here was added by this app.",
+    wiz_safety_ack: 'I have read the above and the car is in a state to do this',
+    wiz_gear: 'Gear to engage',
+    wiz_gear_neutral: 'Neutral',
+    wiz_gear_reverse: 'Reverse',
+    wiz_run_note:
+        'The ECU reports progress by having TESTPRG_STARTEN **sent again and again**. ' +
+        'It keeps going until the status is no longer “running” — which is the SGBD’s own instruction.',
+    wiz_elapsed: 'Elapsed',
+    wiz_of: (max: string) => `/ ${max} max`,
+    wiz_status: 'ECU status',
+    wiz_activity: 'What it is doing',
+    wiz_raw: 'Raw answer',
+    wiz_polls: (n: number) => `${n} asked`,
+    wiz_abortOnly: 'While it runs, ABORT is the only way out. The dialog will not close while the gearbox is working.',
+    wiz_result_ok: 'Finished normally',
+    wiz_result_bad: 'Did not finish properly',
+    wiz_result_aborted: 'Aborted',
+    wiz_stopSent: 'TESTPRG_STOP sent',
+    wiz_offsetsInferred:
+        "The answer's byte positions are **inferred** from the SGBD's wording (Byte 5 / Byte 6). Nothing has " +
+        'confirmed them against a car, so the raw bytes are printed beside the decode.',
+    procBlock: {
+        proc_block_vehicle:
+            'A vehicle is attached. This procedure is not a read and has not been confirmed on a car, so it is not sent. Run it in PRACTICE.',
+        proc_block_noJob: "This module's catalogue has no TESTPRG_STARTEN / TESTPRG_STOP.",
+        proc_block_selection: 'A gear must be chosen — neutral, 1 to 6, or reverse.',
+        proc_block_frame: 'The frame cannot be built: the template and the declared arguments do not agree.',
+    },
     gate_verified: 'Confirmed on a car',
     gate_unverified: 'Not confirmed on a car',
     gate_practiceOnly:

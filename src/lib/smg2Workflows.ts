@@ -116,7 +116,14 @@ export interface Smg2Workflows {
     sgbd: string;
     address: number;
     source?: unknown;
-    safety?: unknown;
+    /**
+     * The standing statement about this module's service functions — that they
+     * write, that the hydraulic pump does not stop itself, that 100 bar opens
+     * the relief valve. It was `unknown` while nothing rendered it; the wizard's
+     * SAFETY step is what the operator acknowledges before a procedure starts,
+     * so it is now typed and asserted present.
+     */
+    safety?: { ja: string; en: string };
     categories: Array<{ key: string; ja: string; en: string }>;
     actuators: Smg2Actuator[];
     /** The coarse state vocabulary, shared by every procedure. */

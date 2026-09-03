@@ -36,6 +36,8 @@ export function useHub(input: {
     selectedJob: CatalogJob | null;
     runVerdict: RunVerdict | null;
     catalogError: string | null;
+    /** Present when the selected job is an SMG II procedure. Opens its wizard. */
+    openProcedure?: () => void;
 }): { hub: HubConfig; notice: { text?: string; tone: NoticeTone } } {
     const { t } = useLang();
     const { link, datalog, selectedJob, runVerdict } = input;
@@ -73,6 +75,7 @@ export function useHub(input: {
                     ? { isProcedure: operationFor(selectedJob).kind === 'procedure', risk: jobRiskOf(selectedJob) }
                     : null,
                 verdict: runVerdict,
+                openProcedure: input.openProcedure,
                 run: () => {
                     // The gate's answer, used — not re-derived. `mayRun` decided
                     // this once, and the hub and the panel read the same object.

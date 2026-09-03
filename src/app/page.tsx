@@ -18,6 +18,7 @@ import { useUnloadGuard } from '@/hooks/useUnloadGuard';
 import { disclaimerStore } from '@/lib/disclaimer';
 import { exportCommsLog } from '@/lib/download';
 import {
+    jobIndex,
     loadEcuCatalog,
     loadEcuIndex,
     type CatalogJob,
@@ -38,7 +39,8 @@ import { AdaptationView, AdaptationViz } from '@/views/adaptation/AdaptationView
 import { DiagnosisView, DiagnosisViz } from '@/views/diagnosis/DiagnosisView';
 import { DatalogView, DatalogViz } from '@/views/datalog/DatalogView';
 import { useDatalog } from '@/views/datalog/useDatalog';
-import { ServiceView, ServiceViz } from '@/views/service/ServiceView';
+import { ServiceView, ServiceViz, procedureForJob } from '@/views/service/ServiceView';
+import { WizardDialog } from '@/views/service/WizardDialog';
 import { CatalogSummary } from '@/views/shared/CatalogSummary';
 
 /**
@@ -240,6 +242,13 @@ export default function Home() {
     const [practiceArmed, setPracticeArmed] = useState(false);
     const [faultOpen, setFaultOpen] = useState(false);
 
+    // The SMG II guided procedure. It is a DIALOG rather than a send, because
+    // the ECU's own comments describe a sequence — stop before start, a status
+    // read by re-asking, up to sixteen minutes with the clutch energised — and
+    // the hub cannot express any of that. `lib/procedureRun` holds the protocol.
+    const [wizardOpen, setWizardOpen] = useState(false);
+    const procedure = selectedJob ? procedureForJob(selectedJob, workflows) : null;
+
     // The one-time acknowledgement, read from storage as an external store so
     // the prerender is dialog-free and nothing flashes at a reader who agreed
     // months ago. `lib/disclaimer` explains why it is not a state-plus-effect.
@@ -268,6 +277,7 @@ export default function Home() {
         selectedJob,
         runVerdict,
         catalogError,
+        openProcedure: procedure ? () => setWizardOpen(true) : undefined,
     });
 
     const panes: Record<Tab, React.ReactNode> = {
@@ -460,6 +470,18 @@ export default function Home() {
             </main>
 
             {!agreed && <DisclaimerDialog onAgree={() => disclaimerStore.agree()} />}
+
+            {wizardOpen && procedure && catalog && workflows && (
+                <WizardDialog
+                    procedure={procedure}
+                    workflows={workflows}
+                    jobs={jobIndex(catalog)}
+                    telegrams={telegrams}
+                    mode={link.mode}
+                    send={link.runRead}
+                    onClose={() => setWizardOpen(false)}
+                />
+            )}
 
             {faultOpen && <ElectricalFaultDialog message={link.error ?? ''} onClose={() => setFaultOpen(false)} />}
 

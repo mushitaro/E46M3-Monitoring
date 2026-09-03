@@ -63,6 +63,28 @@ export interface Localised {
     disclaimer_title: string;
     disclaimer_lede: string;
     disclaimer_points: string[];
+    /** The SMG II guided procedure. */
+    wiz_title: (name: string) => string;
+    wiz_step: Record<'prereq' | 'safety' | 'run' | 'result', string>;
+    wiz_prereq_note: string;
+    wiz_safety_ack: string;
+    wiz_gear: string;
+    wiz_gear_neutral: string;
+    wiz_gear_reverse: string;
+    wiz_run_note: string;
+    wiz_elapsed: string;
+    wiz_of: (max: string) => string;
+    wiz_status: string;
+    wiz_activity: string;
+    wiz_raw: string;
+    wiz_polls: (n: number) => string;
+    wiz_abortOnly: string;
+    wiz_result_ok: string;
+    wiz_result_bad: string;
+    wiz_result_aborted: string;
+    wiz_stopSent: string;
+    wiz_offsetsInferred: string;
+    procBlock: Record<'proc_block_vehicle' | 'proc_block_noJob' | 'proc_block_selection' | 'proc_block_frame', string>;
     gate_verified: string;
     gate_unverified: string;
     gate_practiceOnly: string;

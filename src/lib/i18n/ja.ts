@@ -78,6 +78,37 @@ export const ja: Localised = {
         'PRACTICE モードが話す相手はシミュレータで、車ではありません。作動テストを試せるのはこのモードだけです。',
         '車の作業には危険が伴います。ジャッキアップ、エンジン運転、可動部——このツールは何も肩代わりしません。',
     ],
+    wiz_title: (name: string) => `手順: ${name}`,
+    wiz_step: { prereq: '前提条件', safety: '何が起きるか', run: '実行中', result: '結果' },
+    wiz_prereq_note: 'ECU 側が要求する前提条件です。SGBD の手順表そのままで、こちらで足したものはありません。',
+    wiz_safety_ack: '上記を読み、実施できる状態にあることを確認しました',
+    wiz_gear: '入れるギア',
+    wiz_gear_neutral: 'ニュートラル',
+    wiz_gear_reverse: 'リバース',
+    wiz_run_note:
+        'ECU は TESTPRG_STARTEN を**繰り返し送る**ことで進捗を返します。' +
+        '状態が「実行中」でなくなるまで送り続けます——これは SGBD の指示そのままです。',
+    wiz_elapsed: '経過',
+    wiz_of: (max: string) => `/ 最大 ${max}`,
+    wiz_status: 'ECU の状態',
+    wiz_activity: 'いま何をしているか',
+    wiz_raw: '生の応答',
+    wiz_polls: (n: number) => `${n} 回問い合わせ`,
+    wiz_abortOnly: '実行中の出口は ABORT だけです。変速機が動いている間にダイアログを閉じることはできません。',
+    wiz_result_ok: '正常に終了しました',
+    wiz_result_bad: '正常には終了しませんでした',
+    wiz_result_aborted: '中止しました',
+    wiz_stopSent: 'TESTPRG_STOP を送信済み',
+    wiz_offsetsInferred:
+        '応答のバイト位置は SGBD の記述（Byte 5 / Byte 6）からの**推定**です。実車での確認は取れていないので、' +
+        '解読結果の隣に生バイトも出しています。',
+    procBlock: {
+        proc_block_vehicle:
+            '実車が接続されています。この手順は読取ではなく、実車で確認が取れていないので送れません。PRACTICE で実行してください。',
+        proc_block_noJob: 'このモジュールのカタログに TESTPRG_STARTEN / TESTPRG_STOP がありません。',
+        proc_block_selection: 'ギアの選択が必要です（ニュートラル・1〜6速・リバース）。',
+        proc_block_frame: '送るべきフレームを組み立てられません。テンプレートと宣言引数が一致していません。',
+    },
     gate_verified: '実車確認済',
     gate_unverified: '実車未確認',
     gate_practiceOnly: '未検証のため実行できません。実車で1件ずつ検証し台帳に記録してから解禁します。',

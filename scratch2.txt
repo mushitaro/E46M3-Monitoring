@@ -1,0 +1,81 @@
+{
+ "id": "0x01",
+ "testprg": "0x01",
+ "durMaxSec": 120,
+ "engine": "off",
+ "needsPrepare": true,
+ "auswahl": false,
+ "risk": "high",
+ "prereq": [
+  {
+   "ja": "IG ON・エンジン停止・ニュートラル",
+   "en": "Ignition ON, engine OFF, neutral"
+  },
+  {
+   "ja": "バッテリ電圧が十分（充電器推奨）",
+   "en": "Sufficient battery voltage (charger recommended)"
+  },
+  {
+   "ja": "油温が常温付近・車両は平坦な場所で静止",
+   "en": "Fluid near ambient temp; vehicle stationary on level ground"
+  }
+ ],
+ "activity": [
+  {
+   "code": "0x00",
+   "de": "Testprogramm Initialisierung",
+   "ja": "初期化",
+   "en": "Initialization"
+  },
+  {
+   "code": "0x01",
+   "de": "Kupplungsentlueftung",
+   "ja": "クラッチのエア抜き中",
+   "en": "Clutch bleeding"
+  },
+  {
+   "code": "0x7F",
+   "de": "Entlueftung beendet",
+   "ja": "エア抜き完了",
+   "en": "Bleeding finished"
+  },
+  {
+   "code": "0xFF",
+   "de": "Unbekannter Infotext",
+   "ja": "不明",
+   "en": "Unknown"
+  }
+ ],
+ "faults": [
+  {
+   "code": "0x00",
+   "de": "Kein Fehler",
+   "ja": "異常なし",
+   "en": "No fault"
+  },
+  {
+   "code": "0x01",
+   "de": "Nehmerzylinder-Mindesthub nicht erreicht",
+   "ja": "レリーズシリンダの最小ストローク未達",
+   "en": "Slave-cylinder minimum stroke not reached"
+  },
+  {
+   "code": "0x7F",
+   "de": "Abbruch durch Benutzer",
+   "ja": "ユーザーによる中止",
+   "en": "Aborted by user"
+  },
+  {
+   "code": "0xA0",
+   "de": "Testbedingung nicht erfuellt (Motor laeuft, oder Zuendung ist aus)",
+   "ja": "テスト条件未成立（エンジン始動中、またはIG OFF）",
+   "en": "Condition not met (engine running, or ignition off)"
+  },
+  {
+   "code": "0xFF",
+   "de": "Unbekannter Infotext",
+   "ja": "不明",
+   "en": "Unknown"
+  }
+ ]
+}

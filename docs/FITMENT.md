@@ -34,17 +34,20 @@
 | id | SGBD | fit | ECU 文字列 | 裏付け |
 |---|---|---|---|---|
 | `ascmk20` | `ASCMK20.prg` | `early`（前期 MK20） | `ABS/ASC, ITT_Industries, MK20E_I, E36,E46` | 実送信 `56 04 00` |
-| `dsc_e46` | `DSC_E46.prg` | `late`（後期） | *（無し）* | **無し** |
+| `dsc_e46` | `DSC_E46.prg` | `late`（後期） | `Antiblockiersystem u. Dynamisches Stabilitaets Controll E46` | 実送信 `56 04 00` |
 
-`ASCMK20` の SGBD は「6 km/h 超では診断不可」とも述べており、その一文は
-`index.json` の `note` に載っている。
+両方の ECU が COMMENT で同じことを述べている——`Keine Diagnose bei V > 6 km/h`。
+その一文は 2 つとも `index.json` の `note` に載っている。
 
-> **開いている穴。** `dsc_e46` は 51 モジュールの中で唯一、実送信テレグラムの裏付けが無い。
-> `_addresses.json`（59 件、EdiabasLib の実送信 `(Send sim): …` から取ったもの）に
-> `DSC_E46` は**入っていない**し、ダンプにも ECU 文字列が無い。0x56 という値は
-> `gen_ecu_data.py` の `MODULES` の宣言であって、測ったものではない。
-> `dump_modules.py --exec IDENT` を `DSC_E46` に回して埋めること。実測が 0x56 で
-> なければ、宣言ではなくトレースが勝つ。
+> **ここは長く穴だった。** `dsc_e46` は 51 モジュールの中で唯一、実送信テレグラムの
+> 裏付けが無く、0x56 という値は `gen_ecu_data.py` の宣言でしかなかった。
+> `python tools/dump_modules.py DSC_E46` で埋めた: `56 04 00`、宣言と一致。
+>
+> 同じ実行を全 63 件に広げたところ、**`_addresses.json` に載っていなかったのは
+> `DSC_E46` だけではなかった**——`MSS54DS0`（0x12）と `SMG2`（0x32）、つまり主力の
+> 2 モジュールも入っていなかった。dump_modules.py より前に手でダンプしたからで、
+> 誰も気付いていなかった。3 件とも宣言どおりの値が出て、**51 モジュールの宣言
+> アドレスと実測テレグラムの食い違いは 0 件**。台帳は 59 → 63 件になった。
 
 ---
 
@@ -52,8 +55,8 @@
 
 ### `DSC_MK60` — 負の結果として保存する
 
-他の 58 モジュールの IDENT が 3 バイトの DS2（`<アドレス> 04 00`）なのに対し、
-これだけが違うものを送る:
+63 件のうち 61 の IDENT が 3 バイトの DS2（`<アドレス> 04 00`）なのに対し、
+KWP2000 を送るのは 2 件だけで、そのうちの 1 つがこれである:
 
 ```
 DSC_MK60   addr 0xB8   ident_tele  B8 29 F1 02 1A 80
@@ -75,9 +78,20 @@ COMMENT: Version Conti_Teves MK60 DSC3 E46(ASC/DSC), R50(ABS/ASC/DSC), E85 DSC
 
 ### `10flash`
 
-ECU ではない。フラッシュ書込のプロトコル SGBD で、ジョブは `FLASH_PARAMETER_LESEN` /
-`MOST_CAN_GATEWAY_ENABLE` / `ACCESS_TIMING_PARAMETER` の類。診断アドレスを持たず、
-**63 個のダンプの中で唯一 `_addresses.json` に載らない**。WinKFP の領分。
+ECU ではない。**ECU 文字列が自分でそう名乗っている**:
+
+```
+ECU: Spezial SGBD nur zum flashen eines SG's
+```
+
+ジョブも `FLASH_PARAMETER_LESEN` / `MOST_CAN_GATEWAY_ENABLE` /
+`ACCESS_TIMING_PARAMETER` の類。加えて IDENT は `82 00 F1 1A 80`——DSC_MK60 と同じ
+KWP2000 で、宛先は 0x82。DS2 のこのアプリからは届かない。WinKFP の領分。
+
+> ここには当初「診断アドレスを持たない。63 個のダンプの中で唯一 `_addresses.json` に
+> 載らない」と書いていた。**根拠が逆立ちしていた**——載っていなかったのは
+> アドレスが無いからではなく、誰も測っていなかったからである。台帳に無いことを
+> 事実の不在として読むと、こうなる。
 
 ---
 
@@ -101,23 +115,27 @@ ECU ではない。フラッシュ書込のプロトコル SGBD で、ジョブ�
 
 `provenance: unrecorded`。**引き継いだ決定で、根拠が残っていない。**
 
-| SGBD | アドレス | 採ったもの |
-|---|---|---|
-| `SM46` | 0x72 | `sm46_4` |
-| `SM46_3` | 0x72 | `sm46_4` |
-| `SM46C_4` | 0x72 | `sm46c_5` |
-| `B_SM46_3` | 0xDA | `b_sm46_4` |
+| SGBD | アドレス | ECU 文字列 | 採ったもの |
+|---|---|---|---|
+| `SM46` | 0x72 | `SM46`（rev 1.00。チャンネル数も車種も名乗らない） | `sm46_4` |
+| `SM46_3` | 0x72 | `3-Kanal Sitzmemory E46/E85` | `sm46_4`（`4-Kanal Sitzmemory E46`） |
+| `SM46C_4` | 0x72 | `Sitzmemory E46 Cabrio` | `sm46c_5`（**同じ文字列**） |
+| `B_SM46_3` | 0xDA | `3-Kanal Beifahrer-Sitzmemory E46/E85` | `b_sm46_4`（`4-Kanal …`） |
 
-どれも「同じアドレスの別世代」で、0x56（`ascmk20` / `dsc_e46`）や 0x5B
-（`ihka46` / `_2` / `_3`）とまったく同じ形をしている。そちらは `fit` で両載せして
-利用者に選ばせているので、**この 4 件も本来は fit の候補**である。
+どれも 0x56（`ascmk20` / `dsc_e46`）や 0x5B（`ihka46` / `_2` / `_3`）と同じ形——
+同一アドレスに複数がぶら下がる——なので、**本来は `fit` の候補**である。
 
-なぜ第 4 世代を採って第 3 世代を採らなかったのかは、どこにも書かれていない。
-E46 M3 のシートメモリがどの世代かを、この repo は測っていない。
+**何が違うのかは実測で分かった。** ECU 文字列が言っているのは世代ではなく
+**チャンネル数**で、3ch と 4ch は別のハードウェアである（`SM46C_4` と `SM46C_5` だけは
+文字列が一字一句同じで、こちらは本当に SGBD の版違い）。3ch も 4ch も自分で E46 だと
+名乗っているので、**どちらも載りうる**。
+
+それでも `unrecorded` のままにする。分かったのは「何が違うか」であって「この車が
+どちらか」ではない。
 
 **推測で埋めない。** それらしい理由を書けば `unrecorded` は 0 になるが、それは
 数字が良くなっただけで、根拠は増えていない。`unrecorded` を 0 にする正しい手は、
-実車の 0x72 / 0xDA に IDENT を送って ECU 文字列を読むことである。
+実車の 0x72 / 0xDA に IDENT を送って、返ってきた ECU 文字列を読むことである。
 
 ---
 
@@ -125,7 +143,7 @@ E46 M3 のシートメモリがどの世代かを、この repo は測ってい�
 
 `$SGBD_DUMP_DIR` の残り 24 ファイルは ECU のダンプではない:
 
-- `_addresses.json` — `dump_modules.py` が実送信テレグラムから取った 59 件のアドレス表
+- `_addresses.json` — `dump_modules.py` が実送信テレグラムから取った **63 件**のアドレス表（ECU のダンプ全部）
 - `_families.json` / `_phrases_*.json`（19 件）/ `_untranslated_tokens.json` — 用語抽出の中間物
 - `{mss54,smg2,dsc_e46}.telegrams.json` — `extract_telegrams.py` の出力
 

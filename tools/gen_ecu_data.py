@@ -90,8 +90,21 @@ MODULES = {
     # — early cars" になる。名前は ECU が何か、fit はどの車が積んでいるか。
     "ascmk20":  M("ASCMK20",  "ABS/ASC MK20",                  "ABS/ASC MK20",                0x56, "chassis", "early",
                   "6 km/h 超では診断不可（ECU の COMMENT より）", "no diagnosis above 6 km/h (from the ECU's own COMMENT)"),
-    "dsc_e46":  M("DSC_E46",  "DSC (E46)",                     "DSC (E46)",                   0x56, "chassis", "late"),
-    "lws5":     M("LWS5",     "舵角センサ LWS5",                "Steering angle sensor LWS5",  0x57, "chassis", "std", "DSC MK60 と対", "paired with DSC MK60"),
+    # 0x56 は実測で確かめた: `dump_modules.py` の IDENT が `56 04 00` を送り、
+    # ECU は "Antiblockiersystem u. Dynamisches Stabilitaets Controll E46" と名乗る。
+    # 51 モジュールで唯一トレースの裏付けが無かったのがここだった。
+    # 注記は ASCMK20 と同じ文で、根拠も同じ——**この ECU 自身の COMMENT** が
+    # "Keine Diagnose bei V > 6 km/h" と述べている。
+    "dsc_e46":  M("DSC_E46",  "DSC (E46)",                     "DSC (E46)",                   0x56, "chassis", "late",
+                  "6 km/h 超では診断不可（ECU の COMMENT より）", "no diagnosis above 6 km/h (from the ECU's own COMMENT)"),
+    # 注記は「DSC MK60 と対」だった。**根拠が無い。** LWS5 の ECU 文字列は
+    # "Lenkradwinkel mit CAN-Schnittstelle" で COMMENT は空、どの DSC と対かを
+    # SGBD は一度も述べていない。DSC_MK60 はそもそもこの車の DS2 ECU ではない
+    # （KWP2000 / 0xB8。`docs/FITMENT.md` §2）ので、旧 id "dsc_mk60" を生んだ
+    # 取り違えがここにも残っていたことになる。
+    "lws5":     M("LWS5",     "舵角センサ LWS5",                "Steering angle sensor LWS5",  0x57, "chassis", "std",
+                  "ECU の名乗りは「CAN インタフェース付き舵角」。対になる DSC を SGBD は述べていない",
+                  "The ECU calls itself a steering-angle sensor with a CAN interface; the SGBD never says which DSC it pairs with"),
     "rdc":      M("RDC",      "タイヤ空気圧 RDC",               "Tyre pressure control RDC",   0x70, "chassis", "opt"),
     # --- safety & security -------------------------------------------------------
     "mrs3":     M("MRS3",     "エアバッグ MRS3",                "Airbag MRS3",                 0xA4, "safety", "early", "〜03/2003", "up to 03/2003"),

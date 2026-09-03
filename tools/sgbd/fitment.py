@@ -59,15 +59,25 @@ _PROTOCOL: dict[str, Fitment] = {
                      "cannot reach it. The SGBD does name the E46 (MK60 DSC3): the reason is the protocol, "
                      "not the car.",
     },
-    # ECU ではない。フラッシュ書込のプロトコル SGBD で、ジョブは
-    # FLASH_PARAMETER_*, MOST_CAN_GATEWAY_*, ACCESS_TIMING_PARAMETER。
-    # 診断アドレスを持たない（`_addresses.json` に唯一入っていないダンプ）。
+    # ECU ではない。ECU 文字列が自分でそう名乗っている:
+    #     "Spezial SGBD nur zum flashen eines SG's"
+    # ジョブも FLASH_PARAMETER_* / MOST_CAN_GATEWAY_* / ACCESS_TIMING_PARAMETER。
+    # そのうえ DSC_MK60 と同じく KWP2000（`82 00 F1 1A 80`、宛先 0x82）を送るので、
+    # DS2 のこのアプリからは届かない。
+    #
+    # **ここには「診断アドレスを持たない」と書いてあった。** 根拠は `_addresses.json`
+    # に載っていないことだったが、それは「アドレスが無い」ではなく「誰も測っていない」
+    # だった。`dump_modules.py` を全 63 件に回したら 0x82 が出た。台帳に無いことを
+    # 事実の不在と読んだ間違いで、同じ実行で MSS54DS0 と SMG2 も——**主力 2 モジュール**
+    # が——載っていなかったことが分かっている。
     "10flash": {
-        "provenance": "trace",
-        "reason_ja": "ECU ではなくフラッシュ書込のプロトコル SGBD。診断アドレスを持たず、"
-                     "`_addresses.json` にも載らない。WinKFP の領分。",
-        "reason_en": "Not an ECU — the flash-programming protocol SGBD. It has no diagnostic address and is "
-                     "the only dump absent from _addresses.json. WinKFP's territory.",
+        "addr": "0x82", "ident": "82 00 F1 1A 80", "provenance": "trace",
+        "reason_ja": "ECU ではない。ECU 文字列が \"Spezial SGBD nur zum flashen eines SG's\"（SG を"
+                     "フラッシュするためだけの特殊 SGBD）と名乗っている。加えて IDENT が KWP2000"
+                     "（0x82 宛）なので DS2 のこのアプリからは届かない。WinKFP の領分。",
+        "reason_en": "Not an ECU: its own ECU string says \"Spezial SGBD nur zum flashen eines SG's\" — a "
+                     "special SGBD only for flashing a control unit. Its IDENT is KWP2000 to 0x82 as well, so "
+                     "a DS2 app cannot reach it. WinKFP's territory.",
     },
 }
 
@@ -112,37 +122,55 @@ _NOT_EQUIPPED: dict[str, Fitment] = {
 # ---------------------------------------------------------------------------
 #  3) 同じアドレスの、別世代
 # ---------------------------------------------------------------------------
-#  ここが `unrecorded` の 4 件である。**なぜ第 4 世代を採って第 3 世代を採らな
-#  かったのか、どこにも書かれていない。** 0x56（ASCMK20 / DSC_E46）や 0x5B
-#  （IHKA46 / _2 / _3）は同じ形——同一アドレスに世代違いが並ぶ——を `fit` で
-#  両載せして解決しているので、この 4 件も本来は fit の候補である。
+#  ここが `unrecorded` の 4 件である。**なぜこちらを採ってあちらを採らなかったのか、
+#  どこにも書かれていない。** 0x56（ASCMK20 / DSC_E46）や 0x5B（IHKA46 / _2 / _3）と
+#  同じ形——同一アドレスに複数が並ぶ——なので、本来は `fit` の候補である。
 #
-#  推測で埋めない。E46 M3 のシートメモリがどの世代かを、この repo は測っていない。
-#  「分からない」と書いてある状態のほうが、それらしい理由が書いてある状態より強い。
+#  **何が違うのかは実測で分かった。** `_addresses.json` の ECU 文字列:
+#
+#      SM46_3    "3-Kanal Sitzmemory E46/E85"              B_SM46_3  "3-Kanal Beifahrer-…"
+#      SM46_4    "4-Kanal Sitzmemory E46"                  B_SM46_4  "4-Kanal Beifahrer-…"
+#      SM46C_4   "Sitzmemory E46 Cabrio"                   SM46C_5   "Sitzmemory E46 Cabrio"
+#
+#  ——世代ではなく**チャンネル数**、つまり別のハードウェアである（`SM46C_4` と
+#  `SM46C_5` だけは文字列が同一で、こちらは本当に SGBD の版違い）。3ch も 4ch も
+#  自分で E46 だと名乗っているので、**どちらも載りうる**。
+#
+#  それでも `unrecorded` のままにする。分かったのは「何が違うか」であって
+#  「この車がどちらか」ではない。推測で埋めない——それらしい理由を書けば数字は
+#  0 になるが、根拠は増えていない。実車の 0x72 / 0xDA に IDENT を送れば済む。
 _UNRECORDED_GENERATION: dict[str, Fitment] = {
     "SM46": {
         "addr": "0x72", "instead": "sm46_4", "provenance": "unrecorded",
-        "reason_ja": "0x72 のシートメモリの旧世代。採否の理由が記録されていない。"
-                     "0x56 や 0x5B と同じく fit で両載せできる形。",
-        "reason_en": "An earlier generation of the 0x72 seat memory. No reason was recorded. Same shape as "
-                     "0x56 and 0x5B, which carry both generations via fit.",
+        "reason_ja": "0x72 のシートメモリ。ECU 文字列は \"SM46\" だけで、チャンネル数も車種も"
+                     "名乗らない（rev 1.00 で、この族で最も古い）。採否の理由が記録されていない。",
+        "reason_en": "The 0x72 seat memory whose ECU string is just \"SM46\" — it names neither a channel "
+                     "count nor a car (rev 1.00, the oldest of the family). No reason was recorded.",
     },
     "SM46_3": {
         "addr": "0x72", "instead": "sm46_4", "provenance": "unrecorded",
-        "reason_ja": "0x72 のシートメモリ第 3 世代。採否の理由が記録されていない。",
-        "reason_en": "Third-generation 0x72 seat memory. No reason was recorded.",
+        "reason_ja": "\"3-Kanal Sitzmemory E46/E85\"。出荷している sm46_4 は \"4-Kanal\" で、"
+                     "違いは世代ではなく**チャンネル数**——別のハードウェア。どちらも E46 を"
+                     "名乗る。この車がどちらかは測っていない。",
+        "reason_en": "\"3-Kanal Sitzmemory E46/E85\". The shipped sm46_4 is the \"4-Kanal\" one: the "
+                     "difference is the channel count, i.e. different hardware, not a newer SGBD. Both name "
+                     "the E46. Which one this car has has not been measured.",
     },
     "SM46C_4": {
         "addr": "0x72", "instead": "sm46c_5", "provenance": "unrecorded",
-        "reason_ja": "0x72 のカブリオレ用シートメモリ第 4 世代（採ったのは第 5 世代）。"
-                     "採否の理由が記録されていない。",
-        "reason_en": "Fourth-generation cabriolet seat memory on 0x72 (the fifth is the one shipped). No "
-                     "reason was recorded.",
+        "reason_ja": "カブリオレ用。ECU 文字列は出荷している sm46c_5 と**一字一句同じ**"
+                     "（\"Sitzmemory E46 Cabrio\"）で、こちらは本当に SGBD の版違い。"
+                     "どちらを採るかの理由が記録されていない。",
+        "reason_en": "The cabriolet one. Its ECU string is byte-identical to the shipped sm46c_5 "
+                     "(\"Sitzmemory E46 Cabrio\"), so this really is a version difference. No reason was "
+                     "recorded for taking one over the other.",
     },
     "B_SM46_3": {
         "addr": "0xDA", "instead": "b_sm46_4", "provenance": "unrecorded",
-        "reason_ja": "0xDA の助手席シートメモリ第 3 世代。採否の理由が記録されていない。",
-        "reason_en": "Third-generation passenger seat memory on 0xDA. No reason was recorded.",
+        "reason_ja": "\"3-Kanal Beifahrer-Sitzmemory E46/E85\"。助手席側の同じ話——出荷している"
+                     "b_sm46_4 は 4ch。この車がどちらかは測っていない。",
+        "reason_en": "\"3-Kanal Beifahrer-Sitzmemory E46/E85\" — the same story on the passenger side; the "
+                     "shipped b_sm46_4 is the 4-channel one. Which this car has has not been measured.",
     },
 }
 

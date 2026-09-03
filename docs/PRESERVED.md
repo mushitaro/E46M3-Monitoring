@@ -26,7 +26,7 @@ worktree の tgz にしか無いのはそのため。片方だけでは復元で
 
 | 資産 | 出所 | 実測 | 移動先 | 公開 | なぜ再生成できないか |
 |---|---|---|---|---|---|
-| **DS2 アドレス表** `_addresses.json` | PWA `tools/SgbdDump/out/` | 39,768 B、**59 エントリ** | `$SGBD_DUMP_DIR` | ✗ | EdiabasLib が**実際に送信した** IDENT テレグラムの先頭バイト（`(Send sim): 80 04 00` → `0x80`）。静的解析による代替（`detect_address.py`）は既知 3 モジュールで全滅した。再取得には EDIABAS 一式・EdiabasLib・再ビルドした exe が要る |
+| **DS2 アドレス表** `_addresses.json` | PWA `tools/SgbdDump/out/` → 現在は `$SGBD_DUMP_DIR` | 42,542 B、**63 エントリ**（ECU のダンプ全部。59 だった頃、MSS54DS0・SMG2・DSC_E46・10flash が抜けていた） | `$SGBD_DUMP_DIR` | ✗ | EdiabasLib が**実際に送信した** IDENT テレグラムの先頭バイト（`(Send sim): 80 04 00` → `0x80`）。静的解析による代替（`detect_address.py`）は既知 3 モジュールで全滅した。再取得には EDIABAS 一式・EdiabasLib・再ビルドした exe が要る |
 | **SGBD ダンプ** | PWA `tools/SgbdDump/out/` | **63 ダンプ / 3,325,871 B**、うち **61 が `tables` 保有** | `$SGBD_DUMP_DIR` | ✗ | `C:\EDIABAS\ECU` の BMW 製 `.prg` からしか作れない。我々のものではない |
 | **翻訳作業セット** `_phrases_*.json` ほか | PWA `tools/SgbdDump/out/` | **18 ファイル** + `_untranslated_tokens.json` / `_families.json` / `_joblist.txt` | `$SGBD_DUMP_DIR` | ✗ | 7,316 フレーズの背後にある監査証跡 |
 | **用語表 A** | `E46M3-Diagnosis/tools/terms/` | 6 ファイル / 265,734 B / **PHRASES 1,718** | 統合（下記） | ✗ | 手書き |

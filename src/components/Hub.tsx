@@ -1,7 +1,8 @@
 'use client';
 
 import type { LucideIcon } from 'lucide-react';
-import { HUB_LABEL } from './ui';
+import { useBusyLock } from '@/hooks/useBusyLock';
+import { HUB_LABEL, TextButton } from './ui';
 
 /**
  * The hub — a state-machine action ring.
@@ -210,4 +211,44 @@ export function HubNotice({ text, tone = 'info' }: { text?: string; tone?: Notic
  */
 export function SubActions({ children }: { children?: React.ReactNode }) {
     return <div className="flex h-[46px] flex-none items-center justify-center gap-x-4">{children}</div>;
+}
+
+/**
+ * A button in the sub-action row.
+ *
+ * The ONLY way to put a control there, and it reads the busy lock itself. The
+ * predecessor enforced "sub-actions are dead while busy" with a sweep over the
+ * rendered row (`querySelectorAll("button, select, input")` → `disabled = true`),
+ * which finds whatever happens to be there when it runs and nothing else.
+ *
+ * Making it a component turns the rule into a mechanism: a sub-action that stays
+ * live during a write is not something you can write by forgetting a prop, only
+ * by writing a different component — which is a visible act.
+ *
+ * `stopButton` is the one exception, and it is spelled out rather than left to a
+ * caller's judgement. An armed actuator's STOP must stay pressable while a write
+ * is in flight, because the output is physically on. Nothing else may pass it.
+ */
+export function SubActionButton({
+    stopButton = false,
+    disabled,
+    title,
+    ...rest
+}: Omit<React.ComponentProps<typeof TextButton>, 'disabled'> & {
+    stopButton?: boolean;
+    disabled?: boolean;
+    title?: string;
+}) {
+    const { busy, label } = useBusyLock();
+    const lockedOut = busy && !stopButton;
+    return (
+        <TextButton
+            {...rest}
+            disabled={lockedOut || disabled}
+            // Say WHY it is dead. `title` is a hover, so this is the mouse's
+            // half; the notice line above the hub carries the same label for
+            // everyone else — see the note in useBusyLock.
+            title={lockedOut && label ? label : title}
+        />
+    );
 }

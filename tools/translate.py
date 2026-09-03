@@ -186,10 +186,35 @@ DICT = {
     "EINE": ("", ""), "EINES": ("", ""), "EINER": ("", ""), "EINEM": ("", ""),
 }
 
+import re
+# tools/terms/*.py の統合フレーズ表＋族別トークン
+from term_overrides import lookup as _phrase_lookup, TOKENS as _EXTRA_TOKENS
+
+# 族別 TOKENS は DICT に「無いキーだけ」足す。既存の訳を上書きしないためで、
+# 同じトークンを族ごとに別の意味に取りたい場合は PHRASES（原文完全一致）で個別に
+# 指定すること——トークンは文脈を持たないので、族をまたいだ時点で必ずどこかで誤る。
+for _k, _v in _EXTRA_TOKENS.items():
+    DICT.setdefault(_k.upper(), tuple(_v))
+
+# トークンを足した「後」に測る。先に測ると、足したトークンのうち最長のものが
+# 二度と一致しなくなる。
 _MAXLEN = max(len(k) for k in DICT)
 
-import re
-from term_overrides import lookup as _phrase_lookup  # tools/terms/*.py の統合フレーズ表
+
+def authored(text, sgbd=None):
+    """この文字列に人の書いた訳があるか。
+
+    ラベル選びが「説明文の訳」と「識別子の分解」を得点で competing させるとき、片方が
+    人の書いた文である場合に得点で比べてはいけない。分解は機械の推測で、フレーズ表は
+    誰かが SGBD を読んで書いた事実——出所が違うものを同じ土俵に乗せない。
+
+    実測でそうなった: 族別トークンを足したことで VA/HA/SIM が訳せるようになり、
+    DSC_SIM_VA の識別子分解が満点になって、authored な
+    「STEUERN_DIGITAL 経由で駆動し、そのまま保持する（解除ジョブなし）」に同点で
+    勝った——短いほうを採る tie-break で。ラッチすることを述べた唯一の文が消えた。
+    """
+    return _phrase_lookup((text or "").strip(), "ja", sgbd) is not None
+
 
 _LEFTOVER_SEP = "・"  # 日本語: 未訳(独語のまま)断片と訳語断片の境界にのみ挿入する記号
                        # （訳語どうしの間には挿入しない＝自然な複合語のまま詰めて表示する）
@@ -255,7 +280,8 @@ def _tok(t, idx, decompose=True):
     return _join_frags(res, idx), any(bad for _, bad in res), len(t)
 
 
-def translate(text, lang, decompose=True, strip_prefixes=("STATUS_", "STAT_", "STEUERN_")):
+def translate(text, lang, decompose=True, strip_prefixes=("STATUS_", "STAT_", "STEUERN_"),
+              sgbd=None):
     """識別子/独語句を ja/en に。区切り _ - / 空白で分割。
        フォールバック順:
          ① tools/terms/*.py の厳選フレーズ表（tools/term_overrides.py 経由・完全一致のみ）
@@ -263,7 +289,7 @@ def translate(text, lang, decompose=True, strip_prefixes=("STATUS_", "STAT_", "S
          ③ 元の独語のまま（最終手段。_LEFTOVER_SEP で訳語断片と視覚的に区切る）
        decompose=True: 複合語を分解（識別子向け）。False: 全語一致のみ（故障文向け）。"""
     idx = 0 if lang == "ja" else 1
-    hit = _phrase_lookup((text or "").strip(), lang)      # ① フレーズ表を最優先で試す
+    hit = _phrase_lookup((text or "").strip(), lang, sgbd)  # ① フレーズ表を最優先で試す
     if hit is not None:
         return hit
     s = text
@@ -277,12 +303,13 @@ def translate(text, lang, decompose=True, strip_prefixes=("STATUS_", "STAT_", "S
     return joined or text                                  # ③ 最終手段
 
 
-def leftover_ratio(text, decompose=True, strip_prefixes=("STATUS_", "STAT_", "STEUERN_")):
+def leftover_ratio(text, decompose=True, strip_prefixes=("STATUS_", "STAT_", "STEUERN_"),
+                   sgbd=None):
     """0.0=完全に翻訳済み 〜 1.0=丸ごと未訳（独語のまま）。
        gen_from_dump.py の lbl_for() がラベル候補の品質を比較するのに使う
        （tools/verify_translation_quality.py はこれに依存しない独立検査）。
        言語非依存（フレーズ表/DICTで解決できるか否かで決まるため常に 'ja' 側で判定する）。"""
-    if _phrase_lookup((text or "").strip(), "ja") is not None:
+    if _phrase_lookup((text or "").strip(), "ja", sgbd) is not None:
         return 0.0
     s = text
     for p in strip_prefixes:

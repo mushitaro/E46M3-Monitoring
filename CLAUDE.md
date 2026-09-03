@@ -40,6 +40,7 @@ Next.js 16 / React 19 / Tailwind v4、`output: 'export'` の静的書き出し�
 npm run lint && npm run typecheck && npm test
 node tools/check_ui_tokens.mjs
 python tools/check_references.py
+python tools/check_term_scope.py
 python tools/verify_ecu_data.py
 python tools/verify_translation_quality.py
 ```

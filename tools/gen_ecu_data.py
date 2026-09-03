@@ -30,7 +30,7 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 from sgbd import classify, model, specs                      # noqa: E402
 from sgbd.model import ROLE_TEXT, ROLE_UNIT, ROLE_VALUE      # noqa: E402
-from translate import leftover_ratio, translate              # noqa: E402
+from translate import authored, leftover_ratio, translate    # noqa: E402
 import paths                                                # noqa: E402
 
 HERE = os.path.dirname(__file__)
@@ -162,6 +162,7 @@ def sidecars_for(mid: str) -> list[str]:
 COUNTS = os.path.join(HERE, "ecu_data_counts.json")
 
 # 汎用すぎて情報価値のない説明文（この場合は識別子から作る方が良い）
+
 GENERIC = {"", "ergebnis", "result", "wert", "value", "status", "job"}
 
 # 値域だけを述べた説明文（"0 oder 1" / "-32 bis 31" / "0-255 bzw. 0x00-0xFF" 等）。
@@ -176,7 +177,22 @@ _RSEP = r"(?:\s*(?:oder|bis|und|bzw\.?|[-–/,])\s*|\s*\.{2,3}\s*)"
 GENERIC_RANGE = re.compile(rf"^{_NUM}(?:{_RSEP}{_NUM})+$", re.I)
 
 
-def lbl_for(name: str, comment: str | None) -> tuple[str, str, dict | None]:
+# MSS54 のコメントは末尾に測定値の内部名を付ける（"エンジン回転数 n / MW_N"）。
+# これはラベルではなく識別子で、識別子は識別子スロットに出る。ラベルから落として
+# desc には残す——捨てるのではなく、置く場所を選んでいる。
+#
+# 訳した「後」に落とす。原文から先に落とすとフレーズ表の完全一致が外れ、人の書いた
+# 訳がまるごと効かなくなる。
+_INTERNAL_NAME = re.compile(r"\s*/\s*MW_[A-Z0-9_]+\s*$")
+
+
+def _drop_internal_name(text: str) -> str:
+    stripped = _INTERNAL_NAME.sub("", text)
+    # 内部名しか無かった場合は落とさない。空のラベルより内部名のほうがまだ何かを言う。
+    return stripped or text
+
+
+def lbl_for(name: str, comment: str | None, sgbd: str | None = None) -> tuple[str, str, dict | None]:
     """ラベルと説明を分離して生成。gen_from_dump.py から移設（唯一の流用箇所）。
 
     ラベルは「comment翻訳」と「識別子分解」の2候補を作り、未訳の独語が占める割合が
@@ -190,22 +206,46 @@ def lbl_for(name: str, comment: str | None) -> tuple[str, str, dict | None]:
     meaningful = keep and not GENERIC_RANGE.match(c)
 
     base = re.sub(r"_(WERT)$", "", name)
-    ja_id, en_id = translate(base, "ja"), translate(base, "en")
+    ja_id, en_id = translate(base, "ja", sgbd=sgbd), translate(base, "en", sgbd=sgbd)
 
     if meaningful:
-        ja_c, en_c = translate(c, "ja", decompose=False), translate(c, "en", decompose=False)
-        score_c, score_id = leftover_ratio(c, decompose=False), leftover_ratio(base, decompose=True)
+        ja_c = _drop_internal_name(translate(c, "ja", decompose=False, sgbd=sgbd))
+        en_c = _drop_internal_name(translate(c, "en", decompose=False, sgbd=sgbd))
+        score_c = leftover_ratio(c, decompose=False, sgbd=sgbd)
+        score_id = leftover_ratio(base, decompose=True, sgbd=sgbd)
         if score_c < score_id:
             ja, en = ja_c, en_c
         elif score_id < score_c:
             ja, en = ja_id, en_id
         else:
-            ja, en = (ja_c, en_c) if len(ja_c) <= len(ja_id) else (ja_id, en_id)
+            # 同点のときだけ、人の書いた訳を優先する。
+            #
+            # 同点は「両方きれいに訳せた」の意味で、そこで短いほうを採る規則は、族別
+            # トークンを足した瞬間に壊れた: VA/HA/SIM が訳せるようになって識別子分解が
+            # 満点になり、DSC_SIM_VA の authored な「STEUERN_DIGITAL 経由で駆動し、
+            # そのまま保持する（解除ジョブなし）」——ラッチすることを述べた唯一の文——が
+            # 短さで負けた。
+            #
+            # 得点そのものは触らない。負けている authored 訳まで拾い上げると、識別子が
+            # EINLASS（吸気）のジョブに SGBD コメント由来の「排気」が付くような反転が
+            # 出る（実測: STATUS_VANOS_NW_LAGE_EINLASS_BANK_1）。
+            # 片方だけが authored のときに限る。両方 authored（説明文にも識別子にも
+            # 人の書いた訳がある）なら出所では選べないので、従来どおり短いほうを採る
+            # ——DSC の STEUERN_DIGITAL は両方あり、説明文のほうは電磁弁 15 枠の
+            # 引数リストそのものなので、出所だけで選ぶとラベルが表になる。
+            auth_c, auth_id = authored(c, sgbd), authored(base, sgbd)
+            if auth_c and not auth_id:
+                ja, en = ja_c, en_c
+            elif auth_id and not auth_c:
+                ja, en = ja_id, en_id
+            else:
+                ja, en = (ja_c, en_c) if len(ja_c) <= len(ja_id) else (ja_id, en_id)
     else:
         ja, en = ja_id, en_id
 
     desc = (
-        {"de": c, "ja": translate(c, "ja", decompose=False), "en": translate(c, "en", decompose=False)}
+        {"de": c, "ja": translate(c, "ja", decompose=False, sgbd=sgbd),
+         "en": translate(c, "en", decompose=False, sgbd=sgbd)}
         if keep
         else None
     )
@@ -219,9 +259,13 @@ class TextPool:
     intern すれば約1.6倍。静的配信でモジュール切替のたびに取得するので効く。
     """
 
-    def __init__(self) -> None:
+    def __init__(self, sgbd: str | None = None) -> None:
         self._index: dict[str, int] = {}
         self.items: list[dict] = []
+        # どの ECU のテキストを溜めているか。族専用の訳を引くのに要る——このプールは
+        # 故障本文・フリーズフレーム見出し・語彙表・引数コメントの全部を通るので、
+        # ここが ECU を知らないと、そのどれもが他モジュールの訳を名乗りうる。
+        self.sgbd = sgbd
 
     def ref(self, de: str | None, ja: str | None = None, en: str | None = None) -> int | None:
         de = (de or "").strip()
@@ -233,8 +277,8 @@ class TextPool:
             return hit
         entry = {
             "de": de,
-            "ja": ja if ja is not None else translate(de, "ja", decompose=False),
-            "en": en if en is not None else translate(de, "en", decompose=False),
+            "ja": ja if ja is not None else translate(de, "ja", decompose=False, sgbd=self.sgbd),
+            "en": en if en is not None else translate(de, "en", decompose=False, sgbd=self.sgbd),
         }
         self._index[key] = len(self.items)
         self.items.append(entry)
@@ -286,7 +330,8 @@ def env_fields(dump: model.SgbdDump, pool: TextPool) -> list[dict]:
         # 分解翻訳を使う。フリーズフレームの項目名は文ではなく短い名詞句で、
         # `Kuehlwassertemp.` は KUEHLWASSER + TEMP に割らないと独語のまま出る
         # ——そしてこれは診断画面の見出しとして最前面に出る文字列である。
-        e: dict = {"code": nr, "text": pool.ref(text, translate(text, "ja"), translate(text, "en"))}
+        e: dict = {"code": nr, "text": pool.ref(text, translate(text, "ja", sgbd=pool.sgbd),
+                                                translate(text, "en", sgbd=pool.sgbd))}
         unit = (row.get("UW_EINH") or "").strip()
         if unit and unit != "-":
             e["unit"] = unit
@@ -520,12 +565,12 @@ def build(mid: str, m: dict, addrs: dict) -> dict:
         addr = a["addr"]
     ecu_desc = (a.get("info") or {}).get("ECU", "")
     d = model.load(DUMP, dumpname)
-    pool = TextPool()
+    pool = TextPool(dumpname)
     jobs_out: list[dict] = []
 
     for j in d.jobs:
         cls = classify.classify(dumpname, j.name, j.comment, [a.name for a in j.args])
-        ja, en, desc = lbl_for(j.name, j.comment)
+        ja, en, desc = lbl_for(j.name, j.comment, dumpname)
 
         args_out = []
         for a in j.args:

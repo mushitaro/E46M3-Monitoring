@@ -49,11 +49,10 @@ const OUTLINE = /(?:^|[\s"'`{])border(?:-2)?(?![-\w])/g;
 const OUTLINE_ALLOWED = new Set([
     // The canonical empty state's dashed ring — a drop-target-style area, which
     // the rule allows.
-    'app/page.tsx',
+    'views/shared/Awaiting.tsx',
     // Floating surfaces get exactly one outline each: they are detached from the
     // page and need an edge.
     'components/LogPopover.tsx',
-    'components/GateModal.tsx',
     'components/ElectricalFaultDialog.tsx',
     // The hub ring is a STATE indicator, not a frame. Named here so a second
     // ring cannot appear without this list changing.
@@ -197,6 +196,33 @@ for (const file of files(ROOT)) {
             fail(rel, n, `nested scroller — the pane already scrolls; a max-h + overflow inside it traps the wheel`);
         }
     });
+}
+
+/**
+ * The allow-list, checked against reality.
+ *
+ * An exception is only an exception while the thing it excuses still exists.
+ * `components/GateModal.tsx` sat in this list after that component was deleted —
+ * harmless on its own, but a list nobody can trust is a list nobody reads before
+ * adding to. So: every entry must name a file that exists AND that actually
+ * carries an outline. Removing the last bare `border` from an allowed file fails
+ * here, which is the moment to take it off the list.
+ */
+for (const rel of OUTLINE_ALLOWED) {
+    let source;
+    try {
+        source = readFileSync(path.join(ROOT, rel), 'utf-8');
+    } catch {
+        fail('tools/check_ui_tokens.mjs', 0, `OUTLINE_ALLOWED names ${rel}, which does not exist`);
+        continue;
+    }
+    const uses = source.split(/\r?\n/).some((l) => {
+        const t = l.trim();
+        if (t.startsWith('*') || t.startsWith('//') || t.startsWith('/*')) return false;
+        OUTLINE.lastIndex = 0;
+        return OUTLINE.test(l);
+    });
+    if (!uses) fail('tools/check_ui_tokens.mjs', 0, `OUTLINE_ALLOWED names ${rel}, which has no outline to allow`);
 }
 
 if (failures) {

@@ -10,10 +10,10 @@
  * they open it to service a car. The name was never chosen, it was inherited
  * from the data format.
  *
- * ## Why this replaced two tabs
+ * ## Why this replaced two tabs, and why ACTUATOR came back anyway
  *
- * CALIBRATION and ACTUATOR TEST were split by a regex in the generator, and the
- * split did not survive contact with the data: five read-only jobs sat on the
+ * CALIBRATION and ACTUATOR TEST were once split by a regex in the generator, and
+ * the split did not survive contact with the data: five read-only jobs sat on the
  * write side, eight latching `DSC_SIM_*` sat under "returns by itself",
  * `ID_SCHREIBEN` wrote an inspection stamp from the calibration tab while
  * `PRUEFSTEMPEL_SCHREIBEN` — the same operation — was excluded entirely. Worse,
@@ -24,6 +24,33 @@
  * So there is one list, and the difference is a FACET with its meaning written
  * next to it. `class` is the axis that used to be the tab, and selecting one now
  * prints the sentence that says what that class does to your car.
+ *
+ * ACTUATOR exists again, and it is not that old split coming back. It is a
+ * different SHAPE of control: a row that arms, holds an output energised, and
+ * has to keep a STOP pressable while it does. That does not fit a browse-and-
+ * select list, and the arming state has to outlive the row. Which is why the
+ * boundary here is by consequence and not by name — `class === 'test'` is
+ * exactly the set that can leave something on.
+ *
+ * ## The split is EXCLUSIVE, and that is the point
+ *
+ * `test` jobs are not in this list. Not for tidiness: SERVICE runs a job through
+ * `mayRun` and ACTUATOR through `mayActuate`, which is deliberately wider in
+ * PRACTICE. One job reachable from two places through two different gates is two
+ * answers to "may this be sent", and the operator would have no way to know
+ * which one they got.
+ *
+ * ## What this list is FOR, now that ACTUATOR has the actuators
+ *
+ * The reads — and they are the whole of what this app can do to a car. Of the
+ * 1,524 jobs, 86 pass `mayRun` on a vehicle and every one of them is a read.
+ * This is the only surface in the app that sends them: DIAGNOSIS, ADAPTATION and
+ * DATALOG send frames built from the protocol (readIdent, readFaults,
+ * readAdaptations, startLog), not catalogue jobs.
+ *
+ * The rest of the catalogue stays visible on purpose. A coding write or an
+ * identity write cannot be run and says so, and "this ECU has that job and here
+ * is why we will not send it" is a more useful answer than an absence.
  *
  * ## Why the default hides things, and says so
  *
@@ -51,13 +78,15 @@ import {
     type Risk,
 } from '@/lib/ecuCatalog';
 import { jobOperation, type OpKind } from '@/lib/jobOps';
+import { isOn } from '@/lib/jobSurface';
 import { mayRunOnVehicle, type Ledger } from '@/lib/ledger';
 import { mayRun } from '@/lib/runGate';
 import { bestTelegram, type TelegramTable } from '@/lib/telegrams';
 import { useLang } from '@/lib/i18n';
 
 /** The class order is the order of consequence, not alphabetical. */
-const CLASS_ORDER: JobClass[] = ['read', 'test', 'calibration', 'coding', 'identity', 'programming', 'protocol'];
+// No `test`: those rows live in ACTUATOR. Ordered by consequence, not alphabet.
+const CLASS_ORDER: JobClass[] = ['read', 'calibration', 'coding', 'identity', 'programming', 'protocol'];
 const AUDIENCE_ORDER: Audience[] = ['owner', 'technician', 'protocol'];
 
 export function ServicePane({
@@ -84,7 +113,10 @@ export function ServicePane({
     const [system, setSystem] = useState<string | 'all'>('all');
     const [onlyRunnable, setOnlyRunnable] = useState(false);
 
-    const jobs = profile.jobs;
+    // Everything except the actuators, which have their own tab and their own
+    // gate. The predicate lives in `lib/jobSurface` so the two views cannot
+    // drift into overlapping — see the note above about why that matters.
+    const jobs = useMemo(() => profile.jobs.filter(isOn('service')), [profile.jobs]);
 
     /**
      * Which jobs this app can actually send, right now.

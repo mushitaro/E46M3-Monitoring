@@ -12,6 +12,7 @@ import { execStyleOf } from '@/lib/execStyle';
 import { useLang } from '@/lib/i18n';
 import { cautionFor, type JobTextTable } from '@/lib/jobText';
 import { operationFor } from '@/lib/jobOps';
+import { isOn } from '@/lib/jobSurface';
 import type { Ledger } from '@/lib/ledger';
 import type { RunVerdict } from '@/lib/runGate';
 import { TEST_ID, tid } from '@/lib/testIds';
@@ -61,9 +62,10 @@ export function ActuatorView({
     const [onlyRunnable, setOnlyRunnable] = useState(false);
     const [pending, setPending] = useState<{ job: CatalogJob; phase: Phase; verdict: Extract<RunVerdict, { allowed: true }> } | null>(null);
 
-    // The jobs this tab is about: the ones that actuate. Reads live in
-    // DIAGNOSIS, writes that persist are not offered here at all.
-    const jobs = useMemo(() => profile.jobs.filter((j) => j.class === 'test'), [profile.jobs]);
+    // The jobs this tab is about: the ones that can leave an output energised.
+    // Same function SERVICE asks, so the two lists partition the catalogue
+    // instead of being two filters that happen to agree — `lib/jobSurface`.
+    const jobs = useMemo(() => profile.jobs.filter(isOn('actuator')), [profile.jobs]);
 
     /**
      * The gate's answer for every row, from the SAME function the press uses.

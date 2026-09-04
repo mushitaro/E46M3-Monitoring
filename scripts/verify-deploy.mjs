@@ -74,9 +74,19 @@ check('Permissions-Policy allows serial', pp.includes('serial=(self)'), pp || '(
 check('X-Robots-Tag noindex on /', (home.headers.get('x-robots-tag') || '').includes('noindex'),
     home.headers.get('x-robots-tag') || '(none)');
 
+// The home-screen label, asserted as a VALUE and not merely as present.
+// `E46M3` was the predecessor's; this app's is `E46M3 Diag` and the ported
+// check said otherwise — caught on the first real deploy, which is the whole
+// point of asserting the value. A rename is a deliberate act and should have
+// to edit this line, because in a PWA the label is what someone taps.
+const EXPECT_SHORT_NAME = 'E46M3 Diag';
 const man = await get('/manifest.webmanifest');
 const shortName = (man.text.match(/"short_name"\s*:\s*"([^"]+)"/) || [])[1];
-check('manifest short_name is E46M3', man.status === 200 && shortName === 'E46M3', shortName || String(man.status));
+check(
+    `manifest short_name is ${EXPECT_SHORT_NAME}`,
+    man.status === 200 && shortName === EXPECT_SHORT_NAME,
+    shortName || String(man.status),
+);
 
 // A static site answers 404 here. 5xx means code ran — that is trap 1 in the
 // release notes: wrangler compiled someone else's functions/ from the CWD.

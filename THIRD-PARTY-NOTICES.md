@@ -132,9 +132,22 @@ arrangement is stated here as it actually is rather than as a plan.
   anyone with the URL can fetch them. This is a deliberate, accepted trade-off: it is
   what lets the app be usable by someone who does not own an EDIABAS installation.
   **The exposure is therefore the deployment, not the repository.**
-- The mitigation is **Cloudflare Access** on the Pages project. `X-Robots-Tag:
-  noindex` and `robots.txt` are also set, but those only ask search engines politely;
-  Access is the only one of the three that is access control.
+- **Cloudflare Access sits in front of the production deployment, and this is what
+  it does and does not do.** Measured, because the difference matters:
+
+  | | `e46m3-monitoring.pages.dev` (production) | `e46m3-diagnosis.pages.dev` (staging) |
+  |---|---|---|
+  | unauthenticated GET | `302` to a Cloudflare Access login | `200` |
+  | crawler, scraper, `curl`, any script | cannot reach the tables | can |
+  | a person who can receive email | **can** — the policy is Allow / Everyone, and the identity provider is a one-time PIN | — |
+
+  So the honest statement is **not** "only the maintainer can read the tables". It is
+  that automated collection is stopped and a person is not. That is a real reduction
+  from "anyone with the URL downloads the JSON", and it is not a wall. The policy is
+  one field away from being restricted to a single address; it is deliberately not,
+  and this table is here so nobody reads a stronger claim into the word "Access".
+- `X-Robots-Tag: noindex` and `robots.txt` are also set, but those only **ask** search
+  engines. They are not access control and are not counted as mitigation here.
 - The end state the second bullet still falls short of is for each user to generate
   the tables from their own EDIABAS installation. The generators and their
   documentation (`docs/REFERENCES.md`) are published precisely so that is possible.

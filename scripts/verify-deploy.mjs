@@ -26,6 +26,18 @@
 //  `--expect=` は残す。wrangler が Success と言った直後にエッジが旧バンドルを
 //  返す事象を捕まえられる**唯一の検査**で、build-id は古いビルドの上にも打てるが、
 //  今回の変更でしか存在しない文字列は打てない。
+//
+//  ## Cloudflare Access の後ろにある配信先
+//
+//  本番は Access の内側にあるので、無認証の fetch は **302 でログイン画面へ**
+//  飛ばされる。ここで全項目 FAIL を出すのは嘘に近い——検査が落ちたのではなく、
+//  **検査できていない**からで、その二つは同じ字面で報告してはいけない。
+//
+//  なので Access のリダイレクトを検出したら、**検証しなかったと言って終える**
+//  （終了コードは 0 ではない。"問題なし" と読まれてはならない）。
+//  サービストークンがあるなら `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET`
+//  を環境変数で渡せば、そのヘッダを付けて普通に検証する。トークンは Zero Trust の
+//  「サービス資格情報」で発行するもので、このスクリプトは値を持たないし出力もしない。
 // ============================================================================
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -48,12 +60,40 @@ const local = existsSync(vpath) ? JSON.parse(readFileSync(vpath, 'utf-8')) : nul
 
 const rows = [];
 const check = (name, ok, detail) => rows.push({ name, ok, detail });
+
+// A service token, if one was issued. Absent is the normal case.
+const CF_ID = process.env.CF_ACCESS_CLIENT_ID;
+const CF_SECRET = process.env.CF_ACCESS_CLIENT_SECRET;
+const accessHeaders =
+    CF_ID && CF_SECRET ? { 'CF-Access-Client-Id': CF_ID, 'CF-Access-Client-Secret': CF_SECRET } : {};
+
 const get = async (p) => {
-    const r = await fetch(base + p, { redirect: 'manual', cache: 'no-store' });
-    return { status: r.status, headers: r.headers, text: r.status < 400 ? await r.text() : '' };
+    const r = await fetch(base + p, { redirect: 'manual', cache: 'no-store', headers: accessHeaders });
+    return {
+        status: r.status,
+        headers: r.headers,
+        text: r.status < 400 ? await r.text() : '',
+        location: r.headers.get('location') || '',
+    };
 };
 
 const home = await get('/');
+
+// Behind Access, and nothing here can see through it. Say THAT, rather than
+// printing fifteen failures — a check that could not run and a check that
+// failed must not read the same.
+if (home.status === 302 && /cloudflareaccess\.com/.test(home.location)) {
+    console.error(`[verify-deploy] ${base} は Cloudflare Access の内側にあり、検証できませんでした。`);
+    console.error('  無認証の GET は 302 でログイン画面に飛びます。配信そのものは成功している');
+    console.error('  かもしれませんし、していないかもしれません。**このスクリプトは何も確かめていません。**');
+    console.error('');
+    console.error('  自動で検証したいなら、Zero Trust → Access → サービス資格情報 でトークンを発行し:');
+    console.error('    CF_ACCESS_CLIENT_ID=... CF_ACCESS_CLIENT_SECRET=... npm run deploy');
+    console.error('  （そのトークンを通す Service Auth ポリシーをアプリに足す必要があります）');
+    console.error('');
+    console.error('  そうしないなら、ブラウザで開いて build-id とモジュール数を目で確かめてください。');
+    process.exit(2); // 0 でも 1 でもない。「未検証」は「合格」でも「不合格」でもない
+}
 check('GET / is 200', home.status === 200, String(home.status));
 
 const bid = (home.text.match(/name="build-id" content="([^"]*)"/) || [])[1];

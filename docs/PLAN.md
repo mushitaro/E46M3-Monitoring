@@ -436,6 +436,32 @@ STEUERN_STELLGLIED「油圧ポンプは自動では止まらない」
 生バイトと `推定` の来歴チップを出す。シミュレータも同じ推定でしか答えられないので、
 確定させられるのはベンチか実車だけ。
 
+### Cloudflare Access — 入れた強さと、その記録（step 60）
+
+本番 `e46m3-monitoring.pages.dev` を Access の内側に入れた。**ただしポリシーは
+Allow / Everyone**（ID プロバイダはワンタイム PIN）で、所有者の判断でそうしている。
+
+実測:
+
+```
+e46m3-monitoring  無認証 GET → 302（Access ログインへ）  クローラ/curl は通れない
+e46m3-diagnosis   無認証 GET → 200                      staging は開いたまま
+```
+
+つまり**自動収集は止まるが、人は止まらない**。`THIRD-PARTY-NOTICES.md` §3.3 は
+「緩和策は Access」とだけ書いていたので、この差が読み取れる表に書き直した。
+「Access を入れた＝所有者だけが読める」と読まれる書き方は、持っていない緩和策の
+主張になる。
+
+`e46m3-diagnosis` は**削除しない**。計画 33 行目の「staging に転用」のとおり、
+切替後もリリース候補を実機で開く場所として残す。削除対象は
+`C:\EC-APPS\OldBMW-Diag-PWA`（旧 PWA のソース木）であって Pages プロジェクトではない。
+
+`verify-deploy.mjs` は Access のリダイレクトを検出したら**終了コード 2 で
+「検証しなかった」と言って終える**。0 でも 1 でもないのは、「未検証」は「合格」でも
+「不合格」でもないから。`CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET` を渡せば
+サービストークンで普通に検証する。
+
 ### SequenceDialog・Toast も作らない（step 51）
 
 - **Sequence**: `SequenceView` が SERVICE ペイン内に既に並んでいる。同じ内容に第二の面を作ると

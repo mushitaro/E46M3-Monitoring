@@ -69,6 +69,13 @@ const verify = (cmd, tries = 3, waitMs = 8000) => {
             execSync(cmd, { cwd: ROOT, stdio: 'inherit' });
             return;
         } catch (e) {
+            // 2 は「検証できなかった」。Cloudflare Access の内側なので無認証では
+            // 読み戻せない、という意味で、**再試行しても永遠に同じ**。1（検証して
+            // 落ちた）と混ぜない——再試行するのは「エッジがまだ古い」場合だけ。
+            if (e.status === 2) {
+                console.error('\n[deploy] 配信は完了しましたが、検証はできていません（上記参照）。');
+                process.exit(2);
+            }
             if (i === tries) throw e;
             console.log(`  ↓ 配信物がまだ古いらしい。${waitMs / 1000}s 待って再検証する。`);
             execSync(`node -e "setTimeout(()=>{}, ${waitMs})"`, { cwd: ROOT, stdio: 'ignore' });

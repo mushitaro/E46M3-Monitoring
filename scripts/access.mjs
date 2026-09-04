@@ -29,14 +29,30 @@
 //  値は読むだけで、**表示も記録もしない**。エラー本文も、トークンを含み得る部分は
 //  出さない。
 // ============================================================================
-const TOKEN = process.env.CF_ACCESS_API_TOKEN;
+import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import nodePath from 'node:path';
+
+// 環境変数か、ホームディレクトリの 1 行ファイル。
+//
+// ファイルも読むのは実務上の理由で、`setx` で環境変数を足しても**すでに動いて
+// いるシェルには届かない**（親プロセスの環境を継承しているので、セッションを
+// 開き直すまで見えない）。ファイルなら書いた瞬間から効く。
+// リポジトリの外に置くので、コミットのしようがない。
+const TOKEN_FILE = nodePath.join(homedir(), '.cf-access-token');
+const TOKEN =
+    process.env.CF_ACCESS_API_TOKEN ||
+    (existsSync(TOKEN_FILE) ? readFileSync(TOKEN_FILE, 'utf-8').trim() : '');
 const ACCOUNT = process.env.CF_ACCOUNT_ID || '2465a92a0a1fce881e195dbe6585e524';
 const API = 'https://api.cloudflare.com/client/v4';
 
 if (!TOKEN) {
-    console.error('CF_ACCESS_API_TOKEN が未設定です。');
-    console.error('  ダッシュボード → プロフィール → API トークン → カスタムトークンを作成');
-    console.error('  権限: Account | Access: Apps and Policies | Edit   （これ 1 行だけ）');
+    console.error('トークンが見つかりません。次のどちらかに置いてください:');
+    console.error(`  1) ファイル  ${TOKEN_FILE}   （1 行だけ書く。すぐ効く）`);
+    console.error('  2) 環境変数  CF_ACCESS_API_TOKEN   （新しいシェルから効く）');
+    console.error('');
+    console.error('  トークンは https://dash.cloudflare.com/profile/api-tokens で作成。');
+    console.error('  権限は 1 行だけ: アカウント | Access: Apps and Policies | 編集');
     console.error('  CLOUDFLARE_API_TOKEN という名前は使わないこと（wrangler が拾ってしまう）');
     process.exit(2);
 }

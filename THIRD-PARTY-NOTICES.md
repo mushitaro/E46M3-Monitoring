@@ -135,17 +135,24 @@ arrangement is stated here as it actually is rather than as a plan.
 - **Cloudflare Access sits in front of the production deployment, and this is what
   it does and does not do.** Measured, because the difference matters:
 
-  | | `e46m3-monitoring.pages.dev` (production) | `e46m3-diagnosis.pages.dev` (staging) |
+  | URL | Access policy | who gets the tables |
   |---|---|---|
-  | unauthenticated GET | `302` to a Cloudflare Access login | `200` |
-  | crawler, scraper, `curl`, any script | cannot reach the tables | can |
-  | a person who can receive email | **can** — the policy is Allow / Everyone, and the identity provider is a one-time PIN | — |
+  | `e46m3-monitoring.pages.dev` — production | `ALLOW include: everyone` | anyone who can receive email at any address (the identity provider is a one-time PIN) |
+  | `*.e46m3-monitoring.pages.dev` — per-deployment | `ALLOW include: email = the maintainer` | the maintainer only |
+  | `e46m3-diagnosis.pages.dev` — staging | no application | anyone at all; `200` unauthenticated |
 
-  So the honest statement is **not** "only the maintainer can read the tables". It is
-  that automated collection is stopped and a person is not. That is a real reduction
-  from "anyone with the URL downloads the JSON", and it is not a wall. The policy is
-  one field away from being restricted to a single address; it is deliberately not,
-  and this table is here so nobody reads a stronger claim into the word "Access".
+  Read from the API, not from the dashboard, because the dashboard's summary column
+  says "all authenticated users" for both of the first two.
+
+  So the honest statement is **not** "only the maintainer can read the tables". On the
+  production URL, automated collection is stopped — a crawler, a scraper, a `curl`
+  gets a `302` — and a person is not. That is a real reduction from "anyone with the
+  URL downloads the JSON", and it is not a wall. It is deliberate; this table is here
+  so nobody reads a stronger claim into the word "Access".
+
+  Note the asymmetry, which is recorded rather than tidied away: the STRICTER policy
+  sits on the per-deployment hostnames, which are eight hex digits and linked from
+  nowhere, while the guessable one is open to anyone who authenticates.
 - `X-Robots-Tag: noindex` and `robots.txt` are also set, but those only **ask** search
   engines. They are not access control and are not counted as mitigation here.
 - The end state the second bullet still falls short of is for each user to generate

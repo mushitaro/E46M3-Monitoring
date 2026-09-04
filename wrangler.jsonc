@@ -1,18 +1,26 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "e46m3-diagnosis",
+  "name": "e46m3-monitoring",
   "compatibility_date": "2026-07-31",
 
   // Static export only. There is no Worker and no server: the app talks to a
   // serial port in the browser and to nothing else. `out/` is what `npm run
   // build` produces.
   //
-  // Deploy:  npx wrangler pages deploy out --project-name e46m3-diagnosis
+  // Deploy:  npm run deploy   （scripts/deploy.mjs がこの name を読む）
   //
-  // Before the first public deploy, turn on Cloudflare Access for the project.
-  // The repository being private does NOT protect the deployment — anything
-  // under out/ is fetchable by anyone with the URL, and that includes the
-  // generated ECU tables whose provenance is recorded in
-  // THIRD-PARTY-NOTICES.md §3.
+  // This name is the PRODUCTION project — it replaced the predecessor PWA here.
+  // Pages projects cannot be renamed, so changing this line means creating a
+  // different project, not renaming this one.
+  //
+  // `e46m3-diagnosis` remains as STAGING: the release candidate is deployed
+  // and opened on a real phone there before it becomes the release. Deploy to
+  // it by passing --project-name explicitly, not by editing this line.
+  //
+  // Cloudflare Access is in front of this project. What its policy actually
+  // permits — which is not "the maintainer only" — is recorded in
+  // THIRD-PARTY-NOTICES.md §3.3, read from the API rather than from the
+  // dashboard, because the dashboard's summary cannot tell the two policies
+  // apart.
   "pages_build_output_dir": "out"
 }

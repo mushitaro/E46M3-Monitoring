@@ -115,7 +115,7 @@ public repo を clone した人が、**何がどれだけ欠けているか**を
 | `jobtext/gen_jobtext.py` | `<id>.jobs.json` ＋ `cautions.py` | `public/ecu-data/<id>.jobtext.json` |
 | `gen_live_blocks.py` | **#4** ＋ `MSS54DS0.json` ＋ #1 ＋ `terms/live_channels.py` | `packages/ds2-mss54/src/liveValueBlocks.generated.ts` |
 | `gen_adaptation_blocks.py` | **#4** ＋ `MSS54DS0.json` | `packages/ds2-mss54/src/adaptationBlocks.generated.ts` |
-| `gen_icons.py` | 無し（幾何はコードに直書き） | `public/icon-{192,512}.png` |
+| tsunagi-m3 の `scripts/m-icons.mjs --word monitoring` | M ICON の 1024px 原版（repo の外） | `public/icons/monitoring{,-dev}{,-maskable}-*.png`（**コミットされる**。本番の組と、preview が `brand-preview.mjs` で差し替える dev の組） |
 
 **退役済み**（`tools/deprecated/`。実行しても出荷物に届かない）:
 

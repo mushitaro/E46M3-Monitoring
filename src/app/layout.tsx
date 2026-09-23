@@ -15,29 +15,35 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "E46M3 /// DIAGNOSIS",
+  title: "E46M3 /// MONITORING",
   description: "E46 M3 diagnostics over DS2 / K-line — MSS54, SMG II, DSC",
   manifest: "/manifest.webmanifest",
-  // PNG first: Chrome's installability criteria and Android launchers want
-  // 192/512 PNGs, and iOS Safari does not read SVG manifest icons at all. The
-  // old app shipped a single 622-byte SVG and an apple-touch-icon pointing at
-  // it, which iOS silently ignores.
+  // The launcher icons are CHOSEN from M ICON, not drawn here (tsunagi-m-release
+  // §4): `monitoring`, written into public/icons/ by tsunagi-m3's
+  // scripts/m-icons.mjs. This is the PRODUCTION set — black mark on white. A
+  // preview build is branded after the compile: scripts/brand-preview.mjs moves
+  // every one of these references to the -dev- set (white on black), so there is
+  // one source of truth here and no compile-time branch.
+  //
+  // PNG only. Chrome's installability criteria and Android launchers want
+  // 192/512 PNGs, and iOS Safari does not read SVG icons at all. The favicon is
+  // the 32 from the same family, so a tab and a home screen show one mark.
   icons: {
     icon: [
-      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
-      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/icons/monitoring-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/icons/monitoring-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/monitoring-512.png", sizes: "512x512", type: "image/png" },
     ],
-    // iOS reads this and nothing else, and it does not honour transparency — the
-    // file is composited onto black rather than left with an alpha channel.
-    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+    // The 256, as it is. M ICON is opaque, which is what iOS needs: it does not
+    // honour transparency and would composite an alpha channel onto black.
+    apple: [{ url: "/icons/monitoring-256.png", sizes: "256x256", type: "image/png" }],
   },
   // Installed to a home screen this is the app's own window, so it says so.
   // `black` rather than `black-translucent`: translucent puts the status bar ON
   // TOP of the layout, which is only correct for a design that pads by
   // env(safe-area-inset-*), and nothing here does.
   // No `title` on purpose: it falls back to the manifest's short_name, which keeps the
-  // home-screen label in one place. The app rename lands with the UI, not here.
+  // home-screen label in one place — and it is the one label brand-preview.mjs changes.
   appleWebApp: { capable: true, statusBarStyle: "black" },
   robots: { index: false, follow: false },
 };

@@ -19,7 +19,10 @@
  * rather than recognise.
  */
 export const CHROME = {
-    appRole: 'DIAGNOSIS',
+    // The product name's second half (tsunagi-m-release §3: <target> /// <function word>). The
+    // function word is MONITORING — it is also the M ICON mark this app wears — and the tab that
+    // reads fault memory keeps its own name, DIAGNOSIS, beside it.
+    appRole: 'MONITORING',
     tab_diagnosis: 'DIAGNOSIS',
     tab_datalog: 'DATALOG',
     tab_log: 'COMMS LOG',

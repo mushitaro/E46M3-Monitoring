@@ -41,6 +41,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
+import { dirtyPaths } from './tree-state.mjs';
 
 const OUT = 'out';
 
@@ -59,13 +60,11 @@ function buildId() {
     try {
         const count = git(['rev-list', '--count', 'HEAD']);
         const sha = git(['rev-parse', '--short', 'HEAD']);
-        // `--porcelain` is empty exactly when the tree is clean. Untracked files count: a build can
-        // depend on a file that was never added, and a number that hid that would be lying.
-        //
-        // In this repository the working tree is normally dirty by design — public/ecu-data/ and
-        // tools/terms/ are present locally and gitignored — so `+` is the expected state for a real
-        // deploy rather than a warning sign. It still means exactly what it says.
-        const dirty = git(['status', '--porcelain']).length > 0 ? '+' : '';
+        // Untracked files count: a build can depend on a file that was never added, and a number
+        // that hid that would be lying. The definition — including the two notes it ignores — is
+        // scripts/tree-state.mjs, shared with deploy.mjs, so a tree the deploy accepts as clean is
+        // never stamped `+`.
+        const dirty = dirtyPaths().length > 0 ? '+' : '';
         return `${count}.${sha}${dirty}`;
     } catch {
         return 'dev';

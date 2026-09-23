@@ -1,43 +1,40 @@
 // ============================================================================
 //  verify-deploy.mjs — 配信物を URL から読み戻して検証する
 // ----------------------------------------------------------------------------
-//    node scripts/verify-deploy.mjs https://<host> [--expect=文字列]...
+//    GATE_SESSION_FILE=<file> node scripts/verify-deploy.mjs https://<host> [--expect=文字列]...
 //
 //  **ビルドログではなく配信物を読む。** wrangler の "Success" は「バイトを上げた」
 //  という意味しかない。前身で実際に起きた沈黙する失敗は全部これを通っていた。
 //
-//  移植にあたって、前身のアサーションは一つずつ向け直した。**欠けたタグを検査した
-//  ままにしない**のが移植の条件だったので:
+//  配信先は e46m3-monitoring-preview の一つだけで、その前にはオーナーのゲート
+//  （functions/_middleware.ts）が居る。なので検査は二つの立場から行う:
 //
-//  - `app-variant` は**外した**。前身は本番/staging/preview の三つを一つの
-//    バンドルから作り分けていて、その識別子が要った。こちらは配信先が一つしか
-//    無く、`features.ts` も `build-variant.ts` も意図して持ち込んでいない。
-//    打っていないタグを検査し続けるのは、検査を一つ黙らせる練習になるだけ。
-//  - `/api/info` は `/api/` の任意のパスに変えた。こちらには `functions/` が
-//    無いので、確かめたいのは「その特定の口が無いこと」ではなく「API 相当の
-//    パスに何も居ないこと」。**404 が正解で、5xx は「コードが動いた」証拠**。
-//  - `sw.js` のキャッシュ名は前身では build-id 由来だった。こちらは
-//    `gen-sw.mjs` が**内容ハッシュ**で名前を作る（`e46m3mon-<12 hex>`）ので、
-//    build-id との一致ではなく**形と接頭辞**を照合する。接頭辞まで見るのは、
-//    末尾ハッシュだけ見ると改名漏れを素通しするから。
-//  - `index.json` は配列ではなくオブジェクトになった（schema 2）。
-//  - `noindex` は `/*` にも載るようになったので、トップページでも確かめる。
+//  - **セッション無し**（誰でも）: ゲートが閉じていること。画面遷移は m3 の
+//    authorize へ 302、`/sw.js`・`/ecu-data/`・`/api/*` は 401。例外は manifest と
+//    それが指すアイコンだけで、これは 200（ブラウザはインストール時に Cookie なしで
+//    取りに来る）。ここが開いていたら、他の何が合っていても不合格。
+//  - **セッション有り**（オーナー）: 中身が正しいこと。build-id がローカルの
+//    ビルドと一致し、app-variant=preview、manifest の名前と dev アイコン、
+//    専用の maskable、51 モジュール、SYNC の一覧が 200 で配列を返すこと。
+//
+//  セッションは tsunagi-m3 の `access-session.mjs` で発行する短命のもので、
+//  `GATE_SESSION_FILE` が指すファイルに `{"token": "..."}` として置く。コマンド行にも
+//  出力にも載せない。無ければ、セッション無しの検査だけを行い、**検証しなかったと
+//  言って終える**（終了コード 2）。検査が落ちたのと検査できていないのとを同じ字面で
+//  報告してはいけない。
+//
+//  前身から向け直したアサーション:
+//  - `app-variant` は**戻した**。以前は配信先が一つで、features.ts も build-variant.ts も
+//    持ち込んでいなかったので外していた。今は preview だけが SESSIONS と SYNC を
+//    開くので、そのタグが機能を決めている。
+//  - `/api/*` は「何も居ないこと」から「ゲートの内側に SYNC が居ること」に変わった。
+//    存在しないパス（`/api/info`）は、セッションがあっても 404。
+//  - `sw.js` のキャッシュ名は `gen-sw.mjs` の**内容ハッシュ**（`e46m3mon-<12 hex>`）なので、
+//    build-id との一致ではなく**形と接頭辞**を照合する。
 //
 //  `--expect=` は残す。wrangler が Success と言った直後にエッジが旧バンドルを
 //  返す事象を捕まえられる**唯一の検査**で、build-id は古いビルドの上にも打てるが、
 //  今回の変更でしか存在しない文字列は打てない。
-//
-//  ## Cloudflare Access の後ろにある配信先
-//
-//  本番は Access の内側にあるので、無認証の fetch は **302 でログイン画面へ**
-//  飛ばされる。ここで全項目 FAIL を出すのは嘘に近い——検査が落ちたのではなく、
-//  **検査できていない**からで、その二つは同じ字面で報告してはいけない。
-//
-//  なので Access のリダイレクトを検出したら、**検証しなかったと言って終える**
-//  （終了コードは 0 ではない。"問題なし" と読まれてはならない）。
-//  サービストークンがあるなら `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET`
-//  を環境変数で渡せば、そのヘッダを付けて普通に検証する。トークンは Zero Trust の
-//  「サービス資格情報」で発行するもので、このスクリプトは値を持たないし出力もしない。
 // ============================================================================
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -46,7 +43,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const base = (process.argv[2] || '').replace(/\/$/, '');
 if (!base) {
-    console.error('usage: node scripts/verify-deploy.mjs <https://host> [--expect=string]...');
+    console.error('usage: GATE_SESSION_FILE=<file> node scripts/verify-deploy.mjs <https://host> [--expect=string]...');
     process.exit(2);
 }
 const expects = process.argv
@@ -61,14 +58,31 @@ const local = existsSync(vpath) ? JSON.parse(readFileSync(vpath, 'utf-8')) : nul
 const rows = [];
 const check = (name, ok, detail) => rows.push({ name, ok, detail });
 
-// A service token, if one was issued. Absent is the normal case.
-const CF_ID = process.env.CF_ACCESS_CLIENT_ID;
-const CF_SECRET = process.env.CF_ACCESS_CLIENT_SECRET;
-const accessHeaders =
-    CF_ID && CF_SECRET ? { 'CF-Access-Client-Id': CF_ID, 'CF-Access-Client-Secret': CF_SECRET } : {};
+/**
+ * The owner session, from a file and never from the command line. The value is checked for shape
+ * and then only ever placed in a Cookie header; nothing here prints it.
+ */
+const sessionCookie = (() => {
+    const file = process.env.GATE_SESSION_FILE;
+    if (!file) return null;
+    try {
+        const token = JSON.parse(readFileSync(file, 'utf8')).token;
+        return typeof token === 'string' && /^[A-Za-z0-9_-]{43}$/.test(token) ? `__Host-owner=${token}` : null;
+    } catch {
+        return null;
+    }
+})();
 
-const get = async (p) => {
-    const r = await fetch(base + p, { redirect: 'manual', cache: 'no-store', headers: accessHeaders });
+/**
+ * One GET, past every cache: `no-store` speaks for this process only, and the edge keeps its own,
+ * so a unique query string is what actually reaches the origin.
+ */
+const get = async (p, { cookie = sessionCookie, navigate = false } = {}) => {
+    const url = `${base}${p}${p.includes('?') ? '&' : '?'}cb=${process.hrtime.bigint()}`;
+    const headers = {};
+    if (cookie) headers.cookie = cookie;
+    if (navigate) Object.assign(headers, { 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'document', accept: 'text/html' });
+    const r = await fetch(url, { redirect: 'manual', cache: 'no-store', headers });
     return {
         status: r.status,
         headers: r.headers,
@@ -77,32 +91,73 @@ const get = async (p) => {
     };
 };
 
-const home = await get('/');
+// ---- without a session: the gate is shut --------------------------------------------------
+const anonHome = await get('/', { cookie: null, navigate: true });
+check('no session: GET / is 302 to m3 authorize',
+    anonHome.status === 302 && /^https:\/\/m3\.tsunagi\.app\/api\/access\/authorize\?/.test(anonHome.location),
+    `${anonHome.status} ${anonHome.location.split('?')[0]}`);
+for (const p of ['/sw.js', '/ecu-data/index.json', '/api/sessions', '/index.html']) {
+    const r = await get(p, { cookie: null });
+    // /index.html included: Pages would 308 it to / — but only once the gate has let it through.
+    check(`no session: ${p} is 401`, r.status === 401, String(r.status));
+}
+const anonManifest = await get('/manifest.webmanifest', { cookie: null });
+check('no session: manifest is 200', anonManifest.status === 200, String(anonManifest.status));
+let manifest = null;
+try {
+    manifest = JSON.parse(anonManifest.text);
+} catch {
+    /* reported below */
+}
+const icons = manifest?.icons ?? [];
+for (const icon of icons) {
+    const r = await get(icon.src, { cookie: null });
+    check(`no session: ${icon.src} is 200`, r.status === 200 && (r.headers.get('content-type') || '').includes('image/png'),
+        `${r.status} ${r.headers.get('content-type') || ''}`);
+}
 
-// Behind Access, and nothing here can see through it. Say THAT, rather than
-// printing fifteen failures — a check that could not run and a check that
-// failed must not read the same.
-if (home.status === 302 && /cloudflareaccess\.com/.test(home.location)) {
-    console.error(`[verify-deploy] ${base} は Cloudflare Access の内側にあり、検証できませんでした。`);
-    console.error('  無認証の GET は 302 でログイン画面に飛びます。配信そのものは成功している');
-    console.error('  かもしれませんし、していないかもしれません。**このスクリプトは何も確かめていません。**');
-    console.error('');
-    console.error('  自動で検証したいなら、Zero Trust → Access → サービス資格情報 でトークンを発行し:');
-    console.error('    CF_ACCESS_CLIENT_ID=... CF_ACCESS_CLIENT_SECRET=... npm run deploy');
-    console.error('  （そのトークンを通す Service Auth ポリシーをアプリに足す必要があります）');
-    console.error('');
-    console.error('  そうしないなら、ブラウザで開いて build-id とモジュール数を目で確かめてください。');
+// The home-screen label, asserted as a VALUE and not merely as present. A rename is a deliberate
+// act and should have to edit these lines, because in a PWA the label is what someone taps.
+const EXPECT_NAME = 'E46M3 /// MONITORING — PREVIEW';
+const EXPECT_SHORT_NAME = 'P E46M3 MON';
+check(`manifest name is ${EXPECT_NAME}`, manifest?.name === EXPECT_NAME, manifest?.name ?? '(unreadable)');
+check(`manifest short_name is ${EXPECT_SHORT_NAME}`, manifest?.short_name === EXPECT_SHORT_NAME, manifest?.short_name ?? '(unreadable)');
+check('every manifest icon is from the dev set', icons.length > 0 && icons.every((i) => /-dev-/.test(i.src)),
+    icons.map((i) => i.src).join(', ') || '(none)');
+const anySrc = new Set(icons.filter((i) => (i.purpose ?? 'any').split(/\s+/).includes('any')).map((i) => i.src));
+const maskable = icons.filter((i) => (i.purpose ?? '').split(/\s+/).includes('maskable'));
+check('maskable icons are their own files', maskable.length > 0 && maskable.every((i) => /-maskable-/.test(i.src) && !anySrc.has(i.src)),
+    maskable.map((i) => i.src).join(', ') || '(none)');
+
+if (!sessionCookie) {
+    const w = Math.max(...rows.map((r) => r.name.length));
+    for (const r of rows) console.log(`${r.ok ? 'ok  ' : 'FAIL'}  ${r.name.padEnd(w)}  ${r.detail}`);
+    const failed = rows.filter((r) => !r.ok).length;
+    if (failed) {
+        console.error(`\n[FAIL] ${failed} of ${rows.length} checks — the gate itself is wrong.`);
+        process.exit(1);
+    }
+    console.error(`\n[verify-deploy] ${base} のゲートは閉じています（上記 ${rows.length} 項目）。`);
+    console.error('  中身——build-id、app-variant、ecu-data、SYNC——は**検証していません**。');
+    console.error('  GATE_SESSION_FILE にオーナーのセッション（tsunagi-m3 の access-session.mjs）を渡すと');
+    console.error('  ゲートの内側まで検証します。使い終わったら --revoke で失効させること。');
     process.exit(2); // 0 でも 1 でもない。「未検証」は「合格」でも「不合格」でもない
 }
-check('GET / is 200', home.status === 200, String(home.status));
+
+// ---- with a session: what is inside is right -----------------------------------------------
+const home = await get('/', { navigate: true });
+check('GET / is 200', home.status === 200, `${home.status}${home.location ? ` → ${home.location.split('?')[0]}` : ''}`);
 
 const bid = (home.text.match(/name="build-id" content="([^"]*)"/) || [])[1];
 check('build-id present', !!bid, bid || '(missing: the stamping step did not run)');
 if (local) {
     check('build-id matches the local build', bid === local.buildId, `served ${bid} / local ${local.buildId}`);
 } else {
-    check('local out/version.json exists', false, 'run npm run build first — nothing to compare against');
+    check('local out/version.json exists', false, 'run npm run build:preview first — nothing to compare against');
 }
+const variant = (home.text.match(/<meta name="app-variant" content="([^"]*)"/) || [])[1];
+check('app-variant is preview', variant === 'preview', variant ?? '(absent: the build was not branded)');
+check('no sync-token meta', !/<meta[^>]+name="sync-token"/.test(home.text), '');
 
 const csp = home.headers.get('content-security-policy') || '';
 check('CSP present', csp.includes("default-src 'self'"), csp.slice(0, 60) || '(none)');
@@ -113,25 +168,27 @@ check('Permissions-Policy allows usb', pp.includes('usb=(self)'), pp || '(none)'
 check('Permissions-Policy allows serial', pp.includes('serial=(self)'), pp || '(none)');
 check('X-Robots-Tag noindex on /', (home.headers.get('x-robots-tag') || '').includes('noindex'),
     home.headers.get('x-robots-tag') || '(none)');
+// Behind the gate nothing is for a shared cache: a page served to one owner must not be handed to
+// the next person through the edge.
+check('/ is private', /private/.test(home.headers.get('cache-control') || ''), home.headers.get('cache-control') || '(none)');
 
-// The home-screen label, asserted as a VALUE and not merely as present.
-// `E46M3` was the predecessor's; this app's is `E46M3 Diag` and the ported
-// check said otherwise — caught on the first real deploy, which is the whole
-// point of asserting the value. A rename is a deliberate act and should have
-// to edit this line, because in a PWA the label is what someone taps.
-const EXPECT_SHORT_NAME = 'E46M3 Diag';
-const man = await get('/manifest.webmanifest');
-const shortName = (man.text.match(/"short_name"\s*:\s*"([^"]+)"/) || [])[1];
-check(
-    `manifest short_name is ${EXPECT_SHORT_NAME}`,
-    man.status === 200 && shortName === EXPECT_SHORT_NAME,
-    shortName || String(man.status),
-);
-
-// A static site answers 404 here. 5xx means code ran — that is trap 1 in the
-// release notes: wrangler compiled someone else's functions/ from the CWD.
+// SYNC answers, and answers with this owner's rows only — the server takes the owner from the gate,
+// so all this can see from outside is that the list is a list.
+const sessions = await get('/api/sessions');
+let sessionList = null;
+try {
+    sessionList = JSON.parse(sessions.text).sessions;
+} catch {
+    /* reported below */
+}
+check('/api/sessions is 200 with a list', sessions.status === 200 && Array.isArray(sessionList),
+    `${sessions.status}${Array.isArray(sessionList) ? `, ${sessionList.length} row(s)` : ''}`);
+const diags = await get('/api/diagnostics');
+check('/api/diagnostics is 200', diags.status === 200, String(diags.status));
+// A path with no handler falls through to the assets, which have nothing there. 5xx would mean the
+// functions ran without their database — trap 5.2, the project name and wrangler.jsonc disagreeing.
 const api = await get('/api/info');
-check('/api/* is 404 (no backend)', api.status === 404, String(api.status));
+check('/api/info is 404', api.status === 404, String(api.status));
 
 const idx = await get('/ecu-data/index.json');
 let modules = 0;
@@ -148,12 +205,13 @@ check('ecu-data noindex', (idx.headers.get('x-robots-tag') || '').includes('noin
 const sw = await get('/sw.js');
 const cache = (sw.text.match(/const CACHE = ['"]([^'"]+)['"]/) || [])[1];
 check('sw.js cache name is e46m3mon-<12 hex>', /^e46m3mon-[0-9a-f]{12}$/.test(cache || ''), cache || '(none)');
+check('sw.js lets /_gate/ and /api/ through', sw.text.includes("url.pathname.startsWith('/_gate/')") && sw.text.includes("url.pathname.startsWith('/api/')"), '');
 
 // The second route exists, and it is the one that fails SILENTLY: a navigation
 // fallback written for a single-route app hands /usb-check the main document,
 // so the bench page opens as the app and nobody can tell why the phone is not
 // being tested.
-const usb = await get('/usb-check');
+const usb = await get('/usb-check', { navigate: true });
 check('/usb-check is its own document', usb.status === 200 && !usb.text.includes('name="build-id" content=""'),
     String(usb.status));
 check('/usb-check is not the app shell', usb.status === 200 && /usb/i.test(usb.text.slice(0, 4000)),

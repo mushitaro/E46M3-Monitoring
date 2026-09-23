@@ -12,6 +12,20 @@ import { useEffect } from 'react';
  *
  * Renders nothing. It is mounted in the root layout purely so that the effect
  * runs once, on the client, after hydration.
+ *
+ * ## When an update can arrive, and why never mid-session
+ *
+ * The browser checks for a new worker when a page loads — this registration,
+ * at mount, before any cable can be connected — and nothing here ever calls
+ * `registration.update()` later. A newer worker that downloads then WAITS: the
+ * template has no automatic skipWaiting, so the swap happens on the next launch
+ * after every window has closed. A cable, a datalog or an armed output cannot be
+ * cut by an update, because nothing starts one while the page is open.
+ *
+ * Behind the preview's owner gate the check can meet an expired session. The
+ * worker then refuses the update (`isGenuine` in scripts/sw.template.js) and
+ * the installed version keeps working; the SESSIONS tab offers to sign in again
+ * once no link is open.
  */
 export function OfflineCache() {
     useEffect(() => {

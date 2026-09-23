@@ -2,9 +2,17 @@
  * Offline cache for E46M3 /// MONITORING.
  *
  * Ported from E46M3CSL_TuningTool with three changes, each marked at its site: the cache prefix,
- * the removal of the /api bypass, and a navigate branch that can resolve more than one document.
- * The prose is otherwise unedited — most of it records a failure measured on a real deployment,
- * and those do not become less true here.
+ * the gate and /api bypass, and a navigate branch that can resolve more than one document. The
+ * prose is otherwise unedited — most of it records a failure measured on a real deployment, and
+ * those do not become less true here.
+ *
+ * ## Behind the owner gate
+ *
+ * The preview is served through functions/_middleware.ts, which answers a request without a
+ * session with a redirect to m3 (a page load) or a 401 (anything else). Both are things this worker
+ * must never mistake for the app. So an update counts only when EVERY asset came back as itself —
+ * 2xx, same-origin, not bounced through /_gate/, and of the type its name says — and anything else
+ * leaves the previous version installed and working. See `cacheOne` and the fetch handler.
  *
  * `scripts/gen-sw.mjs` fills in the two placeholders after `next build` and
  * writes the result to `out/sw.js`. This file is never served — it lives in
@@ -30,7 +38,11 @@
  * The cost is that a deploy lands one launch late. See the activate handler.
  */
 const CACHE = '__CACHE_NAME__';
-/** `[{ url, bytes }]` — the on-disk size rides along so the install can be reported. See gen-sw.mjs. */
+/**
+ * `[{ url, fetch, bytes }]` — `url` is the cache key, `fetch` is where the host serves it (a
+ * document's extensionless URL; see gen-sw.mjs), and the on-disk size rides along so the install
+ * can be reported.
+ */
 const ASSETS = __ASSETS__;
 /** Every .html in the export. The navigate branch resolves against this rather than assuming one. */
 const DOCUMENTS = __DOCUMENTS__;
@@ -84,6 +96,49 @@ function rewrap(body, response) {
 }
 
 /**
+ * What a file's name says it is. A response whose Content-Type disagrees is not that file — the
+ * case that matters is HTML where a script or a table was expected, which is what a login page or
+ * an error page looks like from here.
+ */
+const TYPES = {
+    '.html': 'text/html',
+    '.js': 'javascript',
+    '.css': 'text/css',
+    '.json': 'application/json',
+    '.webmanifest': 'manifest+json',
+    '.png': 'image/png',
+    '.svg': 'image/svg+xml',
+    '.woff2': 'font/woff2',
+    '.txt': 'text/plain',
+};
+
+function typeMatches(url, response) {
+    const type = (response.headers.get('content-type') || '').toLowerCase();
+    const dot = url.lastIndexOf('.');
+    const expected = dot > url.lastIndexOf('/') ? TYPES[url.slice(dot)] : undefined;
+    if (expected) return type.includes(expected);
+    // An extension this table does not know: accept it, unless it is a document pretending.
+    return !type.includes('text/html');
+}
+
+/**
+ * Whether a response is the asset itself and not something standing in for it.
+ *
+ * `ok` alone is not enough behind the gate: a redirect that was followed can still end in a 200.
+ * `basic` rules out anything from another origin (m3's sign-in page arrives cross-origin, and a
+ * CORS failure is already a rejection). A redirect is tolerated only if it stayed on this origin
+ * and did not pass through /_gate/ — the host's own tidy-ups, never the gate sending us away.
+ */
+function isGenuine(asset, response) {
+    if (!response.ok || response.type !== 'basic') return false;
+    if (response.redirected) {
+        const to = new URL(response.url);
+        if (to.origin !== self.location.origin || to.pathname.startsWith('/_gate/')) return false;
+    }
+    return typeMatches(asset.url, response);
+}
+
+/**
  * Stores one asset, counting the bytes as they land.
  *
  * Read through a reader rather than in one `blob()`, so `onBytes` is called during the download and
@@ -91,9 +146,12 @@ function rewrap(body, response) {
  * 4.4 MB of this build's 6.0, so a bar fed by completed files — or by completed bodies — would sit
  * near a quarter of the way across for almost the entire install and then jump to full.
  */
-async function cacheOne(cache, url, onBytes) {
-    const response = await fetch(url, { cache: 'reload' });
-    if (!response.ok) throw new Error(`${response.status} for ${url}`);
+async function cacheOne(cache, asset, onBytes) {
+    const url = asset.url;
+    const response = await fetch(asset.fetch || url, { cache: 'reload', credentials: 'same-origin' });
+    if (!isGenuine(asset, response)) {
+        throw new Error(`${response.status} ${response.type}${response.redirected ? ' redirected' : ''} for ${url}`);
+    }
 
     if (!response.body) {
         // No stream to read from. Not expected for any asset in the export, but a Response is
@@ -153,12 +211,15 @@ self.addEventListener('install', (event) => {
         // then dies on whichever chunk was missing, which is a worse failure
         // than not being offline-capable at all, because it looks like a bug in
         // the tool rather than a missing download.
-        const results = await Promise.allSettled(ASSETS.map((asset) => cacheOne(cache, asset.url, (n) => {
+        const results = await Promise.allSettled(ASSETS.map((asset) => cacheOne(cache, asset, (n) => {
             loaded += n;
             report(false);
         })));
         const failed = ASSETS.filter((_, i) => results[i].status === 'rejected');
         if (failed.length > 0) {
+            // The new cache goes; the old one is untouched, because only `activate` deletes caches
+            // and a worker whose install threw never activates. The installed version keeps
+            // running — which is the whole point when the failure was an expired session.
             await caches.delete(CACHE);
             throw new Error(
                 `precache incomplete: ${failed.length}/${ASSETS.length} failed, ` +
@@ -216,15 +277,17 @@ self.addEventListener('fetch', (event) => {
     const url = new URL(request.url);
     if (url.origin !== self.location.origin) return;
 
-    // CHANGE 2 of 3: the tuner's /api bypass is deliberately NOT ported.
+    // CHANGE 2 of 3: the gate's routes and the API are network-only, and they are decided HERE,
+    // before the navigate branch — which would otherwise answer /_gate/start (the "sign in again"
+    // navigation) or /_gate/callback (m3 sending the owner back) with the cached app shell, and
+    // the owner would never get signed in. /api/* is SYNC: an answer from a cache would be a lie
+    // about what the account holds.
     //
-    // That app has Cloudflare Pages Functions; this one has no functions/ directory at all, and
-    // scripts/deploy.mjs refuses to deploy if one appears. A bypass guarding a route that cannot
-    // exist is a hole nobody is watching: it would silently start exempting real requests the day
-    // someone added an endpoint, without anyone deciding that.
-    //
-    // If a feedback endpoint is ever added (docs/PLAN.md §8-1), reinstate this bypass AND the
-    // connect-src entry in public/_headers together — either alone is a bug.
+    // This used to say the bypass was deliberately absent, because there was no endpoint. There is
+    // one now (functions/api/, the preview's per-owner SYNC), and the other half of that old note
+    // holds: public/_headers keeps connect-src 'self', which already covers these same-origin
+    // calls, so nothing there needed widening.
+    if (url.pathname.startsWith('/_gate/') || url.pathname.startsWith('/api/')) return;
 
     // CHANGE 3 of 3: this app exports more than one route.
     //

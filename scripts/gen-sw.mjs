@@ -36,14 +36,38 @@ const CACHE_PREFIX = 'e46m3mon-';
  *                  this scope. Nothing uses it today; the exclusion is here so that adding one
  *                  later does not silently enter the precache.
  *
+ *   _headers, _routes.json, _redirects
+ *                  Cloudflare Pages reads these as configuration and does not serve them as files.
+ *                  Listed, they would be a precache entry the host can never answer — and one
+ *                  failed entry fails the whole install.
+ *
  * The tuner also excluded /CNAME. There is none here — this app has no GitHub Pages deployment
  * (CLAUDE.md), so the rule would guard a file that cannot exist.
  */
+const PAGES_CONFIG = new Set(['/_headers', '/_routes.json', '/_redirects']);
 const isAsset = (url) =>
     url !== '/sw.js' &&
     url !== '/version.json' &&
+    !PAGES_CONFIG.has(url) &&
     !url.endsWith('.map') &&
     !url.startsWith('/.well-known/');
+
+/**
+ * Where the worker FETCHES a document from, which is not where it is stored.
+ *
+ * Cloudflare Pages answers `/index.html` with a 308 to `/`, and `/usb-check.html` with a 308 to
+ * `/usb-check`. Behind the owner gate a redirect is no longer a harmless detour: it is exactly what
+ * an expired session looks like, so the worker treats any redirect it did not expect as a failed
+ * update (sw.template.js, `cacheOne`). Fetching the extensionless URL the host actually serves
+ * means a healthy install sees no redirect at all; the response is then stored under the original
+ * `.html` key, which is what the navigate branch looks up.
+ */
+const fetchUrlOf = (url) => {
+    if (!url.endsWith('.html')) return url;
+    if (url === '/index.html') return '/';
+    if (url.endsWith('/index.html')) return url.slice(0, -'index.html'.length);
+    return url.slice(0, -'.html'.length);
+};
 
 function walk(dir) {
     return readdirSync(dir).flatMap((name) => {
@@ -55,7 +79,8 @@ function walk(dir) {
 const paths = walk(OUT).sort();
 
 /**
- * `{ url, bytes }` rather than a bare url, so the worker can report a download the page can show.
+ * `{ url, fetch, bytes }` rather than a bare url: `fetch` is where to ask for it (above), and the
+ * size is so the worker can report a download the page can show.
  *
  * The size has to come from here. The worker could read `content-length` off each response instead,
  * but that is the COMPRESSED length where the host compresses and the decoded length where it does
@@ -70,7 +95,7 @@ const paths = walk(OUT).sort();
 const assets = paths
     .map((path) => ({ url: '/' + relative(OUT, path).split(sep).join('/'), path }))
     .filter(({ url }) => isAsset(url))
-    .map(({ url, path }) => ({ url, bytes: statSync(path).size }));
+    .map(({ url, path }) => ({ url, fetch: fetchUrlOf(url), bytes: statSync(path).size }));
 
 if (!assets.some(({ url }) => url === '/index.html')) {
     // Without the document there is no offline app, only a cache. Fail here rather than ship a

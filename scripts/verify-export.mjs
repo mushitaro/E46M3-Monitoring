@@ -34,6 +34,11 @@ const documents = urls.filter((u) => u.endsWith('.html'));
 const swPath = join(OUT, 'sw.js');
 check('sw.js exists', existsSync(swPath), swPath);
 const sw = existsSync(swPath) ? readFileSync(swPath, 'utf8') : '';
+// The owner gate's own routes and the SYNC API must never be answered from the cache — and the
+// bypass has to come BEFORE the navigate branch, or /_gate/start is served the app shell.
+const bypassAt = sw.indexOf("url.pathname.startsWith('/_gate/')");
+check('sw.js lets /_gate/* and /api/* through to the network, ahead of navigations',
+    bypassAt > 0 && sw.includes("url.pathname.startsWith('/api/')") && bypassAt < sw.indexOf("request.mode === 'navigate'"), '');
 for (const placeholder of ['__CACHE_NAME__', '__ASSETS__', '__DOCUMENTS__']) {
     // A surviving placeholder produces a worker that throws on load. The page then simply has no
     // offline cache, and nothing in the UI distinguishes that from "not installed yet".
@@ -59,6 +64,13 @@ check('ASSETS excludes version.json', !assets.some((a) => a.url === '/version.js
 check('ASSETS excludes source maps', !assets.some((a) => a.url.endsWith('.map')), '');
 check('every ASSETS entry exists on disk',
     assets.every((a) => urls.includes(a.url)), '');
+// Behind the gate an unexpected redirect is a failed install (sw.template.js `isGenuine`), so a
+// document is fetched from the URL the host serves without one, and kept under its own key.
+check('every document is fetched from its extensionless URL',
+    assets.filter((a) => a.url.endsWith('.html')).every((a) => typeof a.fetch === 'string' && !a.fetch.endsWith('.html')),
+    assets.filter((a) => a.url.endsWith('.html')).map((a) => `${a.url}←${a.fetch}`).join(', '));
+check('ASSETS excludes Pages configuration', !assets.some((a) => ['/_headers', '/_routes.json', '/_redirects'].includes(a.url)),
+    'the host never serves these, and one unanswerable entry fails the whole install');
 check('every ASSETS entry carries its byte size',
     assets.every((a) => Number.isInteger(a.bytes) && a.bytes >= 0),
     'the install progress bar is fed from these, not from content-length');

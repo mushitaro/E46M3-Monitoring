@@ -51,7 +51,9 @@
 //
 //  検証（verify-deploy.mjs）はゲートの内側を読むので、オーナーのセッションが要る。
 //  tsunagi-m3 の `access-session.mjs` で短命のセッションを発行し、そのファイルを
-//  `GATE_SESSION_FILE` で渡す。無ければ「未検証」（終了コード 2）で終える。
+//  `GATE_SESSION_FILE` で渡す。Fail closed は Pages の API から読むので、
+//  `CF_API_TOKEN` と `CF_ACCOUNT_ID`（読むだけ）も要る。どちらかが無ければ
+//  「未検証」（終了コード 2）で終える。
 // ============================================================================
 import { execFileSync, execSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';

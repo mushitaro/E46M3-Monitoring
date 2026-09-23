@@ -20,6 +20,7 @@
  *                            apple-mobile-web-app-title rewritten where one is present
  *
  * theme_color and background_color are the app's ground and stay as they are.
+ * <title> is not rewritten, on purpose: tsunagi-m-release §4.2 leaves it as the production name.
  *
  * ## Both arguments are required, and neither has a default
  *

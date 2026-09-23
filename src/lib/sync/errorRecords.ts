@@ -9,7 +9,10 @@
  *   - it never throws into the caller, and it never awaits on the caller's path — the operation it
  *     describes has already failed, and a report about it must not become a second failure;
  *   - a record that cannot be sent (offline, the session expired, the server down) goes into a small
- *     outbox in IndexedDB and is sent after the next send that succeeds;
+ *     outbox in IndexedDB and is sent after the next send that succeeds — and only while the gate
+ *     says the session is active, and only to the account it was queued under: if someone else
+ *     has signed in on this device since, the outbox drops what is waiting rather than file it
+ *     under them (owner-sync.ts `outbox.flush`, which asks /_gate/status once per flush);
  *   - a failed CONNECT is recorded too, with no identity and no payload: the failures that never
  *     got as far as a response are the ones most worth reading, and returning early when there was
  *     no report is how those used to leave no trace at all.

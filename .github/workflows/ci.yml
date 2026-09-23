@@ -16,6 +16,11 @@ jobs:
           cache: npm
       - run: npm ci
 
+      # First, and before anything is built: this repository is public, and nothing BMW-derived,
+      # no dump, no VIN and no secret may be in it. The same check the pre-commit hook runs, here
+      # for a commit made without the hook installed.
+      - run: node scripts/check-public-tree.mjs
+
       # Order matters: typecheck and tests are cheap and catch the most, the
       # build is the slowest. Nothing here needs a vehicle or a serial port —
       # the device simulator drives the real transport and link.

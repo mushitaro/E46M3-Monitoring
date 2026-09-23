@@ -13,14 +13,21 @@ judgement calls that need to be made deliberately, not inherited by accident.
 Ordinary npm packages, all permissively licensed. See `package.json` and
 `package-lock.json` for exact versions.
 
-| Package | License |
-|---|---|
-| next, react, react-dom | MIT |
-| tailwindcss, @tailwindcss/postcss | MIT |
-| plotly.js, react-plotly.js | MIT |
-| lucide-react | ISC |
-| clsx, tailwind-merge | MIT |
-| framer-motion | MIT |
+| Package | License | How it reaches a user |
+|---|---|---|
+| next, react, react-dom | MIT | bundled into the export |
+| lucide-react | ISC | bundled (the icons the UI draws) |
+| tailwindcss, @tailwindcss/postcss | MIT | build-time; its output is the shipped CSS |
+| `@tsunagi/ds2-core`, `@tsunagi/ds2-mss54` | MIT | this repository's own workspaces (§5) |
+
+The table used to list plotly.js, react-plotly.js, clsx, tailwind-merge and
+framer-motion, carried over from the predecessor. None of them is a dependency of
+this app, so none of them is shipped.
+
+Development-only packages (eslint, typescript, vitest, wrangler and their
+transitive dependencies) never reach a user and are not listed. The preview's
+Pages Functions (`functions/`) are this repository's own code; the owner gate in
+`functions/_owner-gate/` is copied from tsunagi-m3 (MIT, same author).
 
 The app makes **no network calls to any third party at runtime**. It talks to the
 vehicle over the Web Serial API and to nothing else.
@@ -158,6 +165,27 @@ arrangement is stated here as it actually is rather than as a plan.
 - The end state the second bullet still falls short of is for each user to generate
   the tables from their own EDIABAS installation. The generators and their
   documentation (`docs/REFERENCES.md`) are published precisely so that is possible.
+
+### 3.4 What this repository does not contain, and what keeps it out
+
+The repository is public under MIT, and MIT can only cover what is ours. So these
+are never committed, and each has a reason that is not tidiness:
+
+| Not in the repository | Why |
+|---|---|
+| `public/ecu-data/`, `tools/terms/` | derived from BMW's SGBD files and from the karter16 decompilation (§3.1, §3.2) — not ours to relicense |
+| BMW SGBD `.prg` files, SGBD dumps, `SgbdDump.exe` | BMW's proprietary data; a built `SgbdDump.exe` is a GPLv3 combined work (§2) |
+| the karter16 tool, its source or binary | its licence is the author's, not this project's to extend (§3.2) |
+| `recordings/`, `*.trc` | real-car sessions: the vehicle's identifiers and its fault history. Privacy, not licensing |
+| ECU/EEPROM dumps, calibrations, third-party XDFs | not ours, and a dump identifies a car |
+| `.dev.vars`, `.env*`, tokens, `.wrangler/` | secrets and local database state for the preview's functions |
+
+`.gitignore` keeps them out of `git add`. `scripts/check-public-tree.mjs` refuses
+them by what they are — the extensions `.bin .0da .0pa .prg .xdf .sqlite`, the
+secret file names, `.wrangler/`, and anything shaped like a real BMW M VIN in a
+text file — from the pre-commit hook (`npm run hooks:install`), from CI, and from
+`npm run deploy`. The history was rewritten once to remove the tables
+(`docs/PRESERVED.md`); these checks are what stop it needing to happen again.
 
 ---
 

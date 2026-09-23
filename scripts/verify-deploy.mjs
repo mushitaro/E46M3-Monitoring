@@ -37,6 +37,8 @@
 //  今回の変更でしか存在しない文字列は打てない。
 // ============================================================================
 import { existsSync, readFileSync } from 'node:fs';
+import http from 'node:http';
+import https from 'node:https';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -74,22 +76,38 @@ const sessionCookie = (() => {
 })();
 
 /**
- * One GET, past every cache: `no-store` speaks for this process only, and the edge keeps its own,
- * so a unique query string is what actually reaches the origin.
+ * One GET, past every cache: the edge keeps its own, so a unique query string is what actually
+ * reaches the origin.
+ *
+ * node:http rather than fetch. The gate redirects only a PAGE LOAD to m3 — it reads
+ * `Sec-Fetch-Mode: navigate` — and fetch treats every `Sec-` header as the runtime's to set: Node's
+ * sends `cors` whatever the caller asked for. Measured: through fetch, GET / came back 401 where
+ * a browser gets the 302.
  */
-const get = async (p, { cookie = sessionCookie, navigate = false } = {}) => {
-    const url = `${base}${p}${p.includes('?') ? '&' : '?'}cb=${process.hrtime.bigint()}`;
-    const headers = {};
-    if (cookie) headers.cookie = cookie;
-    if (navigate) Object.assign(headers, { 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'document', accept: 'text/html' });
-    const r = await fetch(url, { redirect: 'manual', cache: 'no-store', headers });
-    return {
-        status: r.status,
-        headers: r.headers,
-        text: r.status < 400 ? await r.text() : '',
-        location: r.headers.get('location') || '',
-    };
-};
+const get = (p, { cookie = sessionCookie, navigate = false } = {}) =>
+    new Promise((resolve, reject) => {
+        const url = new URL(`${base}${p}${p.includes('?') ? '&' : '?'}cb=${process.hrtime.bigint()}`);
+        const headers = { 'cache-control': 'no-cache' };
+        if (cookie) headers.cookie = cookie;
+        if (navigate) Object.assign(headers, { 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'document', accept: 'text/html' });
+        const req = (url.protocol === 'https:' ? https : http).get(url, { headers }, (res) => {
+            const chunks = [];
+            res.on('data', (c) => chunks.push(c));
+            res.on('end', () => {
+                const status = res.statusCode ?? 0;
+                const h = res.headers;
+                resolve({
+                    status,
+                    // The one method the checks below use, on the shape fetch's Headers has.
+                    headers: { get: (name) => [h[name.toLowerCase()]].flat().filter(Boolean).join(', ') || null },
+                    text: status < 400 ? Buffer.concat(chunks).toString('utf8') : '',
+                    location: String(h.location ?? ''),
+                });
+            });
+            res.on('error', reject);
+        });
+        req.on('error', reject);
+    });
 
 // ---- without a session: the gate is shut --------------------------------------------------
 const anonHome = await get('/', { cookie: null, navigate: true });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { AlertTriangle, Download, RotateCcw, Square } from 'lucide-react';
 import { AppHeader } from '@/components/AppHeader';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -16,6 +16,7 @@ import { useActuatorArming } from '@/hooks/useActuatorArming';
 import { useDs2Link } from '@/hooks/useDs2Link';
 import { useHub } from '@/hooks/useHub';
 import { useUnloadGuard } from '@/hooks/useUnloadGuard';
+import { usePreviewSurfaces } from '@/lib/build-variant';
 import { disclaimerStore } from '@/lib/disclaimer';
 import { exportCommsLog } from '@/lib/download';
 import {
@@ -30,6 +31,7 @@ import { useLang } from '@/lib/i18n';
 import { hasStopControl, operationFor } from '@/lib/jobOps';
 import { loadJobText, type JobTextTable } from '@/lib/jobText';
 import { loadDscHydraulics, type DscHydraulics } from '@/lib/dscHydraulics';
+import { enabledTabs, featureEnabled } from '@/lib/features';
 import { EMPTY_LEDGER, type Ledger } from '@/lib/ledger';
 import { mayRun, type RunVerdict } from '@/lib/runGate';
 import { loadSmg2Workflows, type Smg2Workflows } from '@/lib/smg2Workflows';
@@ -43,6 +45,8 @@ import { DatalogView, DatalogViz } from '@/views/datalog/DatalogView';
 import { useDatalog } from '@/views/datalog/useDatalog';
 import { ServiceView, ServiceViz, procedureForJob } from '@/views/service/ServiceView';
 import { WizardDialog } from '@/views/service/WizardDialog';
+import { SessionsView, SessionsViz } from '@/views/sessions/SessionsView';
+import { useFailureNotes, useSessions } from '@/views/sessions/useSessions';
 
 /**
  * The shell.
@@ -117,11 +121,21 @@ import { WizardDialog } from '@/views/service/WizardDialog';
  */
 export default function Home() {
     const { lang, t } = useLang();
-    const link = useDs2Link();
     const [tab, setTab] = useState<Tab>('diagnosis');
+    const [ecuId, setEcuId] = useState('mss54');
+
+    // What this build may show. Production renders the five instrument tabs and nothing that
+    // stores or sends; the preview adds SESSIONS (lib/features.ts, and its pinned test).
+    const previewSurfaces = usePreviewSurfaces();
+    const tabs = useMemo(() => enabledTabs(previewSurfaces), [previewSurfaces]);
+    const sessionsEnabled = featureEnabled('sessionSync', previewSurfaces);
+
+    // Before the link, because it IS the link's failure handler: each failure is kept for SAVE and
+    // sent as an error record. In production it keeps and sends nothing.
+    const failures = useFailureNotes(sessionsEnabled, ecuId);
+    const link = useDs2Link({ onFailure: failures.onFailure });
 
     const [ecuIndex, setEcuIndex] = useState<EcuIndex | null>(null);
-    const [ecuId, setEcuId] = useState('mss54');
     const [loaded, setLoaded] = useState<{ id: string; catalog: EcuProfile } | null>(null);
     const [catalogError, setCatalogError] = useState<string | null>(null);
     const catalog = loaded?.id === ecuId ? loaded.catalog : null;
@@ -130,6 +144,17 @@ export default function Home() {
     // Datalog state lives here so the right column can visualise a run while
     // the datalog tab is not the one on the left.
     const datalog = useDatalog(link);
+
+    // SAVE, SYNC and the account's copies. Reads the session the link and the datalog hold; asks
+    // the network for nothing until the SESSIONS tab is open, and never in production.
+    const sessions = useSessions({
+        enabled: sessionsEnabled,
+        active: tab === 'sessions',
+        link,
+        ecuId,
+        datalog,
+        failures,
+    });
 
     // Which outputs are energised. Held here, not in the ACTUATOR view, because
     // the release has to survive that view unmounting — a tab change must not be
@@ -321,6 +346,9 @@ export default function Home() {
         ) : (
             <AwaitingCatalog />
         ),
+        // Rendered only where the registry opens it: a production build never mounts it, so it
+        // never opens the device store or asks the network for anything.
+        sessions: sessionsEnabled ? <SessionsView sessions={sessions} catalog={catalog} ecuId={ecuId} /> : null,
     };
 
     const vizzes: Record<Tab, React.ReactNode> = {
@@ -344,6 +372,7 @@ export default function Home() {
         // module. Same component SERVICE falls back to, because it is the same
         // question and the numbers are about the module, not the tab.
         actuator: <ActuatorViz profile={catalog} arming={arming} />,
+        sessions: sessionsEnabled ? <SessionsViz count={sessions.local?.length ?? 0} /> : null,
     };
 
     return (
@@ -369,7 +398,7 @@ export default function Home() {
                     could not cover the right column (z-20) and clicking the hub
                     to dismiss the log fired the hub instead, dropping the link. */}
                 <section className="relative flex h-[38.2%] min-h-0 flex-col border-b border-slate-900 bg-slate-950/40 min-[900px]:h-full min-[900px]:w-[61.8%] min-[900px]:border-b-0 min-[900px]:border-r">
-                    <TabBar tab={tab} onChange={changeTab}>
+                    <TabBar tab={tab} enabled={tabs} onChange={changeTab}>
                         <LogPopover
                             log={link.log}
                             onClear={link.clearLog}

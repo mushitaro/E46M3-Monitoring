@@ -202,7 +202,24 @@ function useTransportKind(): TransportKind {
     );
 }
 
-export function useDs2Link() {
+/**
+ * One operation that failed, as the link saw it — handed to `onFailure` for the preview's automatic
+ * error records (lib/sync/errorRecords.ts). The log is the ring buffer at that moment, error line
+ * included; the receiver decides how much of it to keep.
+ */
+export interface LinkFailure {
+    /** What was being attempted, in the same words the log's `… failed` line uses. */
+    job: string;
+    error: string;
+    errorKind: Ds2ErrorKind | 'unclassified';
+    mode: LinkMode;
+    transport: TransportKind | null;
+    /** The identity last read on this link, if any. */
+    ident: { hex: string; length: number } | null;
+    log: readonly CommsLogLine[];
+}
+
+export function useDs2Link(options: { onFailure?: (failure: LinkFailure) => void } = {}) {
     const [state, setState] = useState<LinkState>('disconnected');
     const [mode, setMode] = useState<LinkMode>('vehicle');
     /**
@@ -261,6 +278,39 @@ export function useDs2Link() {
         setErrorKind(null);
     }, []);
 
+    /**
+     * Tell the shell an operation failed, for the preview's error records.
+     *
+     * Read through a ref so the callbacks below need not be rebuilt when the shell's handler is,
+     * and wrapped so that nothing the receiver does can turn into a second failure of the
+     * operation being reported: this runs on the error path of a link talking to a car.
+     */
+    const onFailureRef = useRef(options.onFailure);
+    useEffect(() => {
+        onFailureRef.current = options.onFailure;
+    });
+    const transportKindRef = useRef<TransportKind | null>(null);
+    /** The last identity read, for the failure report — state would be stale inside the callbacks. */
+    const identRef = useRef<{ hex: string; length: number } | null>(null);
+    const notifyFailure = useCallback(
+        (job: string, e: unknown, mode: LinkMode = modeRef.current, transport = transportKindRef.current) => {
+            try {
+                onFailureRef.current?.({
+                    job,
+                    error: e instanceof Error ? e.message : String(e),
+                    errorKind: isDs2Error(e) ? e.kind : 'unclassified',
+                    mode,
+                    transport,
+                    ident: identRef.current,
+                    log: logRef.current,
+                });
+            } catch {
+                /* a report about a failure must never become one */
+            }
+        },
+        [],
+    );
+
     const connect = useCallback(
         async (nextMode: LinkMode) => {
             clearError();
@@ -282,6 +332,7 @@ export function useDs2Link() {
                 await link.connect();
                 linkRef.current = link;
                 transportRef.current = selected.transport;
+                transportKindRef.current = selected.kind;
                 modeRef.current = nextMode;
                 setMode(nextMode);
                 setState('connected');
@@ -302,9 +353,13 @@ export function useDs2Link() {
                     return;
                 }
                 failWith(e);
+                // The transport that was tried, re-detected: `selected` is out of scope here, and a
+                // connect can fail before one was chosen. Recorded because a failed connect is the
+                // failure that leaves nothing else behind.
+                notifyFailure('Connect', e, nextMode, nextMode === 'practice' ? 'web-serial' : detectTransportKind());
             }
         },
-        [append, clearError, failWith],
+        [append, clearError, failWith, notifyFailure],
     );
 
     const disconnect = useCallback(async () => {
@@ -312,6 +367,7 @@ export function useDs2Link() {
         const link = linkRef.current;
         linkRef.current = null;
         transportRef.current = null;
+        transportKindRef.current = null;
         // Back to the strict default. A ref left reading 'practice' after the
         // link is gone would greet the next connection with the wrong answer if
         // anything ever read it before connect() writes it.
@@ -342,10 +398,11 @@ export function useDs2Link() {
                 setState('connected');
                 append('warn', `${what} failed`);
                 failWith(e);
+                notifyFailure(what, e);
                 return null;
             }
         },
-        [append, clearError, failWith],
+        [append, clearError, failWith, notifyFailure],
     );
 
     const readIdent = useCallback(
@@ -356,6 +413,7 @@ export function useDs2Link() {
                 link.assertPositive(frame, 'Identity read');
                 append('rx', toHex(frame.payload));
                 const value = { hex: toHex(frame.payload), length: frame.payload.length };
+                identRef.current = value;
                 setIdent(value);
                 return value;
             }),
@@ -616,6 +674,7 @@ export function useDs2Link() {
                 } catch (e) {
                     failure = e instanceof Error ? e.message : String(e);
                     failWith(e);
+                    notifyFailure('Datalog', e);
                 } finally {
                     // Single exit point — a double-fire is impossible, and a
                     // failed run cannot quietly return the link to idle.
@@ -634,7 +693,7 @@ export function useDs2Link() {
                 }
             })();
         },
-        [append, failWith],
+        [append, failWith, notifyFailure],
     );
 
     const stopLog = useCallback(() => {

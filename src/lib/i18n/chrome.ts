@@ -85,6 +85,20 @@ export const CHROME = {
     wiz_next: 'Next',
     wiz_back: 'Back',
     wiz_close: 'Close',
+    // SESSIONS (preview only). Verbs and state tokens on controls — English in both languages,
+    // like every other control label here. What SYNC sends, and what a delete loses, is safety
+    // copy and lives in ja.ts / en.ts.
+    tab_sessions: 'SESSIONS',
+    save: 'Save',
+    sync: 'Sync',
+    restore: 'Restore',
+    view: 'View',
+    back: 'Back',
+    remove: 'Delete',
+    privacy: 'Privacy',
+    reauth: 'Sign in again',
+    pill_synced: 'Synced',
+    pill_local: 'Local',
 } as const;
 
 export type Chrome = typeof CHROME;

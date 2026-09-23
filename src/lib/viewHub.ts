@@ -174,5 +174,12 @@ export function viewHubFor(s: ViewHubState): HubConfig | null {
 
         case 'actuator':
             return null;
+
+        // SAVE and SYNC work with or without a link, and the hub's first tier is the link's own
+        // (CONNECT while disconnected). Put there, SAVE would vanish exactly when the cable is
+        // unplugged — which is when an owner sits down to look back at a session. They live in
+        // the pane, beside the thing they save.
+        case 'sessions':
+            return null;
     }
 }

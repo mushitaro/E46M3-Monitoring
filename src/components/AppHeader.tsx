@@ -4,7 +4,9 @@ import { LABEL, WORDMARK } from './ui';
 import { MMark } from './MMark';
 import { StatusLed } from './StatusLed';
 import { APP_VERSION } from '@/lib/version';
+import { useBuildVariant } from '@/lib/build-variant';
 import { useLang } from '@/lib/i18n';
+import { PRIVACY_PREVIEW } from '@/lib/links';
 import type { LinkState, LinkMode } from '@/hooks/useDs2Link';
 
 /**
@@ -42,6 +44,9 @@ export function AppHeader({
     onCredits: () => void;
 }) {
     const { lang, t, setLang } = useLang();
+    // The preview sends what production never does, so it links to where that is written down —
+    // in the reader's language. Production has nothing to disclose here and draws nothing.
+    const preview = useBuildVariant() === 'preview';
 
     return (
         <header className="relative z-10 flex h-[48px] shrink-0 items-center bg-slate-950/80 px-6 backdrop-blur-md">
@@ -84,6 +89,16 @@ export function AppHeader({
                 acknowledged once and then gone, which is the worst home for
                 something that has to remain available. */}
             <div className="ml-auto flex items-center gap-1 border-l border-slate-800 pl-4">
+                {preview && (
+                    <a
+                        href={PRIVACY_PREVIEW[lang]}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`px-1.5 py-0.5 ${LABEL} text-slate-600 transition-colors hover:text-slate-400`}
+                    >
+                        {t.privacy}
+                    </a>
+                )}
                 <button
                     type="button"
                     onClick={onCredits}

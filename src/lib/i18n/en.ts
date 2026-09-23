@@ -502,4 +502,64 @@ export const en: Localised = {
         authored: 'written by hand',
         inferred: 'inferred',
     },
+
+    // --- SESSIONS (preview only) ------------------------------------------------
+    sessions_current: 'This connection',
+    sessions_current_note:
+        'SAVE keeps it on this device. SYNC saves it and then sends every session not yet sent to your account. The copy on the device stays after it is sent.',
+    sessions_nothing: 'Nothing to save yet. Read the fault memory or record a datalog and it can be saved.',
+    sessions_onDevice: 'On this device',
+    sessions_inAccount: 'In your account',
+    sessions_errors: 'Error records',
+    sessions_errors_note:
+        'When a read or a recording fails, this preview sends the ECU, the job, the error text and the comms log just before it, by itself. Anything it could not send waits on this device and goes with the next send that succeeds.',
+    sessions_account: (label) => `Saving to account ${label}`,
+    sessions_account_unknown: 'Saving to account — cannot confirm (open this again where there is signal)',
+    sessions_account_expired: 'Saving to account — your sign-in has expired',
+    sessions_noCloud: 'This build has nowhere to send to. Sessions are kept on this device only.',
+    sessions_saved: 'Saved on this device.',
+    sessions_saveFailed: "Could not save on this device. Check the browser's site storage.",
+    sessions_sent: (n) => `Sent ${n} session${n === 1 ? '' : 's'} to your account.`,
+    sessions_nothingToSend: 'Every session has been sent already.',
+    sessions_sendFailed: 'Could not send. It is saved on this device — SYNC again where there is signal.',
+    sessions_sendExpired: 'Could not send: your sign-in has expired. It is saved on this device.',
+    sessions_tooLarge: (label) => `${label} is too large to send (1.9 MB per session). It is saved on this device.`,
+    sessions_restored: 'Restored to this device.',
+    sessions_restoreFailed: 'Could not restore: the connection failed, or this build cannot read that session.',
+    sessions_restoreNewer: 'The copy on this device has changes your account has not seen. SYNC first.',
+    sessions_emptyLocal: 'No sessions saved on this device.',
+    sessions_emptyCloud: 'No sessions sent to your account.',
+    sessions_emptyErrors: 'No error records.',
+    sessions_outbox: (n) => `${n} record${n === 1 ? '' : 's'} waiting to be sent.`,
+    sessions_counts: (faults, samples, failures) =>
+        [
+            faults === null ? 'faults not read' : `${faults} fault${faults === 1 ? '' : 's'}`,
+            samples > 0 ? `${samples} samples` : null,
+            failures > 0 ? `${failures} failed` : null,
+        ]
+            .filter(Boolean)
+            .join(' · '),
+    sessions_deleteLocal_title: 'Delete from this device',
+    sessions_deleteLocal_consequence: (label, synced) =>
+        synced
+            ? `Deletes ${label} from this device. The copy in your account stays, and can be restored from there.`
+            : `Deletes ${label} from this device. It has not been sent to your account, so it cannot be brought back.`,
+    sessions_deleteCloud_title: 'Delete from your account',
+    sessions_deleteCloud_consequence: (label) =>
+        `Deletes ${label} from your account. A copy saved on this device stays. The account copy cannot be brought back.`,
+    sessions_deleteError_title: 'Delete error record',
+    sessions_deleteError_consequence: 'Deletes this error record from your account. It cannot be brought back.',
+    sessions_delete_confirm: 'Delete',
+    reauth_title: 'Sign in again',
+    reauth_consequence:
+        'Signing in again reloads this page. Reads and recordings you have not saved will be lost — SAVE them first.',
+    reauth_confirm: 'Continue without saving',
+    reauth_note: 'Your sign-in has expired. Anything not sent is waiting on this device.',
+    viewer_faults: 'Fault memory',
+    viewer_noFaultsRead: 'The fault memory was not read in this session.',
+    viewer_datalog: 'Datalog',
+    viewer_rows: (shown, total) => (shown < total ? `First ${shown} of ${total} rows` : `${total} rows`),
+    viewer_failures: 'Failures, and the comms log before each',
+    viewer_noFailures: 'Nothing failed in this session.',
+    viz_sessions: 'Saved on device',
 };

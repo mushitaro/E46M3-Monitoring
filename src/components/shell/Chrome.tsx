@@ -30,10 +30,13 @@ export const BAR =
  */
 export function TabBar({
     tab,
+    enabled,
     onChange,
     children,
 }: {
     tab: Tab;
+    /** The tabs this build may render — `enabledTabs` from lib/features. The ORDER is still TAB_ORDER's. */
+    enabled: ReadonlySet<Tab>;
     onChange: (next: Tab) => void;
     /** The tools that sit right of the rule — today, the comms log. */
     children?: React.ReactNode;
@@ -45,12 +48,13 @@ export function TabBar({
         adaptation: t.tab_adaptation,
         service: t.tab_service,
         actuator: t.tab_actuator,
+        sessions: t.tab_sessions,
     };
 
     return (
         <nav role="tablist" className={`${BAR} z-30`}>
             <div className="no-scrollbar mr-auto flex h-full min-w-0 flex-1 gap-6 overflow-x-auto overflow-y-hidden">
-                {TAB_ORDER.map((id) => (
+                {TAB_ORDER.filter((id) => enabled.has(id)).map((id) => (
                     <button
                         key={id}
                         role="tab"

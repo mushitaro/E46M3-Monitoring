@@ -487,4 +487,64 @@ export const ja: Localised = {
         authored: '個別記述',
         inferred: '推定',
     },
+
+    // --- SESSIONS (preview only) ------------------------------------------------
+    sessions_current: 'この接続',
+    sessions_current_note:
+        'SAVE はこの端末に保存します。SYNC は保存したうえで、まだ送っていないセッションをアカウントへ送ります。送ったあとも端末の分は残ります。',
+    sessions_nothing: '保存するものはまだありません。故障メモリを読むか、データログを記録すると保存できます。',
+    sessions_onDevice: 'この端末',
+    sessions_inAccount: 'アカウント',
+    sessions_errors: 'エラー記録',
+    sessions_errors_note:
+        '読み取りや記録が失敗したとき、このプレビュー版は ECU・ジョブ・エラー文・直前の通信ログを自動で送ります。送れなかった分はこの端末で待ち、次に送れたときに送ります。',
+    sessions_account: (label) => `保存先 アカウント ${label}`,
+    sessions_account_unknown: '保存先 アカウント（確認できません。電波のある所でもう一度開いてください）',
+    sessions_account_expired: '保存先 アカウント — サインインの期限が切れています',
+    sessions_noCloud: 'このビルドには送り先がありません。セッションはこの端末にだけ保存されます。',
+    sessions_saved: 'この端末に保存しました。',
+    sessions_saveFailed: 'この端末に保存できませんでした。ブラウザの保存領域を確認してください。',
+    sessions_sent: (n) => `${n} 件をアカウントへ送りました。`,
+    sessions_nothingToSend: '送っていないセッションはありません。',
+    sessions_sendFailed: '送れませんでした。端末には保存してあります。電波のある所でもう一度 SYNC してください。',
+    sessions_sendExpired: 'サインインの期限が切れているため送れませんでした。端末には保存してあります。',
+    sessions_tooLarge: (label) => `${label} は大きすぎて送れません（1 件 1.9 MB まで）。端末には保存してあります。`,
+    sessions_restored: 'この端末に復元しました。',
+    sessions_restoreFailed: '復元できませんでした。このビルドでは読めない形式か、通信に失敗しました。',
+    sessions_restoreNewer: 'この端末の分に、アカウントへまだ送っていない変更があります。先に SYNC してください。',
+    sessions_emptyLocal: 'この端末に保存したセッションはありません。',
+    sessions_emptyCloud: 'アカウントに送ったセッションはありません。',
+    sessions_emptyErrors: 'エラー記録はありません。',
+    sessions_outbox: (n) => `${n} 件の記録が送信待ちです。`,
+    sessions_counts: (faults, samples, failures) =>
+        [
+            faults === null ? '故障 未読' : `故障 ${faults}`,
+            samples > 0 ? `サンプル ${samples}` : null,
+            failures > 0 ? `失敗 ${failures}` : null,
+        ]
+            .filter(Boolean)
+            .join(' · '),
+    sessions_deleteLocal_title: 'この端末から削除',
+    sessions_deleteLocal_consequence: (label, synced) =>
+        synced
+            ? `${label} をこの端末から削除します。アカウントに送った分は残り、そこから復元できます。`
+            : `${label} をこの端末から削除します。まだアカウントへ送っていないため、削除すると戻せません。`,
+    sessions_deleteCloud_title: 'アカウントから削除',
+    sessions_deleteCloud_consequence: (label) =>
+        `${label} をアカウントから削除します。この端末に保存してある分は残ります。アカウント側は戻せません。`,
+    sessions_deleteError_title: 'エラー記録を削除',
+    sessions_deleteError_consequence: 'このエラー記録をアカウントから削除します。戻せません。',
+    sessions_delete_confirm: '削除する',
+    reauth_title: 'サインインし直す',
+    reauth_consequence:
+        'サインインし直すと、このページを開き直します。まだ保存していない読み取り結果や記録は消えます。先に SAVE してください。',
+    reauth_confirm: '保存せずに進む',
+    reauth_note: 'サインインの期限が切れています。送れなかったものは端末で待っています。',
+    viewer_faults: '故障メモリ',
+    viewer_noFaultsRead: 'このセッションでは故障メモリを読んでいません。',
+    viewer_datalog: 'データログ',
+    viewer_rows: (shown, total) => (shown < total ? `先頭 ${shown} 行 / 全 ${total} 行` : `${total} 行`),
+    viewer_failures: '失敗と直前の通信ログ',
+    viewer_noFailures: 'このセッションで失敗した操作はありません。',
+    viz_sessions: '端末に保存',
 };

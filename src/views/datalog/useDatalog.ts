@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { channelId, planBlockReads, type ChannelId } from '@tsunagi/ds2-mss54';
 import type { LiveSample, useDs2Link } from '@/hooks/useDs2Link';
-import { download, stamp } from '@/lib/download';
+import { datalogCsv, download, stamp } from '@/lib/download';
 import { useLang } from '@/lib/i18n';
 
 type Link = ReturnType<typeof useDs2Link>;
@@ -85,19 +85,25 @@ export function useDatalog(link: Link) {
         setSelected((prev) => (on ? [...prev, id] : prev.filter((s) => s !== id)));
     }, []);
 
-    // Headings are channel ids — `3:n`, `35:n` — so a file that read both blocks
-    // has two distinct columns instead of one column called `n` holding the
-    // last block read. The colon is CSV-safe and the pair is machine-readable.
+    // The column rule lives with the CSV writer in lib/download — see datalogCsv.
     const exportCsv = useCallback(() => {
-        const rows = [
-            ['time_s', ...recordedRef.current].join(','),
-            ...samplesRef.current.map((s) =>
-                [s.time.toFixed(3), ...recordedRef.current.map((k) => s.values[k] ?? '')].join(','),
-            ),
-        ];
-        download(rows.join('\r\n'), 'text/csv', `e46m3-datalog-${stamp()}.csv`);
+        download(datalogCsv(recordedRef.current, samplesRef.current), 'text/csv', `e46m3-datalog-${stamp()}.csv`);
         // No dependency on `selected` — that is the whole point. The file
         // describes the run, and the run is over.
+    }, []);
+
+    /**
+     * The last run as a saved session keeps it: the same CSV the export writes, read from the refs
+     * so it is the whole run and not the last flush. Null when nothing was recorded.
+     */
+    const capture = useCallback((): { channels: string[]; samples: number; csv: string } | null => {
+        const samples = samplesRef.current;
+        if (samples.length === 0) return null;
+        return {
+            channels: [...recordedRef.current],
+            samples: samples.length,
+            csv: datalogCsv(recordedRef.current, samples),
+        };
     }, []);
 
     // The selection has moved away from what the last run recorded, so the file
@@ -119,6 +125,7 @@ export function useDatalog(link: Link) {
         stop: link.stopLog,
         toggle,
         exportCsv,
+        capture,
         // The cost model, stated: one round trip per BLOCK, not per channel.
         costNotice: t.channels_selected(selected.length, plan.blocks.length),
     };

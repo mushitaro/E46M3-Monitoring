@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "gate:verify": "node scripts/gate-verify.mjs --functions functions --client src/lib/sync/owner-sync.ts",
     "deploy": "node scripts/deploy.mjs",
     "verify:deploy": "node scripts/verify-deploy.mjs"
   },

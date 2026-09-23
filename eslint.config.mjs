@@ -10,6 +10,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // wrangler pages dev bundles functions/ here; generated, and gitignored.
+    ".wrangler/**",
   ]),
 ]);
 

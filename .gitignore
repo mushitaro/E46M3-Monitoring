@@ -71,3 +71,9 @@ trace/
 # 読むことになる——そのファイルがコミットに紛れ込んだことが実際にあった。
 /scratch*.txt
 /scratch*.json
+
+# Pages Functions, locally. `.dev.vars` holds M3_CLIENT_SECRET (and GATE_DEV_ACCOUNT) for
+# `wrangler pages dev`; `.wrangler/` is the local D1 and its state. Neither is ever published —
+# scripts/check-public-tree.mjs refuses both, and `npm run gate:verify` checks the first is ignored.
+.dev.vars
+.wrangler/

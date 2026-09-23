@@ -326,7 +326,8 @@ tuner が既に `output: 'export'`（static export）なので、同じ形で出
 #### 8-1 の上書き：preview だけ、持ち主ごとの SYNC（運営者の決定、2026-09-23）
 
 上の案（ハッシュ化・オプトイン・同意の記録）は、**preview については**次の形で置き換えた。
-本番は変わらず**ネットワークに何も送らない**（`THIRD-PARTY-NOTICES.md` §1、`public/_headers`）。
+本番は変わらず**セッションを端末に保存せず、ネットワークにも何も送らない**（`THIRD-PARTY-NOTICES.md` §1、`public/_headers`）。
+`next dev` はセッションを端末に保存するが、何も送らない（送信は配信物の `app-variant=preview` だけが開く）。
 
 - **誰に**: m3 が `owner_preview` を認めた人（MILE 購入者と過去の施工オーナーさん）だけ。
   preview（`e46m3-monitoring-preview`）は全パスがオーナーのゲート（`functions/_middleware.ts`、

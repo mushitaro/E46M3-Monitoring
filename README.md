@@ -46,7 +46,7 @@ TSUNAGI ///M の計器系サブブランド。DS2 通信は
   権利の無い人・サインインしていない人には、ECU テーブルを含めて何も出さない。
 - **本番との違い**: SESSIONS タブがある。読み取り結果・データログ・失敗前後の通信ログを
   端末に保存し、SYNC で本人のアカウントへ送り、別の端末へ復元できる。操作が失敗したときは
-  エラー記録を自動で送る。本番のビルドはこれを持たず、ネットワークに何も送らない
+  エラー記録を自動で送る。本番のビルドはこれを持たず、セッションを端末に保存せず、ネットワークにも何も送らない
   （`src/lib/features.ts`、`THIRD-PARTY-NOTICES.md` §1）。
 - **何を送り、どう扱うか**: 初めて開くときに m3 の `/preview-notice` で示し、
   [プライバシーポリシー（#preview）](https://m3.tsunagi.app/privacy-policy#preview)に書いてある。
@@ -136,7 +136,9 @@ npm run typecheck
 **Web Serial はデスクトップ Chromium 系のみ**（Chrome / Edge）。iOS・Android・Safari・Firefox は非対応。
 セキュアコンテキストが必須なので `localhost` か HTTPS で開くこと。
 
-`npm run dev` はプレビュー版の画面（SESSIONS タブ）を出すが、送り先が無いので何も送らない。
+`npm run dev`（`next dev`）はプレビュー版の画面（SESSIONS タブ）を出し、セッションを端末
+（IndexedDB `e46m3-monitoring`）に保存するが、何も送らない — 送るかどうかは配信物の
+`app-variant` タグで決まり、`next dev` はそれを持たないから。本番のビルドはセッションの保存も送信もしない。
 ゲートと SYNC まで含めて手元で動かすときは、プレビュー版をビルドして `wrangler pages dev` で開く:
 
 ```bash

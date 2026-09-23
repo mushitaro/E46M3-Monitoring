@@ -29,8 +29,21 @@ transitive dependencies) never reach a user and are not listed. The preview's
 Pages Functions (`functions/`) are this repository's own code; the owner gate in
 `functions/_owner-gate/` is copied from tsunagi-m3 (MIT, same author).
 
-The app makes **no network calls to any third party at runtime**. It talks to the
-vehicle over the Web Serial API and to nothing else.
+The app makes **no network calls to any third party at runtime**. The production
+build talks to the vehicle over Web Serial / WebUSB and to nothing else — not even
+to its own origin, beyond loading itself.
+
+**The preview is the one exception, and it is deliberate.** The operator decided on
+2026-09-23 that owners holding `owner_preview` on m3 (MILE purchasers and the owners
+whose cars were worked on) get per-owner SYNC in the preview build: saved sessions
+they choose to send, and error records the app sends by itself when an operation
+fails. It overrides, for the preview only, the hashed and opt-in design in
+`docs/PLAN.md` §8-1, which records what is sent and why. The requests go only to
+`/api/*` on the preview's own origin, behind the owner gate, and are stored per owner
+in Cloudflare D1. What is sent and for how long is disclosed before first use on m3's
+`/preview-notice` and in its privacy policy (<https://m3.tsunagi.app/privacy-policy#preview>),
+which the preview links from its header. `src/lib/features.ts` keeps all of it
+(`sessionSync`, `preview-only`) out of the production build, and its test pins that.
 
 ---
 
@@ -139,8 +152,16 @@ arrangement is stated here as it actually is rather than as a plan.
   anyone with the URL can fetch them. This is a deliberate, accepted trade-off: it is
   what lets the app be usable by someone who does not own an EDIABAS installation.
   **The exposure is therefore the deployment, not the repository.**
+- **The one deployment made from this repository now is the preview**,
+  `e46m3-monitoring-preview.pages.dev`, and every path on it — the tables included —
+  is behind the owner gate (`functions/_middleware.ts`): only an account m3 says holds
+  `owner_preview` gets past it, and a deployment hash or branch alias answers 404. The
+  manifest and its icons are the only files it serves without a session, because a
+  browser fetches those without cookies when it installs the app. `npm run deploy`
+  refuses to ship without the gate.
 - **Cloudflare Access sits in front of the production deployment, and this is what
-  it does and does not do.** Measured, because the difference matters:
+  it does and does not do.** Nothing is deployed there from this repository any
+  more; it is kept for a future release. Measured, because the difference matters:
 
   | URL | Access policy | who gets the tables |
   |---|---|---|
@@ -213,6 +234,11 @@ tool that never runs in production. Not taken.
 Re-evaluate if any of these becomes true: the app gains a server or middleware,
 `images.unoptimized` is removed, or a stable Next.js release lands above the
 advisory range.
+
+The preview's Pages Functions (`functions/`) do not change this: they are Cloudflare
+Pages middleware and handlers written against the Workers runtime, not Next.js
+Middleware or a Next.js server, and the export is still static. Next's advisories
+concern code this deployment still does not run.
 
 ---
 

@@ -1,12 +1,20 @@
 # Cloudflare Pages headers.
 #
-# The app is a static export that talks only to the cable. It makes NO network
-# requests of its own at runtime, which is what lets the policy below be this
-# tight: connect-src is 'self' purely so the page can fetch its own assets.
+# The PRODUCTION build is a static export that talks only to the cable. It makes
+# NO network requests of its own at runtime, which is what lets the policy below
+# be this tight: connect-src is 'self' purely so the page can fetch its own assets.
 #
-# If a feedback endpoint is added later (plan §8-1), connect-src gains exactly
-# that origin and nothing else — widening it to https: would give away the one
-# property that makes a diagnostic tool safe to leave open in a garage.
+# The PREVIEW is the one exception, decided by the operator on 2026-09-23 (docs/
+# PLAN.md §8-1): owners holding `owner_preview` get per-owner SYNC — sessions they
+# choose to send, and error records the app sends by itself — disclosed on m3's
+# /preview-notice and in its privacy policy (#preview). Those requests go to
+# /api/* on THIS origin, behind the owner gate (functions/), so 'self' already
+# covers them and connect-src did not widen. Keep it that way: widening it to
+# https: would give away the one property that makes a diagnostic tool safe to
+# leave open in a garage.
+#
+# The same file serves both builds. The preview's responses also pass through
+# functions/_middleware.ts, which keeps these headers and makes caching private.
 
 /*
   Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
@@ -32,10 +40,10 @@
   # It used to be `/*.json` and `/ecu-data/*`, because those are the files with
   # a provenance question attached (THIRD-PARTY-NOTICES.md §3). But the pages
   # that LINK them are just as findable, and this whole deployment is meant to
-  # sit behind Cloudflare Access — a crawler reaching the index at all is a
-  # symptom worth not having. It costs one header on assets nobody would index
-  # anyway.
+  # sit behind a gate — a crawler reaching the index at all is a symptom worth
+  # not having. It costs one header on assets nobody would index anyway.
   #
-  # This is a REQUEST, not access control. Access is what actually keeps the
-  # tables private; `noindex` and `robots.txt` only ask politely.
+  # This is a REQUEST, not access control. The gate is what actually keeps the
+  # tables private — the owner gate on the preview, Cloudflare Access on the
+  # production project — and `noindex` and `robots.txt` only ask politely.
   X-Robots-Tag: noindex

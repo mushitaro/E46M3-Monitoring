@@ -1,26 +1,38 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "e46m3-monitoring",
+  "name": "e46m3-monitoring-preview",
   "compatibility_date": "2026-07-31",
 
-  // Static export only. There is no Worker and no server: the app talks to a
-  // serial port in the browser and to nothing else. `out/` is what `npm run
-  // build` produces.
+  // The PREVIEW project, and the one deployment made from this repository
+  // (operator, 2026-09-23). It is for the people m3 says hold `owner_preview`:
+  // MILE purchasers and the owners whose cars were worked on.
+  // `functions/_middleware.ts` is the owner gate in front of every path, and
+  // `functions/api/` is the per-owner SYNC. `out/` is what `npm run
+  // build:preview` produces.
   //
-  // Deploy:  npm run deploy   （scripts/deploy.mjs がこの name を読む）
+  // Deploy:  npm run deploy   （scripts/deploy.mjs がこの name を読み、これ以外を拒む）
   //
-  // This name is the PRODUCTION project — it replaced the predecessor PWA here.
-  // Pages projects cannot be renamed, so changing this line means creating a
-  // different project, not renaming this one.
+  // Pages projects cannot be renamed, so this line names a project; it does not
+  // rename one. `e46m3-monitoring` — the production project, behind Cloudflare
+  // Access — still exists and is kept for a future release, but NOTHING deploys
+  // to it from here any more: the only build this repository ships is the gated
+  // preview. `e46m3-diagnosis` was the staging project; the plan retires it.
+  // What their Access policies permit is recorded in THIRD-PARTY-NOTICES.md §3.3.
   //
-  // `e46m3-diagnosis` remains as STAGING: the release candidate is deployed
-  // and opened on a real phone there before it becomes the release. Deploy to
-  // it by passing --project-name explicitly, not by editing this line.
-  //
-  // Cloudflare Access is in front of this project. What its policy actually
-  // permits — which is not "the maintainer only" — is recorded in
-  // THIRD-PARTY-NOTICES.md §3.3, read from the API rather than from the
-  // dashboard, because the dashboard's summary cannot tell the two policies
-  // apart.
-  "pages_build_output_dir": "out"
+  // `name` must equal the project deployed to. The D1 binding below is applied
+  // only when it does: deploy to another project with --project-name and the
+  // functions arrive without their database — silently — and answer 5xx.
+  "pages_build_output_dir": "out",
+
+  // SHARED with the M35080 tool. This app's tables are `monitoring_*` and its
+  // migration is `0001_monitoring_sync.sql`, so the two never collide in the one
+  // `d1_migrations` table. Never touch another tool's tables from here.
+  "d1_databases": [
+    {
+      "binding": "RUNS_DB",
+      "database_name": "tsunagi-m-preview-runs",
+      "database_id": "caef60dd-7936-44be-9184-b4168791ee4f",
+      "migrations_dir": "migrations"
+    }
+  ]
 }

@@ -85,9 +85,10 @@ export function DisclaimerDialog({ onAgree, preview = false }: { onAgree: () => 
  *
  * m3 used to show this on a page of its own (/preview-notice) on the way in; it
  * is here now because the operator decided the confirmation belongs in the app
- * (2026-09-24). The copy is m3's, verbatim (`disclaimer_preview` in the
- * catalog), in m3's order: what is sent, then its purpose, where it is kept and
- * how to delete it, then the policy that says all of it at length.
+ * (2026-09-24). The copy is m3's (`disclaimer_preview` in the catalog, which
+ * says which two lines were made true of this app), in m3's order: what is sent,
+ * then its purpose, where it is kept and how to delete it, then the policy that
+ * says all of it at length.
  *
  * A rule above it, and nothing around it: the section is the second half of one
  * dialog, not a card inside it. The link opens a new tab, like every link out of

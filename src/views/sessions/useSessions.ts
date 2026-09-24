@@ -1,10 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
 import type { LinkFailure, LinkMode, LinkState } from '@/hooks/useDs2Link';
 import { useOnline } from '@/hooks/useOnline';
 import { useLang } from '@/lib/i18n';
+import { previewNoticeStore } from '@/lib/previewNotice';
 import {
     canSync,
     deleteCloudSession,
@@ -35,8 +36,9 @@ import type { Datalog } from '@/views/datalog/useDatalog';
  *
  * Separate from `useSessions` because it has to exist BEFORE the link does — it is the link's
  * `onFailure` — while everything else here reads the link. `enabled` is the registry's answer for
- * `sessionSync`: in production nothing is kept and nothing is sent, and `reportFailure` checks
- * `canSync()` again on its own, so the dev server keeps notes but sends nothing.
+ * `sessionSync`: in production nothing is kept and nothing is sent, and `reportFailure` checks the
+ * build and the notice again on its own, so the dev server keeps notes but sends nothing, and the
+ * preview sends nothing before its notice is acknowledged.
  */
 export function useFailureNotes(enabled: boolean, ecuId: string) {
     const [notes, setNotes] = useState<FailureNote[]>([]);
@@ -96,9 +98,10 @@ export interface SessionsNotice {
  *
  * ## What reaches the network
  *
- * Nothing unless `canSync()` — the preview build. The dev server shows the tab and keeps sessions
- * on the device, and says it has nowhere to send them. The account calls run only when the tab is
- * open or an action needs them; a hidden tab polls nothing.
+ * Nothing unless `canSync()` — the preview build, once the owner has acknowledged the notice of
+ * what it sends (lib/previewNotice.ts). The dev server shows the tab and keeps sessions on the
+ * device, and says it has nowhere to send them. The account calls run only when the tab is open or
+ * an action needs them; a hidden tab polls nothing.
  */
 export function useSessions(input: {
     enabled: boolean;
@@ -115,7 +118,14 @@ export function useSessions(input: {
 }) {
     const { t } = useLang();
     const { enabled, active, link, ecuId, datalog, failures } = input;
-    const cloudEnabled = enabled && canSync();
+    // `canSync()` reads the acknowledgement when it is asked; the store is what re-renders this with
+    // the new answer the moment AGREE is pressed.
+    const noticeAcknowledged = useSyncExternalStore(
+        previewNoticeStore.subscribe,
+        previewNoticeStore.snapshot,
+        previewNoticeStore.serverSnapshot,
+    );
+    const cloudEnabled = enabled && noticeAcknowledged && canSync();
     const online = useOnline();
 
     const [local, setLocal] = useState<SavedSession[] | null>(null);
@@ -385,8 +395,12 @@ export type Sessions = ReturnType<typeof useSessions>;
  * The account's side, read in one go: the lists, the gate's state, and the outbox. When the gate
  * says the owner is signed in and records are waiting, they are sent here — an owner who signed in
  * again has just made the thing they were waiting for possible.
+ *
+ * Nothing at all before the notice is acknowledged — `gateStatus()` is a request too, and the
+ * calls beside it only check for themselves.
  */
 async function readCloud() {
+    if (!canSync()) return { gate: null, waiting: 0, sessions: null, diagnostics: null };
     const [s, d, gate, n] = await Promise.all([listCloudSessions(), listDiagnostics(), gateStatus(), waitingErrorRecords()]);
     let waiting = n;
     if (gate.state === 'active' && n > 0) {

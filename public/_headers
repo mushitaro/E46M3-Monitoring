@@ -6,12 +6,12 @@
 #
 # The PREVIEW is the one exception, decided by the operator on 2026-09-23 (docs/
 # PLAN.md §8-1): owners holding `owner_preview` get per-owner SYNC — sessions they
-# choose to send, and error records the app sends by itself — disclosed on m3's
-# /preview-notice and in its privacy policy (#preview). Those requests go to
-# /api/* on THIS origin, behind the owner gate (functions/), so 'self' already
-# covers them and connect-src did not widen. Keep it that way: widening it to
-# https: would give away the one property that makes a diagnostic tool safe to
-# leave open in a garage.
+# choose to send, and error records the app sends by itself — shown in the
+# preview's own first-run dialog before anything is sent, and in m3's privacy
+# policy (#preview). Those requests go to /api/* on THIS origin, behind the owner
+# gate (functions/), so 'self' already covers them and connect-src did not widen.
+# Keep it that way: widening it to https: would give away the one property that
+# makes a diagnostic tool safe to leave open in a garage.
 #
 # The same file serves both builds. The preview's responses also pass through
 # functions/_middleware.ts, which keeps these headers and makes caching private.

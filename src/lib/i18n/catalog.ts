@@ -63,6 +63,30 @@ export interface Localised {
     disclaimer_title: string;
     disclaimer_lede: string;
     disclaimer_points: string[];
+    /**
+     * What the preview sends, and why: a section under the points, in the preview build only
+     * (lib/previewNotice.ts). m3's notice for `monitoring-preview`, verbatim — its NOTICE_COPY with
+     * NOTICE_APPS' `sessions` and `records`, field names kept — moved here when the operator retired
+     * m3's /preview-notice page (2026-09-24). What it lists must stay what lib/sync/ sends, and what
+     * m3's privacy policy (#preview) says of this app.
+     */
+    disclaimer_preview: {
+        lead: string;
+        sessionsTitle: string;
+        sessions: string;
+        sessionsWhen: string;
+        recordsTitle: string;
+        records: string;
+        recordsWhen: string;
+        alsoSent: string;
+        purposeTitle: string;
+        purpose: string;
+        whereTitle: string;
+        where: string;
+        deleteTitle: string;
+        deleteBody: string;
+        policy: string;
+    };
     /** The SMG II guided procedure. */
     wiz_title: (name: string) => string;
     wiz_step: Record<'prereq' | 'safety' | 'run' | 'result', string>;

@@ -16,8 +16,9 @@ import { useActuatorArming } from '@/hooks/useActuatorArming';
 import { useDs2Link } from '@/hooks/useDs2Link';
 import { useHub } from '@/hooks/useHub';
 import { useUnloadGuard } from '@/hooks/useUnloadGuard';
-import { usePreviewSurfaces } from '@/lib/build-variant';
+import { useBuildVariant, usePreviewSurfaces } from '@/lib/build-variant';
 import { disclaimerStore } from '@/lib/disclaimer';
+import { agreeToFirstRun, firstRunDialogUp, previewNoticeStore } from '@/lib/previewNotice';
 import { exportCommsLog } from '@/lib/download';
 import {
     jobIndex,
@@ -284,6 +285,17 @@ export default function Home() {
         disclaimerStore.snapshot,
         disclaimerStore.serverSnapshot,
     );
+    // The preview's notice of what it sends rides in the same dialog, and holds it up on its own
+    // key (lib/previewNotice). Only in the build that carries app-variant=preview, which is the
+    // build that sends: `next dev` shows SESSIONS but sends nothing, so it has nothing to disclose
+    // and its dialog is production's.
+    const preview = useBuildVariant() === 'preview';
+    const noticeAcknowledged = useSyncExternalStore(
+        previewNoticeStore.subscribe,
+        previewNoticeStore.snapshot,
+        previewNoticeStore.serverSnapshot,
+    );
+    const firstRun = firstRunDialogUp({ agreed, preview, noticeAcknowledged });
 
     // One verdict, computed once, used by the hub AND by the panel. They used to
     // reason about runnability separately, which is how a control that says it
@@ -506,7 +518,7 @@ export default function Home() {
                 </aside>
             </main>
 
-            {!agreed && <DisclaimerDialog onAgree={() => disclaimerStore.agree()} />}
+            {firstRun && <DisclaimerDialog preview={preview} onAgree={() => agreeToFirstRun(preview)} />}
 
             {wizardOpen && procedure && catalog && workflows && (
                 <WizardDialog

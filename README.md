@@ -48,9 +48,10 @@ TSUNAGI ///M の計器系サブブランド。DS2 通信は
   端末に保存し、SYNC で本人のアカウントへ送り、別の端末へ復元できる。操作が失敗したときは
   エラー記録を自動で送る。本番のビルドはこれを持たず、セッションを端末に保存せず、ネットワークにも何も送らない
   （`src/lib/features.ts`、`THIRD-PARTY-NOTICES.md` §1）。
-- **何を送り、どう扱うか**: 初めて開くときに m3 の `/preview-notice` で示し、
-  [プライバシーポリシー（#preview）](https://m3.tsunagi.app/privacy-policy#preview)に書いてある。
-  アプリのヘッダの Privacy からも開ける。
+- **何を送り、どう扱うか**: 初めて開いたとき、何かを送る前に、アプリ自身の最初のダイアログ
+  （「このツールについて」）で示す。確認されるまでは何も送らない（`src/lib/previewNotice.ts`）。
+  [プライバシーポリシー（#preview）](https://m3.tsunagi.app/privacy-policy#preview)にも書いてあり、
+  そのダイアログとアプリのヘッダの Privacy から開ける。
 
 配信は `npm run deploy`。ゲートがあること、配る版のソースが公開済み（`HEAD == origin/main`）で
 作業ツリーがきれいなこと、公開してはならないものが追跡されていないことを確かめてからでないと

@@ -21,9 +21,11 @@
  * THIRD-PARTY-NOTICES.md §1 and public/_headers say so in as many words. The preview is a different
  * promise, made to a different audience: the operator decided (2026-09-23) that owners holding
  * `owner_preview` get per-owner SYNC — sessions they choose to send, and error records the app
- * sends by itself — behind the owner gate, disclosed on m3's /preview-notice and in its privacy
- * policy (#preview). Promoting this stage would make the production sentence false, which is why
- * `features.test.ts` asserts the stage directly and not merely through the tab set.
+ * sends by itself — behind the owner gate. What is sent and why is shown in the preview's own
+ * first-run dialog before anything is sent (lib/previewNotice.ts, 2026-09-24; it used to be m3's
+ * /preview-notice page), and in m3's privacy policy (#preview). Promoting this stage would make the
+ * production sentence false, which is why `features.test.ts` asserts the stage directly and not
+ * merely through the tab set.
  *
  * The whole SESSIONS surface is under it, the on-device store included: a production build has no
  * SESSIONS tab, writes nothing to IndexedDB and makes no request of its own.

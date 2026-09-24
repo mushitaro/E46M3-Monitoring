@@ -40,10 +40,13 @@ they choose to send, and error records the app sends by itself when an operation
 fails. It overrides, for the preview only, the hashed and opt-in design in
 `docs/PLAN.md` §8-1, which records what is sent and why. The requests go only to
 `/api/*` on the preview's own origin, behind the owner gate, and are stored per owner
-in Cloudflare D1. What is sent and for how long is disclosed before first use on m3's
-`/preview-notice` and in its privacy policy (<https://m3.tsunagi.app/privacy-policy#preview>),
-which the preview links from its header. `src/lib/features.ts` keeps all of it
-(`sessionSync`, `preview-only`) out of the production build, and its test pins that.
+in Cloudflare D1. What is sent, and why, is shown in the preview's own first-run
+dialog before anything is sent, and nothing is sent until it has been acknowledged
+(`src/lib/previewNotice.ts`). m3's privacy policy
+(<https://m3.tsunagi.app/privacy-policy#preview>) says the same at length, including
+for how long it is kept, and the preview links it from that dialog and from its
+header. `src/lib/features.ts` keeps all of it (`sessionSync`, `preview-only`) out of
+the production build, and its test pins that.
 
 ---
 

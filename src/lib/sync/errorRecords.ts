@@ -21,10 +21,15 @@
  * transport, the build id and the PRACTICE flag — a list mixing simulated failures with real ones
  * would be worse than no list.
  *
- * Preview only: `canSync()` is false in production and under `next dev`, and then this does
- * nothing at all — no request, no IndexedDB.
+ * Preview only: production and `next dev` carry no app-variant tag, and then this does nothing at
+ * all — no request, no IndexedDB.
+ *
+ * And not before the notice: until the owner has acknowledged what this preview sends (its
+ * first-run dialog, lib/previewNotice.ts), `canSync()` is false, nothing is sent and the outbox is
+ * not flushed — which would first ask /_gate/status. A failure in that window is kept the way one
+ * without signal is kept, in the outbox, and goes with the first send that succeeds after it.
  */
-import { api, gzipB64, outbox } from './owner-sync';
+import { api, gzipB64, isPreviewBuild, outbox } from './owner-sync';
 import { canSync } from './cloud';
 
 const box = outbox('monitoring-outbox');
@@ -52,6 +57,9 @@ function appBuild(): string | null {
  * "not signed in" keep it waiting.
  */
 async function send(body: unknown): Promise<boolean> {
+    // The last door before the network, whoever calls: not acknowledged is "not sent", and the
+    // record stays where it is.
+    if (!canSync()) return false;
     const r = await api('/api/diagnostics', { method: 'POST', body });
     if (r.ok) return true;
     return r.status === 400 || r.status === 409 || r.status === 413;
@@ -59,7 +67,9 @@ async function send(body: unknown): Promise<boolean> {
 
 /** Fire and forget. Returns immediately; nothing it does can reach the caller. */
 export function reportFailure(report: FailureReport): void {
-    if (!canSync()) return;
+    // `isPreviewBuild`, not `canSync`: before the notice is acknowledged the record is still kept
+    // (below), only not sent.
+    if (!isPreviewBuild()) return;
     void (async () => {
         try {
             const body = {
@@ -82,7 +92,11 @@ export function reportFailure(report: FailureReport): void {
     })();
 }
 
-/** Send whatever is waiting — after a SYNC went through, say. Never throws. */
+/**
+ * Send whatever is waiting — after a SYNC went through, say. Never throws. Nothing before the
+ * notice is acknowledged: `outbox.flush` asks /_gate/status before it sends, so the send's own
+ * check would come one request too late.
+ */
 export async function flushErrorRecords(): Promise<number> {
     if (!canSync()) return 0;
     return box.flush(send);

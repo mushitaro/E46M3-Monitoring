@@ -7,14 +7,23 @@
  * no `app-variant` tag, so `isPreviewBuild()` is false, and neither is the dev server, which never
  * carries the tag and has no /api to talk to.
  *
+ * The preview answers no as well until the owner has acknowledged what it sends — the notice in its
+ * first-run dialog (lib/previewNotice.ts). Until then it is production as far as the network is
+ * concerned: nothing is sent, listed or asked, not even whether the owner is signed in.
+ *
  * No token, no settings: the requests are same-origin and the gate knows who is asking. Nothing
  * here sends an owner id — the server takes the owner from the gate, never from the body.
  */
+import { previewNoticeAcknowledged } from '@/lib/previewNotice';
 import { api, gunzipB64, gzipB64, isPreviewBuild, type ApiResult } from './owner-sync';
 import { isSavedSession, summarise, type SavedSession } from './session';
 
-/** Only the preview build syncs. */
-export const canSync = (): boolean => isPreviewBuild();
+/**
+ * Whether the account half may make a request: the preview build, once its notice has been
+ * acknowledged. Asked at the moment of each call rather than once, so an acknowledgement opens it
+ * and nothing before one can.
+ */
+export const canSync = (): boolean => isPreviewBuild() && previewNoticeAcknowledged();
 
 const notSent = <T>(): ApiResult<T> => ({ ok: false, status: 0, data: null, expired: false, tooLarge: false });
 

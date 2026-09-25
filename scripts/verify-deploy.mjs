@@ -14,9 +14,10 @@
 //    authorize へ 302、`/sw.js`・`/ecu-data/`・`/api/*`・`/_next/static/` の実在する
 //    チャンクと実在しないパスは 401。例外は manifest とそれが指すアイコンだけで、
 //    これは 200（ブラウザはインストール時に Cookie なしで取りに来る）。ここが開いて
-//    いたら、他の何が合っていても不合格。
+//    いたら、他の何が合っていても不合格。ゲート自身の拒否ページ `/_gate/denied` は
+//    403 で、題が manifest の name（ワークス版の名前）と同じであること。
 //  - **セッション有り**（オーナー）: 中身が正しいこと。build-id がローカルの
-//    ビルドと一致し、app-variant=preview、manifest の名前と dev アイコン、
+//    ビルドと一致し、app-variant=preview、app-label=WORKS、manifest の名前と dev アイコン、
 //    専用の maskable、51 モジュール、SYNC の一覧が 200 で配列を返すこと。
 //    そしてデプロイのハッシュのホスト（`<hash>.e46m3-monitoring-preview.pages.dev`）は、
 //    セッションを持っていても 404 で、Cookie を一つも置かないこと。
@@ -99,7 +100,7 @@ const sessionCookie = (() => {
  * sends `cors` whatever the caller asked for. Measured: through fetch, GET / came back 401 where
  * a browser gets the 302.
  */
-const get = (p, { cookie = sessionCookie, navigate = false, host = null } = {}) =>
+const get = (p, { cookie = sessionCookie, navigate = false, host = null, keepBody = false } = {}) =>
     new Promise((resolve, reject) => {
         const url = new URL(`${base}${p}${p.includes('?') ? '&' : '?'}cb=${process.hrtime.bigint()}`);
         const headers = { 'cache-control': 'no-cache' };
@@ -118,7 +119,8 @@ const get = (p, { cookie = sessionCookie, navigate = false, host = null } = {}) 
                     status,
                     // The one method the checks below use, on the shape fetch's Headers has.
                     headers: { get: (name) => [h[name.toLowerCase()]].flat().filter(Boolean).join(', ') || null },
-                    text: status < 400 ? Buffer.concat(chunks).toString('utf8') : '',
+                    // An error's body only when asked for: the gate's own pages answer 4xx with HTML.
+                    text: status < 400 || keepBody ? Buffer.concat(chunks).toString('utf8') : '',
                     location: String(h.location ?? ''),
                     setsCookie: (h['set-cookie'] ?? []).length > 0,
                 });
@@ -222,11 +224,19 @@ for (const icon of icons) {
 }
 
 // The home-screen label, asserted as a VALUE and not merely as present. A rename is a deliberate
-// act and should have to edit these lines, because in a PWA the label is what someone taps.
-const EXPECT_NAME = 'E46M3 /// MONITORING — PREVIEW';
-const EXPECT_SHORT_NAME = 'P E46M3 MON';
+// act and should have to edit these lines, because in a PWA the label is what someone taps. The
+// build is called WORKS for its users (operator, 2026-09-25); its app-variant is still `preview`.
+const EXPECT_NAME = 'E46M3 /// MONITORING — WORKS';
+const EXPECT_SHORT_NAME = 'W E46M3 MON';
+const EXPECT_LABEL = 'WORKS';
 check(`manifest name is ${EXPECT_NAME}`, manifest?.name === EXPECT_NAME, manifest?.name ?? '(unreadable)');
 check(`manifest short_name is ${EXPECT_SHORT_NAME}`, manifest?.short_name === EXPECT_SHORT_NAME, manifest?.short_name ?? '(unreadable)');
+// The gate's refusal is the one page of this app that someone without access ever sees, and it is
+// titled with the gate's `name` (functions/_middleware.ts) — the same name the install shows.
+const denied = await get('/_gate/denied', { cookie: null, keepBody: true });
+const deniedTitle = (denied.text.match(/<title>([^<]*)<\/title>/) || [])[1];
+check(`no session: /_gate/denied is 403, titled ${EXPECT_NAME}`, denied.status === 403 && deniedTitle === EXPECT_NAME,
+    `${denied.status} ${deniedTitle ?? '(no title)'}`);
 check('every manifest icon is from the dev set', icons.length > 0 && icons.every((i) => /-dev-/.test(i.src)),
     icons.map((i) => i.src).join(', ') || '(none)');
 const anySrc = new Set(icons.filter((i) => (i.purpose ?? 'any').split(/\s+/).includes('any')).map((i) => i.src));
@@ -261,7 +271,7 @@ function finish() {
 }
 
 if (!sessionCookie) {
-    unverified.push('中身——build-id、app-variant、ecu-data、SYNC、デプロイのハッシュのホスト（GATE_SESSION_FILE が無い）');
+    unverified.push('中身——build-id、app-variant と app-label、ecu-data、SYNC、デプロイのハッシュのホスト（GATE_SESSION_FILE が無い）');
     finish();
 }
 
@@ -277,6 +287,9 @@ if (local) {
 }
 const variant = (home.text.match(/<meta name="app-variant" content="([^"]*)"/) || [])[1];
 check('app-variant is preview', variant === 'preview', variant ?? '(absent: the build was not branded)');
+// What the header's badge reads. Display only, and looked up by the variant, never derived from it.
+const label = (home.text.match(/<meta name="app-label" content="([^"]*)"/) || [])[1];
+check(`app-label is ${EXPECT_LABEL}`, label === EXPECT_LABEL, label ?? '(absent: the build was not branded)');
 check('no sync-token meta', !/<meta[^>]+name="sync-token"/.test(home.text), '');
 
 const csp = home.headers.get('content-security-policy') || '';

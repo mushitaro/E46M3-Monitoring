@@ -1,10 +1,10 @@
 'use client';
 
-import { LABEL, WORDMARK } from './ui';
+import { LABEL, Pill, WORDMARK } from './ui';
 import { MMark } from './MMark';
 import { StatusLed } from './StatusLed';
 import { APP_VERSION } from '@/lib/version';
-import { useBuildVariant } from '@/lib/build-variant';
+import { useBuildLabel, useBuildVariant } from '@/lib/build-variant';
 import { useLang } from '@/lib/i18n';
 import { PRIVACY_PREVIEW } from '@/lib/links';
 import type { LinkState, LinkMode } from '@/hooks/useDs2Link';
@@ -22,7 +22,12 @@ import type { LinkState, LinkMode } from '@/hooks/useDs2Link';
  *
  * Composition follows the recipe exactly:
  *
- *   [ status-dot · TITLE /// ROLE · version | identity-readouts ] ⟷ [ tools ]
+ *   [ status-dot · TITLE /// ROLE · build-badge · version | identity-readouts ] ⟷ [ tools ]
+ *
+ * The build badge says which build this URL serves — WORKS on the owner build,
+ * nothing at all on production — and only says it: a tinted span, never a
+ * control (tsunagi-m-chrome §2). Its word is `app-label`, not the variant, so
+ * what the build is called can change without moving a feature gate.
  *
  * The status dot belongs HERE, not in a pane. It is the app's single statement
  * of what the machine is doing, and it has to be in the one place that is on
@@ -47,6 +52,7 @@ export function AppHeader({
     // The preview sends what production never does, so it links to where that is written down —
     // in the reader's language. Production has nothing to disclose here and draws nothing.
     const preview = useBuildVariant() === 'preview';
+    const buildLabel = useBuildLabel();
 
     return (
         <header className="relative z-10 flex h-[48px] shrink-0 items-center bg-slate-950/80 px-6 backdrop-blur-md">
@@ -71,6 +77,8 @@ export function AppHeader({
                     <MMark className="mx-1.5" />
                     {t.appRole}
                 </h1>
+
+                {buildLabel && <Pill tone="caution">{buildLabel}</Pill>}
 
                 <span className="shrink-0 whitespace-nowrap font-mono text-[10px] text-slate-500">{APP_VERSION}</span>
 

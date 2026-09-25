@@ -2,7 +2,7 @@
  * Brands an exported build as a non-production variant, so an install of it cannot be mistaken for
  * the release — on the home screen, in the install prompt, or in the app's own idea of itself.
  *
- *     node scripts/brand-preview.mjs <out-dir> <LABEL>        e.g.  out PREVIEW
+ *     node scripts/brand-preview.mjs <out-dir> <variant>        e.g.  out preview
  *
  * Runs AFTER `next build` and `build-id.mjs`, and BEFORE `gen-sw.mjs` (package.json
  * `build:preview`). gen-sw names the cache after a hash of the bytes; brand after it and two builds
@@ -16,8 +16,12 @@
  *   manifest.short_name    = "<LABEL[0]> <production short_name>"   (the home-screen label)
  *   manifest.description  += " — <LABEL> BUILD, not the production tool."
  *   every icon reference   → the M ICON dev set (white on black), maskable entries included
- *   every .html            : <meta name="app-variant" content="<label>">, removed then inserted;
+ *   every .html            : <meta name="app-variant" content="<variant>"> and
+ *                            <meta name="app-label" content="<LABEL>">, removed then inserted;
  *                            apple-mobile-web-app-title rewritten where one is present
+ *
+ * LABEL is not an argument. It is looked up by the variant in scripts/brand-label.mjs
+ * (`preview` → WORKS, `staging` → STAGING).
  *
  * theme_color and background_color are the app's ground and stay as they are.
  * <title> is not rewritten, on purpose: tsunagi-m-release §4.2 leaves it as the production name.
@@ -25,13 +29,22 @@
  * ## Both arguments are required, and neither has a default
  *
  * A default is the value somebody forgot to pass, and the symptom would be two identically labelled
- * icons — the failure this script exists to prevent. LABEL is capped at 12 characters for the same
- * reason Android caps the label: past it, two labels can truncate into one.
+ * icons — the failure this script exists to prevent. A variant the table does not know is refused,
+ * not guessed at. The label it maps to is capped at 12 characters for the same reason Android caps
+ * the label: past it, two labels can truncate into one.
  *
- * ## The label decides `app-variant`, and that is not cosmetic
+ * ## The variant is what the build IS; the label is what it is CALLED
  *
- * The app reads the tag back (src/lib/build-variant.ts), and the preview-only features — SESSIONS,
- * SYNC, the error records — open on the one value `preview`. Production carries no tag at all.
+ * The app reads `app-variant` back (src/lib/build-variant.ts), and the preview-only features —
+ * SESSIONS, SYNC, the error records — open on the one value `preview`. Production carries no tag at
+ * all. That value is compared; the label is only shown — the manifest's names, and the header's
+ * badge, which reads `app-label`. So the variant is passed, the label is looked up, and neither is
+ * computed from the other.
+ *
+ * They used to be one value: the argument was the label and the variant was its lower case. The
+ * operator renamed the owner build from PREVIEW to WORKS for its users (2026-09-25), and passing
+ * WORKS would have stamped `works` and closed every preview-only feature without a word
+ * (tsunagi-m-release §5.7). The name changed; the variant, and everything that compares it, did not.
  *
  * ## Why the .txt files too
  *
@@ -42,16 +55,25 @@
  */
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
+import { labelFor } from './brand-label.mjs';
 
-const [OUT, LABEL] = process.argv.slice(2);
+const [OUT, VARIANT] = process.argv.slice(2);
 const fail = (msg) => {
     console.error(`[brand-preview] ${msg}`);
     process.exit(1);
 };
-if (!OUT || !LABEL) fail('usage: node scripts/brand-preview.mjs <out-dir> <LABEL>   (both required)');
-if (LABEL.length > 12) fail(`LABEL "${LABEL}" is ${LABEL.length} characters; the limit is 12.`);
-if (!/^[A-Z][A-Z0-9]*$/.test(LABEL)) fail(`LABEL "${LABEL}" must be upper-case letters and digits.`);
-const VARIANT = LABEL.toLowerCase();
+if (!OUT || !VARIANT) fail('usage: node scripts/brand-preview.mjs <out-dir> <variant>   (both required)');
+const LABEL = (() => {
+    try {
+        return labelFor(VARIANT);
+    } catch (e) {
+        return fail(e.message);
+    }
+})();
+// The table's entry, held to what the argument used to be held to: past 12 characters two labels can
+// truncate into one, and the already-branded test below reads a label as upper-case letters and digits.
+if (LABEL.length > 12) fail(`label "${LABEL}" (variant "${VARIANT}") is ${LABEL.length} characters; the limit is 12.`);
+if (!/^[A-Z][A-Z0-9]*$/.test(LABEL)) fail(`label "${LABEL}" (variant "${VARIANT}") must be upper-case letters and digits.`);
 
 const manifestPath = join(OUT, 'manifest.webmanifest');
 if (!existsSync(manifestPath)) fail(`${manifestPath} is missing — run next build first.`);
@@ -121,9 +143,12 @@ for (const file of walk(OUT)) {
             .replace(/(<meta name="apple-mobile-web-app-title" content=")[^"]*(")/g, `$1${manifest.short_name}$2`)
             // Removed, then inserted: out/ is not guaranteed fresh (build-id.mjs records the case),
             // and an insert-only stamp leaves two tags with the stale one first.
-            .replace(/<meta name="app-variant" content="[^"]*"\s*\/?>/g, '');
-        if (!after.includes('</head>')) fail(`${file} has no </head> to carry app-variant.`);
-        after = after.replace('</head>', `<meta name="app-variant" content="${VARIANT}"></head>`);
+            .replace(/<meta name="app-(?:variant|label)" content="[^"]*"\s*\/?>/g, '');
+        if (!after.includes('</head>')) fail(`${file} has no </head> to carry app-variant and app-label.`);
+        after = after.replace(
+            '</head>',
+            `<meta name="app-variant" content="${VARIANT}"><meta name="app-label" content="${LABEL}"></head>`,
+        );
         documents++;
     } else if (after !== before) {
         payloads++;
@@ -132,6 +157,6 @@ for (const file of walk(OUT)) {
 }
 
 console.log(
-    `[brand-preview] ${OUT}: "${manifest.name}" / ${manifest.short_name} / app-variant=${VARIANT}; ` +
+    `[brand-preview] ${OUT}: "${manifest.name}" / ${manifest.short_name} / app-variant=${VARIANT} app-label=${LABEL}; ` +
         `${swaps.size} icons → dev set; ${documents} document(s), ${payloads} RSC payload(s) patched`,
 );

@@ -70,8 +70,9 @@ export interface Localised {
      * m3's /preview-notice page (2026-09-24). Verbatim but for two lines, made true of this app
      * (2026-09-24): `recordsWhen` says a record goes when a job fails, which is the only time this app
      * sends one, and `alsoSent` names the app version alone, because nothing here keeps the browser
-     * type. What it lists must stay what lib/sync/ sends, and what m3's privacy policy (#preview)
-     * says of this app.
+     * type. `lead` also names the build as the operator renamed it for its users (2026-09-25): this
+     * WORKS build / このワークス版, where m3 said preview. What it lists must stay what lib/sync/
+     * sends, and what m3's privacy policy (#preview) says of this app.
      */
     disclaimer_preview: {
         lead: string;

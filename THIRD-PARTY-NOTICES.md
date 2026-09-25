@@ -25,7 +25,7 @@ framer-motion, carried over from the predecessor. None of them is a dependency o
 this app, so none of them is shipped.
 
 Development-only packages (eslint, typescript, vitest, wrangler and their
-transitive dependencies) never reach a user and are not listed. The preview's
+transitive dependencies) never reach a user and are not listed. The WORKS build's
 Pages Functions (`functions/`) are this repository's own code; the owner gate in
 `functions/_owner-gate/` is copied from tsunagi-m3 (MIT, same author).
 
@@ -33,18 +33,20 @@ The app makes **no network calls to any third party at runtime**. The production
 build talks to the vehicle over Web Serial / WebUSB and to nothing else — not even
 to its own origin, beyond loading itself.
 
-**The preview is the one exception, and it is deliberate.** The operator decided on
+**The WORKS build is the one exception, and it is deliberate.** (WORKS is what the
+owner-gated build is called for its users, by the operator's decision of 2026-09-25;
+its variant, host and identifiers still say `preview`.) The operator decided on
 2026-09-23 that owners holding `owner_preview` on m3 (MILE purchasers and the owners
-whose cars were worked on) get per-owner SYNC in the preview build: saved sessions
+whose cars were worked on) get per-owner SYNC in the WORKS build: saved sessions
 they choose to send, and error records the app sends by itself when an operation
-fails. It overrides, for the preview only, the hashed and opt-in design in
+fails. It overrides, for the WORKS build only, the hashed and opt-in design in
 `docs/PLAN.md` §8-1, which records what is sent and why. The requests go only to
-`/api/*` on the preview's own origin, behind the owner gate, and are stored per owner
-in Cloudflare D1. What is sent, and why, is shown in the preview's own first-run
-dialog before anything is sent, and nothing is sent until it has been acknowledged
-(`src/lib/previewNotice.ts`). m3's privacy policy
+`/api/*` on the WORKS build's own origin, behind the owner gate, and are stored per
+owner in Cloudflare D1. What is sent, and why, is shown in the WORKS build's own
+first-run dialog before anything is sent, and nothing is sent until it has been
+acknowledged (`src/lib/previewNotice.ts`). m3's privacy policy
 (<https://m3.tsunagi.app/privacy-policy#preview>) says the same at length, including
-for how long it is kept, and the preview links it from that dialog and from its
+for how long it is kept, and the WORKS build links it from that dialog and from its
 header. `src/lib/features.ts` keeps all of it (`sessionSync`, `preview-only`) out of
 the production build, and its test pins that.
 
@@ -155,7 +157,7 @@ arrangement is stated here as it actually is rather than as a plan.
   anyone with the URL can fetch them. This is a deliberate, accepted trade-off: it is
   what lets the app be usable by someone who does not own an EDIABAS installation.
   **The exposure is therefore the deployment, not the repository.**
-- **The one deployment made from this repository now is the preview**,
+- **The one deployment made from this repository now is the WORKS build**,
   `e46m3-monitoring-preview.pages.dev`, and every path on it — the tables included —
   is behind the owner gate (`functions/_middleware.ts`): only an account m3 says holds
   `owner_preview` gets past it, and a deployment hash or branch alias answers 404. The
@@ -202,7 +204,7 @@ are never committed, and each has a reason that is not tidiness:
 | the karter16 tool, its source or binary | its licence is the author's, not this project's to extend (§3.2) |
 | `recordings/`, `*.trc` | real-car sessions: the vehicle's identifiers and its fault history. Privacy, not licensing |
 | ECU/EEPROM dumps, calibrations, third-party XDFs | not ours, and a dump identifies a car |
-| `.dev.vars`, `.env*`, tokens, `.wrangler/` | secrets and local database state for the preview's functions |
+| `.dev.vars`, `.env*`, tokens, `.wrangler/` | secrets and local database state for the WORKS build's functions |
 
 `.gitignore` keeps them out of `git add`. `scripts/check-public-tree.mjs` refuses
 them by what they are — the extensions `.bin .0da .0pa .prg .xdf .sqlite`, the
@@ -238,7 +240,7 @@ Re-evaluate if any of these becomes true: the app gains a server or middleware,
 `images.unoptimized` is removed, or a stable Next.js release lands above the
 advisory range.
 
-The preview's Pages Functions (`functions/`) do not change this: they are Cloudflare
+The WORKS build's Pages Functions (`functions/`) do not change this: they are Cloudflare
 Pages middleware and handlers written against the Workers runtime, not Next.js
 Middleware or a Next.js server, and the export is still static. Next's advisories
 concern code this deployment still does not run.

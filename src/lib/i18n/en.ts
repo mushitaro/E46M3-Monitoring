@@ -79,7 +79,7 @@ export const en: Localised = {
         'Working on a car is dangerous. Jacking it up, running the engine, moving parts — this tool does none of that for you.',
     ],
     disclaimer_preview: {
-        lead: 'So that what you save opens on your other devices, and so that faults can be investigated, this preview sends the following to our server.',
+        lead: 'So that what you save opens on your other devices, and so that faults can be investigated, this WORKS build sends the following to our server.',
         sessionsTitle: 'Sessions you save',
         sessions: 'fault-memory reads, datalogs, the communication log and the ECU identification (including the VIN)',
         sessionsWhen: 'Sent when you press SYNC to save one.',
@@ -530,7 +530,7 @@ export const en: Localised = {
     sessions_inAccount: 'In your account',
     sessions_errors: 'Error records',
     sessions_errors_note:
-        'When a read or a recording fails, this preview sends the ECU, the job, the error text and the comms log just before it, by itself. Anything it could not send waits on this device and goes with the next send that succeeds.',
+        'When a read or a recording fails, this WORKS build sends the ECU, the job, the error text and the comms log just before it, by itself. Anything it could not send waits on this device and goes with the next send that succeeds.',
     sessions_account: (label) => `Saving to account ${label}`,
     sessions_account_unknown: 'Saving to account — cannot confirm (open this again where there is signal)',
     sessions_account_expired: 'Saving to account — your sign-in has expired',

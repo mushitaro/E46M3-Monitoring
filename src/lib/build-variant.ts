@@ -5,8 +5,10 @@ import { DEV_VARIANT_IS_PREVIEW, featureEnabled, type FeatureName } from '@/lib/
 
 /**
  * Which build this is, read from the `<meta name="app-variant">` that `scripts/brand-preview.mjs`
- * injects into the export. Ported, minimally, from the CSL tuner's `build-variant.ts`; the scope
- * switch and the badge that tool has are not ported (there is one non-production variant here).
+ * injects into the export — and what it is called, from the `<meta name="app-label">` beside it.
+ * Ported, minimally, from the CSL tuner's `build-variant.ts`. Its badge is ported now (the header
+ * shows `useBuildLabel`); its scope switch still is not — an environment is a URL, not a switch
+ * inside the app (tsunagi-m-release §10).
  *
  * ## Why a hook and not a module constant
  *
@@ -22,6 +24,9 @@ const subscribeNever = () => () => {};
 const readTag = (): string =>
     document.querySelector('meta[name="app-variant"]')?.getAttribute('content') ?? '';
 
+const readLabel = (): string =>
+    document.querySelector('meta[name="app-label"]')?.getAttribute('content') ?? '';
+
 /**
  * `preview`, or empty for production. Empty rather than 'production' because nothing writes that
  * tag: production is the build nobody branded, and naming the absence would invent a value no code
@@ -29,6 +34,11 @@ const readTag = (): string =>
  */
 export function useBuildVariant(): string {
     return useSyncExternalStore(subscribeNever, readTag, () => '');
+}
+
+/** WORKS | STAGING | '' (production). Display only — brand-preview writes it from scripts/brand-label.mjs. */
+export function useBuildLabel(): string {
+    return useSyncExternalStore(subscribeNever, readLabel, () => '');
 }
 
 /** Whether the preview's surfaces render: the preview build, or the dev server (see features.ts). */

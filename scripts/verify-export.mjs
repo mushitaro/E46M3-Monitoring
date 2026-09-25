@@ -9,6 +9,7 @@
  */
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
+import { BUILD_LABEL } from './brand-label.mjs';
 
 const OUT = 'out';
 const rows = [];
@@ -143,24 +144,41 @@ const linkedIcons = (html) =>
 
 // ---- 8. a branded build is branded all the way through ------------------------------------
 // Only when brand-preview.mjs ran (the documents carry app-variant). A production build carries
-// none, and must not: production is the build nobody branded.
+// neither app-variant nor app-label, and must not: production is the build nobody branded.
+
+/** The app-label tags a document carries, by their content ('' for a tag without one). */
+const appLabels = (html) =>
+    [...html.matchAll(/<meta name="app-label"[^>]*>/g)].map((m) => (m[0].match(/content="([^"]*)"/) || [])[1] ?? '');
+
 const variants = new Set();
+const labelsIn = new Map();
 for (const doc of documents) {
     const html = readFileSync(join(OUT, doc.slice(1)), 'utf8');
     const tags = [...html.matchAll(/<meta name="app-variant" content="([^"]*)"/g)].map((m) => m[1]);
     if (tags.length > 1) check(`at most one app-variant in ${doc}`, false, `${tags.length} found`);
     tags.forEach((v) => variants.add(v));
+    labelsIn.set(doc, appLabels(html));
     // The shared upload token is retired. A build that still embeds one publishes a write key.
     check(`no sync-token meta in ${doc}`, !/<meta name="sync-token"/.test(html), '');
 }
 if (variants.size > 0) {
     const [variant] = variants;
-    const label = variant.toUpperCase();
+    // Looked up by the variant, as brand-preview.mjs looks it up, and never computed from it: the
+    // variant is what the build is and code compares it; the label is only what it is called.
+    const label = Object.hasOwn(BUILD_LABEL, variant) ? BUILD_LABEL[variant] : null;
+    check(`app-variant "${variant}" has a build label`, label !== null,
+        label ?? `none: scripts/brand-label.mjs knows ${Object.keys(BUILD_LABEL).join(' | ')}`);
     check('one app-variant across every document', variants.size === 1 && documents.every((d) =>
         readFileSync(join(OUT, d.slice(1)), 'utf8').includes(`<meta name="app-variant" content="${variant}">`)),
         [...variants].join(', '));
-    check(`manifest name ends " — ${label}"`, (manifest.name ?? '').endsWith(` — ${label}`), manifest.name);
-    check(`manifest short_name starts "${label[0]} "`, (manifest.short_name ?? '').startsWith(`${label[0]} `), manifest.short_name);
+    if (label !== null) {
+        const mislabelled = documents.filter((d) => labelsIn.get(d).length !== 1 || labelsIn.get(d)[0] !== label);
+        check(`exactly one app-label "${label}" in every document`, mislabelled.length === 0,
+            mislabelled.map((d) => `${d} [${labelsIn.get(d).map((l) => `"${l}"`).join(', ')}]`).join(', ')
+                || `${documents.length} documents`);
+        check(`manifest name ends " — ${label}"`, (manifest.name ?? '').endsWith(` — ${label}`), manifest.name);
+        check(`manifest short_name starts "${label[0]} "`, (manifest.short_name ?? '').startsWith(`${label[0]} `), manifest.short_name);
+    }
     check('every manifest icon is from the dev set', icons.every((i) => /-dev-/.test(i.src)),
         icons.filter((i) => !/-dev-/.test(i.src)).map((i) => i.src).join(', ') || 'all -dev-');
 
@@ -187,6 +205,10 @@ if (variants.size > 0) {
     const notPublic = [...referenced].filter((h) => !mw.includes(`'${h}'`));
     check('the gate serves every referenced icon without a session', notPublic.length === 0,
         notPublic.join(', ') || `${referenced.size} public paths`);
+} else {
+    const labelled = documents.filter((d) => labelsIn.get(d).length > 0);
+    check('an unbranded build carries no app-label', labelled.length === 0,
+        labelled.join(', ') || `${documents.length} documents`);
 }
 
 // ---- report ---------------------------------------------------------------------------------

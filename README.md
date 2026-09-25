@@ -35,12 +35,18 @@ TSUNAGI ///M の計器系サブブランド。DS2 通信は
 
 ---
 
-## プレビュー版
+## ワークス版
 
-いま配っているのは**プレビュー版だけ**で、場所は `e46m3-monitoring-preview.pages.dev`。
+いま配っているのは**ワークス版だけ**で、場所は `e46m3-monitoring-preview.pages.dev`。
+
+ワークス版（WORKS）は購入者向けのビルドの呼び名で、MILE の購入者を、研究開発に加わるワークス
+（メーカー直系の開発チーム）の一員として迎えるために付けた（運営者の決定、2026-09-25。それまでは
+プレビュー版）。変えたのは**表示だけ**: manifest の名前（`E46M3 /// MONITORING — WORKS`、
+ホーム画面は `W E46M3 MON`）、ヘッダの WORKS のバッジ、画面の文言。ビルドの variant
+（`app-variant=preview`）・`owner_preview`・client id・ホスト・スクリプト名は `preview` のまま。
 
 - **誰のためのものか**: MILE の購入者と、これまでに施工したオーナーさん。m3.tsunagi.app の
-  アカウントに `owner_preview` の権利がある人が、M メニューの APPS PREVIEW から開く。
+  アカウントに `owner_preview` の権利がある人が、M メニューの WORKS の行から開く。
 - **ゲートの内側にある**: すべてのパスが `functions/_middleware.ts`（tsunagi-m3 の
   `tools/owner-gate` の複写。`npm run gate:verify` が正本との一致を確かめる）を通る。
   権利の無い人・サインインしていない人には、ECU テーブルを含めて何も出さない。
@@ -93,7 +99,7 @@ python tools/gen_ecu_data.py                             # public/ecu-data/ を�
 
 配信物は事情が違う。デプロイは開発機から行うので `out/` にはテーブルが載る —
 つまり**露出しているのはリポジトリではなく配信先のほう**である。意図して受け入れた
-トレードオフで、緩和策はプレビュー版のオーナーゲート（§3.3）。
+トレードオフで、緩和策はワークス版のオーナーゲート（§3.3）。
 
 ---
 
@@ -108,7 +114,7 @@ python tools/gen_ecu_data.py                             # public/ecu-data/ を�
 [K+DCAN ケーブル] ──K-line(OBD-II ピン7)──▶ [ECU]
 ```
 
-**車と話すサーバもローカルホストも無い。**（プレビュー版には、ゲートと SYNC のための
+**車と話すサーバもローカルホストも無い。**（ワークス版には、ゲートと SYNC のための
 Pages Functions がある。どちらも車には触れない。）前身の `OldBMW-Diag-PWA` は EdiabasLib を組み込んだ
 ローカル .NET ホスト（`127.0.0.1:5199`）を経由していたが、この構成は本番配信と両立しない：
 
@@ -137,10 +143,10 @@ npm run typecheck
 **Web Serial はデスクトップ Chromium 系のみ**（Chrome / Edge）。iOS・Android・Safari・Firefox は非対応。
 セキュアコンテキストが必須なので `localhost` か HTTPS で開くこと。
 
-`npm run dev`（`next dev`）はプレビュー版の画面（SESSIONS タブ）を出し、セッションを端末
+`npm run dev`（`next dev`）はワークス版の画面（SESSIONS タブ）を出し、セッションを端末
 （IndexedDB `e46m3-monitoring`）に保存するが、何も送らない — 送るかどうかは配信物の
 `app-variant` タグで決まり、`next dev` はそれを持たないから。本番のビルドはセッションの保存も送信もしない。
-ゲートと SYNC まで含めて手元で動かすときは、プレビュー版をビルドして `wrangler pages dev` で開く:
+ゲートと SYNC まで含めて手元で動かすときは、ワークス版をビルドして `wrangler pages dev` で開く:
 
 ```bash
 npm run hooks:install                      # 一度だけ。コミット前に check-public-tree を走らせる
@@ -176,7 +182,7 @@ packages/ds2-mss54/   MSS54 のブロック定義（生成物）
 public/ecu-data/  SGBD 由来の生成データ。**コミットしない**（下記）
 tools/            SGBD → ecu-data の生成パイプライン（Python / C#）
 tools/deprecated/ 引退したツールと、負の結果の記録
-functions/        プレビュー版の Pages Functions。オーナーのゲートと SYNC（/api/sessions・/api/diagnostics）
+functions/        ワークス版の Pages Functions。オーナーのゲートと SYNC（/api/sessions・/api/diagnostics）
 migrations/       SYNC の D1 スキーマ（共用 DB なのでテーブルは monitoring_*）
 docs/             決定と来歴。実車に繋ぐ手順は docs/CONNECT-VEHICLE.md
 ```

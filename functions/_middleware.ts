@@ -17,7 +17,10 @@ import { createGate, type GateContext } from './_owner-gate/gate';
 const gate = createGate({
     clientId: 'monitoring-preview',
     canonicalHost: 'e46m3-monitoring-preview.pages.dev',
-    name: 'E46M3 /// MONITORING — PREVIEW',
+    // The title of the gate's own pages: the build's name as its users see it, the manifest's
+    // `name` (WORKS, operator 2026-09-25). clientId and canonicalHost are identifiers; they keep
+    // `preview`.
+    name: 'E46M3 /// MONITORING — WORKS',
     publicPaths: [
         '/manifest.webmanifest',
         '/icons/monitoring-dev-192.png',

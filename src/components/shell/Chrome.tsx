@@ -2,6 +2,7 @@
 
 import { Cpu } from 'lucide-react';
 import { LABEL, TextButton } from '@/components/ui';
+import type { LinkMode, LinkState } from '@/hooks/useDs2Link';
 import type { EcuIndex } from '@/lib/ecuCatalog';
 import { useLang } from '@/lib/i18n';
 import { TAB_ORDER, type Tab } from '@/lib/tabs';
@@ -95,6 +96,30 @@ export function TabBar({
  * It also takes the slot PRACTICE vacates. The mode cannot change under an open
  * link, so the checkbox has nothing left to say; leaving it there disabled spent
  * the only free space in a 32px row on a dead control.
+ *
+ * ## What gives when the row is short
+ *
+ * The row stays one 32px line. Every slot in the control panel is reserved, and a
+ * row that wrapped on connect would move the hub under the thumb that had just
+ * pressed it. So when the width runs out, things yield sideways, in this order:
+ *
+ *   1. the word MODULE. Below 1280px the glyph says it, and the word stays in the
+ *      accessibility tree. 1280 and not 900, because the row lives in the right
+ *      column: 489px wide at 1280 but 344 at 900, less than a 360 phone gives
+ *      it. At 1280 the word, the connected readout, DISCONNECT and the default
+ *      module's whole name fit on one line; at 1024 the name kept 74 of the
+ *      167px it needs;
+ *   2. the chip's text, which truncates inside its own box (EcuSelect). It is the
+ *      one thing here whose length is open-ended — 51 names, and the widest makes
+ *      the select 297px — so it is the one that takes up a short row;
+ *   3. nothing else. PRACTICE, the mode and phase, and DISCONNECT are always
+ *      whole: the mode is the one mark that tells a practice run from a car
+ *      (tsunagi-m-ux §16).
+ *
+ * Before this, nothing yielded. The chip was pushed out past the column's edge
+ * and clipped there: at 360x800 it ran to x=413, the row overflowed by 73px
+ * disconnected and by 222 connected, and the control panel scrolled 53px
+ * sideways. Connected, even 1440 lost the chip's last 12px.
  */
 export function ModuleRow({
     index,
@@ -110,8 +135,8 @@ export function ModuleRow({
     index: EcuIndex | null;
     ecuId: string;
     connected: boolean;
-    mode: string;
-    state: string;
+    mode: LinkMode;
+    state: LinkState;
     practiceArmed: boolean;
     onPractice: (v: boolean) => void;
     onDisconnect: () => void;
@@ -122,16 +147,14 @@ export function ModuleRow({
         <div className="flex h-[32px] items-center justify-between gap-3 px-2">
             <span className={`flex shrink-0 items-center gap-1.5 ${LABEL} text-slate-500`}>
                 <Cpu className="size-3" />
-                {t.module}
+                <span className="sr-only min-[1280px]:not-sr-only">{t.module}</span>
             </span>
             <div className="flex min-w-0 items-center gap-3">
                 {!connected ? (
                     <PracticeToggle checked={practiceArmed} disabled={false} onChange={onPractice} />
                 ) : (
                     <>
-                        <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-slate-600">
-                            {mode} · {state}
-                        </span>
+                        <LinkReadout mode={mode} state={state} />
                         <TextButton onClick={onDisconnect} tone="danger">
                             {t.disconnect}
                         </TextButton>
@@ -147,6 +170,45 @@ export function ModuleRow({
                 />
             </div>
         </div>
+    );
+}
+
+/**
+ * Every phase the connected readout can print: all of LinkState except the one
+ * this row never shows. A Record, so a new phase is a type error here, not a
+ * readout one word too narrow.
+ */
+const LIVE_PHASES: Record<Exclude<LinkState, 'disconnected'>, true> = {
+    connecting: true,
+    connected: true,
+    busy: true,
+    logging: true,
+};
+
+/**
+ * Mode over phase, as wide as the longest phase, whichever phase it shows.
+ *
+ * Stacked, because side by side "PRACTICE · CONNECTING" is 137px, and with
+ * DISCONNECT next to it a 360 phone's chip had room for its arrow and none of
+ * its name. Two 12px lines fit inside the 32px row.
+ *
+ * Every phase is laid out in one grid cell and all but the current one are
+ * invisible, as in Overlaid. Where the row is short the chip takes whatever is
+ * left, so a readout that followed its word would slide DISCONNECT sideways
+ * every time a read started or ended.
+ */
+function LinkReadout({ mode, state }: { mode: LinkMode; state: LinkState }) {
+    return (
+        <span className="grid shrink-0 font-mono text-[10px] uppercase leading-3 tracking-wider text-slate-600">
+            <span>{mode}</span>
+            <span className="grid">
+                {(Object.keys(LIVE_PHASES) as LinkState[]).map((phase) => (
+                    <span key={phase} className={`[grid-area:1/1] ${phase === state ? '' : 'invisible'}`}>
+                        {phase}
+                    </span>
+                ))}
+            </span>
+        </span>
     );
 }
 
@@ -235,13 +297,19 @@ function EcuSelect({
     // English chrome tokens (MODULE, PRACTICE) under English tabs. The Japanese
     // variant only ever translated the one common noun in it (エンジン / 変速機),
     // which bought nothing and broke the row's vocabulary.
+    //
+    // `min-w-0` on the chip and the select, and `truncate`: this is what yields
+    // when the row is short (ModuleRow). A select is as wide as its WIDEST
+    // option, not the one it shows, so without them the chip held out for its
+    // full 224px and was clipped at the column's edge instead. Now it shrinks and
+    // the name ends in an ellipsis inside the chip.
     return (
-        <div className="flex items-center rounded bg-slate-800 px-2 py-0.5">
+        <div className="flex min-w-0 items-center rounded bg-slate-800 px-2 py-0.5">
             <select
                 value={value}
                 disabled={disabled || !index || index.modules.length === 0}
                 onChange={(e) => onChange(e.target.value)}
-                className="max-w-52 cursor-pointer bg-transparent text-[10px] font-bold text-blue-400 outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                className="min-w-0 max-w-52 cursor-pointer truncate bg-transparent text-[10px] font-bold text-blue-400 outline-none disabled:cursor-not-allowed disabled:opacity-60"
             >
                 {(index?.groups ?? []).map((g) => {
                     const rows = (index?.modules ?? []).filter((e) => e.group === g.key);

@@ -55,6 +55,12 @@ export const CHROME = {
     hub_stop: 'Stop',
     hub_recording: 'Recording',
     pane_visualization: 'VISUALIZATION & CONTROLS',
+    // The panes below 900px, one at a time, switched from the footer. DASH and GRAPH are TUNER's
+    // and SMG2's words for the same two panes. The third is LIST, not their MAP — this app has no
+    // map — and not VIEW, which is already the SESSIONS verb for opening a saved session.
+    pane_list: 'LIST',
+    pane_dash: 'DASH',
+    pane_graph: 'GRAPH',
     details: 'Details',
 
     // The hub's verb in the SERVICE tab, and the STOP/ABORT beside it.

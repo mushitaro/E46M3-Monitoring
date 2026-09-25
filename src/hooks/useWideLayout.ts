@@ -5,10 +5,11 @@ import { useSyncExternalStore } from 'react';
 /**
  * Whether both panes are on screen at once — the same 900px the layout splits at.
  *
- * Needed in JS, not just CSS, because below it the two panes share one grid cell and the inactive
- * one is only `invisible`: it stays laid out, and anything mounted inside it keeps doing its work
- * where nobody can see it. For the 3D visualizer that was 366,561 vertices of WebGL surface rebuilt
- * on every tab change, behind a `visibility: hidden`.
+ * Needed in JS, not just CSS, because below it the two panes share one grid cell and the one that is
+ * not up is only `invisible`: it stays laid out, and anything mounted inside it keeps doing its work
+ * where nobody can see it. Here that is the datalog trace, which the shell tells whether its picture
+ * is on screen (`pictureUp` in page.tsx). In TUNER, where this was written, it was 366,561 vertices
+ * of WebGL surface rebuilt on every tab change behind a `visibility: hidden`.
  *
  * `useSyncExternalStore` rather than an effect + state so the first client render already has the
  * right answer instead of painting the wrong branch and correcting it. The server snapshot is
@@ -20,17 +21,16 @@ const WIDE = '(min-width: 900px)';
 /**
  * Narrow enough for one pane at a time AND too short to stack the picture above the controls.
  *
- * This, not the width alone, is what makes GRAPH a destination of its own. The split exists to
- * settle a fight over vertical pixels: at 851x393 the 3D view was down to 48px because the control
- * panel needed 244 of the 301 the pane had. Where the height is there, nothing is fighting —
- * measured at 360x800 the stacked layout gives the surface 431px *and* the panel its full 268, with
- * no scrolling. Splitting that costs a tap and buys nothing.
+ * This, not the width alone, is what makes GRAPH a pane of its own. The split settles a fight over
+ * vertical pixels: at 851x393 DASH has 293px between the header and the footer, and the picture's
+ * 140 on top of the panel's 220 is 360. Where the height is there, nothing is fighting — at 360x800
+ * DASH has 700 and shows both — and splitting would cost a tap and buy nothing.
  *
- * 560px is not a new number: it is the threshold the visualiser's own floor already switches on.
+ * 560px is not a new number: it is where TUNER's and SMG2's picture floor already switches.
  *
- * The same query is written out as a Tailwind variant at the three places that need it in CSS
- * (`SPLIT_ONLY_*` in page.tsx). Keep them identical — a viewport that matches one and not the other
- * can reach a destination that is not there.
+ * The same query is written out as Tailwind variants where CSS needs it (`SPLIT_ONLY_*` in
+ * page.tsx). Keep them identical — a viewport that matches one and not the other lands on a pane
+ * with nothing in it.
  */
 const SPLIT = '(max-width: 899px) and (max-height: 560px)';
 
@@ -50,8 +50,8 @@ export function useWideLayout(): boolean {
     );
 }
 
-/** Server snapshot `false` for the same reason `useWideLayout` is `true`: both describe the stacked
- *  layout, which is what the markup renders before anything has been measured. */
+/** Server snapshot `false` for the same reason `useWideLayout` is `true`: the prerender describes the
+ *  wide layout, where the picture and the panel stack in one column, before anything is measured. */
 export function useSplitGraph(): boolean {
     return useSyncExternalStore(
         subscribeSplit,

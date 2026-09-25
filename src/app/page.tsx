@@ -16,6 +16,7 @@ import { useActuatorArming } from '@/hooks/useActuatorArming';
 import { useDs2Link } from '@/hooks/useDs2Link';
 import { useHub } from '@/hooks/useHub';
 import { useUnloadGuard } from '@/hooks/useUnloadGuard';
+import { useSplitGraph, useWideLayout } from '@/hooks/useWideLayout';
 import { useBuildVariant, usePreviewSurfaces } from '@/lib/build-variant';
 import { disclaimerStore } from '@/lib/disclaimer';
 import { agreeToFirstRun, firstRunDialogUp, previewNoticeStore } from '@/lib/previewNotice';
@@ -51,13 +52,21 @@ import { useFailureNotes, useSessions } from '@/views/sessions/useSessions';
 
 /**
  * Only where the viewport is narrow AND short: `SPLIT` from hooks/useWideLayout.ts, spelled out
- * because Tailwind generates only the class names it can read in the source. Nothing reads the
- * hook yet; whatever does must agree with these, so keep the query identical in both places. It is
- * the one condition in which the picture and the control panel cannot share the right column (the
- * note on the aside has the budget), so it is the only place these apply.
+ * because Tailwind generates only the class names it can read in the source. Keep the query
+ * identical in both places: the hook decides whether GRAPH can be the pane that is up, these decide
+ * what DASH and GRAPH hold, and a viewport that matched one and not the other would land on a pane
+ * with nothing in it. It is the one condition in which the picture and the control panel cannot
+ * share DASH (the note on the footer has the budget).
  */
 const SPLIT_ONLY_HIDE = '[@media(max-width:899px)_and_(max-height:560px)]:hidden';
-const SPLIT_ONLY_LAST = '[@media(max-width:899px)_and_(max-height:560px)]:order-last';
+const SPLIT_ONLY_SHOW = 'hidden [@media(max-width:899px)_and_(max-height:560px)]:flex';
+const SPLIT_ONLY_GROW = '[@media(max-width:899px)_and_(max-height:560px)]:flex-1';
+
+/** Below 900, the pane that is not up: still laid out, neither seen nor touched. From 900 both are up. */
+const NARROW_HIDDEN = 'invisible pointer-events-none min-[900px]:visible min-[900px]:pointer-events-auto';
+
+/** The panes below 900, in the order the footer lists them. GRAPH only where SPLIT gives it one. */
+type NarrowPane = 'list' | 'dash' | 'graph';
 
 /**
  * The shell.
@@ -98,6 +107,15 @@ const SPLIT_ONLY_LAST = '[@media(max-width:899px)_and_(max-height:560px)]:order-
  * every time the link state moves reads as untrustworthy on a tool that
  * commands a car.
  *
+ * ## Below 900px: one pane at a time
+ *
+ * The two columns do not stack on a phone. They overlay one grid cell and a
+ * footer picks the one that is up — LIST, DASH, and GRAPH where the viewport is
+ * also short — as in TUNER and SMG2 (tsunagi-m-mobile §3, §4, §7). Stacked, each
+ * got too little to use: at 851x393 the list had 88px and the right column
+ * 213.2, less than the control panel alone, so CONNECT sat below the fold. The
+ * note on the footer has the budget.
+ *
  * ## The panes are overlaid, not swapped
  *
  * All five panes and all five visualizations occupy one grid cell each
@@ -122,8 +140,9 @@ const SPLIT_ONLY_LAST = '[@media(max-width:899px)_and_(max-height:560px)]:order-
  *   - DIAGNOSIS, ADAPTATION and SERVICE are `memo`ed, which covers the three
  *     long lists. DATALOG is the view that is up during the run this protects,
  *     and ACTUATOR takes the arming map, which changes when it should;
- *   - the datalog trace is told whether it is being looked at, so it does not
- *     recompute 240 points to draw an `invisible` polyline.
+ *   - the datalog trace is told whether it is being looked at — its tab, and
+ *     below 900 its pane — so it does not recompute 240 points to draw an
+ *     `invisible` polyline.
  *
  * The rate this protects could not be measured through the in-app browser: a
  * hidden pane has its timers throttled, which slows the poll loop far more than
@@ -134,6 +153,20 @@ export default function Home() {
     const { lang, t } = useLang();
     const [tab, setTab] = useState<Tab>('diagnosis');
     const [ecuId, setEcuId] = useState('mss54');
+
+    // Which pane is up below 900px, where only one fits; the footer switches it. DASH first: it
+    // holds the hub, and the hub is always the next step — CONNECT on a fresh start, while LIST has
+    // nothing to show until something has been read.
+    const [pane, setPane] = useState<NarrowPane>('dash');
+    const wide = useWideLayout();
+    const split = useSplitGraph();
+    // GRAPH exists only in SPLIT. Rotated out of it, a pane that pointed there lands on DASH —
+    // derived rather than reset, so rotating back returns to GRAPH, and no render shows a pane that
+    // is not there (tsunagi-m-mobile §4).
+    const shownPane: NarrowPane = pane === 'graph' && !split ? 'dash' : pane;
+    // Where the picture is on screen: always in the wide layout; below 900 in DASH, or in GRAPH
+    // where SPLIT gives the panel all of DASH.
+    const pictureUp = wide || shownPane === (split ? 'graph' : 'dash');
 
     // What this build may show. Production renders the five instrument tabs and nothing that
     // stores or sends; the preview adds SESSIONS (lib/features.ts, and its pinned test).
@@ -372,7 +405,7 @@ export default function Home() {
 
     const vizzes: Record<Tab, React.ReactNode> = {
         diagnosis: <DiagnosisViz faults={link.faults} />,
-        datalog: <DatalogViz datalog={datalog} active={tab === 'datalog'} />,
+        datalog: <DatalogViz datalog={datalog} active={tab === 'datalog' && pictureUp} />,
         adaptation: <AdaptationViz blocks={link.adaptations} />,
         service: (
             <ServiceViz
@@ -404,7 +437,10 @@ export default function Home() {
                 onCredits={() => setCreditsOpen(true)}
             />
 
-            <main className="flex min-h-0 flex-1 flex-col overflow-hidden min-[900px]:flex-row">
+            {/* Below 900 one grid cell holds both panes; from 900 they are flex siblings, as
+                they always were. `grid-cols-1` is minmax(0,1fr): an implicit column is `auto`,
+                and the widest thing in either pane would size it. */}
+            <main className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden min-[900px]:flex min-[900px]:flex-row">
                 {/* Both columns carry a faint fill. Left at /40, right at /20 over
                     the true-black base: without them the split is a single
                     #0A0A0D hairline on #000000, which measures as a rule and
@@ -416,7 +452,10 @@ export default function Home() {
                     popover INSIDE it — so the popover's z-40 dismiss backdrop
                     could not cover the right column (z-20) and clicking the hub
                     to dismiss the log fired the hub instead, dropping the link. */}
-                <section className="relative flex h-[38.2%] min-h-0 flex-col border-b border-slate-900 bg-slate-950/40 min-[900px]:h-full min-[900px]:w-[61.8%] min-[900px]:border-b-0 min-[900px]:border-r">
+                <section
+                    id="narrow-list"
+                    className={`relative flex min-h-0 flex-col border-slate-900 bg-slate-950/40 [grid-area:1/1] min-[900px]:h-full min-[900px]:w-[61.8%] min-[900px]:border-r min-[900px]:[grid-area:auto] ${shownPane === 'list' ? '' : NARROW_HIDDEN}`}
+                >
                     <TabBar tab={tab} enabled={tabs} onChange={changeTab}>
                         <LogPopover
                             log={link.log}
@@ -427,30 +466,29 @@ export default function Home() {
                     <Overlaid active={tab} panes={panes} kind="pane" />
                 </section>
 
-                {/* The column SCROLLS; it does not clip.
-                    ────────────────────────────────────────────────────────
-                    Below its bar it holds two floors, the picture's 140 and
-                    the panel's 220, and a short screen has less than that.
-                    `overflow-hidden` took the difference off the bottom without
-                    a word: at 851x393 the column is 213.2px and its content 404,
-                    so the MODULE row sat at y=380→412 and the hub at 446→518 —
-                    elementFromPoint null at every point on both, a finger's drag
-                    moved nothing, and CONNECT could not be pressed. Where the
+                {/* DASH below 900, the right column from 900.
+
+                    It SCROLLS rather than clips. Below its bar it holds two
+                    floors, the picture's 140 and the panel's 220, and a short
+                    wide window has less than that: at 1024x400 the column is
+                    352px and its content 404, and `overflow-hidden` took the
+                    difference off the bottom without a word — the sub-action
+                    row with it, out of reach of wheel and finger. Where the
                     floors fit, the declared split fills the column exactly and
-                    nothing scrolls: 0px over at 360x800, 412x800 and 1440x900.
+                    nothing scrolls. (Below 900 DASH has the screen to itself
+                    and fits; the footer's note has the numbers.)
 
-                    Scrolling alone still lands with the ring 129px below the
-                    fold at 851x393, so where the viewport is narrow AND short
-                    (SPLIT) the two take turns instead: the panel first, then the
-                    picture, one touch scroll away at its full 140. The bar only
-                    names the two, and its 44px go to the panel. The picture's
-                    floor does not shrink to TUNER's 48 — inside p-4 that is a
-                    16px strip, and 44 + 48 + 220 = 312 is still 99px over.
-
-                      851x393  column 213.2  panel first: rows end at 200
-                      683x400  column 217.5  panel first: rows end at 200 */}
-                <aside className="relative z-20 flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden bg-slate-900/20 backdrop-blur-sm min-[900px]:w-[38.2%] min-[900px]:flex-none">
-                    <div className={`${BAR} ${SPLIT_ONLY_HIDE}`}>
+                    The blur is the wide layout's only. Below 900 this pane is
+                    the whole screen over a black nothing, which is where a
+                    backdrop-filter costs the most and shows the least
+                    (tsunagi-m-mobile §16.5). */}
+                <aside
+                    id="narrow-dash"
+                    className={`relative z-20 flex min-h-0 flex-col overflow-y-auto overflow-x-hidden bg-slate-900/20 [grid-area:1/1] min-[900px]:w-[38.2%] min-[900px]:flex-none min-[900px]:backdrop-blur-sm min-[900px]:[grid-area:auto] ${shownPane === 'list' ? NARROW_HIDDEN : ''}`}
+                >
+                    {/* Wide only. It lines up with the tab bar across the split, and below 900
+                        there is no split to line up across — the footer already names the pane. */}
+                    <div className={`${BAR} max-[900px]:hidden`}>
                         <span className={`truncate ${LABEL} text-slate-500`}>
                             {t.pane_visualization}
                         </span>
@@ -475,16 +513,16 @@ export default function Home() {
                         to hold it, it stops shrinking rather than scrolling the
                         hub off the bottom. */}
                     <div className="flex min-h-0 flex-1 flex-col">
-                        {/* `order`, not `flex-col-reverse` on the wrapper. Reversed,
-                            the overflow leaves through the TOP, where no scroll
-                            reaches: measured at 851x393 the panel sat at y=33→253
-                            against a column starting at 180, scroll range 0 — the
-                            MODULE row and the hub cut off for good. */}
-                        <div className={`relative min-h-[140px] flex-1 overflow-hidden bg-gradient-to-b from-slate-900/10 to-transparent p-4 ${SPLIT_ONLY_LAST}`}>
+                        {/* In SPLIT the two cannot share DASH, so they take a pane
+                            each: the picture is GRAPH, and the panel grows into all
+                            of DASH, its slack going to the hub's band. Everywhere
+                            else they stack, as they always have. */}
+                        <div className={`relative min-h-[140px] flex-1 overflow-hidden bg-gradient-to-b from-slate-900/10 to-transparent p-4 ${shownPane === 'graph' ? '' : SPLIT_ONLY_HIDE}`}>
                             <Overlaid active={tab} panes={vizzes} kind="viz" />
                         </div>
 
                         <ControlPanel
+                            className={shownPane === 'graph' ? SPLIT_ONLY_HIDE : SPLIT_ONLY_GROW}
                             module={
                                 <ModuleRow
                                     index={ecuIndex}
@@ -551,6 +589,56 @@ export default function Home() {
                     </div>
                 </aside>
             </main>
+
+            {/* The pane switch, below 900 (tsunagi-m-mobile §3, §4, §7).
+                ────────────────────────────────────────────────────────
+                Stacked, the two columns were each too small to use: at
+                851x393 the list had 88px and the right column 213.2, less
+                than the control panel alone, and CONNECT was below the fold.
+                So the panes overlay one cell and this row picks the one that
+                is up, as TUNER and SMG2 do. LIST is the tab's own view, DASH
+                the hub, the panel and the picture; GRAPH exists only in
+                SPLIT, where the picture's 140 cannot sit on the panel's 220.
+
+                  851x393  393 − 48 − 52 = 293   LIST 249   DASH panel 293   GRAPH 293
+                  683x400  400 − 48 − 52 = 300   LIST 256   DASH panel 300   GRAPH 300
+                  360x800  800 − 48 − 52 = 700   LIST 656   DASH picture 433 + panel 267
+
+                Outside both panes, because each pane hides the other. Dressed
+                as the tab row — same label, same 2px indicator — with the
+                indicator on TOP: the bottom edge is the screen's. Each hit box
+                is padded out and the padding cancelled by margin, so the row
+                lays out at the words and a thumb gets the row's whole height:
+                LIST 50x51, DASH 56x51, GRAPH 65x51, measured. No blur: nothing
+                sits behind this row. */}
+            <nav className="z-30 flex h-[52px] flex-none gap-6 border-t border-slate-900 bg-slate-900/50 px-4 min-[900px]:hidden">
+                {(
+                    [
+                        ['list', t.pane_list, ''],
+                        ['dash', t.pane_dash, ''],
+                        ['graph', t.pane_graph, SPLIT_ONLY_SHOW],
+                    ] as const
+                ).map(([id, label, only]) => (
+                    <button
+                        key={id}
+                        type="button"
+                        aria-pressed={shownPane === id}
+                        aria-controls={id === 'list' ? 'narrow-list' : 'narrow-dash'}
+                        onClick={() => setPane(id)}
+                        className={`${only || 'flex'} -mx-3 shrink-0 px-3`}
+                    >
+                        <span
+                            className={`flex h-full items-center whitespace-nowrap border-t-2 ${LABEL} transition-colors ${
+                                shownPane === id
+                                    ? 'border-blue-400 text-blue-400'
+                                    : 'border-transparent text-slate-500 hover:text-slate-300'
+                            }`}
+                        >
+                            {label}
+                        </span>
+                    </button>
+                ))}
+            </nav>
 
             {firstRun && <DisclaimerDialog preview={preview} onAgree={() => agreeToFirstRun(preview)} />}
 

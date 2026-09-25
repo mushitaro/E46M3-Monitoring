@@ -20,18 +20,21 @@ export function ControlPanel({
     module,
     notice,
     hub,
+    className = '',
     children,
 }: {
     /** The status row: what is being addressed, and the controls that end it. */
     module: React.ReactNode;
     notice: { text?: string; tone: NoticeTone };
     hub: HubConfig;
+    /** Where the shell's layout overrides the φ height — the narrow panes (page.tsx). */
+    className?: string;
     /** The sub-actions — things that act on the current run or the workspace. */
     children?: React.ReactNode;
 }) {
     return (
         // px-5 pt-4 pb-5 is the control-panel padding from the spacing scale.
-        <div className="flex h-[38.2%] min-h-fit flex-none flex-col overflow-y-auto px-5 pb-5 pt-4">
+        <div className={`flex h-[38.2%] min-h-fit flex-none flex-col overflow-y-auto px-5 pb-5 pt-4 ${className}`}>
             {module}
 
             {/* A failure is reported HERE, in the slot that is already reserved

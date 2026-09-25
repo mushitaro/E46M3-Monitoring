@@ -50,6 +50,16 @@ import { SessionsView, SessionsViz } from '@/views/sessions/SessionsView';
 import { useFailureNotes, useSessions } from '@/views/sessions/useSessions';
 
 /**
+ * Only where the viewport is narrow AND short: `SPLIT` from hooks/useWideLayout.ts, spelled out
+ * because Tailwind generates only the class names it can read in the source. Nothing reads the
+ * hook yet; whatever does must agree with these, so keep the query identical in both places. It is
+ * the one condition in which the picture and the control panel cannot share the right column (the
+ * note on the aside has the budget), so it is the only place these apply.
+ */
+const SPLIT_ONLY_HIDE = '[@media(max-width:899px)_and_(max-height:560px)]:hidden';
+const SPLIT_ONLY_LAST = '[@media(max-width:899px)_and_(max-height:560px)]:order-last';
+
+/**
  * The shell.
  *
  * It owns the session — the link, the module, the selection, the recording — and
@@ -417,8 +427,30 @@ export default function Home() {
                     <Overlaid active={tab} panes={panes} kind="pane" />
                 </section>
 
-                <aside className="relative z-20 flex min-h-0 flex-1 flex-col overflow-hidden bg-slate-900/20 backdrop-blur-sm min-[900px]:w-[38.2%] min-[900px]:flex-none">
-                    <div className={BAR}>
+                {/* The column SCROLLS; it does not clip.
+                    ────────────────────────────────────────────────────────
+                    Below its bar it holds two floors, the picture's 140 and
+                    the panel's 220, and a short screen has less than that.
+                    `overflow-hidden` took the difference off the bottom without
+                    a word: at 851x393 the column is 213.2px and its content 404,
+                    so the MODULE row sat at y=380→412 and the hub at 446→518 —
+                    elementFromPoint null at every point on both, a finger's drag
+                    moved nothing, and CONNECT could not be pressed. Where the
+                    floors fit, the declared split fills the column exactly and
+                    nothing scrolls: 0px over at 360x800, 412x800 and 1440x900.
+
+                    Scrolling alone still lands with the ring 129px below the
+                    fold at 851x393, so where the viewport is narrow AND short
+                    (SPLIT) the two take turns instead: the panel first, then the
+                    picture, one touch scroll away at its full 140. The bar only
+                    names the two, and its 44px go to the panel. The picture's
+                    floor does not shrink to TUNER's 48 — inside p-4 that is a
+                    16px strip, and 44 + 48 + 220 = 312 is still 99px over.
+
+                      851x393  column 213.2  panel first: rows end at 200
+                      683x400  column 217.5  panel first: rows end at 200 */}
+                <aside className="relative z-20 flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden bg-slate-900/20 backdrop-blur-sm min-[900px]:w-[38.2%] min-[900px]:flex-none">
+                    <div className={`${BAR} ${SPLIT_ONLY_HIDE}`}>
                         <span className={`truncate ${LABEL} text-slate-500`}>
                             {t.pane_visualization}
                         </span>
@@ -443,7 +475,12 @@ export default function Home() {
                         to hold it, it stops shrinking rather than scrolling the
                         hub off the bottom. */}
                     <div className="flex min-h-0 flex-1 flex-col">
-                        <div className="relative min-h-[140px] flex-1 overflow-hidden bg-gradient-to-b from-slate-900/10 to-transparent p-4">
+                        {/* `order`, not `flex-col-reverse` on the wrapper. Reversed,
+                            the overflow leaves through the TOP, where no scroll
+                            reaches: measured at 851x393 the panel sat at y=33→253
+                            against a column starting at 180, scroll range 0 — the
+                            MODULE row and the hub cut off for good. */}
+                        <div className={`relative min-h-[140px] flex-1 overflow-hidden bg-gradient-to-b from-slate-900/10 to-transparent p-4 ${SPLIT_ONLY_LAST}`}>
                             <Overlaid active={tab} panes={vizzes} kind="viz" />
                         </div>
 

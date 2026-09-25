@@ -59,8 +59,16 @@ export const LABEL = 'text-[10px] font-bold uppercase tracking-widest';
  * file. `tracking-widest` at 14px is 1.4px, which is what makes the mark read as
  * a title without being large — the weight and the tracking carry the hierarchy,
  * not the point size.
+ *
+ * The one type size here that follows the width, as the reference app's does:
+ * 11px on 0.05em below 900px, 14px on 0.1em from there up. A 360px phone gives
+ * the header a 312px content box, and at 14px the name alone took 189.9 of it;
+ * at 11px it is 143.5, which is what leaves room for the build badge and the
+ * links beside it. The desk keeps 14px — it has the width, and the wordmark is
+ * the largest thing in that header on purpose.
  */
-export const WORDMARK = 'text-sm font-bold uppercase tracking-widest';
+export const WORDMARK =
+    'text-[11px] font-bold uppercase tracking-wider min-[900px]:text-sm min-[900px]:tracking-widest';
 
 /**
  * The verb inside the hub ring. **One element**, like WORDMARK — the other end

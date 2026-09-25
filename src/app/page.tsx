@@ -191,16 +191,13 @@ export default function Home() {
     // <html lang> is DERIVED from the resolved language, here, and nowhere else.
     // The attribute layout.tsx renders is a prerender placeholder: this is a
     // static export, so every visitor is served the same `lang="ja"` regardless
-    // of who they are. i18n.ts resolves the real language at module import in
-    // the browser (stored choice, else navigator), which fixes the COPY but left
-    // the attribute lying to screen readers and to browser translation for every
-    // reader who never touched the ja|en toggle. Writing it only inside setLang()
-    // meant the correction arrived on the switch — the one moment it was already
-    // obvious what language the app was in.
+    // of who they are. lib/i18n resolves the real language from the browser at
+    // module import, which fixes the COPY but not the attribute — that kept lying
+    // to screen readers and to browser translation while the only other write
+    // was inside the ja|en switch, which has since gone (tsunagi-m-ux §13).
     // It runs in an effect rather than at import time so it lands after
     // hydration and cannot be mistaken for a mismatch on the <html> element
-    // React itself rendered; keying it on `lang` covers the boot and the switch
-    // with one rule.
+    // React itself rendered.
     useEffect(() => {
         document.documentElement.lang = lang;
     }, [lang]);

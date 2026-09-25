@@ -6,11 +6,11 @@ import { createContext, useCallback, useContext, useMemo, useState } from 'react
  * The busy lock — one write at a time, and everything that could interrupt it
  * goes dead while it runs.
  *
- * What it covers: tab switching, the ECU and mode selectors, DISCONNECT, the
- * language toggle, and every sub-action. What it deliberately does NOT cover:
- * a STOP for an armed actuator. An energised output is a physical thing that is
- * on, and the release must stay pressable no matter what else is in flight —
- * see `lib/arming`.
+ * What it covers: tab switching, the ECU and mode selectors, DISCONNECT, and
+ * every sub-action. What it deliberately does NOT cover: a STOP for an armed
+ * actuator. An energised output is a physical thing that is on, and the
+ * release must stay pressable no matter what else is in flight — see
+ * `lib/arming`.
  *
  * ## Why the sub-actions read it through a component and not a prop
  *

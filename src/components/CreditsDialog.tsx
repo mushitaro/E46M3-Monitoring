@@ -3,7 +3,9 @@
 import { Heart } from 'lucide-react';
 import { DialogFrame } from '@/components/DialogFrame';
 import { MicroLabel, TextButton, emphasise } from '@/components/ui';
+import { useBuildLabel } from '@/lib/build-variant';
 import { useLang } from '@/lib/i18n';
+import { APP_VERSION } from '@/lib/version';
 
 /**
  * Who this is built on.
@@ -32,6 +34,7 @@ import { useLang } from '@/lib/i18n';
  */
 export function CreditsDialog({ onClose }: { onClose: () => void }) {
     const { t } = useLang();
+    const buildLabel = useBuildLabel();
 
     return (
         <DialogFrame
@@ -74,6 +77,16 @@ export function CreditsDialog({ onClose }: { onClose: () => void }) {
 
             <p className="mt-5 border-t border-slate-800 pt-3 text-[11px] leading-relaxed text-slate-500">
                 {t.credits_notices}
+            </p>
+
+            {/* Which build this is. The header drops the version below 900px,
+                and this is the dialog someone opens when they are about to write
+                to the author about something — so it is here at every width, and
+                on a phone it is the only place it is. Under the notices' rule
+                rather than a second one: two rules on one edge draw a box. */}
+            <p className="mt-2 font-mono text-[10px] text-slate-600">
+                {APP_VERSION}
+                {buildLabel && ` · ${buildLabel}`}
             </p>
         </DialogFrame>
     );

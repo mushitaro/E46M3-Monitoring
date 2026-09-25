@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CHROME } from './chrome';
 import { en } from './en';
 import { ja } from './ja';
-import { STRINGS } from './index';
+import { STRINGS, langFor } from './index';
 
 describe('the chrome / prose boundary', () => {
     it('leaves nothing in the catalogs that is the same in both languages', () => {
@@ -44,5 +44,55 @@ describe('the chrome / prose boundary', () => {
         // starts being updated. What is worth catching is a catalog that
         // SHRANK: a bad merge, or a spread that silently dropped one side.
         expect(total).toBeGreaterThanOrEqual(225);
+    });
+});
+
+describe('the language', () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    /** A browser tab, as far as the module's import-time resolution can tell. */
+    async function boot(language: string, storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>) {
+        vi.stubGlobal('window', {});
+        vi.stubGlobal('navigator', { language });
+        vi.stubGlobal('localStorage', storage);
+        vi.resetModules();
+        return import('./index');
+    }
+
+    it("is the browser's: ja for any Japanese locale, en for every other", () => {
+        expect(langFor('ja-JP')).toBe('ja');
+        expect(langFor('ja')).toBe('ja');
+        expect(langFor('JA-jp')).toBe('ja');
+        expect(langFor('en-US')).toBe('en');
+        expect(langFor('en-GB')).toBe('en');
+        expect(langFor('de-DE')).toBe('en');
+        // A browser that names no language is a reader we know nothing about,
+        // which is never a reason to answer in the author's language.
+        expect(langFor('')).toBe('en');
+        expect(langFor(undefined)).toBe('en');
+    });
+
+    it('deletes what the retired ja | en switch stored, and follows the browser over it', async () => {
+        // The trap in taking a switch away (tsunagi-m-ux §13): a resolver that
+        // still read this would hold anyone who ever pressed EN in English,
+        // with no control left on screen to change it.
+        const kept = new Map([['e46m3.lang', 'en']]);
+        const i18n = await boot('ja-JP', {
+            getItem: (k) => kept.get(k) ?? null,
+            setItem: (k, v) => void kept.set(k, v),
+            removeItem: (k) => void kept.delete(k),
+        });
+        expect(i18n.getLang()).toBe('ja');
+        expect(kept.has('e46m3.lang')).toBe(false);
+    });
+
+    it('still resolves when storage refuses every touch', async () => {
+        const no = () => {
+            throw new DOMException('The operation is insecure.', 'SecurityError');
+        };
+        const i18n = await boot('en-US', { getItem: no, setItem: no, removeItem: no });
+        expect(i18n.getLang()).toBe('en');
     });
 });

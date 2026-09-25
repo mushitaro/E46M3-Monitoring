@@ -4,10 +4,10 @@
  * One language rule, resolved in one module.
  *
  * Safety-relevant copy is written in the reader's language — never JP and EN
- * concatenated into one string. The old PWA had a catalog but never called
- * setLang and shipped ~327 hardcoded Japanese literals outside it, so the
- * advertised toggle did not exist. Everything user-visible goes through `t`
- * here so that cannot recur.
+ * concatenated into one string. The old PWA had a catalog but never switched
+ * it and shipped ~327 hardcoded Japanese literals outside it, so its advertised
+ * toggle did not exist. Everything user-visible goes through `t` here so that
+ * cannot recur.
  *
  * The catalog was one 1,276-line file. It is four now, and the split is not
  * filing: `chrome.ts` holds the 29 tokens that are English in both languages as
@@ -27,7 +27,17 @@ export type { Chrome } from './chrome';
 
 export type Lang = 'ja' | 'en';
 
-const STORAGE_KEY = 'e46m3.lang';
+/**
+ * Where the header's ja | en switch kept the reader's choice. The switch is gone
+ * — the browser already has the answer (tsunagi-m-ux §13), and a 360px phone's
+ * header has no 59px to spend on overriding it — and nothing reads this.
+ *
+ * It is DELETED at boot rather than just ignored, because of who has it: anyone
+ * who ever pressed JA or EN. Left in place, the next change to this resolver
+ * that reaches for storage again would pin those readers to a language with no
+ * control left on screen to take them out of it.
+ */
+const RETIRED_KEY = 'e46m3.lang';
 
 /**
  * Both catalogues, exported so a test can assert that every value the DATA ships
@@ -47,62 +57,49 @@ export const STRINGS: Record<Lang, Catalog> = {
 /** The name the app has always used for `t`'s type. */
 export type Strings = Catalog;
 
-let current: Lang = 'ja';
-const listeners = new Set<() => void>();
-
 /**
- * An explicit choice wins; otherwise the browser decides.
+ * The browser decides: `ja` for any Japanese locale, `en` for everything else.
  *
  * Falling back to 'ja' unconditionally handed a first-time English-speaking user
  * a fully Japanese instrument — tabs, hub verbs, and the UNVERIFIED safety
- * banner — with only a 20px `ja | en` pair in the header corner to escape it.
- * A safety notice nobody can read is not a safety notice.
+ * banner. A safety notice nobody can read is not a safety notice, so a browser
+ * that names no language at all gets `en`, never the author's language.
+ *
+ * Exported for its test.
  */
-function fromNavigator(): Lang {
-    if (typeof navigator === 'undefined') return 'ja';
-    return navigator.language?.toLowerCase().startsWith('ja') ? 'ja' : 'en';
+export function langFor(language: string | undefined): Lang {
+    return language?.toLowerCase().startsWith('ja') ? 'ja' : 'en';
 }
 
-function read(): Lang {
+/**
+ * Resolved once, at import, in the browser. The prerender has no reader and
+ * answers `ja` — the static `<html lang="ja">` — so the server HTML and the
+ * first client render agree; `useLang` moves to the resolved value after
+ * hydration, and page.tsx writes it to `<html lang>`.
+ */
+let current: Lang = 'ja';
+if (typeof window !== 'undefined') {
+    current = langFor(navigator.language);
     try {
-        const v = localStorage.getItem(STORAGE_KEY);
-        if (v === 'en' || v === 'ja') return v;
+        localStorage.removeItem(RETIRED_KEY);
     } catch {
-        // Private mode. Fall through — the language is not a safety property,
-        // only the copy it selects is.
+        // Private mode: storage refused, so nothing was kept there either.
     }
-    return fromNavigator();
 }
-
-if (typeof window !== 'undefined') current = read();
 
 export function getLang(): Lang {
     return current;
 }
 
-export function setLang(lang: Lang): void {
-    if (lang === current) return;
-    current = lang;
-    try {
-        localStorage.setItem(STORAGE_KEY, lang);
-    } catch {
-        /* the switch still applies for this session */
-    }
-    if (typeof document !== 'undefined') document.documentElement.lang = lang;
-    listeners.forEach((l) => l());
-}
+/** Nothing to subscribe to: the language is the browser's, read once, and the page has no switch. */
+const subscribeNever = () => () => {};
 
-function subscribe(l: () => void): () => void {
-    listeners.add(l);
-    return () => listeners.delete(l);
-}
-
-/** Re-renders on a language change. Server snapshot is the default language. */
-export function useLang(): { lang: Lang; t: Strings; setLang: (l: Lang) => void } {
+/** The resolved language and its strings. Server snapshot: the prerender's `ja`. */
+export function useLang(): { lang: Lang; t: Strings } {
     const lang = useSyncExternalStore(
-        subscribe,
+        subscribeNever,
         () => current,
         () => 'ja' as Lang,
     );
-    return { lang, t: STRINGS[lang], setLang };
+    return { lang, t: STRINGS[lang] };
 }

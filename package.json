@@ -1,5 +1,6 @@
 {
   "name": "e46m3-diagnosis",
+  "meshProject": "e46-monitoring",
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
@@ -8,8 +9,8 @@
   ],
   "scripts": {
     "dev": "next dev -p 5046",
-    "build": "next build && node scripts/build-id.mjs && node scripts/gen-sw.mjs && node scripts/verify-export.mjs",
-    "build:preview": "next build && node scripts/build-id.mjs && node scripts/brand-preview.mjs out preview && node scripts/gen-sw.mjs && node scripts/verify-export.mjs",
+    "build": "next build && node scripts/build-id.mjs && node scripts/inject-supporters.mjs && node scripts/gen-sw.mjs && node scripts/verify-export.mjs",
+    "build:preview": "next build && node scripts/build-id.mjs && node scripts/brand-preview.mjs out preview && node scripts/inject-supporters.mjs && node scripts/gen-sw.mjs && node scripts/verify-export.mjs",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",

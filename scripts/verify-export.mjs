@@ -108,6 +108,16 @@ for (const doc of documents) {
     check(`exactly one build-id in ${doc}`, n === 1, `${n} found`);
 }
 
+// ---- 5b. exactly one CREDITS list per document ----------------------------------------------
+// scripts/inject-supporters.mjs writes the names the CREDITS colophon shows into every page, from
+// m3.tsunagi.app/api/credits; it stops the build if it cannot read them. Two blocks would mean it
+// ran twice without replacing; none, that it did not run.
+for (const doc of documents) {
+    const html = readFileSync(join(OUT, doc.slice(1)), 'utf8');
+    const n = (html.match(/id="m-supporters"/g) || []).length;
+    check(`exactly one CREDITS list in ${doc}`, n === 1, `${n} found`);
+}
+
 // ---- 6. version.json agrees with what was stamped ------------------------------------------
 const vPath = join(OUT, 'version.json');
 check('version.json exists', existsSync(vPath), vPath);

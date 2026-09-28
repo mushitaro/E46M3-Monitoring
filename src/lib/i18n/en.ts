@@ -163,6 +163,11 @@ export const en: Localised = {
         },
     ],
     credits_notices: 'The full licence and provenance position is in THIRD-PARTY-NOTICES.md.',
+    credits_meshLead: 'This app is part of the TSUNAGI community. The research continues, and the people who carry it are listed, at',
+    credits_meshTail: '.',
+    credits_supportersLead: 'Carried by',
+    credits_supportersOthers: '…and others who chose not to be named',
+    credits_supportersAsOf: (date: string) => `As of ${date}, most MILE first`,
     gate_verified: 'Confirmed on a car',
     gate_unverified: 'Not confirmed on a car',
     gate_practiceOnly:

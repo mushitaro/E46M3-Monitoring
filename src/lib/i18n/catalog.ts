@@ -124,6 +124,12 @@ export interface Localised {
     credits_lede: string;
     credits_entries: Array<{ name: string; what: string; url: string; licence?: string }>;
     credits_notices: string;
+    /** The colophon: where the work continues, and the people who carry it. */
+    credits_meshLead: string;
+    credits_meshTail: string;
+    credits_supportersLead: string;
+    credits_supportersOthers: string;
+    credits_supportersAsOf: (date: string) => string;
     gate_verified: string;
     gate_unverified: string;
     gate_practiceOnly: string;

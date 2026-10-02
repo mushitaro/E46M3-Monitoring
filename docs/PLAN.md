@@ -478,6 +478,8 @@ e46m3-monitoring  無認証 GET → 302（Access ログインへ）  クロー�
 e46m3-diagnosis   無認証 GET → 200                      staging は開いたまま
 ```
 
+**2026-10-02:** 本番 `e46m3-monitoring` を削除した（配信はオーナー向けの `e46m3-monitoring-preview` だけになったため）。staging `e46m3-diagnosis` もすでに無い。
+
 つまり**自動収集は止まるが、人は止まらない**。`THIRD-PARTY-NOTICES.md` §3.3 は
 「緩和策は Access」とだけ書いていたので、この差が読み取れる表に書き直した。
 「Access を入れた＝所有者だけが読める」と読まれる書き方は、持っていない緩和策の

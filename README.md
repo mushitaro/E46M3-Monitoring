@@ -61,8 +61,8 @@ TSUNAGI ///M の計器系サブブランド。DS2 通信は
 
 配信は `npm run deploy`。ゲートがあること、配る版のソースが公開済み（`HEAD == origin/main`）で
 作業ツリーがきれいなこと、公開してはならないものが追跡されていないことを確かめてからでないと
-配信しない（`scripts/deploy.mjs` の冒頭）。本番プロジェクト `e46m3-monitoring` は残っているが、
-ここからはもう配信しない。
+配信しない（`scripts/deploy.mjs` の冒頭）。Access の内側にあった旧本番
+プロジェクト `e46m3-monitoring` は 2026-10-02 に削除した。
 
 ---
 ## clone すると何が手に入るか

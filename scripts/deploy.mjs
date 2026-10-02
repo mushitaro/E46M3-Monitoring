@@ -6,8 +6,8 @@
 //        配信物の検証。どれか一つでも満たさなければ、何も上げずに止まる。
 //
 //  このリポジトリから配信するのは**オーナー向けの preview だけ**（運営者の決定、
-//  2026-09-23）。本番 `e46m3-monitoring`（Access の内側）は残っているが、ここからは
-//  もう配信しない。
+//  2026-09-23）。旧本番 `e46m3-monitoring`（Access の内側）は
+//  2026-10-02 に削除した。
 //
 //  1. **wrangler は必ずこのリポジトリ直下で実行する。**
 //     `wrangler pages deploy <dir>` の `<dir>` はアップロードする資産の場所だが、
@@ -123,7 +123,7 @@ const verify = (cmd, tries = 3, waitMs = 8000) => {
 if (PROJECT !== PREVIEW_PROJECT) {
     refuse(
         `wrangler.jsonc の name が "${PROJECT}"。このリポジトリが配信するのは ${PREVIEW_PROJECT} だけ。\n` +
-            '         本番（e46m3-monitoring）へは、ここからは配信しない。',
+            '         旧本番（e46m3-monitoring）は 2026-10-02 に削除した。',
     );
 }
 if (!cfg.d1_databases?.some((d) => d.binding === 'RUNS_DB')) {

@@ -30,7 +30,7 @@
 //     ツールはオープンソースとして無料で公開」と言っている。preview として配る版も
 //     例外ではないので、`HEAD == origin/main` でなければ拒む（先に push する）。
 //     作業ツリーもきれいであること——未コミットの変更が載った配信は、公開された
-//     どのコミットとも一致しない。例外は CLAUDE.md と .claude/ だけ（どのビルドも
+//     どのコミットとも一致しない。例外は CLAUDE.md、AGENTS.md と .claude/ だけ（どのビルドも
 //     読まない作業メモ）。定義は scripts/tree-state.mjs で、build-id.mjs と共有する。
 //     公開リポジトリに載ってはならないもの（BMW 由来のデータ、ダンプ、VIN、秘密）が
 //     追跡されていないことは `scripts/check-public-tree.mjs` で確かめる。
@@ -141,7 +141,7 @@ run('node scripts/check-public-tree.mjs');
 const dirty = dirtyPaths(ROOT);
 if (dirty.length > 0) {
     refuse(
-        '作業ツリーがきれいでない（CLAUDE.md と .claude/ 以外）。コミットして push してから配信する:\n' +
+        '作業ツリーがきれいでない（CLAUDE.md、AGENTS.md と .claude/ 以外）。コミットして push してから配信する:\n' +
             dirty.map((p) => `           ${p}`).join('\n'),
     );
 }
@@ -203,7 +203,7 @@ if (buildId !== `${git(['rev-list', '--count', 'HEAD'])}.${short}`) {
 }
 console.log(`ok    no sync-token; ${html.length} documents branded preview; build ${buildId}`);
 
-// `--commit-dirty=true`: CLAUDE.md and .claude/ may differ from HEAD and are deliberately outside the
+// `--commit-dirty=true`: CLAUDE.md, AGENTS.md and .claude/ may differ from HEAD and are deliberately outside the
 // tree check above; without the flag wrangler warns about them on every deploy.
 run(`npx --yes wrangler pages deploy out --project-name ${PROJECT} --branch main --commit-dirty=true`);
 verify(`node scripts/verify-deploy.mjs https://${PROJECT}.pages.dev`);

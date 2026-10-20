@@ -98,7 +98,7 @@ def render(doc: dict) -> str:
 def main() -> int:
     # `--check` は「書かずに、ディスク上のものが今生成されるものと一致するか見る」。
     #
-    # これまで sys.argv を一切見ておらず、--check を付けても常に書いていた——CLAUDE.md
+    # これまで sys.argv を一切見ておらず、--check を付けても常に書いていた——AGENTS.md
     # の検査コマンド一覧に載っているのに、検査ではなく生成をしていたということ。名前が
     # 約束していることをしない引数は、無いより悪い。
     check_only = "--check" in sys.argv

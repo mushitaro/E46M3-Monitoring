@@ -42,7 +42,7 @@ const CACHE_PREFIX = 'e46m3mon-';
  *                  failed entry fails the whole install.
  *
  * The tuner also excluded /CNAME. There is none here — this app has no GitHub Pages deployment
- * (CLAUDE.md), so the rule would guard a file that cannot exist.
+ * (AGENTS.md), so the rule would guard a file that cannot exist.
  */
 const PAGES_CONFIG = new Set(['/_headers', '/_routes.json', '/_redirects']);
 const isAsset = (url) =>

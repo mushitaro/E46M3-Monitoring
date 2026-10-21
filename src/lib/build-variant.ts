@@ -41,6 +41,18 @@ export function useBuildLabel(): string {
     return useSyncExternalStore(subscribeNever, readLabel, () => '');
 }
 
+const readBuildId = (): string =>
+    document.querySelector('meta[name="build-id"]')?.getAttribute('content') ?? '';
+
+/**
+ * `<count>.<sha>` as scripts/build-id.mjs stamps it, or empty on a dev server, which is never
+ * stamped. Which build a phone is actually running — the first thing to ask when it behaves unlike
+ * the desk, and a phone has no URL bar or devtools to answer it with. The menu sheet prints it.
+ */
+export function useBuildId(): string {
+    return useSyncExternalStore(subscribeNever, readBuildId, () => '');
+}
+
 /** Whether the preview's surfaces render: the preview build, or the dev server (see features.ts). */
 export function usePreviewSurfaces(): boolean {
     return useBuildVariant() === 'preview' || DEV_VARIANT_IS_PREVIEW;

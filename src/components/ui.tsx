@@ -535,6 +535,7 @@ export function Field({
     unit,
     tone = 'text-slate-200',
     stacked = false,
+    column = false,
     labelKind = 'chrome',
     title,
 }: {
@@ -545,6 +546,13 @@ export function Field({
     tone?: string;
     /** Stacked for a grid of readouts; inline for a run of metadata. */
     stacked?: boolean;
+    /**
+     * One line of a readout BLOCK — the menu sheet's VEHICLE and SESSION. The label holds a stated
+     * width, so every row of the block starts its value at one x and the eye has something to read
+     * down; `w-fit` labels would give each row its own (tsunagi-m-mobile §12). The value truncates
+     * rather than wraps: the block holds a fixed height, and a long IDENT on two lines would take it.
+     */
+    column?: boolean;
     /**
      * `chrome` is a name WE chose and gets the uppercase label treatment.
      * `data` is a name the ECU supplied — a freeze-frame field, a result — and
@@ -557,6 +565,17 @@ export function Field({
     title?: string;
 }) {
     const labelCls = labelKind === 'chrome' ? `${LABEL} text-slate-600` : 'text-[11px] text-slate-500';
+    if (column) {
+        return (
+            <div className="flex items-baseline gap-3 py-1 [@media(max-height:560px)]:py-0.5" title={title}>
+                <span className={`w-14 shrink-0 ${labelCls}`}>{label}</span>
+                <span className={`min-w-0 flex-1 truncate font-mono text-[11px] tabular-nums ${tone}`}>
+                    {value}
+                    {unit && <span className="ml-1 text-slate-500">{unit}</span>}
+                </span>
+            </div>
+        );
+    }
     if (stacked) {
         return (
             <div className="flex flex-col leading-none" title={title}>

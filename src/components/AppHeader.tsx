@@ -1,6 +1,6 @@
 'use client';
 
-import { Medal, Shield, type LucideIcon } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { LABEL, Pill, WORDMARK } from './ui';
 import { MMark } from './MMark';
 import { StatusLed } from './StatusLed';
@@ -49,15 +49,23 @@ import type { LinkState, LinkMode } from '@/hooks/useDs2Link';
  *
  *   - the wordmark drops to 11px (WORDMARK in ui.tsx): 143.5px wide, not 189.9;
  *   - the version and the identity readouts step aside. IDENT and LEN are the
- *     first thing the DIAGNOSIS pane shows, with the whole hex; the version is
- *     at the foot of CREDITS, one tap away;
- *   - PRIVACY and CREDITS become glyphs (HeaderLink). They stay IN the header,
- *     unlike TUNER's and SMG2's, because this app has no menu sheet for them to
- *     move into — hidden here they would not be harder to reach, they would not
- *     exist, and the credits are what the licence of the work under this app
- *     asks to stay reachable.
+ *     first thing the DIAGNOSIS pane shows, with the whole hex, and the M menu's
+ *     VEHICLE band; the version is at the foot of CREDITS and under the M menu's
+ *     strip;
+ *   - the links step aside too, into the M menu's strip — PRIVACY | CREDITS |
+ *     RELOAD in this order, the family's (tsunagi-m-chrome §1). They were glyphs
+ *     here while the app had no menu for them to move into; hidden then they
+ *     would not have been harder to reach, they would not have existed, and the
+ *     credits are what the licence of the work under this app asks to stay
+ *     reachable. The sheet is that place now. Every one of them is still here
+ *     from 900 up (tsunagi-m-mobile §8, the mirror).
  *
- * Measured at 360: the badge ends at 254.5 and the first glyph starts at 280.
+ * TUNER keeps one exception, RELOAD drawn on a phone while a newer build waits.
+ * There is none here, because nothing here knows a newer build waits: the poll
+ * that would (hooks/useAppUpdate) is a request of the app's own, and production
+ * promises it makes none (THIRD-PARTY-NOTICES.md §1). RELOAD here reloads into
+ * whatever the worker has already fetched, which is the browser's own reload
+ * with the waiting worker let in.
  *
  * There is no language switch, at any width. The language is the browser's
  * (lib/i18n, tsunagi-m-ux §13); the ja | en pair that stood at the end of this
@@ -70,6 +78,8 @@ export function AppHeader({
     mode,
     hasError,
     onCredits,
+    onReload,
+    reloading,
 }: {
     ident: { hex: string; length: number } | null;
     state: LinkState;
@@ -77,6 +87,9 @@ export function AppHeader({
     hasError: boolean;
     /** Opens the credits. The shell owns the dialog; the header owns the door. */
     onCredits: () => void;
+    /** Reloads into the newest build. The shell confirms first when something would be lost. */
+    onReload: () => void;
+    reloading: boolean;
 }) {
     const { lang, t } = useLang();
     // The preview sends what production never does, so it links to where that is written down —
@@ -124,8 +137,8 @@ export function AppHeader({
                     a core identity cue, not a font preference. Desk only: the
                     rule and its margins alone are 65px of a phone's 312. */}
                 <div className="ml-8 hidden min-w-0 flex-1 items-center gap-4 overflow-hidden whitespace-nowrap border-l border-slate-800 pl-8 font-mono text-[10px] text-slate-500 min-[900px]:flex">
-                    <Readout label="IDENT" value={ident ? truncate(ident.hex, 26) : '—'} />
-                    <Readout label="LEN" value={ident ? String(ident.length) : '—'} />
+                    <Readout label={t.field_ident} value={ident ? truncate(ident.hex, 26) : '—'} />
+                    <Readout label={t.field_len} value={ident ? String(ident.length) : '—'} />
                 </div>
             </div>
 
@@ -134,63 +147,60 @@ export function AppHeader({
                 opens the README. It is NOT in the disclaimer — that is
                 acknowledged once and then gone, which is the worst home for
                 something that has to remain available.
-                PRIVACY first, CREDITS after it: the order of every M tool. The
-                rule is the desk's; a phone spends its width on the glyphs. The
-                padding is both's — on a phone it is the least the badge and the
-                first glyph can be apart, however narrow the screen. */}
-            <div className="ml-auto flex items-center gap-4 pl-4 min-[900px]:gap-1 min-[900px]:border-l min-[900px]:border-slate-800">
-                {preview && <HeaderLink Icon={Shield} word={t.privacy} href={PRIVACY_PREVIEW[lang]} />}
-                <HeaderLink Icon={Medal} word={t.credits_open} onClick={onCredits} />
+                PRIVACY first, CREDITS after it, RELOAD last: the order of every
+                M tool, and the M menu's strip below 900, which is where this
+                group goes there. RELOAD hard against the corner because it is
+                the one that drops the link. */}
+            <div className="ml-auto hidden items-center gap-1 border-l border-slate-800 pl-4 min-[900px]:flex">
+                {preview && <HeaderLink word={t.privacy} href={PRIVACY_PREVIEW[lang]} />}
+                <HeaderLink word={t.credits_open} onClick={onCredits} />
+                <HeaderLink
+                    word={t.reload}
+                    title={reloading ? t.reload_running : t.reload_title}
+                    onClick={reloading ? undefined : onReload}
+                    running={reloading}
+                />
             </div>
         </header>
     );
 }
 
 /**
- * One of the header's links, in both of its forms: the word from 900px up, the
- * glyph below it.
+ * One of the header's links, as a word — from 900px up, the only width it is
+ * drawn at. Below it the same destinations are the M menu's strip, in the same
+ * order (tsunagi-m-chrome §1).
  *
- * One element carrying both, not a phone row beside a desk row, so the two
- * layouts cannot come to disagree about which links there are or in what order
- * — a link added here is in both (tsunagi-m-chrome §1).
- *
- * The desk form is exactly what the header always drew. The phone form is the
- * family's: w-5, neutral slate, because it states no machine state. Its hit box
- * is padded out to 36x44 by margins that cancel the padding, so the row still
- * lays out at 20px, and two glyphs 16px apart have boxes that meet without
- * overlapping. The glyph's name is its <title>, which only the glyph carries —
- * the word needs no tooltip to say what it already says.
+ * `running` is RELOAD's while it fetches the newest build: the word keeps its
+ * place and turns blue with a spinning glyph before it, since that can take
+ * seconds and a press with no sign of life reads as a missed one.
  */
 function HeaderLink({
-    Icon,
     word,
     href,
     onClick,
+    title,
+    running = false,
 }: {
-    Icon: LucideIcon;
     word: string;
     href?: string;
     onClick?: () => void;
+    title?: string;
+    running?: boolean;
 }) {
-    const className = `${LABEL} -mx-2 -my-3 px-2 py-3 text-slate-500 transition-colors hover:text-slate-300 min-[900px]:mx-0 min-[900px]:my-0 min-[900px]:px-1.5 min-[900px]:py-0.5 min-[900px]:text-slate-600 min-[900px]:hover:text-slate-400`;
-    const body = (
-        <>
-            <Icon aria-hidden="true" className="size-5 min-[900px]:hidden">
-                <title>{word}</title>
-            </Icon>
-            <span className="hidden min-[900px]:inline">{word}</span>
-        </>
-    );
+    const className = `${LABEL} inline-flex items-center gap-1.5 px-1.5 py-0.5 transition-colors ${
+        running ? 'cursor-default text-blue-400' : 'text-slate-600 hover:text-slate-400'
+    }`;
 
     // `_blank` is not decoration: a same-tab navigation would drop the cable
     // link and whatever has not been saved (lib/links).
     return href ? (
-        <a href={href} target="_blank" rel="noopener noreferrer" aria-label={word} className={className}>
-            {body}
+        <a href={href} target="_blank" rel="noopener noreferrer" title={title} className={className}>
+            {word}
         </a>
     ) : (
-        <button type="button" onClick={onClick} aria-label={word} className={className}>
-            {body}
+        <button type="button" onClick={onClick} title={title} className={className}>
+            {running && <RefreshCw aria-hidden="true" className="size-3 animate-spin" />}
+            {word}
         </button>
     );
 }

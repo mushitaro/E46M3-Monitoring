@@ -206,6 +206,15 @@ export interface Localised {
     reauth_consequence: string;
     reauth_confirm: string;
     reauth_note: string;
+    /** RELOAD (header and M menu). Asked only when something would be lost: a link, a read, a run. */
+    reload_confirm: string;
+    reload_title: string;
+    reload_running: string;
+    /** INSTALL (M menu): one sentence per state of hooks/useInstallPrompt, since the greyed glyph cannot say why. */
+    install_ready: string;
+    install_ios: string;
+    install_dismissed: string;
+    install_unavailable: string;
     viewer_faults: string;
     viewer_noFaultsRead: string;
     viewer_datalog: string;

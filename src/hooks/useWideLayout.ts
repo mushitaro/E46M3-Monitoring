@@ -39,8 +39,18 @@ const subscriber = (query: string) => (onChange: () => void) => {
     mq.addEventListener('change', onChange);
     return () => mq.removeEventListener('change', onChange);
 };
+/**
+ * Short and on its side — a head unit (about 683x400 in CSS pixels), or a phone held landscape.
+ *
+ * Not a third reading of the width: it answers a different question, whether the menu sheet has the
+ * height to stack its bands, and it is the query TUNER's sheet reads for it (tsunagi-m-design §6
+ * `SHORT_LANDSCAPE`). 560 is the same number SPLIT uses, reused rather than invented.
+ */
+const SHORT_LANDSCAPE = '(max-height: 560px) and (orientation: landscape)';
+
 const subscribeWide = subscriber(WIDE);
 const subscribeSplit = subscriber(SPLIT);
+const subscribeShortLandscape = subscriber(SHORT_LANDSCAPE);
 
 export function useWideLayout(): boolean {
     return useSyncExternalStore(
@@ -56,6 +66,16 @@ export function useSplitGraph(): boolean {
     return useSyncExternalStore(
         subscribeSplit,
         () => window.matchMedia(SPLIT).matches,
+        () => false,
+    );
+}
+
+/** Server snapshot `false`, for the same reason `useSplitGraph`'s is: the stacked sheet is what the
+ *  markup describes, and it is the arrangement a narrow-and-tall phone keeps. */
+export function useShortLandscape(): boolean {
+    return useSyncExternalStore(
+        subscribeShortLandscape,
+        () => window.matchMedia(SHORT_LANDSCAPE).matches,
         () => false,
     );
 }

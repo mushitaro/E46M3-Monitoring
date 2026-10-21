@@ -61,6 +61,21 @@ export const CHROME = {
     pane_list: 'LIST',
     pane_dash: 'DASH',
     pane_graph: 'GRAPH',
+    // The M menu below 900px (components/MobileMenu.tsx): the button's and the close's names, the
+    // bands' titles and the readouts' labels — TUNER's words, and IDENT / LEN as the header has them.
+    menu_open: 'Menu',
+    menu_close: 'Close',
+    menu_vehicle: 'VEHICLE',
+    menu_session: 'SESSION',
+    menu_view: 'VIEW',
+    field_ident: 'IDENT',
+    field_len: 'LEN',
+    field_link: 'LINK',
+    field_faults: 'FAULTS',
+    field_log: 'LOG',
+    // The header's last control and the menu's. What reloading costs is prose, in ja.ts / en.ts.
+    reload: 'Reload',
+    install: 'Install',
     details: 'Details',
 
     // The hub's verb in the SERVICE tab, and the STOP/ABORT beside it.

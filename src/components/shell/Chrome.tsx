@@ -23,11 +23,33 @@ export const BAR =
     'flex h-[44px] flex-none items-center border-b border-slate-900 bg-slate-900/50 px-4 backdrop-blur-sm';
 
 /**
+ * Each tab's word, once — for the tab bar and for the M menu's VIEW band, so the
+ * two layouts cannot come to call a view by two names.
+ */
+export function useTabLabels(): Record<Tab, string> {
+    const { t } = useLang();
+    return {
+        diagnosis: t.tab_diagnosis,
+        datalog: t.tab_datalog,
+        adaptation: t.tab_adaptation,
+        service: t.tab_service,
+        actuator: t.tab_actuator,
+        sessions: t.tab_sessions,
+    };
+}
+
+/**
  * The tabs.
  *
  * The order comes from `lib/tabs`, not from JSX, so the bar and the pane map
  * cannot disagree about which tabs exist. The labels are looked up per tab
  * rather than listed beside them for the same reason.
+ *
+ * From 900px up only. Below it the views are the M menu's VIEW band, as in
+ * TUNER, whose tab row is wide-only too: a second row of the same doors at the
+ * top of LIST would be two ways to one job in one layout (tsunagi-m-ux §11),
+ * and LIST gets the 44px back. The comms log that sits at this bar's right goes
+ * to the footer's right-hand slot (LogPopover's `openUp`).
  */
 export function TabBar({
     tab,
@@ -42,18 +64,10 @@ export function TabBar({
     /** The tools that sit right of the rule — today, the comms log. */
     children?: React.ReactNode;
 }) {
-    const { t } = useLang();
-    const LABELS: Record<Tab, string> = {
-        diagnosis: t.tab_diagnosis,
-        datalog: t.tab_datalog,
-        adaptation: t.tab_adaptation,
-        service: t.tab_service,
-        actuator: t.tab_actuator,
-        sessions: t.tab_sessions,
-    };
+    const LABELS = useTabLabels();
 
     return (
-        <nav role="tablist" className={`${BAR} z-30`}>
+        <nav role="tablist" className={`${BAR} z-30 max-[900px]:hidden`}>
             <div className="no-scrollbar mr-auto flex h-full min-w-0 flex-1 gap-6 overflow-x-auto overflow-y-hidden">
                 {TAB_ORDER.filter((id) => enabled.has(id)).map((id) => (
                     <button

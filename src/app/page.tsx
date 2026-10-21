@@ -8,13 +8,17 @@ import { CreditsDialog } from '@/components/CreditsDialog';
 import { DisclaimerDialog } from '@/components/DisclaimerDialog';
 import { ElectricalFaultDialog } from '@/components/ElectricalFaultDialog';
 import { LogPopover } from '@/components/LogPopover';
-import { BAR, ModuleRow, TabBar } from '@/components/shell/Chrome';
+import { MarkIcon } from '@/components/MarkIcon';
+import { MobileMenu } from '@/components/MobileMenu';
+import { BAR, ModuleRow, TabBar, useTabLabels } from '@/components/shell/Chrome';
 import { ControlPanel } from '@/components/shell/ControlPanel';
 import { Overlaid } from '@/components/shell/Overlaid';
 import { LABEL, TextButton } from '@/components/ui';
 import { useActuatorArming } from '@/hooks/useActuatorArming';
+import { reloadForUpdate, useUpdateRunning } from '@/hooks/useAppUpdate';
 import { useDs2Link } from '@/hooks/useDs2Link';
 import { useHub } from '@/hooks/useHub';
+import { useInstallPrompt } from '@/hooks/useInstallPrompt';
 import { useUnloadGuard } from '@/hooks/useUnloadGuard';
 import { useSplitGraph, useWideLayout } from '@/hooks/useWideLayout';
 import { useBuildVariant, usePreviewSurfaces } from '@/lib/build-variant';
@@ -32,12 +36,13 @@ import {
 import { useLang } from '@/lib/i18n';
 import { hasStopControl, operationFor } from '@/lib/jobOps';
 import { loadJobText, type JobTextTable } from '@/lib/jobText';
+import { PRIVACY_PREVIEW } from '@/lib/links';
 import { loadDscHydraulics, type DscHydraulics } from '@/lib/dscHydraulics';
 import { enabledTabs, featureEnabled } from '@/lib/features';
 import { EMPTY_LEDGER, type Ledger } from '@/lib/ledger';
 import { mayRun, type RunVerdict } from '@/lib/runGate';
 import { loadSmg2Workflows, type Smg2Workflows } from '@/lib/smg2Workflows';
-import type { Tab } from '@/lib/tabs';
+import { TAB_ORDER, type Tab } from '@/lib/tabs';
 import { bestTelegram, loadTelegrams, type TelegramTable } from '@/lib/telegrams';
 import { ActuatorView } from '@/views/actuator/ActuatorView';
 import { ActuatorViz } from '@/views/actuator/ActuatorViz';
@@ -115,6 +120,13 @@ type NarrowPane = 'list' | 'dash' | 'graph';
  * got too little to use: at 851x393 the list had 88px and the right column
  * 213.2, less than the control panel alone, so CONNECT sat below the fold. The
  * note on the footer has the budget.
+ *
+ * The footer is the family's (tsunagi-m-mobile references/mobile-chrome.md),
+ * copied from TUNER: the pane switch on the left, the M button at the centre
+ * opening the M menu (components/MobileMenu.tsx), the comms log on the right.
+ * What the header and the tab bar carry from 900 up is in that menu below it —
+ * the header's links, the identity readouts, and the views themselves — and
+ * nothing that is sent to the car is.
  *
  * ## The panes are overlaid, not swapped
  *
@@ -287,6 +299,37 @@ export default function Home() {
     const changeEcu = useCallback((id: string) => void releaseThen(() => setEcuId(id)), [releaseThen]);
     const changeTab = useCallback((next: Tab) => void releaseThen(() => setTab(next)), [releaseThen]);
 
+    /**
+     * RELOAD — the header's last link from 900 up, the M menu's strip below it.
+     *
+     * The app needs its own: pull-to-refresh is off (globals.css), and installed it has no browser
+     * chrome, so without this a phone had no way to reload at all (tsunagi-m-mobile §2). It reloads
+     * into the newest build the worker has fetched, not the one cached (hooks/useAppUpdate).
+     *
+     * A fourth door out of "this ECU, right now", so it releases first, like the other three. And
+     * it asks first exactly when a reload loses something — a link, or a read or a run that is not
+     * kept anywhere (in the WORKS build, not saved) — and not otherwise (tsunagi-m-chrome §1). A
+     * write still in flight meets useUnloadGuard's own prompt as well, which is the point of it.
+     */
+    const reloading = useUpdateRunning();
+    const reload = useCallback(() => {
+        if (reloading) return;
+        const loses =
+            link.state !== 'disconnected' ||
+            (sessionsEnabled ? sessions.unsaved : link.faults !== null || datalog.samples.length > 0);
+        if (loses && !window.confirm(t.reload_confirm)) return;
+        void releaseThen(() => reloadForUpdate());
+    }, [reloading, link.state, link.faults, datalog.samples.length, sessionsEnabled, sessions.unsaved, t, releaseThen]);
+
+    // The M menu (components/MobileMenu.tsx), below 900 only. `menuDrag` is where the press that
+    // opened it landed, while it is still down: the sheet reads it to carry that press on into a
+    // pick, and clears it itself, since the scrim covers the button before its pointerup can.
+    const [menuOpen, setMenuOpen] = useState(false);
+    const [menuDrag, setMenuDrag] = useState<{ x: number; y: number } | null>(null);
+    const clearMenuDrag = useCallback(() => setMenuDrag(null), []);
+    const install = useInstallPrompt();
+    const tabLabels = useTabLabels();
+
     const [telegrams, setTelegrams] = useState<TelegramTable | null>(null);
     const [jobText, setJobText] = useState<JobTextTable | null>(null);
     const [workflows, setWorkflows] = useState<Smg2Workflows | null>(null);
@@ -435,6 +478,8 @@ export default function Home() {
                 mode={link.mode}
                 hasError={!!link.error}
                 onCredits={() => setCreditsOpen(true)}
+                onReload={reload}
+                reloading={reloading}
             />
 
             {/* Below 900 one grid cell holds both panes; from 900 they are flex siblings, as
@@ -590,55 +635,138 @@ export default function Home() {
                 </aside>
             </main>
 
-            {/* The pane switch, below 900 (tsunagi-m-mobile §3, §4, §7).
+            {/* The footer, below 900 (tsunagi-m-mobile §3, §4, §7, §8): the pane switch on the
+                left, the M button at the centre, the triggers of this app's panels on the right.
+                The family's form, copied from TUNER rather than re-derived (tsunagi-m-mobile
+                references/mobile-chrome.md §2, §3).
                 ────────────────────────────────────────────────────────
                 Stacked, the two columns were each too small to use: at
                 851x393 the list had 88px and the right column 213.2, less
                 than the control panel alone, and CONNECT was below the fold.
                 So the panes overlay one cell and this row picks the one that
-                is up, as TUNER and SMG2 do. LIST is the tab's own view, DASH
-                the hub, the panel and the picture; GRAPH exists only in
-                SPLIT, where the picture's 140 cannot sit on the panel's 220.
+                is up. LIST is the tab's own view, DASH the hub, the panel and
+                the picture; GRAPH exists only in SPLIT, where the picture's
+                140 cannot sit on the panel's 220. Below 900 the tab bar is
+                not drawn (the views are the M menu's), so LIST has the pane's
+                whole height:
 
-                  851x393  393 − 48 − 52 = 293   LIST 249   DASH panel 293   GRAPH 293
-                  683x400  400 − 48 − 52 = 300   LIST 256   DASH panel 300   GRAPH 300
-                  360x800  800 − 48 − 52 = 700   LIST 656   DASH picture 433 + panel 267
+                  851x393  393 − 48 − 53 = 292   LIST 292   DASH panel 292   GRAPH 292
+                  683x400  400 − 48 − 53 = 299   LIST 299   DASH panel 299   GRAPH 299
+                  360x800  800 − 48 − 53 = 699   LIST 699   DASH picture 432 + panel 267
 
-                Outside both panes, because each pane hides the other. Dressed
-                as the tab row — same label, same 2px indicator — with the
-                indicator on TOP: the bottom edge is the screen's. Each hit box
-                is padded out and the padding cancelled by margin, so the row
-                lays out at the words and a thumb gets the row's whole height:
-                LIST 50x51, DASH 56x51, GRAPH 65x51, measured. No blur: nothing
-                sits behind this row. */}
-            <nav className="z-30 flex h-[52px] flex-none gap-6 border-t border-slate-900 bg-slate-900/50 px-4 min-[900px]:hidden">
-                {(
-                    [
-                        ['list', t.pane_list, ''],
-                        ['dash', t.pane_dash, ''],
-                        ['graph', t.pane_graph, SPLIT_ONLY_SHOW],
-                    ] as const
-                ).map(([id, label, only]) => (
+                Outside both panes, because each pane hides the other. 52px and
+                a rule on top; no blur, because nothing sits behind this row
+                (tsunagi-m-mobile §16.5). */}
+            <div className="z-30 flex-none border-t border-slate-900 bg-slate-950/80 min-[900px]:hidden">
+                <div className="relative flex h-[52px] items-center px-4">
+                    {/* Dressed as the tab row — same label, same 2px indicator — with the
+                        indicator on TOP, on the button itself: the bottom edge is the screen's.
+                        Every pane here always has something to show, so none is ever disabled
+                        today; the slate-700 is the family's, for the pane that one day does not.
+
+                        The `after:` box is the hit area. With the indicator on the button, the
+                        button is as wide as its word — LIST 26px, DASH 32 — so it is widened by an
+                        invisible box 12px either side rather than by padding, which would widen
+                        the indicator too. 12 is half the 24px gap, so neighbours meet and do not
+                        overlap. Hit-tested along the row: LIST 49.5, DASH 56, GRAPH 65.5 wide, as
+                        the row had before the indicator moved. */}
+                    <div className="flex h-full shrink-0 space-x-6">
+                        {(
+                            [
+                                ['list', t.pane_list, true, ''],
+                                ['dash', t.pane_dash, true, ''],
+                                ['graph', t.pane_graph, true, SPLIT_ONLY_SHOW],
+                            ] as const
+                        ).map(([id, label, enabled, only]) => (
+                            <button
+                                key={id}
+                                type="button"
+                                disabled={!enabled}
+                                aria-pressed={shownPane === id}
+                                aria-controls={id === 'list' ? 'narrow-list' : 'narrow-dash'}
+                                onClick={() => setPane(id)}
+                                className={`relative h-full ${only || 'flex'} shrink-0 items-center whitespace-nowrap border-t-2 after:absolute after:-inset-x-3 after:inset-y-0 ${LABEL} transition-colors ${
+                                    shownPane === id
+                                        ? 'border-blue-400 text-blue-400'
+                                        : enabled
+                                          ? 'border-transparent text-slate-500 hover:text-slate-300'
+                                          : 'cursor-default border-transparent text-slate-700'
+                                }`}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* The M button. Centred absolutely rather than by flex order, so it stays on
+                        the screen's centre line whatever the groups either side weigh: it is reached
+                        for without looking. It opens on pointerDOWN, not click, so the same press can
+                        carry on into the sheet and pick a row on the way back up; `touch-none` stops
+                        the browser claiming that press as a scroll first. The release is not handled
+                        here: the sheet's scrim covers this button on this very pointerdown, so its
+                        own pointerup never arrives — the sheet ends the drag from the window. */}
                     <button
-                        key={id}
                         type="button"
-                        aria-pressed={shownPane === id}
-                        aria-controls={id === 'list' ? 'narrow-list' : 'narrow-dash'}
-                        onClick={() => setPane(id)}
-                        className={`${only || 'flex'} -mx-3 shrink-0 px-3`}
+                        onPointerDown={(e) => {
+                            e.preventDefault();
+                            setMenuOpen(true);
+                            setMenuDrag({ x: e.clientX, y: e.clientY });
+                        }}
+                        aria-label={t.menu_open}
+                        aria-expanded={menuOpen}
+                        className="absolute left-1/2 top-0 z-10 flex h-[52px] w-[52px] -translate-x-1/2 cursor-pointer touch-none items-center justify-center text-slate-400 hover:text-slate-200"
                     >
-                        <span
-                            className={`flex h-full items-center whitespace-nowrap border-t-2 ${LABEL} transition-colors ${
-                                shownPane === id
-                                    ? 'border-blue-400 text-blue-400'
-                                    : 'border-transparent text-slate-500 hover:text-slate-300'
-                            }`}
-                        >
-                            {label}
-                        </span>
+                        <MarkIcon className="h-7 w-8" />
                     </button>
-                ))}
-            </nav>
+
+                    {/* The triggers of this app's panels, opening up: the comms log, which the desk
+                        keeps at the tab bar's right. `ml-auto` holds the box at the right edge
+                        whatever it holds. */}
+                    <div className="ml-auto flex items-center gap-2">
+                        <LogPopover
+                            log={link.log}
+                            onClear={link.clearLog}
+                            onExport={() => exportCommsLog(link.log)}
+                            openUp
+                        />
+                    </div>
+                </div>
+            </div>
+
+            {menuOpen && (
+                <MobileMenu
+                    onClose={() => setMenuOpen(false)}
+                    dragFrom={menuDrag}
+                    onDragEnd={clearMenuDrag}
+                    tabs={TAB_ORDER.filter((id) => tabs.has(id)).map((id) => ({
+                        id,
+                        label: tabLabels[id],
+                        enabled: true,
+                    }))}
+                    activeTab={tab}
+                    // Picking a view is also asking to look at it: change the tab AND bring LIST
+                    // up, or the tab changes behind whichever pane was showing (tsunagi-m-mobile §3).
+                    onSelectTab={(id) => {
+                        changeTab(id);
+                        setPane('list');
+                    }}
+                    module={moduleName(ecuIndex, ecuId)}
+                    ident={link.ident}
+                    mode={link.mode}
+                    state={link.state}
+                    faults={link.faults === null ? null : link.faults.length}
+                    samples={datalog.samples.length}
+                    privacyUrl={preview ? PRIVACY_PREVIEW[lang] : null}
+                    onOpenCredits={() => {
+                        setCreditsOpen(true);
+                        setMenuOpen(false);
+                    }}
+                    onReload={reload}
+                    reloading={reloading}
+                    installState={install.state}
+                    onInstall={() => void install.promptInstall()}
+                />
+            )}
 
             {firstRun && <DisclaimerDialog preview={preview} onAgree={() => agreeToFirstRun(preview)} />}
 
@@ -684,4 +812,10 @@ export default function Home() {
 function AwaitingCatalog() {
     const { t } = useLang();
     return <p className="py-2 font-mono text-xs uppercase text-slate-600">{t.awaiting_catalog}</p>;
+}
+
+/** The module's name as the module selector shows it, or null until the index has loaded. */
+function moduleName(index: EcuIndex | null, id: string): string | null {
+    const entry = index?.modules.find((m) => m.id === id);
+    return entry ? entry.name_en || entry.name : null;
 }

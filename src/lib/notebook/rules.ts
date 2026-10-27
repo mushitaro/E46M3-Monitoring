@@ -288,3 +288,37 @@ export function notebookLine(entries: readonly NotebookEntry[]): string | null {
     if (asks) parts.push(`ASK ${asks}`);
     return parts.length ? parts.join(' · ') : null;
 }
+
+export type RunnablePlan =
+    | { ok: true; sessionId: string; entry: PlanEntry }
+    | { ok: false; reason: 'none' | 'forked' | 'mandate-ended' };
+
+/**
+ * The plan the tab may run now, across every record on the device.
+ *
+ * A record's current plan, when it has exactly one head — a fork is the driver's to settle, never
+ * the tab's. A plan the assistant or the desk wrote runs only while its mandate stands: an expired
+ * or withdrawn mandate stops the plan as well as further writing. Of several runnable records, the
+ * one whose plan was written last.
+ */
+export function runnablePlan(entries: readonly NotebookEntry[], now: number): RunnablePlan {
+    const bySession = new Map<string, NotebookEntry[]>();
+    for (const e of entries) bySession.set(e.sessionId, [...(bySession.get(e.sessionId) ?? []), e]);
+    let best: { sessionId: string; entry: PlanEntry } | null = null;
+    let reason: 'none' | 'forked' | 'mandate-ended' = 'none';
+    for (const [sessionId, record] of bySession) {
+        const { plan, forked } = currentPlan(record);
+        if (!plan) continue;
+        if (forked) {
+            reason = 'forked';
+            continue;
+        }
+        const own = plan.by === 'driver' || plan.by === 'owner';
+        if (!own && !(plan.body.mandate && liveMandate(record, plan.body.mandate, now))) {
+            if (reason === 'none') reason = 'mandate-ended';
+            continue;
+        }
+        if (!best || plan.at > best.entry.at) best = { sessionId, entry: plan };
+    }
+    return best ? { ok: true, ...best } : { ok: false, reason };
+}

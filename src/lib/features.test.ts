@@ -29,6 +29,11 @@ describe('feature registry', () => {
         expect(featureEnabled('sessionSync', true)).toBe(true);
     });
 
+    it('PROBE is preview-only — production takes no plan from anyone', () => {
+        expect(FEATURES.probe.stage).toBe('preview-only');
+        expect(featureEnabled('probe', false)).toBe(false);
+    });
+
     it('every tab has exactly one owner', () => {
         for (const tab of TAB_ORDER) {
             const owners = (Object.keys(FEATURES) as FeatureName[]).filter((f) => FEATURES[f].tabs.includes(tab));

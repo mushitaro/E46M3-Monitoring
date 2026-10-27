@@ -9,35 +9,14 @@
  * this database. Unlike the error-record outbox, these calls DO reject — a SAVE that did not happen
  * must say so, because the owner is about to rely on it.
  */
+import { inTransaction, SESSIONS } from './db';
 import type { SavedSession } from './session';
 
-const DB = 'e46m3-monitoring';
-const STORE = 'sessions';
-
-function open(): Promise<IDBDatabase> {
-    return new Promise((resolve, reject) => {
-        const req = indexedDB.open(DB, 1);
-        req.onupgradeneeded = () => req.result.createObjectStore(STORE, { keyPath: 'id' });
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
+function run<T>(mode: IDBTransactionMode, op: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+    return inTransaction<T>(SESSIONS, mode, (s, done) => {
+        const req = op(s);
+        req.onsuccess = () => done(req.result);
     });
-}
-
-async function run<T>(mode: IDBTransactionMode, op: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
-    const db = await open();
-    try {
-        return await new Promise<T>((resolve, reject) => {
-            const tx = db.transaction(STORE, mode);
-            const req = op(tx.objectStore(STORE));
-            // Resolved on the transaction, not the request: a write is not durable until the
-            // transaction commits, and "saved" said a moment early is the one lie this must not tell.
-            tx.oncomplete = () => resolve(req.result);
-            tx.onerror = () => reject(tx.error);
-            tx.onabort = () => reject(tx.error);
-        });
-    } finally {
-        db.close();
-    }
 }
 
 /** Every saved session, newest first. */

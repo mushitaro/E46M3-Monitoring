@@ -26,7 +26,8 @@ description: 'One firing of MONITORING''s autonomous loop: the scheduled Claude 
 
 ## 3. 進める
 
-- 開発はブランチで、試験を書き、`npm run lint && npm run typecheck && npm test` と CLAUDE.md の検査を通してから PR。PR の分類（自動マージか人の承認か）はパスで決まる。自分で決めない。
+- 開発は main から切ったブランチ `claude/loop-<YYYYMMDD>-<短い名前>` で。試験を書き、`npm run lint && npm run typecheck && npm test` と CLAUDE.md の検査を通してから PR（draft にしない）。
+- PR の分類はパスで決まる（`.github/autonomy.json`、`node scripts/autonomy-class.mjs` で事前に見られる）。自分で決めない。`auto` は CI が通れば自分でマージされ、`human` はオーナーのレビューを待つ。`human` の変更は、`auto` の変更と同じ PR に混ぜない。
 - 計画を書くのは委任の範囲だけ。範囲の外は `ask` にして止まる。
 - 車に送るのはタブ。ループは車に何も送らない。
 

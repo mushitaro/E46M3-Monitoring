@@ -5,9 +5,8 @@ name: Autonomy class
 # that wrote the change does not decide; this does.
 #
 # `auto` — every changed path is wording, an example, a guide topic or a document. A change from
-# the autonomous loop (a `claude/loop-*` branch) is then set to merge itself once the required
-# checks pass, if the repository allows auto-merge. Anything else is `human`, and CODEOWNERS asks
-# the owner to review it.
+# the autonomous loop (a `claude/loop-*` branch) is then merged by autonomy-merge.yml once CI has
+# passed on that exact commit. Anything else is `human`, and CODEOWNERS asks the owner to review it.
 
 on:
   pull_request:
@@ -30,17 +29,16 @@ jobs:
           cls=$(node scripts/autonomy-class.mjs < changed.txt 2> held.txt)
           echo "class=$cls" >> "$GITHUB_OUTPUT"
           { echo "### Autonomy class: \`$cls\`"; echo; sed 's/^/- /' held.txt; } >> "$GITHUB_STEP_SUMMARY"
+      # The REST call creates a label that does not exist yet, so the repository needs no setup.
       - name: Label
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
           CLS: ${{ steps.c.outputs.class }}
+          REPO: ${{ github.repository }}
         run: |
-          gh pr edit "$PR" --remove-label autonomy:auto --remove-label autonomy:human >/dev/null 2>&1 || true
-          gh pr edit "$PR" --add-label "autonomy:$CLS" || echo "::warning::The label autonomy:$CLS does not exist yet; create autonomy:auto and autonomy:human once."
-      - name: Merge by itself (the loop's auto-class changes only)
-        if: steps.c.outputs.class == 'auto' && startsWith(github.head_ref, 'claude/loop-')
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR: ${{ github.event.pull_request.number }}
-        run: gh pr merge "$PR" --auto --squash || echo "::warning::Auto-merge is off in this repository's settings; a person merges it."
+          for old in autonomy:auto autonomy:human; do
+            [ "$old" = "autonomy:$CLS" ] || gh api --method DELETE "repos/$REPO/issues/$PR/labels/$old" >/dev/null 2>&1 || true
+          done
+          gh api --method POST "repos/$REPO/issues/$PR/labels" -f "labels[]=autonomy:$CLS" >/dev/null \
+            || echo "::warning::The label autonomy:$CLS could not be set; the class above still stands."

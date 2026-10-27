@@ -1,0 +1,25 @@
+# Who reviews what the autonomous loop may not merge by itself (.github/autonomy.json, `human`).
+# Kept to the same paths, so a review is asked for exactly where the table holds a change.
+/.github/                         @mushitaro
+/.claude/                         @mushitaro
+/CLAUDE.md                        @mushitaro
+/functions/                       @mushitaro
+/wrangler.jsonc                   @mushitaro
+/scripts/deploy.mjs               @mushitaro
+/packages/ds2-core/               @mushitaro
+/public/kill-list.json            @mushitaro
+/public/guide/index.md            @mushitaro
+/src/lib/runGate.ts               @mushitaro
+/src/lib/ledger.ts                @mushitaro
+/src/lib/actuationGate.ts         @mushitaro
+/src/lib/moduleProtocol.ts        @mushitaro
+/src/lib/vehicleState.ts          @mushitaro
+/src/lib/probe/                   @mushitaro
+/src/lib/notebook/rules.ts        @mushitaro
+/src/lib/bridge/tools.ts          @mushitaro
+/src/lib/bridge/handlers.ts       @mushitaro
+/src/hooks/useDs2Link.ts          @mushitaro
+/src/hooks/useMonitoringFacade.ts @mushitaro
+/tools/sgbd/                      @mushitaro
+/tools/extract_telegrams.py       @mushitaro
+/scenarios/capabilities.json      @mushitaro

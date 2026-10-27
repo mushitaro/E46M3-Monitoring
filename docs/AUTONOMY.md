@@ -102,7 +102,7 @@ guide が名乗るツールは `src/lib/bridge/tools.ts` の一覧だけ（`guid
 | 1 | タブの実行器（`src/lib/probe/`）と CO-WORK（TUNER の `notebook/rules.ts` の形）。実行器・判定・委任の規則、端末の保存（`notebook/store.ts`）、PROBE（副操作で開始、ハブで STOP と一行）は済 | 人 |
 | 2 | ポリシーの改訂（成功した読取の送信・中継の catalog）→ D1 → 机の CLI | 人 |
 | 3 | Matrix MONITORING：ticket・同一オリジンのソケット・hello・19 のツール・SESSIONS の ASSISTANT。タブ側は済（代わりの中継で確認）。中継 0.11.0 は作成済み、未配備 | 人 |
-| 4 | guide の全トピック、机と自律の Skill、例題と能力の表、自動マージの分類、配信、定期実行。guide・Skill・例題・能力の表は済 | 分類による |
+| 4 | guide の全トピック、机と自律の Skill、例題と能力の表、自動マージの分類（`.github/autonomy.json`・`scripts/autonomy-class.mjs`・CODEOWNERS・`autonomy.yml`）、配信（`deploy-works.yml`）は済。定期実行は PR #1 が main に入ってから | 分類による |
 | 5 | テレグラムを SGBD の実行トレースで得る（`.prg` をデータ repo へ） | 人 |
 | 6 | 例題 1（DSC 低速カーブ）を一周 | — |
 | 7 | Manifold の DIAG の枠（OTA の署名は PC） | 人 |
@@ -110,13 +110,19 @@ guide が名乗るツールは `src/lib/bridge/tools.ts` の一覧だけ（`guid
 自動マージは PLAN §8-3 のとおり（運営者 2026-10-23）：文言・訳・単位表・読取専用のデコード表・
 例題・文書は CI が通れば自動。台帳・テレグラム・引数・リスク・前提条件・`runGate`・`packages/ds2-core`・
 `classify.py`・guide の「前提」と「言わないこと」は人の承認。分類はパスの許可表と CI で決め、
-エージェントの判断にしない。
+エージェントの判断にしない。`autonomy.yml` が PR に `autonomy:auto` か `autonomy:human` を付け、`auto` で
+自律ループのブランチ（`claude/loop-*`）のものだけ自動マージを入れる。`human` は CODEOWNERS がオーナーに
+レビューを頼む。表と CODEOWNERS が食い違わないことは `src/lib/autonomyClass.test.ts` が見る。
+
+配信は `deploy-works.yml`（main への push と 6 時間ごと、配信済みのコミットは飛ばす）。`npm run deploy` が
+きれいな main とデータを確かめてから上げ、配信物を読み戻す。ゲートの内側の確認はオーナーのセッションが
+要るので、ランナーでは「配信済み・内側は未確認」の警告で終わる。
 
 ## 6. 運営者に一度だけ頼むこと
 
 1. 段 0 の PR のレビュー。
 2. `.prg`（DSC_E46・SMG2・MSS54DS0・LWS5 ほか）と `C:\EDIABAS\SIM` を `E46M3-Monitoring-data` へ。
-3. GitHub の secret（Pages の Cloudflare トークン・アカウント ID・データ repo の読取トークン）とブランチ保護。
+3. GitHub の secret（`CLOUDFLARE_API_TOKEN`・`CLOUDFLARE_ACCOUNT_ID`・データ repo の読取トークン `MONITORING_DATA_TOKEN`）、ブランチ保護（main に `verify` 必須）、設定の Allow auto-merge、ラベル `autonomy:auto` と `autonomy:human`。
 4. クラウド環境の secret（D1 `tsunagi-m-preview-runs` だけに効くトークン）。
 5. PC での中継 0.11.0 の配備（ポリシーの公開のあと）と、claude.ai への MONITORING WORKS のコネクタの追加。
 6. ヘッドユニットで MONITORING WORKS にサインインし、走る前に CONNECT と PROBE ON。

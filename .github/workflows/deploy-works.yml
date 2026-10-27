@@ -1,0 +1,94 @@
+name: Deploy WORKS
+
+# Builds main and deploys it to e46m3-monitoring-preview with `npm run deploy`, which refuses
+# anything but a clean, pushed main with the data in place, and then reads the served build back.
+#
+# Inert until the secrets exist (docs/AUTONOMY.md §6): CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID
+# (Pages), MONITORING_DATA_TOKEN (the private data). A merge the loop's auto-class change makes is
+# done with the workflow token, which starts no other workflow — so this also runs every six hours
+# and deploys a main it has not deployed yet.
+#
+# verify-deploy reads the inside of the owner gate with an owner session, which a runner does not
+# have: it then ends "deployed, not verified" (exit 2), said here as a warning. The outside — the
+# gate closed to everyone else — and fail-closed are checked either way.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '17 */6 * * *'
+
+concurrency:
+  group: deploy-works
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      HAVE_DEPLOY: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' && secrets.MONITORING_DATA_TOKEN != '' }}
+    steps:
+      - name: Not configured
+        if: env.HAVE_DEPLOY != 'true'
+        run: echo "::notice::Deploy WORKS needs CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID and MONITORING_DATA_TOKEN. Nothing was deployed."
+
+      - name: Deployed already?
+        if: env.HAVE_DEPLOY == 'true'
+        id: done
+        uses: actions/cache/restore@v4
+        with:
+          path: .deployed
+          key: deployed-${{ github.sha }}
+          lookup-only: true
+
+      - uses: actions/checkout@v4
+        if: env.HAVE_DEPLOY == 'true' && steps.done.outputs.cache-hit != 'true'
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        if: env.HAVE_DEPLOY == 'true' && steps.done.outputs.cache-hit != 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - if: env.HAVE_DEPLOY == 'true' && steps.done.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: Private data
+        if: env.HAVE_DEPLOY == 'true' && steps.done.outputs.cache-hit != 'true'
+        env:
+          TOKEN: ${{ secrets.MONITORING_DATA_TOKEN }}
+        run: |
+          git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/mushitaro/E46M3-Monitoring-data.git" ../E46M3-Monitoring-data
+          mkdir -p public/ecu-data tools/terms recordings
+          cp -r ../E46M3-Monitoring-data/ecu-data/. public/ecu-data/
+          cp -r ../E46M3-Monitoring-data/terms/. tools/terms/
+          cp -r ../E46M3-Monitoring-data/recordings/. recordings/
+
+      - name: Deploy
+        if: env.HAVE_DEPLOY == 'true' && steps.done.outputs.cache-hit != 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set +e
+          npm run deploy
+          code=$?
+          if [ "$code" -eq 2 ]; then
+            echo "::warning::Deployed. The inside of the gate was not verified (no owner session on a runner); open it signed in and check the build id."
+            code=0
+          fi
+          mkdir -p .deployed && echo "${{ github.sha }}" > .deployed/sha
+          exit "$code"
+
+      - name: Remember this commit as deployed
+        if: env.HAVE_DEPLOY == 'true' && steps.done.outputs.cache-hit != 'true' && success()
+        uses: actions/cache/save@v4
+        with:
+          path: .deployed
+          key: deployed-${{ github.sha }}

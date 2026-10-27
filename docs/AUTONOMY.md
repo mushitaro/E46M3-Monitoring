@@ -70,7 +70,7 @@ DME の RAM（master の窓だけ）→ 画面での手順。
 
 | 決まり | どこが強制するか | 状態 |
 |---|---|---|
-| 送るかを決めるのは `mayRun` 一箇所。ツールは K ラインに直接何も足さない | `src/lib/runGate.ts`、タブの実行器 | ゲートはある。実行器は段 1 |
+| 送るかを決めるのは `runGate.ts`（カタログの読取は `mayRun`、アプリが組む読取は `mayRunProtocolRead`）。ツールは K ラインに直接何も足さない | `src/lib/runGate.ts`、`src/lib/probe/executor.ts` | 済。実行器は全フレームでゲートに訊く（2026-10-27） |
 | モジュールには、そのモジュール自身の SGBD が送るものだけ | `src/lib/moduleProtocol.ts`、`link.to(address)` | 済（2026-10-27） |
 | 読取は、送る直前に DME の車速が 0 と読めたときだけ。読めなければ出さない | `useDs2Link` の事前読取、`lib/vehicleState.ts` | 済（2026-10-27） |
 | 走行中に送ってよい読取はオーナーが決める。アプリは格上げしない | `lib/ledger.ts` の `grantMovingOk` | 台帳は済。画面と Matrix の口は段 2–3 |
@@ -84,7 +84,7 @@ DME の RAM（master の窓だけ）→ 画面での手順。
 | 段 | 中身 | 承認 |
 |---|---|---|
 | 0 | 宛先の修正、実測の車両状態、台帳の段階、キルリスト、試験とクラウドの足場 | 人 |
-| 1 | タブの実行器（`src/lib/probe/`）と CO-WORK（TUNER の `notebook/rules.ts` の形） | 人 |
+| 1 | タブの実行器（`src/lib/probe/`）と CO-WORK（TUNER の `notebook/rules.ts` の形）。実行器・判定・委任の規則は済、画面と端末の保存はまだ | 人 |
 | 2 | ポリシーの改訂（成功した読取の送信・中継の catalog）→ D1 → 机の CLI | 人 |
 | 3 | Matrix MONITORING：ticket・同一オリジンのソケット・hello（中継 0.11.0 は作成済み、未配備） | 人 |
 | 4 | guide の全トピック、机と自律の Skill、例題と能力の表、自動マージの分類、配信、定期実行 | 分類による |

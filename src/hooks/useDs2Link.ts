@@ -57,6 +57,7 @@ import {
 import { whyNotSendable } from '@/lib/actuationGate';
 import type { ModuleProtocol } from '@/lib/moduleProtocol';
 import { practiceBus } from '@/lib/practiceEcu';
+import { runProbe, type ProbeDeps, type ProbePlan, type ProbeRun } from '@/lib/probe/executor';
 import { clearFaultsCommand, telegramBytes, type SendRequirement } from '@/lib/runGate';
 import {
     VEHICLE_STATE_MAX_AGE_MS,
@@ -936,6 +937,61 @@ export function useDs2Link(options: {
         pollingRef.current = false;
     }, []);
 
+    /**
+     * Run a PROBE plan on this link until it ends or `stopLog` is called.
+     *
+     * The same run boundary as a datalog — state `logging`, the low latency timer armed, one exit —
+     * because to the link it is one: back-to-back exchanges until told to stop. What differs is in
+     * lib/probe/executor, which asks runGate for every frame and records everything it declined.
+     * The module in session does not limit it: a plan names its modules, and `link.to` reaches them.
+     */
+    const startProbe = useCallback(
+        async (
+            plan: ProbePlan,
+            deps: Pick<ProbeDeps, 'module' | 'ledger' | 'onSample' | 'onExchange'>,
+        ): Promise<ProbeRun | null> => {
+            const link = linkRef.current;
+            if (!link || pollingRef.current) return null;
+            pollingRef.current = true;
+            finishedRef.current = false;
+            setState('logging');
+            append('info', `PROBE plan v${plan.v}: ${plan.steps.length} step(s).`);
+            const latency = transportRef.current ? latencyTimerOf(transportRef.current) : null;
+            void latency?.('log');
+            try {
+                const run = await runProbe(plan, {
+                    ...deps,
+                    link,
+                    now: () => Date.now(),
+                    pause: yieldToEventLoop,
+                    stopped: () => !pollingRef.current || linkRef.current !== link,
+                    onObserved: (o) => {
+                        if (modeRef.current !== 'vehicle') return;
+                        const [moduleId, jobId] = [o.id.slice(0, o.id.indexOf(':')), o.id.slice(o.id.indexOf(':') + 1)];
+                        try {
+                            onObservedRef.current?.({ moduleId, jobId, telegram: o.telegram, response: o.response, at: new Date(o.at).toISOString(), ecuIdent: identRef.current?.hex });
+                        } catch {
+                            /* recording a fact must never fail the run it is about */
+                        }
+                    },
+                });
+                append('info', `PROBE ended (${run.end}): ${run.samples.length} sample(s), ${run.exchanges.length} exchange(s) recorded.`);
+                if (run.end === 'link-lost') notifyFailure('PROBE', new Error('the DME stopped answering'));
+                return run;
+            } catch (e) {
+                failWith(e);
+                notifyFailure('PROBE', e);
+                return null;
+            } finally {
+                pollingRef.current = false;
+                finishedRef.current = true;
+                setState('connected');
+                void latency?.('idle');
+            }
+        },
+        [append, failWith, notifyFailure],
+    );
+
     /** Read the car's speed (DME block 19) now, as an operation of its own. */
     const readVehicleState = useCallback(
         () => run('Read vehicle state', async (link) => measureMotion(link)),
@@ -1017,6 +1073,7 @@ export function useDs2Link(options: {
         lastRun,
         startLog,
         stopLog,
+        startProbe,
         clearLog,
         clearError,
     };

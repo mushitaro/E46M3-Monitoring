@@ -220,6 +220,38 @@ export function mayRun(
 }
 
 /**
+ * Where the evidence that a protocol-built read is harmless on a moving car comes from.
+ *
+ *   - `dme-measured`: an MSS54 live block (0x0B) or a master-window RAM read (0x06). TUNER sends
+ *     both on this car while it drives, every sample, and has for months (its VE profile reads
+ *     block 3 every sample and block 19 every eighth; `ramMap.ts` there records why 0x06 in those
+ *     windows is a byte copy with a weaker command mask than 0x0B). That is a measurement.
+ *   - `module`: anything else — a module's own fault read, IDENT. Read on a moving car only once
+ *     the owner has cleared it in the ledger, exactly like a catalogue read.
+ */
+export type ProtocolReadEvidence = 'dme-measured' | 'module';
+
+/**
+ * The gate for a read the app builds from the protocol rather than takes from the catalogue: the
+ * frames `lib/moduleProtocol` picks and the probe's live and RAM reads. Same file, same rules as
+ * `mayRun`: a withdrawal refuses it, a moving car refuses it unless the evidence or the owner says
+ * otherwise, and a stationary car is measured at the wire rather than assumed.
+ *
+ * `id` is the ledger's key for it: `${moduleId}:FS_LESEN`, `mss54:LIVE_19`, `mss54:RAM_FFD1A2`.
+ */
+export function mayRunProtocolRead(
+    id: string,
+    evidence: ProtocolReadEvidence,
+    ledger: Ledger,
+    motion: Motion,
+): { allowed: true; requires: SendRequirement } | { allowed: false; reason: RunBlockKey } {
+    if (withdrawn(ledger, id)) return { allowed: false, reason: 'run_block_revoked' };
+    if (evidence === 'dme-measured' || mayReadWhileMoving(ledger, id)) return { allowed: true, requires: 'none' };
+    if (motion === 'moving') return { allowed: false, reason: 'run_block_moving' };
+    return { allowed: true, requires: 'parked' };
+}
+
+/**
  * The clear-fault-memory frame, built from the protocol.
  *
  * NOT taken from the telegram scrape. `Ds2Control.CLEAR_ERROR_MEMORY` with an

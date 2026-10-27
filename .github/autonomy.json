@@ -1,0 +1,36 @@
+{
+  "_comment": "Which changes may merge without a person (docs/AUTONOMY.md §5, docs/PLAN.md §8-3, operator 2026-10-23). A pull request is `auto` only when every file it changes matches an `auto` pattern and none matches a `human` one; anything unlisted is `human`. Decided by this table and scripts/autonomy-class.mjs in CI, never by the agent that wrote the change. `**` is any path, `*` any name within one folder. Changing this file is itself `human`.",
+  "auto": [
+    "docs/**",
+    "scenarios/cases.json",
+    "public/guide/*.md",
+    "src/lib/i18n/ja.ts",
+    "src/lib/i18n/en.ts",
+    "README.md"
+  ],
+  "human": [
+    ".github/**",
+    ".claude/**",
+    "CLAUDE.md",
+    "functions/**",
+    "wrangler.jsonc",
+    "scripts/deploy.mjs",
+    "packages/ds2-core/**",
+    "public/kill-list.json",
+    "public/guide/index.md",
+    "src/lib/runGate.ts",
+    "src/lib/ledger.ts",
+    "src/lib/actuationGate.ts",
+    "src/lib/moduleProtocol.ts",
+    "src/lib/vehicleState.ts",
+    "src/lib/probe/**",
+    "src/lib/notebook/rules.ts",
+    "src/lib/bridge/tools.ts",
+    "src/lib/bridge/handlers.ts",
+    "src/hooks/useDs2Link.ts",
+    "src/hooks/useMonitoringFacade.ts",
+    "tools/sgbd/**",
+    "tools/extract_telegrams.py",
+    "scenarios/capabilities.json"
+  ]
+}

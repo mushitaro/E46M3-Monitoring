@@ -438,6 +438,27 @@ export function useDs2Link(options: {
         [append, noteVehicle],
     );
 
+    /**
+     * The car, measured now, before a read that may go only parked: every read the app sends — the
+     * screen's DIAGNOSIS READ, a SERVICE read, an assistant's refresh — waits on the DME saying
+     * 0 km/h in the same call. The verdict that let a control light was computed earlier and is not
+     * evidence about this moment. Returns the motion measured, or null when none was needed.
+     */
+    const preflight = useCallback(
+        async (link: Ds2Link, what: string, requires: SendRequirement): Promise<Motion | null> => {
+            if (requires !== 'parked') return null;
+            const measured = await measureMotion(link);
+            if (measured !== 'parked') {
+                throw new Error(
+                    `${what}: not sent — the car could not be shown to be stationary (${measured}). ` +
+                        'Just before sending, the DME speed (block 19) is read; only 0 km/h lets a read go.',
+                );
+            }
+            return measured;
+        },
+        [measureMotion],
+    );
+
     /** The last identity read, for the failure report — state would be stale inside the callbacks. */
     const identRef = useRef<{ hex: string; length: number } | null>(null);
     const notifyFailure = useCallback(
@@ -560,10 +581,11 @@ export function useDs2Link(options: {
     );
 
     const readIdent = useCallback(
-        () =>
+        (requires: SendRequirement = 'parked') =>
             run('Read identity', async (link) => {
                 const { target, to } = session(link);
                 const ident = target.ident ?? refuse(`${target.moduleId}: its SGBD carries no short IDENT frame; nothing is sent.`);
+                await preflight(link, 'Identity read', requires);
                 append('tx', `IDENT ${ident.hex} (${ident.source})`);
                 const frame = await to.exchangeWithRetry(ident.control, ident.payload);
                 link.assertPositive(frame, 'Identity read');
@@ -573,18 +595,19 @@ export function useDs2Link(options: {
                 setIdent(value);
                 return value;
             }),
-        [append, run, session],
+        [append, preflight, run, session],
     );
 
     const readFaults = useCallback(
-        () =>
+        (requires: SendRequirement = 'parked') =>
             run('Read fault memory', async (link) => {
                 const { target, to } = session(link);
+                if (target.decoder !== 'mss54' && target.faults.length === 0) {
+                    refuse(`${target.moduleId}: its SGBD carries no short fault-read frame; nothing is sent.`);
+                }
+                await preflight(link, 'Fault read', requires);
                 if (target.decoder !== 'mss54') {
                     // No decoder: send the module's own FS_LESEN frames and keep what came back.
-                    if (target.faults.length === 0) {
-                        refuse(`${target.moduleId}: its SGBD carries no short fault-read frame; nothing is sent.`);
-                    }
                     const out: RawFaultRead[] = [];
                     for (const f of target.faults) {
                         append('tx', `FS ${f.hex} (${f.source})`);
@@ -620,7 +643,7 @@ export function useDs2Link(options: {
                 setFaults(entries);
                 return entries;
             }),
-        [append, run, session],
+        [append, preflight, run, session],
     );
 
     /**
@@ -735,16 +758,9 @@ export function useDs2Link(options: {
                 const refusal = whyNotSendable(control, modeRef.current);
                 if (refusal) throw new Error(`${jobId}: ${refusal}`);
                 const payload = bytes.slice(3, bytes.length - 1);
-                // The car, measured now. A read the owner has not cleared for a moving car goes only
-                // when the DME says 0 km/h in this same call; the verdict that let the button light
-                // was computed earlier and is not evidence about this moment.
-                const measured = requires === 'parked' ? await measureMotion(link) : null;
-                if (requires === 'parked' && measured !== 'parked') {
-                    throw new Error(
-                        `${jobId}: not sent — the car could not be shown to be stationary (${measured}). ` +
-                            'Just before sending, the DME speed (block 19) is read; only 0 km/h lets a read go.',
-                    );
-                }
+                // A read the owner has not cleared for a moving car goes only when the DME says
+                // 0 km/h in this same call.
+                const measured = await preflight(link, jobId, requires);
                 append('tx', `${jobId}: ${hex}`);
                 const frame = await to.exchangeWithRetry(control, payload);
                 link.assertPositive(frame, jobId);
@@ -774,7 +790,7 @@ export function useDs2Link(options: {
                 }
                 return result;
             }),
-        [append, measureMotion, run, session],
+        [append, preflight, run, session],
     );
 
     /**

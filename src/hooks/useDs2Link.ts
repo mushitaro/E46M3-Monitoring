@@ -948,7 +948,7 @@ export function useDs2Link(options: {
     const startProbe = useCallback(
         async (
             plan: ProbePlan,
-            deps: Pick<ProbeDeps, 'module' | 'ledger' | 'onSample' | 'onExchange'>,
+            deps: Pick<ProbeDeps, 'module' | 'ledger' | 'onSample' | 'onExchange' | 'onStep'>,
         ): Promise<ProbeRun | null> => {
             const link = linkRef.current;
             if (!link || pollingRef.current) return null;

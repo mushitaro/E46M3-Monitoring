@@ -65,6 +65,8 @@ export interface ProbeDeps {
     onObserved?(o: { id: string; telegram: string; response: string; at: number }): void;
     onSample?(s: ProbeSample): void;
     onExchange?(e: ProbeExchange): void;
+    /** A one-shot step settled: what the hub's PROBE line counts. */
+    onStep?(n: number, state: StepState): void;
     maxSamples?: number;
     maxSeconds?: number;
 }
@@ -281,6 +283,7 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
         const settle = (state: StepState, reason?: string) => {
             st.state = state;
             if (reason) st.reason = reason;
+            deps.onStep?.(s.n, state);
         };
         if (!mod) {
             settle('refused', 'unknown module');

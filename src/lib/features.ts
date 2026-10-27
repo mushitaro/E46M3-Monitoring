@@ -34,7 +34,7 @@ import type { Tab } from '@/lib/tabs';
 
 export type FeatureStage = 'stable' | 'experimental' | 'preview-only';
 
-export type FeatureName = 'instrument' | 'sessionSync';
+export type FeatureName = 'instrument' | 'sessionSync' | 'probe';
 
 /**
  * Every tab has exactly one owner here; the test says so. The ORDER of tabs is not stated — that is
@@ -46,6 +46,10 @@ export const FEATURES: Record<FeatureName, { stage: FeatureStage; tabs: readonly
     // Never promoted — see the header. Owns the SESSIONS tab, and every SYNC surface and the
     // automatic error records are gated on the same bit where they render or fire.
     sessionSync: { stage: 'preview-only', tabs: ['sessions'] },
+    // PROBE runs a plan an assistant or the desk wrote, under a mandate the owner gave, from the
+    // CO-WORK record on the device (docs/AUTONOMY.md). Never promoted: production keeps no record
+    // and takes no plan from anyone. Owns no tab — it is a line on the hub.
+    probe: { stage: 'preview-only', tabs: [] },
 };
 
 /**

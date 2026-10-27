@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, Download, RotateCcw, Square } from 'lucide-react';
+import { AlertTriangle, Download, Radar, RotateCcw, Square } from 'lucide-react';
 import { AppHeader } from '@/components/AppHeader';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { CreditsDialog } from '@/components/CreditsDialog';
@@ -18,6 +18,7 @@ import { useActuatorArming } from '@/hooks/useActuatorArming';
 import { reloadForUpdate, useUpdateRunning } from '@/hooks/useAppUpdate';
 import { useDs2Link, type ParkedObservation } from '@/hooks/useDs2Link';
 import { useHub } from '@/hooks/useHub';
+import { useProbe } from '@/hooks/useProbe';
 import { useInstallPrompt } from '@/hooks/useInstallPrompt';
 import { useUnloadGuard } from '@/hooks/useUnloadGuard';
 import { useSplitGraph, useWideLayout } from '@/hooks/useWideLayout';
@@ -235,6 +236,8 @@ export default function Home() {
         };
     }, []);
     const ledger: Ledger = useMemo(() => (killList ? applyKillList(observed, killList) : observed), [observed, killList]);
+    // PROBE: the plan of an investigation the owner handed over, run on this link (WORKS only).
+    const probe = useProbe({ enabled: featureEnabled('probe', previewSurfaces), link, index: ecuIndex, ledger });
 
     const [loaded, setLoaded] = useState<{ id: string; catalog: EcuProfile } | null>(null);
     const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -443,6 +446,7 @@ export default function Home() {
         runVerdict,
         catalogError,
         openProcedure: procedure ? () => setWizardOpen(true) : undefined,
+        probe: probe.progress ? { progress: probe.progress, stop: probe.stop } : undefined,
     });
 
     const panes: Record<Tab, React.ReactNode> = {
@@ -650,6 +654,14 @@ export default function Home() {
                             {tab === 'datalog' && datalog.samples.length > 0 && (
                                 <TextButton onClick={datalog.exportCsv} Icon={Download}>
                                     {t.exportCsv}
+                                </TextButton>
+                            )}
+                            {/* PROBE is started by a person, before driving, and only
+                                when the record holds a plan that may run. It is
+                                stopped from the hub, like a recording. */}
+                            {probe.available && link.state === 'connected' && (
+                                <TextButton onClick={() => void probe.start()} Icon={Radar} title={t.probe_title}>
+                                    {t.probe}
                                 </TextButton>
                             )}
                             {/* READ ADAPTATIONS was here. It is the ADAPTATION

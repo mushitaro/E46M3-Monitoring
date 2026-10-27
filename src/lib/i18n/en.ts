@@ -216,6 +216,9 @@ export const en: Localised = {
         'This module’s SGBD carries no short identity or fault-read frame, so there is nothing the app can say is safe to send. Nothing is read.',
     datalog_noDecoder:
         'MSS54 is the only module whose live-block layout this app has. To record, select the engine (MSS54) as the module. The SMG II and DSC layouts have not been established.',
+    probe_title:
+        'Runs the plan of the investigation you handed over, on this link. It sends reads only, and a read that may go only parked goes after the speed has been read.',
+    probe_line: (v, settled, total, samples) => `PROBE v${v} · ${settled}/${total} · ${samples} samples`,
     error_electrical_steps: [
         'Compare failure rates with the engine off vs running. If it only misbehaves while running, it is ignition/motor EMI on an unshielded cable — not the software.',
         'Reseat the OBD connector, and wiggle-test it while connected.',

@@ -63,6 +63,24 @@ describe('a running log outranks the tab', () => {
         expect(cfg?.notice).toBe('412 SAMPLES');
     });
 
+    it('a PROBE run stops through its own stop and reports its own line', () => {
+        const stop = vi.fn();
+        const datalogStop = vi.fn();
+        const cfg = viewHubFor(
+            state({
+                tab: 'diagnosis',
+                linkState: 'logging',
+                probe: { line: 'PROBE v2 · 1/3 · 40 samples', stop },
+                datalog: { ...state().datalog, stop: datalogStop },
+            }),
+        );
+        cfg?.onClick?.();
+        expect(stop).toHaveBeenCalledOnce();
+        expect(datalogStop).not.toHaveBeenCalled();
+        expect(cfg?.label).toBe('STOP');
+        expect(cfg?.notice).toBe('PROBE v2 · 1/3 · 40 samples');
+    });
+
     it('is pressable — a stop that the busy tier could disable is not a stop', () => {
         const cfg = viewHubFor(state({ tab: 'datalog', linkState: 'logging' }));
         expect(cfg?.disabled).toBeFalsy();

@@ -92,14 +92,14 @@ guide が名乗るツールは `src/lib/bridge/toolNames.ts` の一覧だけ（`
 | 意味的失敗（0xB0 など）は再送しない。再送は transport の失敗だけ | `packages/ds2-core/src/link.ts` | 済（以前から） |
 | 読取以外は画面に置くだけ。実行は停車中に画面で人。DSC 油圧系は出さない | `mayRun`（非読取は拒否）、`monitoring_stage` | 拒否は済。stage は段 3 |
 | キルリストで任意のジョブを即時に止める | `public/kill-list.json`、`lib/ledger.ts`、SW は precache しない | 取得と適用は済。D1 からの配信は段 2 |
-| タブは新しい計画の版と新しいビルドを停車中・リンク休止中にだけ採る | 実行器・Service Worker | 段 1・4 |
+| タブは新しい計画の版と新しいビルドを停車中・リンク休止中にだけ採る | 計画は `useProbe` が開始時に一度だけ読む（開始は人が画面で）。ビルドは Service Worker | 計画は済。ビルドは段 4 |
 
 ## 5. 段取り
 
 | 段 | 中身 | 承認 |
 |---|---|---|
 | 0 | 宛先の修正、実測の車両状態、台帳の段階、キルリスト、試験とクラウドの足場 | 人 |
-| 1 | タブの実行器（`src/lib/probe/`）と CO-WORK（TUNER の `notebook/rules.ts` の形）。実行器・判定・委任の規則は済、画面と端末の保存はまだ | 人 |
+| 1 | タブの実行器（`src/lib/probe/`）と CO-WORK（TUNER の `notebook/rules.ts` の形）。実行器・判定・委任の規則、端末の保存（`notebook/store.ts`）、PROBE（副操作で開始、ハブで STOP と一行）は済 | 人 |
 | 2 | ポリシーの改訂（成功した読取の送信・中継の catalog）→ D1 → 机の CLI | 人 |
 | 3 | Matrix MONITORING：ticket・同一オリジンのソケット・hello（中継 0.11.0 は作成済み、未配備） | 人 |
 | 4 | guide の全トピック、机と自律の Skill、例題と能力の表、自動マージの分類、配信、定期実行。guide・Skill・例題・能力の表は済 | 分類による |

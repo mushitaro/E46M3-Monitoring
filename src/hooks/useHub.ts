@@ -3,6 +3,7 @@
 import { CircleDot, Loader2, Play, PlayCircle, PlugZap, Radio, Square, Zap } from 'lucide-react';
 import type { HubConfig, NoticeTone } from '@/components/Hub';
 import type { useDs2Link } from '@/hooks/useDs2Link';
+import type { ProbeProgress } from '@/hooks/useProbe';
 import type { ModuleProtocol } from '@/lib/moduleProtocol';
 import { hubConfigFor, hubNoticeFor } from '@/lib/hub';
 import { jobRiskOf, type CatalogJob } from '@/lib/ecuCatalog';
@@ -41,6 +42,8 @@ export function useHub(input: {
     catalogError: string | null;
     /** Present when the selected job is an SMG II procedure. Opens its wizard. */
     openProcedure?: () => void;
+    /** Present while a PROBE plan runs (hooks/useProbe). */
+    probe?: { progress: ProbeProgress; stop: () => void };
 }): { hub: HubConfig; notice: { text?: string; tone: NoticeTone } } {
     const { t } = useLang();
     const { link, datalog, selectedJob, runVerdict } = input;
@@ -67,6 +70,12 @@ export function useHub(input: {
                 runBlock: (reason) => t.runBlock[reason],
             },
             icons: { read: Zap, record: Radio, stop: Square, idle: CircleDot, run: Play, start: PlayCircle },
+            probe: input.probe
+                ? {
+                      line: t.probe_line(input.probe.progress.v, input.probe.progress.settled, input.probe.progress.total, input.probe.progress.samples),
+                      stop: input.probe.stop,
+                  }
+                : undefined,
             // IDENT first where the module has one, then the fault memory — and only the reads its own
             // SGBD carries, so a module with fault frames but no IDENT is not sent a refused IDENT.
             readFaults: () =>

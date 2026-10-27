@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addProblem, currentPlan, entryProblem, liveMandate, mergeEntries, notebookLine, openAsks, statusOf, type NotebookEntry } from './rules';
+import { addProblem, currentPlan, entryProblem, liveMandate, mergeEntries, notebookLine, openAsks, runnablePlan, statusOf, type NotebookEntry } from './rules';
 import { ramSegment, stepsProblem, type ProbeStep } from '../probe/plan';
 
 const T0 = 1_800_000_000_000;
@@ -103,5 +103,43 @@ describe('plan steps are reads, and say so in a form the tab can check', () => {
         expect(ramSegment('FF9000', 1)).toBeNull(); // the low window ends at FF8FFF
         expect(ramSegment('FFEFFF', 2)).toBeNull(); // straddles the high window's end
         expect(stepsProblem([{ n: 1, do: 'x', kind: 'ram', address: '7F0000', bytes: 2, every: 1 }])).toMatch(/master RAM windows/);
+    });
+});
+
+describe('the plan the tab runs', () => {
+    const at = (e: NotebookEntry, t: number, sessionId = e.sessionId): NotebookEntry => ({ ...e, at: t, sessionId });
+
+    it('is the current plan of a record whose mandate stands', () => {
+        const m = mandate();
+        const p = plan('desk', m.id);
+        const r = runnablePlan([m, p], T0 + 1000);
+        expect(r.ok && r.entry.id).toBe(p.id);
+    });
+
+    it('stops when the mandate ends or is withdrawn', () => {
+        const m = mandate();
+        const p = plan('desk', m.id);
+        expect(runnablePlan([m, p], T0 + 2 * 86_400_000)).toEqual({ ok: false, reason: 'mandate-ended' });
+        const w = entry('owner', { kind: 'status', re: m.id, to: 'withdrawn' });
+        expect(runnablePlan([m, p, w], T0 + 1000)).toEqual({ ok: false, reason: 'mandate-ended' });
+    });
+
+    it('needs no mandate for a plan the driver or the owner wrote', () => {
+        const p = plan('owner');
+        const r = runnablePlan([p], T0 + 1000);
+        expect(r.ok && r.entry.id).toBe(p.id);
+    });
+
+    it('leaves a fork to the driver', () => {
+        const p1 = plan('owner');
+        const p2 = plan('owner');
+        expect(runnablePlan([p1, p2], T0 + 1000)).toEqual({ ok: false, reason: 'forked' });
+    });
+
+    it('takes the record whose plan was written last', () => {
+        const a = at(plan('owner'), T0 + 10, 'record-aaaa');
+        const b = at(plan('owner'), T0 + 20, 'record-bbbb');
+        const r = runnablePlan([b, a], T0 + 1000);
+        expect(r.ok && r.sessionId).toBe('record-bbbb');
     });
 });

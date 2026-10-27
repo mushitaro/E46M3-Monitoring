@@ -29,6 +29,7 @@ export const CHROME = {
     // Sub-action row, under the hub. Same vocabulary as the hub itself.
     disconnect: 'Disconnect',
     practice: 'PRACTICE',
+    probe: 'PROBE',
     exportCsv: 'Export CSV',
     retry: 'Retry',
     tab_calibration: 'CALIBRATION',

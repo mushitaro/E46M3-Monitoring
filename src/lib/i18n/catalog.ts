@@ -175,6 +175,10 @@ export interface Localised {
     faults_notEstablished: string;
     /** The hub's notice on DATALOG for a module whose live-block layout this app does not have. */
     datalog_noDecoder: string;
+    /** PROBE (chrome.ts) runs the plan of an investigation the owner handed over (lib/probe). WORKS only. */
+    probe_title: string;
+    /** The hub's notice while a plan runs: version, one-shot steps settled of all, samples kept. */
+    probe_line: (v: number, settled: number, total: number, samples: number) => string;
     /** SESSIONS — the preview's saved sessions and SYNC (lib/features.ts `sessionSync`). */
     sessions_current: string;
     sessions_current_note: string;

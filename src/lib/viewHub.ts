@@ -65,6 +65,8 @@ export interface ViewHubState {
     readFaults: () => void;
     /** The module's own SGBD gives the app an IDENT or a fault-read frame to send it. */
     faultsAvailable: boolean;
+    /** A PROBE plan is running on the link. Its STOP and its line, while it does. */
+    probe?: { line: string; stop: () => void };
     datalog: {
         /** This module's live-block layout is ported. Only the MSS54's is. */
         decoded: boolean;
@@ -104,6 +106,9 @@ export function viewHubFor(s: ViewHubState): HubConfig | null {
     // The log is running. Which tab is up does not change what the one primary
     // control should be — see the note at the top.
     if (s.linkState === 'logging') {
+        // A PROBE run is the same kind of thing to the link, and is stopped the same way; what it
+        // reports is its own.
+        if (s.probe) return { label: s.t.hub_stop, Icon: s.icons.stop, tone: 'armed', onClick: s.probe.stop, notice: s.probe.line };
         return {
             label: s.t.hub_stop,
             Icon: s.icons.stop,

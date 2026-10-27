@@ -78,7 +78,7 @@ clone した状態でできること・できないこと:
 |---|---|
 | `npm ci` | ✅ |
 | `npm run typecheck` / `npm run lint` | ✅ |
-| `npm test` | ⚠️ **237 中 55 が落ちる**（実測）。カタログを読むテストが該当し、`adaptationReset` / `jobOps` / `runGate` / `dscHydraulics` / `procedureSteps` が「出荷データが仕様と食い違っていないか」を検査しているため |
+| `npm test` | ✅ データを読む 12 ファイルは飛ばし、そう表示する（`vitest.config.mts`）。それらは「出荷データが仕様と食い違っていないか」を検査するもので、データのある CI とクラウドのセッションで回る |
 | `npm run build` | ✅ 成功し、アプリのシェルは動く |
 | ECU セレクタ | ❌ `public/ecu-data/index.json` が無いので空。その旨を表示する |
 | 車両との通信 | ❌ 上と同じ理由（どのジョブをどのアドレスへ送るかを知らない） |

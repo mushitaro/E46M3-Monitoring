@@ -19,6 +19,7 @@ Next.js 16 / React 19 / Tailwind v4、`output: 'export'` の静的書き出し�
 | 外部の参照物がどこにあるか | **`docs/REFERENCES.md`** |
 | どの SGBD を載せ、どれを載せないか | `docs/FITMENT.md` ＋ `tools/sgbd/fitment.py` |
 | 何を作ってきたか・なぜそう決めたか | `docs/PLAN.md` |
+| 車と例題で自分を育てる仕組み（机・タブ・Matrix） | `docs/AUTONOMY.md` |
 | ライセンスとデータの出所 | `THIRD-PARTY-NOTICES.md` |
 | ///M の意匠体系 | `tsunagi-m-design` スキル（`SKILL.md` だけでなく `references/` も） |
 
@@ -30,6 +31,12 @@ Next.js 16 / React 19 / Tailwind v4、`output: 'export'` の静的書き出し�
 - **枠線は領域と領域の**間**の罫**。物の周りを囲まない（`border-b/-t/-l/-r` は可、裸の `border` は不可）。
 - **実車に送るのは読取だけ。** 何を送ってよいかを決めるのは `src/lib/runGate.ts` の `mayRun` 一箇所。
   ここを迂回する経路を作らない。故障メモリ消去だけが唯一の書き込みで、確認ダイアログを伴う。
+- **モジュールには、そのモジュール自身の SGBD が送るものだけを送る。** 宛先は送るたびに名前で
+  言う（`link.to(address)`）。IDENT・故障読取・消去・ハートビートは `src/lib/moduleProtocol.ts` が
+  そのモジュールのテレグラム表から完全一致で取る。解読器があるのは MSS54 だけで、他はバイトのまま。
+- **止まっているかは実測する。** `mayRun` は motion を必須で受け、読取は送る直前に DME の
+  車速（ブロック 19）が 0 のときだけ出る。読めなければ出さない。走行中に送ってよいかは
+  オーナーが台帳で決める（`grantMovingOk`）。アプリは自分で格上げしない。
 - **出所を落とさない。** 分類・訳・規定値には `provenance` が付く。分からないものは
   「分からない」と表示する。推定値を実測値の顔で出さない。
 - **予約スロット**。状態が変わっても再レイアウトが起きないよう、通知行・サブアクション行などは
@@ -47,12 +54,17 @@ python tools/verify_ecu_data.py
 python tools/verify_translation_quality.py
 ```
 
+`check_references.py` は開発機（`C:\EDIABAS` ほか）の参照物を検査するので、クラウドでは落ちる。
+クラウドのセッションは `.claude/hooks/session-start.sh` が隣の `E46M3-Monitoring-data` から
+データを置き、それ以外の検査はそこで回る。
+
 `public/ecu-data/*.json` と `packages/ds2-mss54/src/*.generated.ts` は**生成物**。
 手で直さず、`docs/REFERENCES.md` §3 の表にある生成器を回す。
 
 ## デプロイ
 
-Cloudflare Pages の `e46m3-diagnosis` ひとつだけ。**Cloudflare Access の内側**に置く
-（`ecu-data/` は BMW SGBD 由来＋逆コンパイル由来で、`THIRD-PARTY-NOTICES.md` §3.3 が
-repo を private・配信を Access 内と定めている）。GitHub Pages は採らない。
-`npm run deploy`。デプロイ後はビルドログではなく**配信物**を確認する。
+Cloudflare Pages の `e46m3-monitoring-preview`（ワークス版）ひとつだけ。全パスが m3 の
+オーナーのゲート（`functions/_middleware.ts`、`owner_preview`）の内側にある（`ecu-data/` は
+BMW SGBD 由来＋逆コンパイル由来で、`THIRD-PARTY-NOTICES.md` §3 が配信を閉じた内側と定めている）。
+Access の内側にあった旧本番 `e46m3-monitoring` と staging の `e46m3-diagnosis` は 2026-10-02 に
+削除した。GitHub Pages は採らない。`npm run deploy`。デプロイ後はビルドログではなく**配信物**を確認する。

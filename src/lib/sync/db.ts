@@ -7,6 +7,7 @@
  *   - `sessions` — saved sessions (sessionStore.ts). Version 1.
  *   - `notebook` — CO-WORK entries, keyed by entry id, indexed by the record they belong to
  *     (notebook/store.ts). Version 2.
+ *   - `runs` — PROBE runs, numbered per record, indexed by it (probe/runStore.ts). Version 2.
  *
  * WORKS-only, like everything under lib/sync (lib/features.ts): a production build never opens it.
  */
@@ -14,6 +15,7 @@ export const DB = 'e46m3-monitoring';
 export const VERSION = 2;
 export const SESSIONS = 'sessions';
 export const NOTEBOOK = 'notebook';
+export const RUNS = 'runs';
 
 export function openDb(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
@@ -24,6 +26,7 @@ export function openDb(): Promise<IDBDatabase> {
             if (!db.objectStoreNames.contains(NOTEBOOK)) {
                 db.createObjectStore(NOTEBOOK, { keyPath: 'id' }).createIndex('sessionId', 'sessionId');
             }
+            if (!db.objectStoreNames.contains(RUNS)) db.createObjectStore(RUNS, { keyPath: 'id' }).createIndex('sessionId', 'sessionId');
         };
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);

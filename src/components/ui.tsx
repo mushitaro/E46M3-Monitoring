@@ -253,6 +253,39 @@ export function SearchInput({
     );
 }
 
+/**
+ * A one-line text field: SearchInput's look, for a value the owner types and keeps (a device's
+ * name). Saved as typed by the caller; `maxLength` is the field's limit, stated where it is typed.
+ */
+export function TextInput({
+    value,
+    onChange,
+    placeholder,
+    maxLength,
+    label,
+    className = '',
+}: {
+    value: string;
+    onChange: (v: string) => void;
+    placeholder: string;
+    maxLength: number;
+    /** The field's accessible name, when no visible label names it. */
+    label: string;
+    className?: string;
+}) {
+    return (
+        <input
+            type="text"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder}
+            maxLength={maxLength}
+            aria-label={label}
+            className={`rounded bg-slate-800 px-2 py-1 font-mono text-xs text-slate-200 outline-none placeholder:text-slate-600 focus:ring-1 focus:ring-blue-500/60 ${className}`}
+        />
+    );
+}
+
 /** The micro-label above a block. Sits on its own line; no rule under it — the
  *  size and colour step is already the separation. */
 export function MicroLabel({ children, className = '' }: { children: React.ReactNode; className?: string }) {

@@ -19,10 +19,12 @@ import { reloadForUpdate, useUpdateRunning } from '@/hooks/useAppUpdate';
 import { useDs2Link, type ParkedObservation } from '@/hooks/useDs2Link';
 import { useHub } from '@/hooks/useHub';
 import { useProbe } from '@/hooks/useProbe';
+import { useAssistantBridge } from '@/hooks/useAssistantBridge';
+import { useMonitoringFacade } from '@/hooks/useMonitoringFacade';
 import { useInstallPrompt } from '@/hooks/useInstallPrompt';
 import { useUnloadGuard } from '@/hooks/useUnloadGuard';
 import { useSplitGraph, useWideLayout } from '@/hooks/useWideLayout';
-import { useBuildVariant, usePreviewSurfaces } from '@/lib/build-variant';
+import { useBuildId, useBuildVariant, usePreviewSurfaces } from '@/lib/build-variant';
 import { disclaimerStore } from '@/lib/disclaimer';
 import { agreeToFirstRun, firstRunDialogUp, previewNoticeStore } from '@/lib/previewNotice';
 import { exportCommsLog } from '@/lib/download';
@@ -425,6 +427,17 @@ export default function Home() {
     );
     const firstRun = firstRunDialogUp({ agreed, preview, noticeAcknowledged });
 
+    // ASSISTANT: the owner's assistant reaching this tab through TSUNAGI///Matrix (WORKS only, off
+    // until switched on on this device). The facade is what the tools may reach — the screen's own
+    // controls, never a run.
+    const buildId = useBuildId();
+    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, tab, changeTab, selectJob });
+    const assistant = useAssistantBridge({
+        allowed: preview && noticeAcknowledged,
+        facade,
+        hello: { build: buildId || null, variant: preview ? 'preview' : null },
+    });
+
     // One verdict, computed once, used by the hub AND by the panel. They used to
     // reason about runnability separately, which is how a control that says it
     // can fire ends up beside a panel that says it cannot.
@@ -493,7 +506,7 @@ export default function Home() {
         ),
         // Rendered only where the registry opens it: a production build never mounts it, so it
         // never opens the device store or asks the network for anything.
-        sessions: sessionsEnabled ? <SessionsView sessions={sessions} catalog={catalog} ecuId={ecuId} /> : null,
+        sessions: sessionsEnabled ? <SessionsView sessions={sessions} catalog={catalog} ecuId={ecuId} assistant={assistant} /> : null,
     };
 
     const vizzes: Record<Tab, React.ReactNode> = {

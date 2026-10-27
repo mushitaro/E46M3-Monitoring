@@ -34,5 +34,13 @@
       "database_id": "caef60dd-7936-44be-9184-b4168791ee4f",
       "migrations_dir": "migrations"
     }
-  ]
+  ],
+
+  // The assistant bridge's relay (TSUNAGI///Matrix 0.11.0, matrix-tsunagi feat/assistant-bridge),
+  // reached through this origin's /api/bridge/socket. Remove it and /api/bridge/ticket answers
+  // `bridge_unavailable` — the switch for turning the bridge off for everyone without a code
+  // change. BRIDGE_TICKET_SECRET is a Pages secret, never here.
+  "vars": {
+    "BRIDGE_TAB_URL": "wss://matrix-mcp.tsunagi.app/tab"
+  }
 }

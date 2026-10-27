@@ -52,8 +52,10 @@ TSUNAGI ///M の計器系サブブランド。DS2 通信は
   権利の無い人・サインインしていない人には、ECU テーブルを含めて何も出さない。
 - **本番との違い**: SESSIONS タブがある。読み取り結果・データログ・失敗前後の通信ログを
   端末に保存し、SYNC で本人のアカウントへ送り、別の端末へ復元できる。操作が失敗したときは
-  エラー記録を自動で送る。本番のビルドはこれを持たず、セッションを端末に保存せず、ネットワークにも何も送らない
-  （`src/lib/features.ts`、`THIRD-PARTY-NOTICES.md` §1）。
+  エラー記録を自動で送る。SESSIONS の ASSISTANT をオンにすると、本人の AI アシスタントが TSUNAGI///Matrix
+  の中継を通してこのタブに問い合わせられる（`src/lib/bridge/`）。任された調査の計画は、ハブの下の PROBE で
+  走らせる（`docs/AUTONOMY.md`）。本番のビルドはこれらを持たず、セッションを端末に保存せず、ネットワークにも
+  何も送らない（`src/lib/features.ts`、`THIRD-PARTY-NOTICES.md` §1）。
 - **何を送り、どう扱うか**: 初めて開いたとき、何かを送る前に、アプリ自身の最初のダイアログ
   （「このツールについて」）で示す。確認されるまでは何も送らない（`src/lib/previewNotice.ts`）。
   [プライバシーポリシー（#preview）](https://m3.tsunagi.app/privacy-policy#preview)にも書いてあり、

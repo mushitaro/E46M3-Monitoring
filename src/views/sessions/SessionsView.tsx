@@ -10,6 +10,8 @@ import { useLang } from '@/lib/i18n';
 import { text as resolveText, type EcuProfile } from '@/lib/ecuCatalog';
 import { needsSync, parseCsv, summarise, type SavedSession } from '@/lib/sync/session';
 import { CountReadout } from '@/views/shared/CountReadout';
+import type { AssistantBridge } from '@/hooks/useAssistantBridge';
+import { AssistantSection } from './AssistantSection';
 import type { Sessions } from './useSessions';
 
 /** Rows of a saved datalog the viewer draws. The CSV keeps every row; the screen does not need to. */
@@ -44,8 +46,11 @@ export const SessionsView = memo(function SessionsView({
     sessions: s,
     catalog,
     ecuId,
+    assistant,
 }: {
     sessions: Sessions;
+    /** The assistant bridge's switch and state (hooks/useAssistantBridge). */
+    assistant: AssistantBridge;
     /** The loaded module's catalogue, used to name a saved fault when the session is for the same module. */
     catalog: EcuProfile | null;
     ecuId: string;
@@ -160,6 +165,8 @@ export const SessionsView = memo(function SessionsView({
                     </div>
                 </div>
             </Section>
+
+            <AssistantSection assistant={assistant} />
 
             <Section title={t.sessions_onDevice} count={s.local?.length}>
                 {s.local !== null && s.local.length === 0 ? (

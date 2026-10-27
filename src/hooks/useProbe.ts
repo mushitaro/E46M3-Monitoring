@@ -6,8 +6,8 @@ import type { EcuIndex } from '@/lib/ecuCatalog';
 import type { Ledger } from '@/lib/ledger';
 import { runnablePlan, type NotebookEntry, type RunnablePlan } from '@/lib/notebook/rules';
 import { listAllEntries } from '@/lib/notebook/store';
-import type { ProbeRun } from '@/lib/probe/executor';
 import { loadProbeModules } from '@/lib/probe/modules';
+import { listRuns, putRun, type ProbeLive, type StoredRun } from '@/lib/probe/runStore';
 
 export interface ProbeProgress {
     v: number;
@@ -35,7 +35,8 @@ export function useProbe(input: {
     const { enabled, link, index } = input;
     const [runnable, setRunnable] = useState<RunnablePlan>({ ok: false, reason: 'none' });
     const [progress, setProgress] = useState<ProbeProgress | null>(null);
-    const [lastRun, setLastRun] = useState<ProbeRun | null>(null);
+    const [lastRun, setLastRun] = useState<StoredRun | null>(null);
+    const liveRef = useRef<ProbeLive | null>(null);
     const ledgerRef = useRef(input.ledger);
     useEffect(() => {
         ledgerRef.current = input.ledger;
@@ -68,6 +69,9 @@ export function useProbe(input: {
         if (!r.ok) return;
         const { body, id } = r.entry;
         const modules = await loadProbeModules(body.steps, index);
+        const n = (await listRuns(r.sessionId).catch(() => [])).length + 1;
+        const live: ProbeLive = { sessionId: r.sessionId, n, startedAt: Date.now(), planV: body.v, samples: [] };
+        liveRef.current = live;
         const total = body.steps.filter((s) => s.kind === 'faults' || s.kind === 'read').length;
         const settled = new Set<number>();
         let samples = 0;
@@ -78,8 +82,9 @@ export function useProbe(input: {
                 {
                     module: (m) => modules.get(m) ?? null,
                     ledger: () => ledgerRef.current,
-                    onSample: () => {
+                    onSample: (s) => {
                         samples++;
+                        live.samples.push(s);
                         setProgress({ v: body.v, settled: settled.size, total, samples });
                     },
                     onStep: (n, state) => {
@@ -88,11 +93,19 @@ export function useProbe(input: {
                     },
                 },
             );
-            if (run) setLastRun(run);
+            if (run) {
+                const stored: StoredRun = { ...run, id: `${r.sessionId}-run-${n}-${run.startedAt}`, sessionId: r.sessionId, n };
+                setLastRun(stored);
+                // Kept for the desk and the next conversation; a failed write loses the copy, not the run.
+                await putRun(stored).catch(() => {});
+            }
         } finally {
+            liveRef.current = null;
             setProgress(null);
         }
     }, [enabled, index, link, read]);
+
+    const live = useCallback(() => liveRef.current, []);
 
     return {
         /** A plan may run: the record's current plan, its mandate standing. */
@@ -100,6 +113,8 @@ export function useProbe(input: {
         /** Present while a plan runs. */
         progress,
         lastRun,
+        /** The run in progress, read at the moment of asking (the bridge's moment and clock). */
+        live,
         start,
         stop: link.stopLog,
         refresh,

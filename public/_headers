@@ -11,7 +11,9 @@
 # m3's privacy policy (#preview). Those requests go to /api/* on THIS origin,
 # behind the owner gate (functions/), so 'self' already covers them and connect-src
 # did not widen. Keep it that way: widening it to https: would give away the one
-# property that makes a diagnostic tool safe to leave open in a garage.
+# property that makes a diagnostic tool safe to leave open in a garage. The assistant
+# bridge's socket is the same: the tab opens /api/bridge/socket on this origin, and
+# the function passes it through to the relay (functions/api/bridge/socket.ts).
 #
 # The same file serves both builds. The WORKS build's responses also pass through
 # functions/_middleware.ts, which keeps these headers and makes caching private.

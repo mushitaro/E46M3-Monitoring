@@ -9,6 +9,7 @@ import {
     type ArmedJob,
     type ArmedMap,
 } from '@/lib/arming';
+import type { SendRequirement } from '@/lib/runGate';
 
 /**
  * The React skin over `lib/arming`. The rules live there and are tested there;
@@ -37,7 +38,7 @@ import {
  */
 export interface ArmingLink {
     /** Send a job's telegram. The same call the run path uses. */
-    send: (jobId: string, hex: string) => Promise<unknown>;
+    send: (jobId: string, hex: string, requires?: SendRequirement) => Promise<unknown>;
 }
 
 export interface Arming {
@@ -89,7 +90,9 @@ export function useActuatorArming(link: ArmingLink): Arming {
             // and if the operator presses again while this one is in flight, the
             // second press should find nothing rather than send a second stop.
             write(disarmIn(armedRef.current, entry.jobId));
-            await link.send(entry.stopJobId, entry.stopHex).catch(() => {
+            // `none`: a STOP is never held back by the speed preflight. A failed speed read must not
+            // be the reason an output stays energised.
+            await link.send(entry.stopJobId, entry.stopHex, 'none').catch(() => {
                 // Swallowed on purpose. The caller's own log already records the
                 // failure; rethrowing here would abort `stopAll` partway and
                 // leave later outputs energised because an earlier one failed.

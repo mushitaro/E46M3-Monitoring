@@ -10,6 +10,7 @@ import {
     stillRunning,
     type ProcedurePlan,
 } from '@/lib/procedureRun';
+import type { SendRequirement } from '@/lib/runGate';
 
 /**
  * Driving one SMG II test program, and knowing when it is over.
@@ -58,7 +59,9 @@ const IDLE: ProcedureRunState = {
     error: null,
 };
 
-export function useProcedureRun(send: (jobId: string, hex: string) => Promise<JobRunResult | null>) {
+export function useProcedureRun(
+    send: (jobId: string, hex: string, requires?: SendRequirement) => Promise<JobRunResult | null>,
+) {
     const [state, setState] = useState<ProcedureRunState>(IDLE);
     const cancelled = useRef(false);
     const stopHex = useRef<string | null>(null);
@@ -69,7 +72,8 @@ export function useProcedureRun(send: (jobId: string, hex: string) => Promise<Jo
         if (!hex) return;
         stopHex.current = null;
         try {
-            await send(STOP_JOB, hex);
+            // `none`: an ending is never held back by the speed preflight.
+            await send(STOP_JOB, hex, 'none');
         } catch {
             // The link reports its own failures. Swallowing here only stops one
             // failed stop from masking the reason the run ended.
@@ -108,7 +112,7 @@ export function useProcedureRun(send: (jobId: string, hex: string) => Promise<Jo
 
             // The ECU's rule, not a habit of ours: STOP goes first, even with
             // nothing running. `lib/procedureRun` quotes it.
-            const cleared = await send(STOP_JOB, plan.stopHex);
+            const cleared = await send(STOP_JOB, plan.stopHex, 'none');
             if (cancelled.current) return;
             if (cleared?.error) {
                 setState((s) => ({ ...s, phase: 'ended', error: cleared.error }));

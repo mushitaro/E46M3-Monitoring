@@ -14,7 +14,7 @@ import { cautionFor, type JobTextTable } from '@/lib/jobText';
 import { operationFor } from '@/lib/jobOps';
 import { isOn } from '@/lib/jobSurface';
 import type { Ledger } from '@/lib/ledger';
-import type { RunVerdict } from '@/lib/runGate';
+import type { RunVerdict, SendRequirement } from '@/lib/runGate';
 import { TEST_ID, tid } from '@/lib/testIds';
 import { bestTelegram, type TelegramTable } from '@/lib/telegrams';
 import type { Motion } from '@/lib/vehicleState';
@@ -59,7 +59,7 @@ export function ActuatorView({
     mode: ActuationMode;
     arming: Arming;
     /** Send a job's frame. The caller owns the busy lock and the log. */
-    onRun: (jobId: string, hex: string) => Promise<unknown>;
+    onRun: (jobId: string, hex: string, requires?: SendRequirement) => Promise<unknown>;
 }) {
     const { lang, t } = useLang();
     const [query, setQuery] = useState('');
@@ -123,7 +123,7 @@ export function ActuatorView({
         const p = pending;
         if (!p) return;
         setPending(null);
-        await onRun(p.job.id, p.verdict.telegram.hex);
+        await onRun(p.job.id, p.verdict.telegram.hex, p.verdict.requires);
         if (p.phase !== 'start') return;
         const op = operationFor(p.job);
         const stopId = op.stopJob;

@@ -20,7 +20,9 @@ if [ ! -f node_modules/.package-lock.json ] || [ package-lock.json -nt node_modu
   npm ci --no-audit --no-fund
 fi
 
+# Cloned by hand it is `E46M3-Monitoring-data`; attached to a session it lands lowercase.
 DATA="$REPO/../E46M3-Monitoring-data"
+[ -d "$DATA/ecu-data" ] || DATA="$REPO/../e46m3-monitoring-data"
 if [ -d "$DATA/ecu-data" ]; then
   mkdir -p public/ecu-data tools/terms recordings
   cp -r "$DATA/ecu-data/." public/ecu-data/

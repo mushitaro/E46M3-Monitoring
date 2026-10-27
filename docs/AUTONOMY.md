@@ -122,17 +122,23 @@ guide が名乗るツールは `src/lib/bridge/tools.ts` の一覧だけ（`guid
 
 ## 6. 運営者に一度だけ頼むこと
 
-1. 段 0 の PR のレビュー。
-2. `.prg`（DSC_E46・SMG2・MSS54DS0・LWS5 ほか）と `C:\EDIABAS\SIM` を `E46M3-Monitoring-data` へ。
-3. Cloudflare の API トークン（Pages・D1 の編集）を一つ。クラウド環境の設定に `CLOUDFLARE_API_TOKEN` と `CLOUDFLARE_ACCOUNT_ID` として置けば、机とループが配信と D1 を扱える。GitHub Actions から配る場合は同じものを GitHub の secret に、加えてデータ repo の読取トークン `MONITORING_DATA_TOKEN`。
-4. クラウド環境の secret（D1 `tsunagi-m-preview-runs` だけに効くトークン）。
-5. PC での中継 0.11.0 の配備（ポリシーの公開のあと）と、claude.ai への MONITORING WORKS のコネクタの追加。
-6. ヘッドユニットで MONITORING WORKS にサインインし、走る前に CONNECT と PROBE ON。
+済んだもの（2026-10-28）：ポリシーの公開（tsunagi-m3 #29）、段 0–4 のマージ（#1）、`.prg` と SIM（データ
+repo #1）、中継 0.11.0 の配備と MONITORING 用の秘密、MONITORING WORKS の配信（build 141.5323e48、本物の中継で
+hello_accepted まで確認）、定期実行（専用セッション「MONITORING 自律ループ」を 3 時間ごとに起こす）。GitHub の
+ラベル・自動マージ・ブランチ保護は `autonomy.yml` と `autonomy-merge.yml` が要らなくした。
+
+残るもの：
+
+1. Cloudflare の API トークン（Pages・D1 の編集）を一つ。クラウド環境の設定に `CLOUDFLARE_API_TOKEN` と
+   `CLOUDFLARE_ACCOUNT_ID` として置けば、机とループが PC を通さずに配信と D1（段 2）を扱える。
+2. プラグイン 0.5.0 の公開（matrix-tsunagi-dev の publish-main）と、claude.ai での入れ直し、`monitoring-works` のサインイン。
+3. ヘッドユニットで MONITORING WORKS を開き直し（新しいビルド）、SESSIONS → ASSISTANT をオン、端末に名前を付ける。
+   走る前に CONNECT、計画があれば PROBE。
 
 ## 7. 分かっている穴
 
-- データ repo の `telegrams.json` が抽出器の修正 a5635d4（2026-09-03）より古い。データを置いて試験を回すと
-  16 件が落ちる（main でも同じ）。再生成には `.prg` が要る（§6 の 2）。CI にデータを入れるのはその後。
+- DSC のテレグラムは静的な抜き出しでは決まらない（52 ジョブのうち一意は 1 件）。SGBD の実行トレースが要る（段 5）。
+  データ repo の表は `.prg` から作り直した（2026-10-28、データ repo #2）。それで試験は 611 件すべて通る。
 - `tools/check_references.py` は開発機の参照物を検査するのでクラウドでは落ちる。データ repo のダンプは
   台帳とハッシュが合わない（大きさが数 % 違い、改行コードの違いに見える）。
 - `node tools/check_ui_tokens.mjs` が `CreditsDialog.tsx:124` の `text-[9px]` で落ちる（main から）。

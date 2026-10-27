@@ -1,0 +1,50 @@
+name: Autonomy merge
+
+# Merges the autonomous loop's own `auto`-class pull requests (docs/AUTONOMY.md §5), and nothing
+# else: a `claude/loop-*` branch whose every changed path .github/autonomy.json lets through, once
+# CI has passed on that exact commit. The class is worked out again here, from the table on main,
+# so a branch cannot loosen the table it is judged by. Needs no repository setting: no auto-merge,
+# no branch protection. `human`-class changes wait for the owner.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  merge:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' && startsWith(github.event.workflow_run.head_branch, 'claude/loop-')
+    runs-on: ubuntu-latest
+    steps:
+      # main: the table and the classifier as they stand there.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Classify the commit CI passed
+        id: c
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          pr=$(gh api "repos/$REPO/pulls?state=open&head=${REPO%%/*}:$BRANCH" --jq '.[0].number // empty')
+          [ -n "$pr" ] || { echo "No open pull request for $BRANCH."; exit 0; }
+          base=$(gh api "repos/$REPO/pulls/$pr" --jq '.base.ref')
+          git fetch -q origin "$SHA" "$base"
+          git diff --name-only "origin/$base...$SHA" > changed.txt
+          cls=$(node scripts/autonomy-class.mjs < changed.txt 2> held.txt)
+          { echo "### #$pr at ${SHA:0:7}: \`$cls\`"; echo; sed 's/^/- /' held.txt; } >> "$GITHUB_STEP_SUMMARY"
+          echo "pr=$pr" >> "$GITHUB_OUTPUT"
+          echo "class=$cls" >> "$GITHUB_OUTPUT"
+      - name: Merge
+        if: steps.c.outputs.class == 'auto'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ steps.c.outputs.pr }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: gh pr merge "$PR" --squash --match-head-commit "$SHA"

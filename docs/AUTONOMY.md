@@ -110,9 +110,11 @@ guide が名乗るツールは `src/lib/bridge/tools.ts` の一覧だけ（`guid
 自動マージは PLAN §8-3 のとおり（運営者 2026-10-23）：文言・訳・単位表・読取専用のデコード表・
 例題・文書は CI が通れば自動。台帳・テレグラム・引数・リスク・前提条件・`runGate`・`packages/ds2-core`・
 `classify.py`・guide の「前提」と「言わないこと」は人の承認。分類はパスの許可表と CI で決め、
-エージェントの判断にしない。`autonomy.yml` が PR に `autonomy:auto` か `autonomy:human` を付け、`auto` で
-自律ループのブランチ（`claude/loop-*`）のものだけ自動マージを入れる。`human` は CODEOWNERS がオーナーに
-レビューを頼む。表と CODEOWNERS が食い違わないことは `src/lib/autonomyClass.test.ts` が見る。
+エージェントの判断にしない。`autonomy.yml` が PR に `autonomy:auto` か `autonomy:human` を付ける（ラベルは
+無ければ作る）。`autonomy-merge.yml` は、自律ループのブランチ（`claude/loop-*`）で `auto` のものだけを、CI が
+その同じコミットで通ったあとにマージする。分類は main の表で計算し直すので、ブランチが自分を裁く表を
+緩めることはできない。リポジトリの設定（自動マージ・ブランチ保護）は要らない。`human` は CODEOWNERS が
+オーナーにレビューを頼む。表と CODEOWNERS が食い違わないことは `src/lib/autonomyClass.test.ts` が見る。
 
 配信は `deploy-works.yml`（main への push と 6 時間ごと、配信済みのコミットは飛ばす）。`npm run deploy` が
 きれいな main とデータを確かめてから上げ、配信物を読み戻す。ゲートの内側の確認はオーナーのセッションが
@@ -122,7 +124,7 @@ guide が名乗るツールは `src/lib/bridge/tools.ts` の一覧だけ（`guid
 
 1. 段 0 の PR のレビュー。
 2. `.prg`（DSC_E46・SMG2・MSS54DS0・LWS5 ほか）と `C:\EDIABAS\SIM` を `E46M3-Monitoring-data` へ。
-3. GitHub の secret（`CLOUDFLARE_API_TOKEN`・`CLOUDFLARE_ACCOUNT_ID`・データ repo の読取トークン `MONITORING_DATA_TOKEN`）、ブランチ保護（main に `verify` 必須）、設定の Allow auto-merge、ラベル `autonomy:auto` と `autonomy:human`。
+3. Cloudflare の API トークン（Pages・D1 の編集）を一つ。クラウド環境の設定に `CLOUDFLARE_API_TOKEN` と `CLOUDFLARE_ACCOUNT_ID` として置けば、机とループが配信と D1 を扱える。GitHub Actions から配る場合は同じものを GitHub の secret に、加えてデータ repo の読取トークン `MONITORING_DATA_TOKEN`。
 4. クラウド環境の secret（D1 `tsunagi-m-preview-runs` だけに効くトークン）。
 5. PC での中継 0.11.0 の配備（ポリシーの公開のあと）と、claude.ai への MONITORING WORKS のコネクタの追加。
 6. ヘッドユニットで MONITORING WORKS にサインインし、走る前に CONNECT と PROBE ON。

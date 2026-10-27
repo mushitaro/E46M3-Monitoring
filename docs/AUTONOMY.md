@@ -56,7 +56,7 @@ TUNER に無いのは自律だけなので、そこだけ足す。
 
 | 層 | 使う者 | 正本 | 入口 |
 |---|---|---|---|
-| 車側の会話 | 声の会話（claude.ai ほか） | `src/lib/bridge/guide/*.md` → タブが hello で申告 → 中継が保持して `monitoring_guide` で返す | Matrix プラグインの薄い Skill `monitoring-drive` |
+| 車側の会話 | 声の会話（claude.ai ほか） | `public/guide/*.md` → タブが hello で申告 → 中継が保持して `monitoring_guide` で返す | Matrix プラグインの薄い Skill `monitoring-drive` |
 | 机 | Claude Code | `.claude/skills/monitoring-desk/SKILL.md` | 「解析して」「次の計画」「この項目を読めるように」 |
 | 自律 | 定期起動の Claude Code | `.claude/skills/monitoring-loop/SKILL.md` | scheduled task のプロンプトは「これに従う」だけ |
 
@@ -65,6 +65,21 @@ service・tuning・session・trouble・autonomy。
 
 証拠は安い順に取る：故障とフリーズフレーム → 停車中の状態 → 停車中のライブ値 → 走行中の捕捉 →
 DME の RAM（master の窓だけ）→ 画面での手順。
+
+guide が名乗るツールは `src/lib/bridge/toolNames.ts` の一覧だけ（`guide.test.ts` が照合し、中継の
+大きさの上限も検査する）。
+
+### 例題 — 評価用で、Skill には書かない
+
+`scenarios/cases.json` に、オーナーの言葉・状況・サイクルの入口・読むトピック・呼ぶツール・
+してはいけないこと（`nevers`）・「答えた」の定義・要る能力を一件ずつ置く。`scenarios/capabilities.json`
+は能力ごとの状態（`car` 実車で確認／`built` 作った／`missing` まだ）と、その根拠。
+
+- `src/lib/bridge/scenarios.test.ts` — 例題が存在するトピック・ツール・決まり・能力だけを指すこと、
+  guide の全トピックと全ての決まりにどれかの例題が当たること。
+- `node tools/scenario_coverage.mjs` — 今答えられる例題の数と、どの能力が何件を塞いでいるか。
+  完成度の物差しで、自律ループが開発の順を決めるのもこの表。
+- 能力の状態を上げるのは、`where` に書いた根拠（実車の記録・コード）があるときだけ。
 
 ## 4. 安全の境界
 
@@ -87,7 +102,7 @@ DME の RAM（master の窓だけ）→ 画面での手順。
 | 1 | タブの実行器（`src/lib/probe/`）と CO-WORK（TUNER の `notebook/rules.ts` の形）。実行器・判定・委任の規則は済、画面と端末の保存はまだ | 人 |
 | 2 | ポリシーの改訂（成功した読取の送信・中継の catalog）→ D1 → 机の CLI | 人 |
 | 3 | Matrix MONITORING：ticket・同一オリジンのソケット・hello（中継 0.11.0 は作成済み、未配備） | 人 |
-| 4 | guide の全トピック、机と自律の Skill、例題と能力の表、自動マージの分類、配信、定期実行 | 分類による |
+| 4 | guide の全トピック、机と自律の Skill、例題と能力の表、自動マージの分類、配信、定期実行。guide・Skill・例題・能力の表は済 | 分類による |
 | 5 | テレグラムを SGBD の実行トレースで得る（`.prg` をデータ repo へ） | 人 |
 | 6 | 例題 1（DSC 低速カーブ）を一周 | — |
 | 7 | Manifold の DIAG の枠（OTA の署名は PC） | 人 |

@@ -92,7 +92,7 @@ export function useHub(input: {
                     // The gate's answer, used — not re-derived. `mayRun` decided
                     // this once, and the hub and the panel read the same object.
                     if (runVerdict?.allowed === true && selectedJob) {
-                        void link.runRead(selectedJob.id, runVerdict.telegram.hex);
+                        void link.runRead(selectedJob.id, runVerdict.telegram.hex, runVerdict.requires);
                     }
                 },
             },

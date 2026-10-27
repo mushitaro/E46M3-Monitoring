@@ -13,6 +13,7 @@ import { useLang } from '@/lib/i18n';
 import type { JobTextTable } from '@/lib/jobText';
 import { PROCEDURE_OP, PROCEDURE_PREFIX } from '@/lib/jobOps';
 import type { Ledger } from '@/lib/ledger';
+import type { Motion } from '@/lib/vehicleState';
 import type { RunVerdict } from '@/lib/runGate';
 import type { Smg2Procedure, Smg2Workflows } from '@/lib/smg2Workflows';
 import { bestTelegram, type TelegramTable } from '@/lib/telegrams';
@@ -39,6 +40,7 @@ export const ServiceView = memo(function ServiceView({
     ecuId,
     telegrams,
     ledger,
+    motion,
     workflows,
     hydraulics,
     selectedId,
@@ -48,6 +50,7 @@ export const ServiceView = memo(function ServiceView({
     ecuId: string;
     telegrams: TelegramTable | null;
     ledger: Ledger;
+    motion: Motion;
     workflows: Smg2Workflows | null;
     hydraulics: DscHydraulics | null;
     selectedId: string | null;
@@ -58,6 +61,7 @@ export const ServiceView = memo(function ServiceView({
             profile={profile}
             telegrams={telegrams}
             ledger={ledger}
+            motion={motion}
             selectedId={selectedId}
             onSelect={onSelect}
         >

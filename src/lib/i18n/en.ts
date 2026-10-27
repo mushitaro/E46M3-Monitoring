@@ -319,6 +319,8 @@ export const en: Localised = {
         run_block_notRead: 'Not a read job. Reads are all this app can send to a car so far — there is no execution path yet for actuator tests, calibration writes or procedures.',
         run_block_controlWrites: 'The control byte is not read-only. Whatever the classification says, the frame that would go out could change the car, so it is not sent.',
         run_block_notVerified: 'No ledger entry saying this was proven on a vehicle. Nothing but reads runs without one.',
+        run_block_revoked: 'This read has been withdrawn (kill list or ledger). The reason is in its ledger record.',
+        run_block_moving: 'The car is moving. This read has not been cleared by the owner for a moving car, so it waits until the car stops.',
     },
     run_result: 'Run result',
     run_request: 'Sent',

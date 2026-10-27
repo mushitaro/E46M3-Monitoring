@@ -43,6 +43,7 @@ import type { CatalogJob } from './ecuCatalog';
 import type { Ledger } from './ledger';
 import { mayRun, READ_ONLY_CONTROLS, telegramBytes, type RunVerdict } from './runGate';
 import type { Telegram } from './telegrams';
+import type { Motion } from './vehicleState';
 
 export type ActuationMode = 'vehicle' | 'practice';
 
@@ -52,6 +53,8 @@ const NEVER_RUN = new Set<CatalogJob['class']>(['programming', 'identity']);
 export interface ActuationContext {
     moduleId: string;
     mode: ActuationMode;
+    /** As last measured. On a vehicle it goes to `mayRun` unchanged. */
+    motion: Motion;
 }
 
 export function mayActuate(
@@ -61,7 +64,7 @@ export function mayActuate(
     ctx: ActuationContext,
 ): RunVerdict {
     // A vehicle is attached. One decision, made in one place, unchanged.
-    if (ctx.mode === 'vehicle') return mayRun(job, telegram, ledger, { moduleId: ctx.moduleId });
+    if (ctx.mode === 'vehicle') return mayRun(job, telegram, ledger, { moduleId: ctx.moduleId, motion: ctx.motion });
 
     if (NEVER_RUN.has(job.class)) {
         return {
@@ -81,7 +84,9 @@ export function mayActuate(
     const bytes = telegramBytes(telegram.hex);
     if (!bytes) return { allowed: false, reason: 'run_block_noTelegram' };
 
-    return { allowed: true, telegram, control: bytes[2] };
+    // PRACTICE measures too: the preflight runs against the simulated DME, so the path that stops
+    // a read on a moving car has executed before a car is the first thing it executes against.
+    return { allowed: true, telegram, control: bytes[2], requires: 'parked' };
 }
 
 /**

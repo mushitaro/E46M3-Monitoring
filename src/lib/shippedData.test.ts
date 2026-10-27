@@ -178,7 +178,7 @@ describe('what writes the car’s identity is never addressed to its owner', () 
         for (const [id, p] of profiles) {
             for (const j of p.jobs) {
                 if (j.class !== 'identity') continue;
-                const v = mayRun(j, null, EMPTY_LEDGER, { moduleId: id });
+                const v = mayRun(j, null, EMPTY_LEDGER, { moduleId: id, motion: 'parked' });
                 if (v.allowed || v.reason !== 'run_block_identity') wrong.push(`${id}.${j.id}`);
             }
         }
@@ -209,7 +209,7 @@ describe('no non-read job can run, on any module, with any telegram', () => {
                     entries.length === 1
                         ? { hex: entries[0].hex, confidence: entries[0].confidence as 'single' }
                         : null;
-                if (mayRun(j, tel as never, EMPTY_LEDGER, { moduleId: id }).allowed) {
+                if (mayRun(j, tel as never, EMPTY_LEDGER, { moduleId: id, motion: 'parked' }).allowed) {
                     allowed.push(`${id}.${j.id}`);
                 }
             }
@@ -285,7 +285,7 @@ describe('what a real car would accept today', () => {
             const entries = table.jobs[j.id] ?? [];
             if (entries.length !== 1 || entries[0].confidence !== 'single') continue;
             const tel = { hex: entries[0].hex, confidence: 'single' as const };
-            if (mayRun(j, tel as never, EMPTY_LEDGER, { moduleId: id }).allowed) {
+            if (mayRun(j, tel as never, EMPTY_LEDGER, { moduleId: id, motion: 'parked' }).allowed) {
                 allowed.push(`${id}.${j.id}`);
             }
         }
@@ -380,7 +380,7 @@ describe('reads whose control byte we cannot vouch for', () => {
                 const jid = ref.slice(ref.indexOf('.') + 1);
                 const table = telegrams.get(mid)!;
                 const tel = { hex: table.jobs[jid][0].hex, confidence: 'single' as const };
-                const v = mayRun(byId.get(mid)!.get(jid)!, tel as never, EMPTY_LEDGER, { moduleId: mid });
+                const v = mayRun(byId.get(mid)!.get(jid)!, tel as never, EMPTY_LEDGER, { moduleId: mid, motion: 'parked' });
                 expect(v.allowed, ref).toBe(false);
             }
         }

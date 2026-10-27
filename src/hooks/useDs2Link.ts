@@ -41,6 +41,7 @@ import {
     ERROR_MEMORY_QUICKTEST,
     MSS54_ADAPTATION_BLOCKS,
     adaptationBlockMinLength,
+    blockBySelection,
     decodeAdaptationBlock,
     decodeLiveBlock,
     liveBlockRequest,
@@ -56,7 +57,15 @@ import {
 import { whyNotSendable } from '@/lib/actuationGate';
 import type { ModuleProtocol } from '@/lib/moduleProtocol';
 import { practiceBus } from '@/lib/practiceEcu';
-import { clearFaultsCommand, telegramBytes } from '@/lib/runGate';
+import { clearFaultsCommand, telegramBytes, type SendRequirement } from '@/lib/runGate';
+import {
+    VEHICLE_STATE_MAX_AGE_MS,
+    motionOf,
+    vehicleStateFrom,
+    type LiveValues,
+    type Motion,
+    type VehicleState,
+} from '@/lib/vehicleState';
 
 const KEEP_ALIVE_INTERVAL_MS = 2000;
 
@@ -243,6 +252,26 @@ function refuse(message: string): never {
 
 const hex2 = (n: number) => `0x${n.toString(16).padStart(2, '0')}`;
 
+/** The DME, which is where the car's speed is read from whichever module is in session. */
+const DME = Ds2Address.DME;
+/** MSS54 live block 19, "operating measurements": `v` and `v_asc` at offsets 0 and 2. */
+const SPEED_BLOCK = 19;
+
+/**
+ * A read answered positively on a car measured stationary in the same call — the fact the
+ * ledger's `observed-parked` is made of (lib/ledger `recordParkedObservation`).
+ */
+export interface ParkedObservation {
+    moduleId: string;
+    jobId: string;
+    telegram: string;
+    response: string;
+    /** ISO 8601. */
+    at: string;
+    /** The module's IDENT answer, hex, when it has been read this session. */
+    ecuIdent?: string;
+}
+
 export function useDs2Link(options: {
     onFailure?: (failure: LinkFailure) => void;
     /**
@@ -254,6 +283,8 @@ export function useDs2Link(options: {
      * rather than trusting that it was.
      */
     target: ModuleProtocol;
+    /** Told about each read that answered on a car measured stationary. Vehicle only. */
+    onObserved?: (o: ParkedObservation) => void;
 }) {
     const [state, setState] = useState<LinkState>('disconnected');
     const [mode, setMode] = useState<LinkMode>('vehicle');
@@ -278,6 +309,9 @@ export function useDs2Link(options: {
     const [adaptations, setAdaptations] = useState<AdaptationRead[] | null>(null);
     const [lastRun, setLastRun] = useState<JobRunResult | null>(null);
     const [rawFaults, setRawFaults] = useState<RawFaultRead[] | null>(null);
+    const [vehicleState, setVehicleState] = useState<VehicleState | null>(null);
+    const [motion, setMotion] = useState<Motion>('unknown');
+    const vehicleStateRef = useRef<VehicleState | null>(null);
 
     const transportKind = useTransportKind();
 
@@ -322,8 +356,10 @@ export function useDs2Link(options: {
      * operation being reported: this runs on the error path of a link talking to a car.
      */
     const onFailureRef = useRef(options.onFailure);
+    const onObservedRef = useRef(options.onObserved);
     useEffect(() => {
         onFailureRef.current = options.onFailure;
+        onObservedRef.current = options.onObserved;
     });
     const transportKindRef = useRef<TransportKind | null>(null);
 
@@ -349,6 +385,57 @@ export function useDs2Link(options: {
         }
         return { target, to: link.to(at) };
     }, []);
+
+    /**
+     * A new reading of the car. The motion it implies lapses to `unknown` by itself once the
+     * reading is older than VEHICLE_STATE_MAX_AGE_MS — a "parked" that nobody refreshed must not
+     * keep saying so.
+     */
+    const motionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const noteVehicle = useCallback((values: LiveValues) => {
+        const next = vehicleStateFrom(values, Date.now(), vehicleStateRef.current);
+        if (!next) return null;
+        vehicleStateRef.current = next;
+        setVehicleState(next);
+        setMotion(motionOf(next, next.at));
+        if (motionTimerRef.current) clearTimeout(motionTimerRef.current);
+        motionTimerRef.current = setTimeout(() => setMotion('unknown'), VEHICLE_STATE_MAX_AGE_MS + 1);
+        return next;
+    }, []);
+    useEffect(() => () => {
+        if (motionTimerRef.current) clearTimeout(motionTimerRef.current);
+    }, []);
+
+    /**
+     * Read the car's speed from the DME, now, and say whether it is standing still.
+     *
+     * The preflight PLAN §4-4 asked for: what the gate decided at render time is checked against a
+     * measurement taken immediately before the bytes go. Anything short of a decoded zero —
+     * no DME, a refusal, a short block, a speed above zero — is not `parked`.
+     */
+    const measureMotion = useCallback(
+        async (link: Ds2Link): Promise<Motion> => {
+            const block = blockBySelection(SPEED_BLOCK);
+            if (!block) return 'unknown';
+            const req = liveBlockRequest(SPEED_BLOCK);
+            try {
+                append('tx', `Speed preflight (DME block ${SPEED_BLOCK})`);
+                const frame = await link.to(DME).exchangeWithRetry(req.control, req.payload, { attempts: 2 });
+                link.assertPositive(frame, `Speed (DME block ${SPEED_BLOCK})`);
+                const values: LiveValues = {};
+                for (const v of decodeLiveBlock(block, frame)) values[channelId(SPEED_BLOCK, v.symbol)] = v.value;
+                const state = noteVehicle(values);
+                const motion = motionOf(state, Date.now());
+                // The evidence the read below was sent on, kept with it.
+                append('rx', `speed ${state?.speedKmh ?? '—'} km/h, CAN ${state?.speedCanKmh ?? '—'} km/h → ${motion}`);
+                return motion;
+            } catch (e) {
+                append('warn', `speed preflight failed: ${e instanceof Error ? e.message : String(e)}`);
+                return 'unknown';
+            }
+        },
+        [append, noteVehicle],
+    );
 
     /** The last identity read, for the failure report — state would be stale inside the callbacks. */
     const identRef = useRef<{ hex: string; length: number } | null>(null);
@@ -618,7 +705,7 @@ export function useDs2Link(options: {
      * "somebody upstream checked" on trust.
      */
     const runRead = useCallback(
-        (jobId: string, hex: string) =>
+        (jobId: string, hex: string, requires: SendRequirement = 'parked') =>
             run(`Run ${jobId}`, async (link) => {
                 const { target, to } = session(link);
                 const bytes = telegramBytes(hex);
@@ -647,6 +734,16 @@ export function useDs2Link(options: {
                 const refusal = whyNotSendable(control, modeRef.current);
                 if (refusal) throw new Error(`${jobId}: ${refusal}`);
                 const payload = bytes.slice(3, bytes.length - 1);
+                // The car, measured now. A read the owner has not cleared for a moving car goes only
+                // when the DME says 0 km/h in this same call; the verdict that let the button light
+                // was computed earlier and is not evidence about this moment.
+                const measured = requires === 'parked' ? await measureMotion(link) : null;
+                if (requires === 'parked' && measured !== 'parked') {
+                    throw new Error(
+                        `${jobId}: not sent — the car could not be shown to be stationary (${measured}). ` +
+                            'Just before sending, the DME speed (block 19) is read; only 0 km/h lets a read go.',
+                    );
+                }
                 append('tx', `${jobId}: ${hex}`);
                 const frame = await to.exchangeWithRetry(control, payload);
                 link.assertPositive(frame, jobId);
@@ -660,9 +757,23 @@ export function useDs2Link(options: {
                 };
                 append('rx', `${frame.payload.length} bytes`);
                 setLastRun(result);
+                if (measured === 'parked' && modeRef.current === 'vehicle') {
+                    try {
+                        onObservedRef.current?.({
+                            moduleId: target.moduleId,
+                            jobId,
+                            telegram: hex,
+                            response: result.response,
+                            at: new Date(result.at).toISOString(),
+                            ecuIdent: identRef.current?.hex,
+                        });
+                    } catch {
+                        /* recording a fact must never fail the read it is about */
+                    }
+                }
                 return result;
             }),
-        [append, run, session],
+        [append, measureMotion, run, session],
     );
 
     /**
@@ -777,9 +888,20 @@ export function useDs2Link(options: {
                             // already in hand here; the old line threw it away
                             // and used `v.symbol`, which is how one column ended
                             // up holding two blocks' readings.
-                            for (const v of decodeLiveBlock(block, frame)) {
+                            const decoded = decodeLiveBlock(block, frame);
+                            for (const v of decoded) {
                                 const id = channelId(block.selection, v.symbol);
                                 if (wanted.has(id)) values[id] = v.value;
+                            }
+                            // A recording that reads the speed block keeps the car's state fresh as
+                            // a side effect, whether or not the speed is among the logged channels.
+                            if (block.selection === 3 || block.selection === SPEED_BLOCK) {
+                                const all: LiveValues = {};
+                                for (const v of decoded) all[channelId(block.selection, v.symbol)] = v.value;
+                                if (block.selection === SPEED_BLOCK) noteVehicle(all);
+                                else if (vehicleStateRef.current) {
+                                    vehicleStateRef.current = { ...vehicleStateRef.current, rpm: all['3:n'] ?? null, voltageV: all['3:ub'] ?? null };
+                                }
                             }
                         }
                         if (!incomplete) onSample({ time: (performance.now() - t0) / 1000, values });
@@ -807,12 +929,18 @@ export function useDs2Link(options: {
                 }
             })();
         },
-        [append, failWith, notifyFailure, session],
+        [append, failWith, noteVehicle, notifyFailure, session],
     );
 
     const stopLog = useCallback(() => {
         pollingRef.current = false;
     }, []);
+
+    /** Read the car's speed (DME block 19) now, as an operation of its own. */
+    const readVehicleState = useCallback(
+        () => run('Read vehicle state', async (link) => measureMotion(link)),
+        [measureMotion, run],
+    );
 
     // The heartbeat. Runs on every state, because the case it exists for is a
     // human reading values with the bus otherwise silent.
@@ -874,6 +1002,9 @@ export function useDs2Link(options: {
         faults,
         quickTest,
         rawFaults,
+        vehicleState,
+        motion,
+        readVehicleState,
         adaptations,
         transportKind,
         connect,

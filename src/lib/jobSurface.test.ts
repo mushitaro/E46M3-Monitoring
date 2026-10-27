@@ -61,7 +61,7 @@ describe('SERVICE carries the whole of what a real car will accept', () => {
         const runnable: string[] = [];
         for (const { id, profile, telegrams } of modules) {
             for (const job of profile.jobs) {
-                if (mayRun(job, bestTelegram(telegrams, job.id), EMPTY_LEDGER, { moduleId: id }).allowed) {
+                if (mayRun(job, bestTelegram(telegrams, job.id), EMPTY_LEDGER, { moduleId: id, motion: 'parked' }).allowed) {
                     runnable.push(`${id}.${job.id}`);
                     expect(surfaceOf(job), `${id}.${job.id}`).toBe('service');
                     expect(job.class).toBe('read');

@@ -28,8 +28,8 @@ describe('a vehicle gets exactly what mayRun says, and nothing else', () => {
         // there are two answers to "may this be sent" and one of them is wrong.
         for (const j of mss54.jobs) {
             for (const t of [null, READ, ACTUATE, shaky('12 04 0b 1d')]) {
-                const mine = mayActuate(j, t, EMPTY_LEDGER, { moduleId: 'mss54', mode: 'vehicle' });
-                const theirs = mayRun(j, t, EMPTY_LEDGER, { moduleId: 'mss54' });
+                const mine = mayActuate(j, t, EMPTY_LEDGER, { moduleId: 'mss54', mode: 'vehicle', motion: 'parked' });
+                const theirs = mayRun(j, t, EMPTY_LEDGER, { moduleId: 'mss54', motion: 'parked' });
                 expect(mine).toEqual(theirs);
             }
         }
@@ -37,14 +37,14 @@ describe('a vehicle gets exactly what mayRun says, and nothing else', () => {
 
     it('refuses an actuator control byte even when everything else lines up', () => {
         const read = mss54.jobs.find((j) => j.class === 'read' && j.args.length === 0)!;
-        const v = mayActuate(read, ACTUATE, EMPTY_LEDGER, { moduleId: 'mss54', mode: 'vehicle' });
+        const v = mayActuate(read, ACTUATE, EMPTY_LEDGER, { moduleId: 'mss54', mode: 'vehicle', motion: 'parked' });
         expect(v.allowed).toBe(false);
         if (!v.allowed) expect(v.reason).toBe('run_block_controlWrites');
     });
 });
 
 describe('PRACTICE opens the actuator surface, with three refusals kept', () => {
-    const ctx = { moduleId: 'mss54', mode: 'practice' as const };
+    const ctx = { moduleId: 'mss54', mode: 'practice' as const, motion: 'parked' as const };
 
     it('allows a non-read control byte — that is the surface being exercised', () => {
         const j = mss54.jobs.find((x) => x.class === 'test' && x.args.length === 0)!;
@@ -97,7 +97,7 @@ describe('PRACTICE opens the actuator surface, with three refusals kept', () => 
                 const es = tels.jobs[j.id] ?? [];
                 if (es.length !== 1 || es[0].confidence !== 'single') continue;
                 const t = { hex: es[0].hex, cmd: es[0].cmd, confidence: 'single' } as Telegram;
-                if (mayActuate(j, t, EMPTY_LEDGER, { moduleId: m.id, mode: 'practice' }).allowed) n++;
+                if (mayActuate(j, t, EMPTY_LEDGER, { moduleId: m.id, mode: 'practice', motion: 'parked' }).allowed) n++;
             }
         }
         expect(n).toBe(63);

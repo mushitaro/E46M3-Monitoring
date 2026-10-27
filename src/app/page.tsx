@@ -16,7 +16,7 @@ import { Overlaid } from '@/components/shell/Overlaid';
 import { LABEL, TextButton } from '@/components/ui';
 import { useActuatorArming } from '@/hooks/useActuatorArming';
 import { reloadForUpdate, useUpdateRunning } from '@/hooks/useAppUpdate';
-import { useDs2Link } from '@/hooks/useDs2Link';
+import { useDs2Link, type ParkedObservation } from '@/hooks/useDs2Link';
 import { useHub } from '@/hooks/useHub';
 import { useInstallPrompt } from '@/hooks/useInstallPrompt';
 import { useUnloadGuard } from '@/hooks/useUnloadGuard';
@@ -39,7 +39,7 @@ import { loadJobText, type JobTextTable } from '@/lib/jobText';
 import { PRIVACY_PREVIEW } from '@/lib/links';
 import { loadDscHydraulics, type DscHydraulics } from '@/lib/dscHydraulics';
 import { enabledTabs, featureEnabled } from '@/lib/features';
-import { EMPTY_LEDGER, type Ledger } from '@/lib/ledger';
+import { EMPTY_LEDGER, applyKillList, fetchKillList, recordParkedObservation, type KillList, type Ledger } from '@/lib/ledger';
 import { mayRun, type RunVerdict } from '@/lib/runGate';
 import { loadSmg2Workflows, type Smg2Workflows } from '@/lib/smg2Workflows';
 import { TAB_ORDER, type Tab } from '@/lib/tabs';
@@ -202,12 +202,43 @@ export default function Home() {
         if (address === null) return noProtocol(ecuId, 0x12);
         return moduleProtocol(ecuId, address, telegrams?.module === ecuId ? telegrams : null);
     }, [ecuIndex, ecuId, telegrams]);
-    const link = useDs2Link({ onFailure: failures.onFailure, target });
+    // The verified ledger, for this page's life. Reads that answer on a car measured stationary are
+    // recorded into it as facts (`observed-parked`); nothing here promotes a read further — clearing
+    // one for a moving car is the owner's decision (lib/ledger `grantMovingOk`). Not persisted yet:
+    // the production build stores nothing on the device, and the WORKS build's copy goes with SYNC.
+    const [observed, setObserved] = useState<Ledger>(EMPTY_LEDGER);
+    const onObserved = useCallback(
+        (o: ParkedObservation) =>
+            setObserved((l) =>
+                recordParkedObservation(l, `${o.moduleId}:${o.jobId}`, {
+                    telegram: o.telegram,
+                    response: o.response,
+                    at: o.at,
+                    ecuIdent: o.ecuIdent,
+                }),
+            ),
+        [],
+    );
+    const link = useDs2Link({ onFailure: failures.onFailure, target, onObserved });
+
+    // The kill list: fetched when the page opens and every ten minutes, from this origin. It can
+    // only withdraw, never grant (lib/ledger), and a failed fetch leaves the last list standing.
+    const [killList, setKillList] = useState<KillList | null>(null);
+    useEffect(() => {
+        let alive = true;
+        const pull = () => void fetchKillList('./kill-list.json').then((k) => alive && k && setKillList(k));
+        pull();
+        const id = setInterval(pull, 10 * 60_000);
+        return () => {
+            alive = false;
+            clearInterval(id);
+        };
+    }, []);
+    const ledger: Ledger = useMemo(() => (killList ? applyKillList(observed, killList) : observed), [observed, killList]);
 
     const [loaded, setLoaded] = useState<{ id: string; catalog: EcuProfile } | null>(null);
     const [catalogError, setCatalogError] = useState<string | null>(null);
     const catalog = loaded?.id === ecuId ? loaded.catalog : null;
-    const ledger: Ledger = EMPTY_LEDGER;
 
     // Datalog state lives here so the right column can visualise a run while
     // the datalog tab is not the one on the left.
@@ -396,7 +427,7 @@ export default function Home() {
     // can fire ends up beside a panel that says it cannot.
     const runVerdict: RunVerdict | null =
         tab === 'service' && selectedJob
-            ? mayRun(selectedJob, bestTelegram(telegrams, selectedJob.id), ledger, { moduleId: ecuId })
+            ? mayRun(selectedJob, bestTelegram(telegrams, selectedJob.id), ledger, { moduleId: ecuId, motion: link.motion })
             : null;
 
     // Two pure deciders, wired to this app's glyphs and strings in one hook —
@@ -424,6 +455,7 @@ export default function Home() {
                 ecuId={ecuId}
                 telegrams={telegrams}
                 ledger={ledger}
+                motion={link.motion}
             />
         ),
         service: catalog ? (
@@ -432,6 +464,7 @@ export default function Home() {
                 ecuId={ecuId}
                 telegrams={telegrams}
                 ledger={ledger}
+                motion={link.motion}
                 workflows={workflows}
                 hydraulics={hydraulics}
                 selectedId={selectedJob?.id ?? null}
@@ -445,6 +478,7 @@ export default function Home() {
                 profile={catalog}
                 telegrams={telegrams}
                 ledger={ledger}
+                motion={link.motion}
                 jobText={jobText}
                 mode={link.mode}
                 arming={arming}

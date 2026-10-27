@@ -59,6 +59,9 @@ function blockPayload(block: LiveValueBlock): Uint8Array {
         else if (f.unit === 'V') target = f.symbol.startsWith('UUB') ? e.battV : 2.5;
         else if (f.unit === '°C') target = e.oilC;
         else if (f.unit === 'rpm') target = e.rpm;
+        // Standing still. The speed preflight reads block 19 before every read it lets go, so a
+        // simulator that drifted along at 1 km/h would refuse everything PRACTICE exists to run.
+        else if (f.unit === 'km/h') target = 0;
         else if (f.unit === '%') target = 14;
         else if (f.unit === '°KW') target = 12;
         else target = 1;

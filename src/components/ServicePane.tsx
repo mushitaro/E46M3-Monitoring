@@ -83,6 +83,7 @@ import { mayRunOnVehicle, type Ledger } from '@/lib/ledger';
 import { mayRun } from '@/lib/runGate';
 import { bestTelegram, type TelegramTable } from '@/lib/telegrams';
 import { useLang } from '@/lib/i18n';
+import type { Motion } from '@/lib/vehicleState';
 
 /** The class order is the order of consequence, not alphabetical. */
 // No `test`: those rows live in ACTUATOR. Ordered by consequence, not alphabet.
@@ -92,6 +93,7 @@ const AUDIENCE_ORDER: Audience[] = ['owner', 'technician', 'protocol'];
 export function ServicePane({
     profile,
     ledger,
+    motion,
     telegrams,
     selectedId,
     onSelect,
@@ -99,6 +101,8 @@ export function ServicePane({
 }: {
     profile: EcuProfile;
     ledger: Ledger;
+    /** As last measured (lib/vehicleState) — the gate is asked with it. */
+    motion: Motion;
     /** So the list can ask the SAME gate the hub asks. See `runnable` below. */
     telegrams: TelegramTable | null;
     selectedId: string | null;
@@ -133,12 +137,12 @@ export function ServicePane({
     const runnable = useMemo(() => {
         const out = new Set<string>();
         for (const job of jobs) {
-            if (mayRun(job, bestTelegram(telegrams, job.id), ledger, { moduleId: profile.id }).allowed) {
+            if (mayRun(job, bestTelegram(telegrams, job.id), ledger, { moduleId: profile.id, motion }).allowed) {
                 out.add(job.id);
             }
         }
         return out;
-    }, [jobs, telegrams, ledger, profile.id]);
+    }, [jobs, telegrams, ledger, profile.id, motion]);
 
     // Counts over the WHOLE catalogue. Counting the filtered set would make
     // hidden things invisible twice.

@@ -20,6 +20,7 @@ import { mayRun } from '@/lib/runGate';
 import { bestTelegram, type TelegramTable } from '@/lib/telegrams';
 import { Awaiting } from '@/views/shared/Awaiting';
 import { CountReadout } from '@/views/shared/CountReadout';
+import type { Motion } from '@/lib/vehicleState';
 
 /**
  * The ECU's learned values, and the ECU's own way of throwing them away.
@@ -42,6 +43,7 @@ export const AdaptationView = memo(function AdaptationView({
     ecuId,
     telegrams,
     ledger,
+    motion,
 }: {
     /** What the ECU answered, or null before anyone asked. */
     blocks: AdaptationRead[] | null;
@@ -49,6 +51,8 @@ export const AdaptationView = memo(function AdaptationView({
     ecuId: string;
     telegrams: TelegramTable | null;
     ledger: Ledger;
+    /** As last measured (lib/vehicleState) — the gate is asked with it. */
+    motion: Motion;
 }) {
     const { t, lang } = useLang();
 
@@ -59,9 +63,9 @@ export const AdaptationView = memo(function AdaptationView({
         return resetJobsFor(ecuId).ids.flatMap((id) => {
             const job = index.get(id);
             if (!job) return [];
-            return [{ job, verdict: mayRun(job, bestTelegram(telegrams, id), ledger, { moduleId: ecuId }) }];
+            return [{ job, verdict: mayRun(job, bestTelegram(telegrams, id), ledger, { moduleId: ecuId, motion }) }];
         });
-    }, [catalog, telegrams, ledger, ecuId]);
+    }, [catalog, telegrams, ledger, ecuId, motion]);
 
     return (
         <Pane>

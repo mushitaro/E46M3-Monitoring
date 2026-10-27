@@ -19,6 +19,18 @@
 export type VerificationStatus =
     /** Never confirmed against a vehicle. The default, and where everything is now. */
     | 'candidate'
+    /**
+     * A READ that answered positively on this car while it was measured stationary. A fact, so
+     * the app records it by itself (`recordParkedObservation`); it vouches for the bytes and the
+     * answer, and for nothing about a moving car.
+     */
+    | 'observed-parked'
+    /**
+     * A read the OWNER cleared to be sent while the car moves (`grantMovingOk`). Never reached
+     * automatically: whether a module minds being asked while it is working — DSC in a corner,
+     * SMG II in a shift — is a judgement, and the person whose car it is makes it.
+     */
+    | 'moving-ok'
     /** Confirmed on a vehicle, with evidence recorded. */
     | 'verified'
     /** Tried on a vehicle and found wrong. Kept, so nobody re-derives it. */
@@ -43,6 +55,15 @@ export interface VerificationRecord {
     observedBehavior?: string;
     /** Why it was refuted or revoked. Required for those states. */
     reason?: string;
+    /** Positive answers recorded with the car stationary, with these bytes. */
+    observations?: number;
+    /** ISO 8601, the latest of them. */
+    lastObservedAt?: string;
+    /** The module's IDENT answer at the time, hex — which unit answered. */
+    ecuIdent?: string;
+    /** Who cleared it for a moving car, and when (ISO 8601). */
+    movingOkBy?: string;
+    movingOkAt?: string;
 }
 
 export interface Ledger {
@@ -51,6 +72,75 @@ export interface Ledger {
 }
 
 export const EMPTY_LEDGER: Ledger = { version: 1, records: {} };
+
+/** How many stationary answers a read needs before it may be PROPOSED for a moving car. */
+export const MOVING_OK_MIN_OBSERVATIONS = 3;
+
+/**
+ * Records that a read answered positively on a stationary car.
+ *
+ * Only ever adds evidence. A revoked or refuted record stays what it is — an observation does not
+ * argue with a withdrawal — and a `moving-ok` or `verified` one keeps its standing and just gains
+ * the date. If the bytes sent differ from the bytes recorded, the generator changed under the
+ * record, and the count starts again from this answer: an observation is about bytes.
+ */
+export function recordParkedObservation(
+    ledger: Ledger,
+    id: string,
+    seen: { telegram: string; response: string; at: string; ecuIdent?: string },
+): Ledger {
+    const prior = ledger.records[id];
+    if (prior && (prior.status === 'revoked' || prior.status === 'refuted')) return ledger;
+    const sameBytes = prior?.telegram === seen.telegram;
+    const record: VerificationRecord =
+        prior && (prior.status === 'moving-ok' || prior.status === 'verified') && sameBytes
+            ? { ...prior, lastObservedAt: seen.at, observedResponse: seen.response }
+            : {
+                  ...(sameBytes ? prior : undefined),
+                  id,
+                  status: 'observed-parked',
+                  telegram: seen.telegram,
+                  observedResponse: seen.response,
+                  observations: (sameBytes ? (prior?.observations ?? 0) : 0) + 1,
+                  lastObservedAt: seen.at,
+                  ecuIdent: seen.ecuIdent ?? prior?.ecuIdent,
+              };
+    return { ...ledger, records: { ...ledger.records, [id]: record } };
+}
+
+/**
+ * The owner clears a read for a moving car.
+ *
+ * Refused — the ledger returned unchanged, with the reason — unless the read has answered on this
+ * car while stationary at least `MOVING_OK_MIN_OBSERVATIONS` times with the bytes it would send.
+ * The owner's word is the decision; the observations are what it is a decision about.
+ */
+export function grantMovingOk(
+    ledger: Ledger,
+    id: string,
+    by: { who: string; at: string },
+): { ledger: Ledger; refused: string | null } {
+    const r = ledger.records[id];
+    if (!r || r.status !== 'observed-parked') {
+        return { ledger, refused: `${id} is ${r?.status ?? 'candidate'}; only a read observed on a stationary car can be cleared` };
+    }
+    if ((r.observations ?? 0) < MOVING_OK_MIN_OBSERVATIONS) {
+        return { ledger, refused: `${id} has answered ${r.observations ?? 0} time(s) stationary; ${MOVING_OK_MIN_OBSERVATIONS} are needed` };
+    }
+    const record: VerificationRecord = { ...r, status: 'moving-ok', movingOkBy: by.who, movingOkAt: by.at };
+    return { ledger: { ...ledger, records: { ...ledger.records, [id]: record } }, refused: null };
+}
+
+/** Whether a read may be sent while the car moves. Only an owner's grant says yes. */
+export function mayReadWhileMoving(ledger: Ledger, id: string): boolean {
+    return ledger.records[id]?.status === 'moving-ok';
+}
+
+/** A withdrawal or a refutation stands against a read as much as against anything else. */
+export function withdrawn(ledger: Ledger, id: string): VerificationRecord | null {
+    const r = ledger.records[id];
+    return r && (r.status === 'revoked' || r.status === 'refuted') ? r : null;
+}
 
 /**
  * A centrally-published list of ids that must not run, whatever the ledger says.

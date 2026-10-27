@@ -3,6 +3,7 @@
 import { CircleDot, Loader2, Play, PlayCircle, PlugZap, Radio, Square, Zap } from 'lucide-react';
 import type { HubConfig, NoticeTone } from '@/components/Hub';
 import type { useDs2Link } from '@/hooks/useDs2Link';
+import type { ModuleProtocol } from '@/lib/moduleProtocol';
 import { hubConfigFor, hubNoticeFor } from '@/lib/hub';
 import { jobRiskOf, type CatalogJob } from '@/lib/ecuCatalog';
 import { useLang } from '@/lib/i18n';
@@ -33,6 +34,8 @@ export function useHub(input: {
     datalog: Datalog;
     practiceArmed: boolean;
     ecuId: string;
+    /** What the module's own SGBD lets the app send it (lib/moduleProtocol). */
+    target: ModuleProtocol;
     selectedJob: CatalogJob | null;
     runVerdict: RunVerdict | null;
     catalogError: string | null;
@@ -59,11 +62,20 @@ export function useHub(input: {
                 samples: t.samples,
                 plan_selectHint: t.plan_selectHint,
                 adaptations_noDecoder: t.adaptations_noDecoder,
+                faults_notEstablished: t.faults_notEstablished,
+                datalog_noDecoder: t.datalog_noDecoder,
                 runBlock: (reason) => t.runBlock[reason],
             },
             icons: { read: Zap, record: Radio, stop: Square, idle: CircleDot, run: Play, start: PlayCircle },
-            readFaults: () => void link.readIdent().then(() => link.readFaults()),
+            // IDENT first where the module has one, then the fault memory — and only the reads its own
+            // SGBD carries, so a module with fault frames but no IDENT is not sent a refused IDENT.
+            readFaults: () =>
+                void (input.target.ident ? link.readIdent() : Promise.resolve(null)).then(() =>
+                    input.target.faults.length > 0 ? link.readFaults() : null,
+                ),
+            faultsAvailable: input.target.ident !== null || input.target.faults.length > 0,
             datalog: {
+                decoded: input.target.decoder === 'mss54',
                 sampleCount: datalog.samples.length,
                 costNotice: datalog.costNotice,
                 start: datalog.start,

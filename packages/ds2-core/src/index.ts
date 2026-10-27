@@ -109,6 +109,7 @@ export {
     DS2_DEFAULT_TIMINGS,
     type Ds2Timings,
     type Ds2LinkOptions,
+    type Ds2Target,
     type RetryOptions,
 } from './link';
 
@@ -128,11 +129,13 @@ export type { LinkTiming } from './timing';
 // real stack too. Simulating the DEVICE beats mocking the link.
 export {
     SimulatedEcu,
+    SimulatedBus,
     SimulatedSerialPort,
     simulatedPort,
     simulatedFtdiEcu,
     type ExchangeBehavior,
     type SimulatedEcuOptions,
+    type SimulatedDevice,
     type TraceEntry,
 } from './simulator';
 

@@ -23,6 +23,8 @@ const T = {
     samples: 'SAMPLES',
     plan_selectHint: 'pick a job',
     adaptations_noDecoder: 'no decoder ported',
+    faults_notEstablished: 'no frame for this module',
+    datalog_noDecoder: 'no live-block layout',
     runBlock: (r: string) => `blocked: ${r}`,
 };
 
@@ -32,7 +34,8 @@ const state = (over: Partial<ViewHubState> = {}): ViewHubState => ({
     t: T,
     icons: ICONS,
     readFaults: () => {},
-    datalog: { sampleCount: 0, costNotice: '2 channels / 1 block', start: () => {}, stop: () => {} },
+    faultsAvailable: true,
+    datalog: { decoded: true, sampleCount: 0, costNotice: '2 channels / 1 block', start: () => {}, stop: () => {} },
     adaptation: { decoded: true, read: () => {} },
     service: { selected: null, verdict: null, run: () => {} },
     ...over,
@@ -181,5 +184,23 @@ describe('the switch is exhaustive', () => {
             seen.add(tab);
         }
         expect(seen.size).toBe(TAB_ORDER.length);
+    });
+});
+
+describe('a module is offered only what its own SGBD lets the app send it', () => {
+    it('does not offer READ on a module with no IDENT or fault-read frame, and says why', () => {
+        const readFaults = vi.fn();
+        const cfg = viewHubFor(state({ tab: 'diagnosis', faultsAvailable: false, readFaults }));
+        expect(cfg).toMatchObject({ disabled: true, tone: 'idle', notice: 'no frame for this module' });
+        cfg?.onClick?.();
+        expect(readFaults).not.toHaveBeenCalled();
+    });
+
+    it('does not offer RECORD on a module whose live blocks it cannot decode', () => {
+        const start = vi.fn();
+        const cfg = viewHubFor(state({ tab: 'datalog', datalog: { ...state().datalog, decoded: false, start } }));
+        expect(cfg).toMatchObject({ disabled: true, notice: 'no live-block layout' });
+        cfg?.onClick?.();
+        expect(start).not.toHaveBeenCalled();
     });
 });

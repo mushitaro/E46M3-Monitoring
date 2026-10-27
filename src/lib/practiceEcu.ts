@@ -131,6 +131,21 @@ function faultPayload(): Uint8Array {
  */
 const SIM_TESTPRG_POLLS = 6;
 
+/**
+ * PRACTICE as a K-line: the simulated ECU at the DME's address, and one at each other address
+ * the session will talk to — and nobody anywhere else.
+ *
+ * Every module here runs the same synthetic responder, at its own address. That is a shortcut
+ * about the PAYLOADS, which are invented whichever module answers; it is not a shortcut about the
+ * ADDRESSES. A frame for a module that is not on this bus gets the echo and then silence, as it
+ * would on a car, so a request sent to the wrong module fails in PRACTICE too instead of being
+ * answered by the DME.
+ */
+export function practiceBus(addresses: readonly number[]): SimulatedEcuOptions[] {
+    const unique = [...new Set([0x12, ...addresses])];
+    return unique.map((address) => ({ ...practiceEcu(), address }));
+}
+
 export function practiceEcu(): SimulatedEcuOptions {
     // The simulated test program's own state. It lives in this closure because
     // the protocol says it should: TESTPRG_STOP resets a run and TESTPRG_STARTEN

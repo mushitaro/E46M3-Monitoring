@@ -45,6 +45,8 @@ export const DS2_MIN_FRAME_LENGTH = 4;
 export const DS2_MAX_FRAME_LENGTH = 255;
 
 export const Ds2Control = {
+    /** Identification. Every DS2 module's own IDENT job that has a short frame sends `xx 04 00 xx`. */
+    IDENT: 0x00,
     READ_ERROR_MEMORY: 0x04,
     CLEAR_ERROR_MEMORY: 0x05,
     READ_MEMORY: 0x06,

@@ -153,8 +153,61 @@ export class SimulatedEcu {
     }
 }
 
+/** Anything that answers on the wire: one ECU, or a bus of them. */
+export interface SimulatedDevice {
+    readonly trace: TraceEntry[];
+    handle(chunk: Uint8Array): Uint8Array[];
+}
+
 /**
- * A SerialPortLike backed by an in-memory DS2 slave.
+ * The K-line as the car has it: several modules on one wire, each hearing every frame.
+ *
+ * Only the module whose address leads the frame answers. A frame for an address nobody holds is
+ * echoed by the line and then met with silence — which is what a misaddressed request looks like
+ * on a real car, a timeout. A simulator that answered at any address would hide exactly the bug
+ * this exists to catch: the app used to send every module's frames to the DME.
+ *
+ * The trace is the BUS's, in wire order, so a test can assert what went where in one list.
+ */
+export class SimulatedBus implements SimulatedDevice {
+    readonly trace: TraceEntry[] = [];
+    private readonly ecus = new Map<number, SimulatedEcu>();
+
+    constructor(modules: readonly SimulatedEcuOptions[]) {
+        for (const m of modules) {
+            if (this.ecus.has(m.address)) {
+                throw new Error(`two simulated modules at 0x${m.address.toString(16)}`);
+            }
+            this.ecus.set(m.address, new SimulatedEcu(m));
+        }
+    }
+
+    /** One module's own record. */
+    at(address: number): SimulatedEcu | undefined {
+        return this.ecus.get(address);
+    }
+
+    handle(chunk: Uint8Array): Uint8Array[] {
+        const ecu = chunk.length > 0 ? this.ecus.get(chunk[0]) : undefined;
+        if (!ecu) {
+            let request: Ds2Frame | null = null;
+            try {
+                request = parseDs2Frame(chunk);
+            } catch {
+                /* a malformed frame is still echoed by the line */
+            }
+            if (request) this.trace.push({ request, bytes: Uint8Array.from(chunk), behavior: 'silent' });
+            return [chunk];
+        }
+        const before = ecu.trace.length;
+        const out = ecu.handle(chunk);
+        for (const e of ecu.trace.slice(before)) this.trace.push(e);
+        return out;
+    }
+}
+
+/**
+ * A SerialPortLike backed by an in-memory DS2 slave — or a bus of them.
  *
  * Pass `port.requestPort` to a WebSerialTransport and the whole real stack runs
  * against it.
@@ -169,10 +222,15 @@ export class SimulatedSerialPort implements SerialPortLike {
     private _readable: ReadableStream<Uint8Array> | null = null;
     private _writable: WritableStream<Uint8Array> | null = null;
     private opened = false;
-    private readonly ecu: SimulatedEcu;
+    private readonly ecu: SimulatedDevice;
 
-    constructor(options: SimulatedEcuOptions) {
-        this.ecu = new SimulatedEcu(options);
+    constructor(options: SimulatedEcuOptions | readonly SimulatedEcuOptions[]) {
+        this.ecu = isBus(options) ? new SimulatedBus(options) : new SimulatedEcu(options);
+    }
+
+    /** The bus, when the port carries one. */
+    get bus(): SimulatedBus | null {
+        return this.ecu instanceof SimulatedBus ? this.ecu : null;
     }
 
     /** The device's own record. A getter, not a copy — a copy taken at construction would stop
@@ -245,12 +303,16 @@ export class SimulatedSerialPort implements SerialPortLike {
  * Convenience: a `requestPort` function for TransportOptions, plus the port so a
  * test can inspect the trace.
  */
-export function simulatedPort(options: SimulatedEcuOptions): {
+export function simulatedPort(options: SimulatedEcuOptions | readonly SimulatedEcuOptions[]): {
     port: SimulatedSerialPort;
     requestPort: () => Promise<SerialPortLike>;
 } {
     const port = new SimulatedSerialPort(options);
     return { port, requestPort: async () => port };
+}
+
+function isBus(options: SimulatedEcuOptions | readonly SimulatedEcuOptions[]): options is readonly SimulatedEcuOptions[] {
+    return Array.isArray(options);
 }
 
 /**

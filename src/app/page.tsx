@@ -44,6 +44,7 @@ import { mayRun, type RunVerdict } from '@/lib/runGate';
 import { loadSmg2Workflows, type Smg2Workflows } from '@/lib/smg2Workflows';
 import { TAB_ORDER, type Tab } from '@/lib/tabs';
 import { bestTelegram, loadTelegrams, type TelegramTable } from '@/lib/telegrams';
+import { moduleProtocol, noProtocol } from '@/lib/moduleProtocol';
 import { ActuatorView } from '@/views/actuator/ActuatorView';
 import { ActuatorViz } from '@/views/actuator/ActuatorViz';
 import { AdaptationView, AdaptationViz } from '@/views/adaptation/AdaptationView';
@@ -189,9 +190,20 @@ export default function Home() {
     // Before the link, because it IS the link's failure handler: each failure is kept for SAVE and
     // sent as an error record. In production it keeps and sends nothing.
     const failures = useFailureNotes(sessionsEnabled, ecuId);
-    const link = useDs2Link({ onFailure: failures.onFailure });
 
     const [ecuIndex, setEcuIndex] = useState<EcuIndex | null>(null);
+    const [telegrams, setTelegrams] = useState<TelegramTable | null>(null);
+
+    // What the link may send to the module in session, from that module's own telegram table. The
+    // table must be THIS module's: the state still holds the previous module's until the new one
+    // loads, and DSC_E46 and ASCMK20 share 0x56, so the address alone would not catch it.
+    const target = useMemo(() => {
+        const address = ecuIndex?.modules.find((m) => m.id === ecuId)?.address ?? (ecuId === 'mss54' ? 0x12 : null);
+        if (address === null) return noProtocol(ecuId, 0x12);
+        return moduleProtocol(ecuId, address, telegrams?.module === ecuId ? telegrams : null);
+    }, [ecuIndex, ecuId, telegrams]);
+    const link = useDs2Link({ onFailure: failures.onFailure, target });
+
     const [loaded, setLoaded] = useState<{ id: string; catalog: EcuProfile } | null>(null);
     const [catalogError, setCatalogError] = useState<string | null>(null);
     const catalog = loaded?.id === ecuId ? loaded.catalog : null;
@@ -330,7 +342,6 @@ export default function Home() {
     const install = useInstallPrompt();
     const tabLabels = useTabLabels();
 
-    const [telegrams, setTelegrams] = useState<TelegramTable | null>(null);
     const [jobText, setJobText] = useState<JobTextTable | null>(null);
     const [workflows, setWorkflows] = useState<Smg2Workflows | null>(null);
     const [hydraulics, setHydraulics] = useState<DscHydraulics | null>(null);
@@ -396,6 +407,7 @@ export default function Home() {
         datalog,
         practiceArmed,
         ecuId,
+        target,
         selectedJob,
         runVerdict,
         catalogError,
@@ -403,7 +415,7 @@ export default function Home() {
     });
 
     const panes: Record<Tab, React.ReactNode> = {
-        diagnosis: <DiagnosisView ident={link.ident} faults={link.faults} catalog={catalog} />,
+        diagnosis: <DiagnosisView ident={link.ident} faults={link.faults} rawFaults={link.rawFaults} catalog={catalog} />,
         datalog: <DatalogView datalog={datalog} />,
         adaptation: (
             <AdaptationView

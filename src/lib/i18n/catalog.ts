@@ -168,6 +168,12 @@ export interface Localised {
     awaiting_samples: string;
     awaiting_catalog: string;
     ident_note: (bytes: number) => string;
+    /** Said beside a fault read from a module with no decoder: its bytes, as they came back. */
+    faults_raw_note: (frames: number) => string;
+    /** The hub's notice where a module's own SGBD carries no short IDENT or fault-read frame. */
+    faults_notEstablished: string;
+    /** The hub's notice on DATALOG for a module whose live-block layout this app does not have. */
+    datalog_noDecoder: string;
     /** SESSIONS — the preview's saved sessions and SYNC (lib/features.ts `sessionSync`). */
     sessions_current: string;
     sessions_current_note: string;

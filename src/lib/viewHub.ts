@@ -41,6 +41,8 @@ export interface ViewHubStrings {
     samples: string;
     plan_selectHint: string;
     adaptations_noDecoder: string;
+    faults_notEstablished: string;
+    datalog_noDecoder: string;
     /** The refusal, already resolved to a sentence — `t.runBlock[reason]`. */
     runBlock: (reason: Extract<RunVerdict, { allowed: false }>['reason']) => string;
 }
@@ -61,7 +63,11 @@ export interface ViewHubState {
     icons: ViewHubIcons;
     /** DIAGNOSIS: read the identity, then the fault memory. */
     readFaults: () => void;
+    /** The module's own SGBD gives the app an IDENT or a fault-read frame to send it. */
+    faultsAvailable: boolean;
     datalog: {
+        /** This module's live-block layout is ported. Only the MSS54's is. */
+        decoded: boolean;
         sampleCount: number;
         /** One round trip per BLOCK, not per channel — the view words it. */
         costNotice: string;
@@ -109,9 +115,26 @@ export function viewHubFor(s: ViewHubState): HubConfig | null {
 
     switch (s.tab) {
         case 'diagnosis':
-            return { label: s.t.hub_read, Icon: s.icons.read, tone: 'ready', onClick: s.readFaults };
+            return s.faultsAvailable
+                ? { label: s.t.hub_read, Icon: s.icons.read, tone: 'ready', onClick: s.readFaults }
+                : {
+                      label: s.t.hub_read,
+                      Icon: s.icons.read,
+                      tone: 'idle',
+                      disabled: true,
+                      notice: s.t.faults_notEstablished,
+                  };
 
         case 'datalog':
+            if (!s.datalog.decoded) {
+                return {
+                    label: s.t.hub_record,
+                    Icon: s.icons.record,
+                    tone: 'idle',
+                    disabled: true,
+                    notice: s.t.datalog_noDecoder,
+                };
+            }
             return {
                 label: s.t.hub_record,
                 Icon: s.icons.record,

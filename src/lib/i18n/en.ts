@@ -210,6 +210,12 @@ export const en: Localised = {
     awaiting_catalog: 'AWAITING CATALOG…',
     ident_note: (b) =>
         `${b} bytes — the field layout of this response is not known yet. EdiabasLib used to decode it; shown raw rather than guessed at.`,
+    faults_raw_note: (n) =>
+        `How this module lays out its fault memory has not been established. The ${n} frame(s) its own FS_LESEN sends were sent, and the bytes are shown as they came back.`,
+    faults_notEstablished:
+        'This module’s SGBD carries no short identity or fault-read frame, so there is nothing the app can say is safe to send. Nothing is read.',
+    datalog_noDecoder:
+        'MSS54 is the only module whose live-block layout this app has. To record, select the engine (MSS54) as the module. The SMG II and DSC layouts have not been established.',
     error_electrical_steps: [
         'Compare failure rates with the engine off vs running. If it only misbehaves while running, it is ignition/motor EMI on an unshielded cable — not the software.',
         'Reseat the OBD connector, and wiggle-test it while connected.',

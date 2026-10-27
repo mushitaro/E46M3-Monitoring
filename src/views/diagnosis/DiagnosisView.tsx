@@ -15,6 +15,7 @@ import {
     humanName,
 } from '@/components/ui';
 import type { ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
+import type { RawFaultRead } from '@/hooks/useDs2Link';
 import { normCode } from '@/lib/faultCode';
 import { useLang, type Lang } from '@/lib/i18n';
 import { text as resolveText, type EcuProfile } from '@/lib/ecuCatalog';
@@ -33,6 +34,8 @@ import { CountReadout } from '@/views/shared/CountReadout';
 export interface FaultRead {
     ident: { hex: string; length: number } | null;
     faults: ErrorMemoryEntry[] | null;
+    /** A module with no decoder: the frames its own FS_LESEN sends, and the bytes that came back. */
+    rawFaults: RawFaultRead[] | null;
 }
 
 /**
@@ -47,6 +50,7 @@ export interface FaultRead {
 export const DiagnosisView = memo(function DiagnosisView({
     ident,
     faults,
+    rawFaults,
     catalog,
 }: FaultRead & { catalog: EcuProfile | null }) {
     const { lang, t } = useLang();
@@ -95,8 +99,24 @@ export const DiagnosisView = memo(function DiagnosisView({
                 after a repair they are the thing you came to look at, and the
                 ECU's reset for them needed somewhere to be refused out loud. */}
 
-            <Section title={t.faults_read} count={faults?.length}>
-            {faults === null ? (
+            <Section
+                title={t.faults_read}
+                count={faults?.length}
+                note={rawFaults ? t.faults_raw_note(rawFaults.length) : undefined}
+            >
+            {rawFaults ? (
+                // No decoder for this module: what went out and what came back, nothing read into it.
+                <div className="flex flex-col gap-2">
+                    {rawFaults.map((r) => (
+                        <Well key={r.request} className="max-w-[60ch]">
+                            <p className="break-all font-mono text-xs text-slate-300">
+                                {r.request} → {r.response || '—'}
+                            </p>
+                            <p className="font-mono text-[10px] text-slate-600">{r.source}</p>
+                        </Well>
+                    ))}
+                </div>
+            ) : faults === null ? (
                 <p className="py-2 font-mono text-xs uppercase text-slate-600">{t.awaiting_read}</p>
             ) : faults.length === 0 ? (
                 <p className="py-2 text-xs text-emerald-400">{t.faults_none}</p>

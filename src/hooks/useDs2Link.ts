@@ -33,12 +33,12 @@ import {
     type Ds2ByteTransport,
     type Ds2ErrorKind,
     type Ds2Frame,
+    type Ds2Target,
     type TransportKind,
 } from '@tsunagi/ds2-core';
 import {
     ERROR_MEMORY_ENTRIES,
     ERROR_MEMORY_QUICKTEST,
-    IDENT_REQUEST,
     MSS54_ADAPTATION_BLOCKS,
     adaptationBlockMinLength,
     decodeAdaptationBlock,
@@ -54,7 +54,8 @@ import {
     type ErrorMemoryQuickTest,
 } from '@tsunagi/ds2-mss54';
 import { whyNotSendable } from '@/lib/actuationGate';
-import { practiceEcu } from '@/lib/practiceEcu';
+import type { ModuleProtocol } from '@/lib/moduleProtocol';
+import { practiceBus } from '@/lib/practiceEcu';
 import { clearFaultsCommand, telegramBytes } from '@/lib/runGate';
 
 const KEEP_ALIVE_INTERVAL_MS = 2000;
@@ -152,6 +153,19 @@ export interface AdaptationRead {
 }
 
 /**
+ * A fault-memory read from a module this app has no decoder for: what was sent, what came back.
+ *
+ * Kept as bytes on purpose. The MSS54's record layout is the only one ported, and reading another
+ * module's answer through it would turn an unknown layout into confident nonsense.
+ */
+export interface RawFaultRead {
+    request: string;
+    response: string;
+    /** The module's own job whose telegram this frame is. */
+    source: string;
+}
+
+/**
  * The comms log is a ring buffer, not an unbounded array and not a DOM node.
  * The old app kept it only in the DOM, trimmed at 400 lines and lost it on
  * every reload — including the reloads its own service worker triggered — so
@@ -219,7 +233,28 @@ export interface LinkFailure {
     log: readonly CommsLogLine[];
 }
 
-export function useDs2Link(options: { onFailure?: (failure: LinkFailure) => void } = {}) {
+/**
+ * Thrown where the app refuses before anything is sent. A plain Error on purpose: the
+ * electrical-fault dialog must not claim a wiring problem for a decision of our own.
+ */
+function refuse(message: string): never {
+    throw new Error(message);
+}
+
+const hex2 = (n: number) => `0x${n.toString(16).padStart(2, '0')}`;
+
+export function useDs2Link(options: {
+    onFailure?: (failure: LinkFailure) => void;
+    /**
+     * The module this session talks to, and the frames its own SGBD lets the app send it.
+     *
+     * Read at send time through a ref. The address is LATCHED at connect: a module picked while a
+     * link is open would otherwise retarget it under whatever the operator was looking at, which
+     * is why the picker is disabled while connected — and why every operation below re-checks it
+     * rather than trusting that it was.
+     */
+    target: ModuleProtocol;
+}) {
     const [state, setState] = useState<LinkState>('disconnected');
     const [mode, setMode] = useState<LinkMode>('vehicle');
     /**
@@ -242,6 +277,7 @@ export function useDs2Link(options: { onFailure?: (failure: LinkFailure) => void
     const [quickTest, setQuickTest] = useState<ErrorMemoryQuickTest | null>(null);
     const [adaptations, setAdaptations] = useState<AdaptationRead[] | null>(null);
     const [lastRun, setLastRun] = useState<JobRunResult | null>(null);
+    const [rawFaults, setRawFaults] = useState<RawFaultRead[] | null>(null);
 
     const transportKind = useTransportKind();
 
@@ -290,6 +326,30 @@ export function useDs2Link(options: { onFailure?: (failure: LinkFailure) => void
         onFailureRef.current = options.onFailure;
     });
     const transportKindRef = useRef<TransportKind | null>(null);
+
+    const targetRef = useRef(options.target);
+    useEffect(() => {
+        targetRef.current = options.target;
+    });
+    /** The address the open link was connected for. Null when there is no link. */
+    const sessionAddressRef = useRef<number | null>(null);
+
+    /**
+     * The module in session, and the link's view of it.
+     *
+     * Refuses when the target moved since connect: an operation must go to the module the link was
+     * opened for or nowhere. The bytes for every frame below come from `target`, so this is the
+     * one place an operation learns where it is sending.
+     */
+    const session = useCallback((link: Ds2Link): { target: ModuleProtocol; to: Ds2Target } => {
+        const target = targetRef.current;
+        const at = sessionAddressRef.current;
+        if (at === null || target.address !== at) {
+            refuse(`The module changed under an open link (connected to ${at === null ? 'none' : hex2(at)}, now ${hex2(target.address)}). Disconnect and connect again.`);
+        }
+        return { target, to: link.to(at) };
+    }, []);
+
     /** The last identity read, for the failure report — state would be stale inside the callbacks. */
     const identRef = useRef<{ hex: string; length: number } | null>(null);
     const notifyFailure = useCallback(
@@ -319,18 +379,22 @@ export function useDs2Link(options: { onFailure?: (failure: LinkFailure) => void
                 // PRACTICE deliberately does not go through createDs2Transport: it wraps the
                 // simulated port in a REAL WebSerialTransport, so the simulator drives the actual
                 // transport class rather than a mock of it.
+                const address = targetRef.current.address;
                 const selected =
                     nextMode === 'practice'
                         ? {
                               kind: 'web-serial' as const,
                               transport: new WebSerialTransport({
-                                  requestPort: simulatedPort(practiceEcu()).requestPort,
+                                  requestPort: simulatedPort(practiceBus([address])).requestPort,
                               }),
                           }
                         : createDs2Transport();
+                // The link's own address is the DME's only because it has to be something; every
+                // operation below names the module it sends to (`session`).
                 const link = new Ds2Link(selected.transport, { address: Ds2Address.DME });
                 await link.connect();
                 linkRef.current = link;
+                sessionAddressRef.current = address;
                 transportRef.current = selected.transport;
                 transportKindRef.current = selected.kind;
                 modeRef.current = nextMode;
@@ -339,12 +403,13 @@ export function useDs2Link(options: { onFailure?: (failure: LinkFailure) => void
                 append(
                     'info',
                     nextMode === 'practice'
-                        ? 'PRACTICE mode — no vehicle attached. Values are synthetic.'
-                        : `Connected over ${TRANSPORT_LABEL[selected.kind]} at 9600 8E1.`,
+                        ? `PRACTICE mode — no vehicle attached. Values are synthetic. Module ${targetRef.current.moduleId} at ${hex2(address)}.`
+                        : `Connected over ${TRANSPORT_LABEL[selected.kind]} at 9600 8E1. Module ${targetRef.current.moduleId} at ${hex2(address)}.`,
                 );
             } catch (e) {
                 linkRef.current = null;
                 transportRef.current = null;
+                sessionAddressRef.current = null;
                 setState('disconnected');
                 // Closing the picker is not a failure. Turning "changed their mind" into a red
                 // error line is how people learn to ignore the red line that means something.
@@ -368,6 +433,7 @@ export function useDs2Link(options: { onFailure?: (failure: LinkFailure) => void
         linkRef.current = null;
         transportRef.current = null;
         transportKindRef.current = null;
+        sessionAddressRef.current = null;
         // Back to the strict default. A ref left reading 'practice' after the
         // link is gone would greet the next connection with the wrong answer if
         // anything ever read it before connect() writes it.
@@ -408,8 +474,10 @@ export function useDs2Link(options: { onFailure?: (failure: LinkFailure) => void
     const readIdent = useCallback(
         () =>
             run('Read identity', async (link) => {
-                append('tx', `IDENT (control 0x${IDENT_REQUEST.control.toString(16)})`);
-                const frame = await link.exchangeWithRetry(IDENT_REQUEST.control, IDENT_REQUEST.payload);
+                const { target, to } = session(link);
+                const ident = target.ident ?? refuse(`${target.moduleId}: its SGBD carries no short IDENT frame; nothing is sent.`);
+                append('tx', `IDENT ${ident.hex} (${ident.source})`);
+                const frame = await to.exchangeWithRetry(ident.control, ident.payload);
                 link.assertPositive(frame, 'Identity read');
                 append('rx', toHex(frame.payload));
                 const value = { hex: toHex(frame.payload), length: frame.payload.length };
@@ -417,14 +485,33 @@ export function useDs2Link(options: { onFailure?: (failure: LinkFailure) => void
                 setIdent(value);
                 return value;
             }),
-        [append, run],
+        [append, run, session],
     );
 
     const readFaults = useCallback(
         () =>
             run('Read fault memory', async (link) => {
+                const { target, to } = session(link);
+                if (target.decoder !== 'mss54') {
+                    // No decoder: send the module's own FS_LESEN frames and keep what came back.
+                    if (target.faults.length === 0) {
+                        refuse(`${target.moduleId}: its SGBD carries no short fault-read frame; nothing is sent.`);
+                    }
+                    const out: RawFaultRead[] = [];
+                    for (const f of target.faults) {
+                        append('tx', `FS ${f.hex} (${f.source})`);
+                        const frame = await to.exchangeWithRetry(f.control, f.payload);
+                        link.assertPositive(frame, `Fault read ${f.hex}`);
+                        append('rx', `${frame.payload.length} bytes — no decoder for this module`);
+                        out.push({ request: f.hex, response: toHex(frame.payload), source: f.source });
+                    }
+                    setFaults(null);
+                    setQuickTest(null);
+                    setRawFaults(out);
+                    return null;
+                }
                 append('tx', 'FS quicktest (control 0x04, arg 0x00)');
-                const q = await link.exchangeWithRetry(
+                const q = await to.exchangeWithRetry(
                     ERROR_MEMORY_QUICKTEST.control,
                     ERROR_MEMORY_QUICKTEST.payload,
                 );
@@ -434,17 +521,18 @@ export function useDs2Link(options: { onFailure?: (failure: LinkFailure) => void
                 append('rx', `quicktest status 0x${parsedQuick.status.toString(16)}`);
 
                 append('tx', 'FS entries (control 0x04, arg 0x01)');
-                const e = await link.exchangeWithRetry(
+                const e = await to.exchangeWithRetry(
                     ERROR_MEMORY_ENTRIES.control,
                     ERROR_MEMORY_ENTRIES.payload,
                 );
                 link.assertPositive(e, 'Fault entries');
                 const entries = parseErrorMemoryEntries(e, 'errorMemory');
                 append('rx', `${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}`);
+                setRawFaults(null);
                 setFaults(entries);
                 return entries;
             }),
-        [append, run],
+        [append, run, session],
     );
 
     /**
@@ -470,12 +558,14 @@ export function useDs2Link(options: { onFailure?: (failure: LinkFailure) => void
     const readAdaptations = useCallback(
         () =>
             run('Read adaptations', async (link) => {
+                const { target, to } = session(link);
+                if (target.decoder !== 'mss54') refuse(`${target.moduleId}: no adaptation-block decoder; nothing is sent.`);
                 const out: AdaptationRead[] = [];
                 for (const block of MSS54_ADAPTATION_BLOCKS) {
                     const req = liveBlockRequest(block.selection);
                     append('tx', `Adaptation block ${block.selection} (control 0x${req.control.toString(16)})`);
                     try {
-                        const frame = await link.exchangeWithRetry(req.control, req.payload);
+                        const frame = await to.exchangeWithRetry(req.control, req.payload);
                         link.assertPositive(frame, `Adaptation block ${block.selection}`);
                         const need = adaptationBlockMinLength(block);
                         const short = frame.payload.length < need;
@@ -507,7 +597,7 @@ export function useDs2Link(options: { onFailure?: (failure: LinkFailure) => void
                 setAdaptations(out);
                 return out;
             }),
-        [append, run],
+        [append, run, session],
     );
 
     /**
@@ -530,12 +620,20 @@ export function useDs2Link(options: { onFailure?: (failure: LinkFailure) => void
     const runRead = useCallback(
         (jobId: string, hex: string) =>
             run(`Run ${jobId}`, async (link) => {
+                const { target, to } = session(link);
                 const bytes = telegramBytes(hex);
                 if (!bytes) {
                     // A plain Error on purpose: this is the APP refusing, not
                     // the link failing, and the electrical-fault dialog must not
                     // claim a wiring problem for a bug in our own data.
                     throw new Error(`${jobId}: telegram is not a well-formed frame: ${hex}`);
+                }
+                // The frame names its module in its first byte, and it goes to that module or nowhere.
+                // The link used to strip the byte and send the rest to the DME.
+                if (bytes[0] !== target.address) {
+                    throw new Error(
+                        `${jobId}: the telegram is addressed to ${hex2(bytes[0])}, the link is talking to ${target.moduleId} at ${hex2(target.address)}`,
+                    );
                 }
                 const control = bytes[2];
                 // Belt and braces. If this fires on a vehicle, the gate above it
@@ -550,7 +648,7 @@ export function useDs2Link(options: { onFailure?: (failure: LinkFailure) => void
                 if (refusal) throw new Error(`${jobId}: ${refusal}`);
                 const payload = bytes.slice(3, bytes.length - 1);
                 append('tx', `${jobId}: ${hex}`);
-                const frame = await link.exchangeWithRetry(control, payload);
+                const frame = await to.exchangeWithRetry(control, payload);
                 link.assertPositive(frame, jobId);
                 const result: JobRunResult = {
                     jobId,
@@ -564,7 +662,7 @@ export function useDs2Link(options: { onFailure?: (failure: LinkFailure) => void
                 setLastRun(result);
                 return result;
             }),
-        [append, run],
+        [append, run, session],
     );
 
     /**
@@ -581,18 +679,25 @@ export function useDs2Link(options: { onFailure?: (failure: LinkFailure) => void
     const clearFaults = useCallback(
         () =>
             run('Clear fault memory', async (link) => {
+                const { target, to } = session(link);
+                // Built from the protocol, and sent only where the module's own FS_LOESCHEN sends the
+                // same bytes — the two derivations have to agree before this goes anywhere.
                 const { control, payload } = clearFaultsCommand();
-                append('tx', `Clear fault memory (control 0x${control.toString(16)})`);
-                const frame = await link.exchangeWithRetry(control, payload);
+                if (!target.clear || target.clear.control !== control || target.clear.payload.length !== payload.length) {
+                    refuse(`${target.moduleId}: its SGBD does not clear fault memory with this frame; nothing is sent.`);
+                }
+                append('tx', `Clear fault memory ${target.clear.hex} (${target.clear.source})`);
+                const frame = await to.exchangeWithRetry(control, payload);
                 link.assertPositive(frame, 'Clear fault memory');
                 append('info', 'fault memory cleared — freeze frames are gone with it');
                 // The displayed faults are now a claim about a memory that no
                 // longer holds them. Drop them and make the operator re-read.
                 setFaults(null);
                 setQuickTest(null);
+                setRawFaults(null);
                 return true;
             }),
-        [append, run],
+        [append, run, session],
     );
 
     const startLog = useCallback(
@@ -603,6 +708,15 @@ export function useDs2Link(options: { onFailure?: (failure: LinkFailure) => void
         ) => {
             const link = linkRef.current;
             if (!link || pollingRef.current) return;
+            let to: Ds2Target;
+            try {
+                const s = session(link);
+                if (s.target.decoder !== 'mss54') refuse(`${s.target.moduleId}: no live-block layout; nothing is recorded.`);
+                to = s.to;
+            } catch (e) {
+                failWith(e);
+                return;
+            }
             const { blocks } = planBlockReads(channels);
             if (blocks.length === 0) return;
             const wanted = new Set<ChannelId>(channels);
@@ -645,7 +759,7 @@ export function useDs2Link(options: { onFailure?: (failure: LinkFailure) => void
                             let frame: Ds2Frame | null = null;
                             for (let attempt = 0; attempt < 3 && frame === null; attempt++) {
                                 try {
-                                    frame = await link.exchangeWithRetry(req.control, req.payload, {
+                                    frame = await to.exchangeWithRetry(req.control, req.payload, {
                                         attempts: 2,
                                     });
                                 } catch (e) {
@@ -693,7 +807,7 @@ export function useDs2Link(options: { onFailure?: (failure: LinkFailure) => void
                 }
             })();
         },
-        [append, failWith, notifyFailure],
+        [append, failWith, notifyFailure, session],
     );
 
     const stopLog = useCallback(() => {
@@ -704,7 +818,14 @@ export function useDs2Link(options: { onFailure?: (failure: LinkFailure) => void
     // human reading values with the bus otherwise silent.
     useEffect(() => {
         const id = setInterval(() => {
-            void linkRef.current?.keepAlive();
+            // To the module in session, and only where there is evidence it takes one: the MSS54
+            // (measured) and modules whose own SGBD has DIAGNOSE_AUFRECHT. SMG II and DSC have no
+            // such job, and a frame they never send themselves is not ours to send every 2 s.
+            const link = linkRef.current;
+            const at = sessionAddressRef.current;
+            const target = targetRef.current;
+            if (!link || at === null || target.address !== at || !target.keepAlive) return;
+            void link.to(at).keepAlive();
         }, KEEP_ALIVE_INTERVAL_MS);
         return () => clearInterval(id);
     }, []);
@@ -752,6 +873,7 @@ export function useDs2Link(options: { onFailure?: (failure: LinkFailure) => void
         ident,
         faults,
         quickTest,
+        rawFaults,
         adaptations,
         transportKind,
         connect,

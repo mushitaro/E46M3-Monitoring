@@ -107,10 +107,29 @@ export const DS2_DEFAULT_TIMINGS: Ds2Timings = {
  */
 
 export interface Ds2LinkOptions {
-    /** DS2 slave address of the module in session (Ds2Address.DME / SMG / DSC). */
+    /**
+     * The address the link's own methods talk to. Every module on the K-line hears every frame
+     * and only the addressed one answers, so one link serves them all: `to(address)` reaches any
+     * other module through the same gate.
+     */
     address: number;
     timings?: Partial<Ds2Timings>;
     timing?: LinkTiming | null;
+}
+
+/**
+ * One module on the bus, reached through a link's single gate.
+ *
+ * A second `Ds2Link` on the same transport would be a second gate, and two gates on one wire is
+ * the interleaving the gate exists to prevent. So a module other than the link's own is a VIEW of
+ * the link, not another link.
+ */
+export interface Ds2Target {
+    readonly address: number;
+    exchange(control: number, payload?: Uint8Array, timeoutMs?: number): Promise<Ds2Frame>;
+    exchangeWithRetry(control: number, payload?: Uint8Array, options?: RetryOptions): Promise<Ds2Frame>;
+    keepAlive(): Promise<boolean>;
+    endDiagnosticSession(): Promise<boolean>;
 }
 
 export interface RetryOptions {
@@ -190,11 +209,36 @@ export class Ds2Link {
         return this.gateHeld;
     }
 
+    // ---- other modules ------------------------------------------------------
+
+    /**
+     * The module at `address`, through this link's gate.
+     *
+     * The link used to hold one address for its whole life, and the app built it with the DME's
+     * — so a fault read or a job run for SMG II or DSC went out to 0x12 with the other module's
+     * payload. Naming the module at every exchange is what makes that impossible to do quietly:
+     * a caller that wants another module has to say which.
+     */
+    to(address: number): Ds2Target {
+        if (!Number.isInteger(address) || address < 0 || address > 0xff) {
+            throw new RangeError(`DS2 address out of range: ${address}`);
+        }
+        return {
+            address,
+            exchange: (control, payload = new Uint8Array(0), timeoutMs) =>
+                this.withGate(() => this.exchangeInner(address, control, payload, timeoutMs)),
+            exchangeWithRetry: (control, payload = new Uint8Array(0), options = {}) =>
+                this.withGate(() => this.exchangeWithRetryInner(address, control, payload, options)),
+            keepAlive: () => this.keepAliveAt(address),
+            endDiagnosticSession: () => this.endDiagnosticSessionAt(address),
+        };
+    }
+
     // ---- exchanges ----------------------------------------------------------
 
     /** Gated single exchange. */
     async exchange(control: number, payload: Uint8Array = new Uint8Array(0), timeoutMs?: number): Promise<Ds2Frame> {
-        return this.withGate(() => this.exchangeInner(control, payload, timeoutMs));
+        return this.withGate(() => this.exchangeInner(this.address, control, payload, timeoutMs));
     }
 
     /**
@@ -207,19 +251,20 @@ export class Ds2Link {
      * have been an ECU reset.
      */
     private async exchangeInner(
+        address: number,
         control: number,
         payload: Uint8Array,
         timeoutMs = this.timings.responseTimeoutMs,
     ): Promise<Ds2Frame> {
         this.timing?.exchangeStart(now());
-        const request = buildDs2Frame(this.address, control, payload);
+        const request = buildDs2Frame(address, control, payload);
         await this.transport.write(request);
 
         // On a half-duplex bus the ECU echoes our request back.
         const echo = await this.transport.readExact(request.length, timeoutMs);
         this.timing?.echoComplete(now());
         if (!bytesEqual(echo, request)) {
-            const analysis = classifyEchoMismatch(request, echo, this.address);
+            const analysis = classifyEchoMismatch(request, echo, address);
             const latched = this.transport.peekReadError();
             throw new Ds2Error(
                 'ECHO_MISMATCH',
@@ -244,11 +289,11 @@ export class Ds2Link {
         // Validate the address BEFORE trusting the length byte. Out of frame, a
         // bogus length would swallow the next response or stall a whole timeout.
         const header = await this.transport.readExact(2, timeoutMs);
-        if (header[0] !== this.address) {
+        if (header[0] !== address) {
             throw new Ds2Error(
                 'ADDRESS_MISMATCH',
-                `DS2 response out of frame: expected address 0x${this.address.toString(16)}, got ${toHex(header)}`,
-                { kind: 'desync', detail: { expected: this.address, got: header[0] } },
+                `DS2 response out of frame: expected address 0x${address.toString(16)}, got ${toHex(header)}`,
+                { kind: 'desync', detail: { expected: address, got: header[0] } },
             );
         }
         const declaredLength = header[1];
@@ -291,10 +336,11 @@ export class Ds2Link {
         payload: Uint8Array = new Uint8Array(0),
         options: RetryOptions = {},
     ): Promise<Ds2Frame> {
-        return this.withGate(() => this.exchangeWithRetryInner(control, payload, options));
+        return this.withGate(() => this.exchangeWithRetryInner(this.address, control, payload, options));
     }
 
     private async exchangeWithRetryInner(
+        address: number,
         control: number,
         payload: Uint8Array,
         options: RetryOptions,
@@ -317,10 +363,10 @@ export class Ds2Link {
                 const dirty = this.transport.hasReadError() || this.transport.bufferedLength() > 0;
                 await this.resyncInner();
                 if (attempt > 1 || dirty) await delay(this.timings.resyncSettleMs);
-                let frame = await this.exchangeInner(control, payload, timeoutMs);
+                let frame = await this.exchangeInner(address, control, payload, timeoutMs);
 
                 if (options.tolerateBusy) {
-                    frame = await this.pollWhileBusy(frame, control, payload, timeoutMs);
+                    frame = await this.pollWhileBusy(address, frame, control, payload, timeoutMs);
                 }
                 return frame;
             } catch (e) {
@@ -352,6 +398,7 @@ export class Ds2Link {
      * line faults.
      */
     private async pollWhileBusy(
+        address: number,
         frame: Ds2Frame,
         control: number,
         payload: Uint8Array,
@@ -361,7 +408,7 @@ export class Ds2Link {
         for (let i = 0; i < this.timings.busyPollAttempts; i++) {
             if (current.controlOrStatus !== Ds2Status.BUSY) return current;
             await delay(this.timings.busyPollIntervalMs);
-            current = await this.exchangeInner(control, payload, timeoutMs);
+            current = await this.exchangeInner(address, control, payload, timeoutMs);
         }
         return current;
     }
@@ -460,10 +507,15 @@ export class Ds2Link {
      * check. The next real operation reports the link's actual state.
      */
     async keepAlive(): Promise<boolean> {
+        return this.keepAliveAt(this.address);
+    }
+
+    private async keepAliveAt(address: number): Promise<boolean> {
         if (!this.connected || this.gateHeld) return false;
         try {
             return await this.withGate(async () => {
                 const frame = await this.exchangeInner(
+                    address,
                     Ds2Control.KEEP_ALIVE,
                     new Uint8Array(0),
                     this.timings.responseTimeoutMs,
@@ -489,10 +541,15 @@ export class Ds2Link {
      * prevent the port from closing.
      */
     async endDiagnosticSession(): Promise<boolean> {
+        return this.endDiagnosticSessionAt(this.address);
+    }
+
+    private async endDiagnosticSessionAt(address: number): Promise<boolean> {
         if (!this.connected) return false;
         try {
             return await this.withGate(async () => {
                 const frame = await this.exchangeInner(
+                    address,
                     Ds2Control.END_DIAGNOSTIC_MODE,
                     new Uint8Array(0),
                     this.timings.responseTimeoutMs,
@@ -519,6 +576,7 @@ export class Ds2Link {
 
     private async loginInner(accessLevel: number): Promise<'already-unlocked' | 'unlocked'> {
         const seedFrame = await this.exchangeInner(
+            this.address,
             Ds2Control.REQUEST_LOGIN_SEED,
             buildSeedRequestPayload(accessLevel),
         );
@@ -533,7 +591,7 @@ export class Ds2Link {
         }
         // The algorithm indexes the WHOLE frame, not the payload.
         const key = calculateLoginKey(accessLevel, frameBytes(seedFrame));
-        const keyFrame = await this.exchangeInner(Ds2Control.SEND_LOGIN_KEY, buildKeyPayload(key));
+        const keyFrame = await this.exchangeInner(this.address, Ds2Control.SEND_LOGIN_KEY, buildKeyPayload(key));
         this.assertPositive(keyFrame, 'Login key');
         return 'unlocked';
     }

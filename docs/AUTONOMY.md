@@ -66,7 +66,7 @@ service・tuning・session・trouble・autonomy。
 証拠は安い順に取る：故障とフリーズフレーム → 停車中の状態 → 停車中のライブ値 → 走行中の捕捉 →
 DME の RAM（master の窓だけ）→ 画面での手順。
 
-guide が名乗るツールは `src/lib/bridge/toolNames.ts` の一覧だけ（`guide.test.ts` が照合し、中継の
+guide が名乗るツールは `src/lib/bridge/tools.ts` の一覧だけ（`guide.test.ts` が照合し、中継の
 大きさの上限も検査する）。
 
 ### 例題 — 評価用で、Skill には書かない
@@ -88,7 +88,7 @@ guide が名乗るツールは `src/lib/bridge/toolNames.ts` の一覧だけ（`
 | 送るかを決めるのは `runGate.ts`（カタログの読取は `mayRun`、アプリが組む読取は `mayRunProtocolRead`）。ツールは K ラインに直接何も足さない | `src/lib/runGate.ts`、`src/lib/probe/executor.ts` | 済。実行器は全フレームでゲートに訊く（2026-10-27） |
 | モジュールには、そのモジュール自身の SGBD が送るものだけ | `src/lib/moduleProtocol.ts`、`link.to(address)` | 済（2026-10-27） |
 | 読取は、送る直前に DME の車速が 0 と読めたときだけ。読めなければ出さない | `useDs2Link` の事前読取、`lib/vehicleState.ts` | 済（2026-10-27） |
-| 走行中に送ってよい読取はオーナーが決める。アプリは格上げしない | `lib/ledger.ts` の `grantMovingOk` | 台帳は済。画面と Matrix の口は段 2–3 |
+| 走行中に送ってよい読取はオーナーが決める。アプリもアシスタントも格上げしない | `lib/ledger.ts` の `grantMovingOk`。`monitoring_ledger` は読むだけ | 台帳は済。認める画面はまだ |
 | 意味的失敗（0xB0 など）は再送しない。再送は transport の失敗だけ | `packages/ds2-core/src/link.ts` | 済（以前から） |
 | 読取以外は画面に置くだけ。実行は停車中に画面で人。DSC 油圧系は出さない | `mayRun`（非読取は拒否）、`monitoring_stage` | 拒否は済。stage は段 3 |
 | キルリストで任意のジョブを即時に止める | `public/kill-list.json`、`lib/ledger.ts`、SW は precache しない | 取得と適用は済。D1 からの配信は段 2 |
@@ -101,7 +101,7 @@ guide が名乗るツールは `src/lib/bridge/toolNames.ts` の一覧だけ（`
 | 0 | 宛先の修正、実測の車両状態、台帳の段階、キルリスト、試験とクラウドの足場 | 人 |
 | 1 | タブの実行器（`src/lib/probe/`）と CO-WORK（TUNER の `notebook/rules.ts` の形）。実行器・判定・委任の規則、端末の保存（`notebook/store.ts`）、PROBE（副操作で開始、ハブで STOP と一行）は済 | 人 |
 | 2 | ポリシーの改訂（成功した読取の送信・中継の catalog）→ D1 → 机の CLI | 人 |
-| 3 | Matrix MONITORING：ticket・同一オリジンのソケット・hello（中継 0.11.0 は作成済み、未配備） | 人 |
+| 3 | Matrix MONITORING：ticket・同一オリジンのソケット・hello・19 のツール・SESSIONS の ASSISTANT。タブ側は済（代わりの中継で確認）。中継 0.11.0 は作成済み、未配備 | 人 |
 | 4 | guide の全トピック、机と自律の Skill、例題と能力の表、自動マージの分類、配信、定期実行。guide・Skill・例題・能力の表は済 | 分類による |
 | 5 | テレグラムを SGBD の実行トレースで得る（`.prg` をデータ repo へ） | 人 |
 | 6 | 例題 1（DSC 低速カーブ）を一周 | — |

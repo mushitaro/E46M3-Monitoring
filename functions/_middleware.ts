@@ -34,4 +34,22 @@ const gate = createGate({
 
 // Pages hands the middleware its full EventContext; the gate reads four members of it and says so
 // in its own type, which is why this file needs no @cloudflare/workers-types.
-export const onRequest = (context: GateContext) => gate(context);
+//
+// One thing is added around the canonical gate: a WebSocket upgrade it admits (the assistant
+// bridge, functions/api/bridge/socket.ts) goes back to the browser as it came. The gate re-marks
+// every response it passes by rebuilding it, and a 101 does not survive being rebuilt — so the gate
+// is handed a stand-in to re-mark, and the real answer is returned instead. It is only ever the
+// answer of a request the gate let through: refused, the gate never calls next().
+export const onRequest = async (context: GateContext): Promise<Response> => {
+    let upgrade: Response | null = null;
+    const res = await gate({
+        ...context,
+        next: async () => {
+            const r = await context.next();
+            if (r.status !== 101) return r;
+            upgrade = r;
+            return new Response(null, { status: 204 });
+        },
+    });
+    return upgrade ?? res;
+};

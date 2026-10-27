@@ -26,9 +26,9 @@
   "cowork.store": { "status": "built", "what": "CO-WORK kept on the device, every write checked by the rules", "where": "src/lib/notebook/store.ts; Chromium 2026-10-27" },
   "cowork.sync": { "status": "missing", "what": "an investigation's CO-WORK sent to the owner's account and read by the desk", "where": "stage 2, after the policy (tsunagi-m3 #29)" },
   "records.sync": { "status": "missing", "what": "read records sent to the owner's account", "where": "stage 2, after the policy (tsunagi-m3 #29)" },
-  "bridge": { "status": "missing", "what": "Matrix MONITORING tools on the tab", "where": "stage 3; relay 0.11.0 built, not deployed" },
-  "stage.screen": { "status": "missing", "what": "monitoring_stage: put a non-read job on the screen", "where": "stage 3" },
-  "ledger.grant": { "status": "built", "what": "the owner clears a read for a moving car", "where": "src/lib/ledger.ts grantMovingOk; no screen or tool yet" },
+  "bridge": { "status": "built", "what": "Matrix MONITORING tools on the tab", "where": "src/lib/bridge/handlers.ts, functions/api/bridge/; against a stand-in relay 2026-10-27. Relay 0.11.0 built, not deployed" },
+  "stage.screen": { "status": "built", "what": "monitoring_stage: put a non-read job on the screen", "where": "src/hooks/useMonitoringFacade.ts" },
+  "ledger.grant": { "status": "missing", "what": "the owner clears a read for a moving car, on the screen", "where": "src/lib/ledger.ts grantMovingOk exists; the screen does not" },
   "service.run": { "status": "missing", "what": "actuator tests and procedures on a vehicle, run by a person on the screen", "where": "PLAN §4 safety mechanism first" },
   "tuning.handoff": { "status": "car", "what": "the map change itself, in TUNER", "where": "TUNER WORKS on the car" }
 }

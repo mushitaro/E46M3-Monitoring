@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { GUIDE_TOOL, MONITORING_TOOLS } from './toolNames';
+import { GUIDE_TOOL, MONITORING_TOOLS } from './tools';
 
 /**
  * The examples in scenarios/ evaluate the guide and the desk; they are not written into either.

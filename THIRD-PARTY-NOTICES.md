@@ -50,6 +50,15 @@ for how long it is kept, and the WORKS build links it from that dialog and from 
 header. `src/lib/features.ts` keeps all of it (`sessionSync`, `preview-only`) out of
 the production build, and its test pins that.
 
+The WORKS build has one more, off until the owner switches it on, on each device:
+ASSISTANT (2026-10-27). The tab then holds a WebSocket to `/api/bridge/socket` on its
+own origin, which passes it through to the TSUNAGI///Matrix relay (the operator's own
+Cloudflare Worker, `matrix-mcp.tsunagi.app`), so that the AI assistant the owner
+connected can ask it questions (`src/lib/bridge/`). The answers go to that AI service,
+which handles them under its own terms; no VIN is in them. The relay keeps the tab's
+declared tool list and guide, and not the questions or the answers. What is sent and
+to whom is said beside the switch, and in the privacy policy (#preview, アシスタント連携).
+
 ---
 
 ## 2. EdiabasLib — GPLv3, build-time only

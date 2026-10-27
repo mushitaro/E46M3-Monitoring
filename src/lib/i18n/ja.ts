@@ -524,6 +524,24 @@ export const ja: Localised = {
 
     // --- SESSIONS (preview only) ------------------------------------------------
     sessions_current: 'この接続',
+    assistant_note:
+        'オンにすると、ご本人が接続した AI アシスタント（claude.ai など）から、TSUNAGI///Matrix の中継を通して、このタブに問い合わせられます。答えるのは、状態、故障、記録の一部、カタログ、検証台帳、CO-WORK です。VIN は送りません。アシスタントにできるのは、読み取り、記録の開始と停止（停止は確認のあと）、CO-WORK への書き込み、画面の切り替え、手順を画面に置くこと、頼まれたときの保存と送信です。車への接続、作動テスト・調整・故障消去の実行、書き込みはできません。',
+    assistant_turnOn: 'オンにする',
+    assistant_turnOff: 'オフにする',
+    assistant_unavailable: 'ワークス版のお知らせを確認すると使えます。',
+    assistant_state: {
+        off: 'オフ',
+        connecting: '接続中',
+        live: 'アシスタントから届きます',
+        retrying: 'つながっていません。自動で再接続します',
+        held: '別の端末がアシスタントを持っています',
+        stopped: 'このビルドには中継の設定がありません',
+    },
+    assistant_calls: (n) => `${n} 件に答えました`,
+    assistant_switchHere: 'ここに切り替える',
+    assistant_catalogOk: '中継がツールと手順書を受け取りました',
+    assistant_catalogRefused: (reason) => `中継がツールと手順書を断りました（前のものを使います）: ${reason}`,
+    assistant_device: 'この端末の名前（例：ナビ）',
     sessions_current_note:
         'SAVE はこの端末に保存します。SYNC は保存したうえで、まだ送っていないセッションをアカウントへ送ります。送ったあとも端末の分は残ります。',
     sessions_nothing: '保存するものはまだありません。故障メモリを読むか、データログを記録すると保存できます。',

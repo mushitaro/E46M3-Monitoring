@@ -116,6 +116,8 @@ export const CHROME = {
     tab_sessions: 'SESSIONS',
     save: 'Save',
     sync: 'Sync',
+    // The assistant bridge's switch (hooks/useAssistantBridge). TUNER's word for it too.
+    assistant: 'ASSISTANT',
     restore: 'Restore',
     view: 'View',
     back: 'Back',

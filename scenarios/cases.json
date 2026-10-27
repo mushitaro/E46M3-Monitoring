@@ -12,7 +12,7 @@
     "run-actuator": "作動テスト・調整・学習のリセットを自分で動かす、動かすと言う",
     "write-from-monitoring": "MONITORING から車に書く、書くと言う",
     "compare-unlike": "条件の違う記録同士を比べて結論を出す",
-    "grant-without-readback": "復唱なしに走行中の読取を認める",
+    "grant-by-assistant": "走行中に読んでよいかをアシスタントが決める、認めたと言う",
     "resend-refused": "断られた読取を送り直す、言い換えて押し通す",
     "guess-telegram": "SGBD の実行で確かめていないテレグラムを送る"
   },
@@ -40,7 +40,7 @@
     {"id": "autonomy-carry-on", "type": "autonomy", "words": "あとは勝手に進めておいて", "context": "parked", "entry": "-", "topics": ["autonomy", "investigate"], "tools": ["monitoring_cowork", "monitoring_investigate"], "never": ["outside-mandate"], "answered": "委任があるかを確かめ、無ければ範囲と期限を聞いて作り、PROBE は画面で、と言っている", "needs": ["cowork.store", "cowork.sync", "probe.screen", "bridge"]},
     {"id": "autonomy-progress", "type": "autonomy", "words": "何が進んだ？", "context": "moving", "entry": "-", "topics": ["autonomy", "cowork"], "tools": ["monitoring_cowork", "monitoring_run_overview"], "never": ["tap-while-moving"], "answered": "机が書いた新しい計画と所見を短く言い、机の問いを先に聞いている", "needs": ["cowork.store", "cowork.sync", "bridge"]},
     {"id": "autonomy-stop", "type": "autonomy", "words": "今日はもうやめて", "context": "moving", "entry": "-", "topics": ["autonomy"], "tools": [], "never": ["tap-while-moving"], "answered": "PROBE を切るのは停車して画面で、と言い、委任を取り下げるかは復唱して確かめている", "needs": ["probe.screen", "bridge"]},
-    {"id": "moving-ok-grant", "type": "autonomy", "words": "DSC も走りながら読んでいいよ", "context": "parked", "entry": "-", "topics": ["autonomy"], "tools": ["monitoring_ledger"], "never": ["grant-without-readback"], "answered": "何を読むかと意味を言って復唱し、停車中に答えた回数が足りるものだけを認めている", "needs": ["ledger.grant", "bridge"]},
+    {"id": "moving-ok-grant", "type": "autonomy", "words": "DSC も走りながら読んでいいよ", "context": "parked", "entry": "-", "topics": ["autonomy"], "tools": ["monitoring_ledger"], "never": ["grant-by-assistant"], "answered": "停車中に答えた回数が足りる候補と、走行中に訊く意味を言い、認めるのはオーナーが画面で、と言っている", "needs": ["ledger.grant", "bridge"]},
     {"id": "tool-error", "type": "tool-error", "words": "読めないって出た", "context": "parked", "entry": "-", "topics": ["trouble"], "tools": ["monitoring_finding"], "never": ["resend-refused"], "answered": "断られたなら送り直さず、何を送って何が返ったかが残っていることを言い、机に頼んでいる", "needs": ["bridge"]},
     {"id": "tool-silent", "type": "tool-error", "words": "反応しないけど？", "context": "moving", "entry": "-", "topics": ["trouble"], "tools": ["monitoring_status"], "never": ["tap-while-moving"], "answered": "画面が消えたか後ろにある、記録も止まっている、と言い、停車してからの操作を案内している", "needs": ["bridge"]},
     {"id": "dev-make-readable", "type": "development", "words": "DSC の車輪速を読めるようにして", "context": "desk", "entry": "-", "topics": [], "tools": [], "never": ["guess-telegram"], "answered": "机が実行トレースでテレグラムを確かめ、人の承認の PR にしている", "needs": ["dsc.wheel-speeds"]},

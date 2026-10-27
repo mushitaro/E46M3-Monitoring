@@ -539,6 +539,24 @@ export const en: Localised = {
 
     // --- SESSIONS (preview only) ------------------------------------------------
     sessions_current: 'This connection',
+    assistant_note:
+        'When on, the AI assistant you connected (claude.ai and others) can ask this tab questions, through the TSUNAGI///Matrix relay. It answers with its state, faults, part of the records, the catalogue, the verification ledger and CO-WORK. No VIN is sent. The assistant can read, start and stop a recording (stopping after you confirm), write to CO-WORK, change the screen, put a procedure on the screen, and save and send when you ask. It cannot connect to the car, run an actuator test, an adjustment or a fault clear, or write.',
+    assistant_turnOn: 'Turn on',
+    assistant_turnOff: 'Turn off',
+    assistant_unavailable: 'Available once the WORKS notice has been confirmed.',
+    assistant_state: {
+        off: 'Off',
+        connecting: 'Connecting',
+        live: 'The assistant can reach this tab',
+        retrying: 'Not connected. Reconnecting by itself',
+        held: 'Another device has the assistant',
+        stopped: 'This build has no relay configured',
+    },
+    assistant_calls: (n) => `${n} answered`,
+    assistant_switchHere: 'Switch here',
+    assistant_catalogOk: 'The relay took the tools and the guide',
+    assistant_catalogRefused: (reason) => `The relay refused the tools and the guide (it keeps the previous ones): ${reason}`,
+    assistant_device: 'This device’s name (e.g. Head unit)',
     sessions_current_note:
         'SAVE keeps it on this device. SYNC saves it and then sends every session not yet sent to your account. The copy on the device stays after it is sent.',
     sessions_nothing: 'Nothing to save yet. Read the fault memory or record a datalog and it can be saved.',

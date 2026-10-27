@@ -1,7 +1,8 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { GUIDE_TOOL, MONITORING_TOOLS } from './toolNames';
+import { GUIDE_TOPICS, loadGuide } from './guide';
+import { GUIDE_TOOL, MONITORING_TOOLS, helloTools } from './tools';
 
 /**
  * The procedure the voice assistant follows (`monitoring_guide`), checked the way the relay will
@@ -34,9 +35,41 @@ describe('the guide fits what the relay accepts', () => {
         expect(total).toBeLessThanOrEqual(160 * 1024);
     });
 
+    it('declares exactly the topics there are', () => {
+        expect([...GUIDE_TOPICS].sort()).toEqual([...topics].sort());
+    });
+
+    it('loads as the hello carries it, with a version that follows the text', async () => {
+        const serve = (edit = '') =>
+            (async (url: string) => new Response(read(String(url).replace('./guide/', '')) + edit)) as unknown as typeof fetch;
+        const a = await loadGuide(serve());
+        const b = await loadGuide(serve(' '));
+        expect(a.index).toBe(index);
+        expect(Object.keys(a.topics).sort()).toEqual([...topics].sort());
+        expect(a.version).toMatch(/^[0-9a-f]{8}$/);
+        expect(b.version).not.toBe(a.version);
+    });
+
     it('lists exactly the topics there are, each with when to read it', () => {
         const listed = [...index.matchAll(/^- \*\*([a-z0-9-]+)\*\* — .+読むとき：/gm)].map((m) => m[1]);
         expect(listed.sort()).toEqual([...topics].sort());
+    });
+});
+
+describe('the tools fit what the relay accepts', () => {
+    it('keeps names, descriptions, schemas and the whole within its rules', () => {
+        const tools = helloTools();
+        expect(tools.length).toBeLessThanOrEqual(64);
+        expect(new Set(tools.map((t) => t.name)).size).toBe(tools.length);
+        for (const t of tools) {
+            expect(t.name).toMatch(/^monitoring_[a-z0-9_]{1,52}$/);
+            expect(t.name).not.toBe(GUIDE_TOOL);
+            expect(t.description.trim().length, t.name).toBeGreaterThan(0);
+            expect(bytes(t.description), t.name).toBeLessThanOrEqual(4 * 1024);
+            expect(t.inputSchema.type).toBe('object');
+            expect(['read', 'control']).toContain(t.scope);
+        }
+        expect(bytes(JSON.stringify(tools))).toBeLessThanOrEqual(64 * 1024);
     });
 });
 

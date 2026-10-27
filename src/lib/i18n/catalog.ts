@@ -182,6 +182,18 @@ export interface Localised {
     /** SESSIONS — the preview's saved sessions and SYNC (lib/features.ts `sessionSync`). */
     sessions_current: string;
     sessions_current_note: string;
+    /** ASSISTANT (chrome.ts) — the owner's assistant reaching this tab through TSUNAGI///Matrix. WORKS only. */
+    assistant_note: string;
+    assistant_turnOn: string;
+    assistant_turnOff: string;
+    /** When the switch cannot be used yet: the WORKS notice is not confirmed, or this is not the WORKS build. */
+    assistant_unavailable: string;
+    assistant_state: Record<'off' | 'connecting' | 'live' | 'retrying' | 'held' | 'stopped', string>;
+    assistant_calls: (n: number) => string;
+    assistant_switchHere: string;
+    assistant_catalogOk: string;
+    assistant_catalogRefused: (reason: string) => string;
+    assistant_device: string;
     sessions_nothing: string;
     sessions_onDevice: string;
     sessions_inAccount: string;

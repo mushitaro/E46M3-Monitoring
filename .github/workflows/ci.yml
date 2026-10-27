@@ -8,6 +8,10 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      # Whether a read token for the private data repository has been given. Secrets cannot be
+      # tested in an `if:` directly, so the answer is carried as a plain value.
+      HAVE_DATA_TOKEN: ${{ secrets.MONITORING_DATA_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -15,6 +19,24 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+
+      # The BMW-derived data (E46M3-Monitoring-data, private) is what the twelve data tests check
+      # the code against. Without the token those tests skip and say so (vitest.config.mts); with
+      # it they run. The public-tree check below reads tracked files only, and these paths are
+      # gitignored, so placing them cannot trip it. Add the secret once the data repository has been regenerated
+      # from the .prg files: its telegrams.json predates a5635d4, and 16 tests fail on it
+      # (docs/AUTONOMY.md §7).
+      - name: Private data
+        if: env.HAVE_DATA_TOKEN == 'true'
+        env:
+          TOKEN: ${{ secrets.MONITORING_DATA_TOKEN }}
+        run: |
+          git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/mushitaro/E46M3-Monitoring-data.git" ../E46M3-Monitoring-data
+          mkdir -p public/ecu-data tools/terms recordings
+          cp -r ../E46M3-Monitoring-data/ecu-data/. public/ecu-data/
+          cp -r ../E46M3-Monitoring-data/terms/. tools/terms/
+          cp -r ../E46M3-Monitoring-data/recordings/. recordings/
+          echo "SGBD_DUMP_DIR=$(cd ../E46M3-Monitoring-data/sgbd-dumps && pwd)" >> "$GITHUB_ENV"
 
       # First, and before anything is built: this repository is public, and nothing BMW-derived,
       # no dump, no VIN and no secret may be in it. The same check the pre-commit hook runs, here

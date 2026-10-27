@@ -11,7 +11,7 @@ import {
     telegramBytes,
 } from './runGate';
 import { EMPTY_LEDGER, type Ledger } from './ledger';
-import { bestTelegram, type TelegramTable } from './telegrams';
+import { bestTelegram, type Telegram, type TelegramTable } from './telegrams';
 import type { CatalogJob, EcuProfile } from './ecuCatalog';
 
 const DATA = path.resolve(import.meta.dirname, '..', '..', 'public', 'ecu-data');
@@ -29,7 +29,7 @@ const read = <T,>(f: string) => JSON.parse(readFileSync(path.join(DATA, f), 'utf
 const profile = (m: ModuleId) => read<EcuProfile>(`${m}.jobs.json`);
 const telegrams = (m: ModuleId) => read<TelegramTable>(`${m}.telegrams.json`);
 
-const ctx = (m: ModuleId) => ({ moduleId: m });
+const ctx = (m: ModuleId) => ({ moduleId: m, motion: 'parked' as const });
 
 describe('telegramBytes', () => {
     it('parses a well-formed frame', () => {
@@ -321,5 +321,37 @@ describe('PRACTICE answers everything the gate permits', () => {
             payload: new Uint8Array([0x00, 0x00, 0x01]),
         } as never);
         expect(answer?.status).toBe(Ds2Status.REJECTED);
+    });
+});
+
+describe('the car, as the gate sees it', () => {
+    const tel = (hex: string): Telegram => ({ hex, cmd: parseInt(hex.split(' ')[2], 16), cmdName: '', occurrences: 1, confidence: 'single' });
+    const READ: CatalogJob = {
+        id: 'STATUS_X',
+        class: 'read',
+        args: [],
+        results: [],
+    } as unknown as CatalogJob;
+    const T = tel('12 05 0b 03 1f');
+
+    it('lets a read go only to a stationary car, and says the link must measure that first', () => {
+        const v = mayRun(READ, T, EMPTY_LEDGER, { moduleId: 'mss54', motion: 'parked' });
+        expect(v).toMatchObject({ allowed: true, requires: 'parked' });
+        // Unknown is not a refusal at render time — the preflight at the wire decides — and it is
+        // never treated as parked: the requirement still says measure.
+        expect(mayRun(READ, T, EMPTY_LEDGER, { moduleId: 'mss54', motion: 'unknown' })).toMatchObject({ allowed: true, requires: 'parked' });
+    });
+
+    it('refuses a read on a moving car unless the owner cleared it for one', () => {
+        expect(mayRun(READ, T, EMPTY_LEDGER, { moduleId: 'mss54', motion: 'moving' })).toEqual({ allowed: false, reason: 'run_block_moving' });
+        const cleared: Ledger = { version: 1, records: { 'mss54:STATUS_X': { id: 'mss54:STATUS_X', status: 'moving-ok' } } };
+        expect(mayRun(READ, T, cleared, { moduleId: 'mss54', motion: 'moving' })).toMatchObject({ allowed: true, requires: 'none' });
+    });
+
+    it('refuses a withdrawn read whatever the car is doing', () => {
+        const killed: Ledger = { version: 1, records: { 'mss54:STATUS_X': { id: 'mss54:STATUS_X', status: 'revoked', reason: 'x' } } };
+        for (const motion of ['parked', 'moving', 'unknown'] as const) {
+            expect(mayRun(READ, T, killed, { moduleId: 'mss54', motion })).toEqual({ allowed: false, reason: 'run_block_revoked' });
+        }
     });
 });

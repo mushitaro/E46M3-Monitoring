@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { EMPTY_LEDGER, applyKillList, mayRunOnVehicle, type Ledger } from './ledger';
+import {
+    EMPTY_LEDGER,
+    MOVING_OK_MIN_OBSERVATIONS,
+    applyKillList,
+    grantMovingOk,
+    mayReadWhileMoving,
+    mayRunOnVehicle,
+    recordParkedObservation,
+    withdrawn,
+    type Ledger,
+} from './ledger';
 
 const ledgerWith = (records: Ledger['records']): Ledger => ({ version: 1, records });
 
@@ -75,5 +85,59 @@ describe('the kill list', () => {
             revoked: [{ id: 'unknown', reason: 'withdrawn' }],
         });
         expect(merged.records.unknown.status).toBe('revoked');
+    });
+});
+
+describe('reads observed on a stationary car', () => {
+    const id = 'dsc_e46:STATUS_LWS';
+    const seen = (n: number, telegram = '56 05 0b 05 5d') => ({ telegram, response: 'aa bb', at: `2026-10-27T10:0${n}:00Z`, ecuIdent: '01 02' });
+
+    it('are recorded as a fact, counted per bytes, and stay observed-parked however many there are', () => {
+        let l = EMPTY_LEDGER;
+        for (let i = 0; i < 5; i++) l = recordParkedObservation(l, id, seen(i));
+        expect(l.records[id]).toMatchObject({ status: 'observed-parked', observations: 5, ecuIdent: '01 02' });
+        expect(mayReadWhileMoving(l, id)).toBe(false);
+    });
+
+    it('start counting again when the bytes change — the observation was about the old bytes', () => {
+        let l = recordParkedObservation(EMPTY_LEDGER, id, seen(0));
+        l = recordParkedObservation(l, id, seen(1));
+        l = recordParkedObservation(l, id, seen(2, '56 05 0b 06 5e'));
+        expect(l.records[id]).toMatchObject({ observations: 1, telegram: '56 05 0b 06 5e' });
+    });
+
+    it('never argue with a withdrawal', () => {
+        const l: Ledger = { version: 1, records: { [id]: { id, status: 'revoked', reason: 'bad frame' } } };
+        expect(recordParkedObservation(l, id, seen(0))).toBe(l);
+        expect(withdrawn(l, id)?.reason).toBe('bad frame');
+    });
+
+    it('become moving-ok only by the owner’s grant, and only with enough of them', () => {
+        let l = EMPTY_LEDGER;
+        for (let i = 0; i < MOVING_OK_MIN_OBSERVATIONS - 1; i++) l = recordParkedObservation(l, id, seen(i));
+        const early = grantMovingOk(l, id, { who: 'owner', at: '2026-10-27T11:00:00Z' });
+        expect(early.refused).toMatch(/needed/);
+        expect(early.ledger).toBe(l);
+
+        l = recordParkedObservation(l, id, seen(9));
+        const granted = grantMovingOk(l, id, { who: 'owner', at: '2026-10-27T11:00:00Z' });
+        expect(granted.refused).toBeNull();
+        expect(mayReadWhileMoving(granted.ledger, id)).toBe(true);
+        expect(granted.ledger.records[id]).toMatchObject({ movingOkBy: 'owner' });
+
+        // A later observation keeps the grant.
+        const later = recordParkedObservation(granted.ledger, id, seen(8));
+        expect(later.records[id].status).toBe('moving-ok');
+    });
+
+    it('cannot be cleared from nothing', () => {
+        expect(grantMovingOk(EMPTY_LEDGER, id, { who: 'owner', at: 'x' }).refused).toMatch(/candidate/);
+    });
+
+    it('do not make a non-read runnable', () => {
+        let l = EMPTY_LEDGER;
+        for (let i = 0; i < 3; i++) l = recordParkedObservation(l, id, seen(i));
+        l = grantMovingOk(l, id, { who: 'owner', at: 'x' }).ledger;
+        expect(mayRunOnVehicle(l, id).allowed).toBe(false);
     });
 });

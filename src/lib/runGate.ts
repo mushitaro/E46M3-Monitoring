@@ -64,8 +64,9 @@
 
 import { Ds2Control } from '@tsunagi/ds2-core';
 import type { CatalogJob } from './ecuCatalog';
-import { mayRunOnVehicle, type Ledger } from './ledger';
+import { mayReadWhileMoving, mayRunOnVehicle, withdrawn, type Ledger } from './ledger';
 import { telegramIsCertain, type Telegram } from './telegrams';
+import type { Motion } from './vehicleState';
 
 /**
  * Control bytes that read and do not write.
@@ -97,11 +98,33 @@ export type RunBlockKey =
     | 'run_block_needsArgs'
     | 'run_block_notRead'
     | 'run_block_controlWrites'
-    | 'run_block_notVerified';
+    | 'run_block_notVerified'
+    | 'run_block_revoked'
+    | 'run_block_moving';
+
+/**
+ * What the link must measure immediately before the bytes go.
+ *
+ * `parked`: read the car's speed first and send only if it is measured zero (useDs2Link's
+ * preflight). `none`: the owner cleared this read for a moving car. The decision is made here;
+ * the measurement is made at the wire, because a verdict computed at render time is already
+ * stale by the time someone presses the button.
+ */
+export type SendRequirement = 'parked' | 'none';
 
 export type RunVerdict =
-    | { allowed: true; telegram: Telegram; control: number }
+    | { allowed: true; telegram: Telegram; control: number; requires: SendRequirement }
     | { allowed: false; reason: RunBlockKey };
+
+export interface RunContext {
+    moduleId: string;
+    /**
+     * Whether the car is standing still, as last measured (`lib/vehicleState`). Required: a caller
+     * that has not thought about it must not get a default. `unknown` is not a refusal here — the
+     * link measures before it sends — but it is never treated as `parked` either.
+     */
+    motion: Motion;
+}
 
 /**
  * Parses the extractor's hex into bytes.
@@ -135,7 +158,7 @@ export function mayRun(
     job: CatalogJob,
     telegram: Telegram | null,
     ledger: Ledger,
-    ctx: { moduleId: string },
+    ctx: RunContext,
 ): RunVerdict {
     if (job.class === 'programming') return { allowed: false, reason: 'run_block_programming' };
     // Same shape as the line above, and a different sentence. "we do not flash ECUs" and
@@ -183,7 +206,17 @@ export function mayRun(
         return { allowed: false, reason: 'run_block_controlWrites' };
     }
 
-    return { allowed: true, telegram, control };
+    // A withdrawal applies to reads too. The ledger used to be consulted only for non-reads, so a
+    // kill list could not stop a read whose frame turned out to be wrong.
+    const id = `${ctx.moduleId}:${job.id}`;
+    if (withdrawn(ledger, id)) return { allowed: false, reason: 'run_block_revoked' };
+
+    // The car. A read the owner cleared for a moving car goes whatever the speed; any other read
+    // goes only to a car measured stationary, and a car measured moving is refused here so the
+    // screen can say so. Unknown is left to the preflight at the wire.
+    if (mayReadWhileMoving(ledger, id)) return { allowed: true, telegram, control, requires: 'none' };
+    if (ctx.motion === 'moving') return { allowed: false, reason: 'run_block_moving' };
+    return { allowed: true, telegram, control, requires: 'parked' };
 }
 
 /**

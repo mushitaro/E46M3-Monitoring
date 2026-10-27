@@ -17,6 +17,7 @@ import type { Ledger } from '@/lib/ledger';
 import type { RunVerdict } from '@/lib/runGate';
 import { TEST_ID, tid } from '@/lib/testIds';
 import { bestTelegram, type TelegramTable } from '@/lib/telegrams';
+import type { Motion } from '@/lib/vehicleState';
 
 /**
  * ACTUATOR — the jobs that make the car do something.
@@ -43,6 +44,7 @@ export function ActuatorView({
     profile,
     telegrams,
     ledger,
+    motion,
     jobText,
     mode,
     arming,
@@ -51,6 +53,8 @@ export function ActuatorView({
     profile: EcuProfile;
     telegrams: TelegramTable | null;
     ledger: Ledger;
+    /** As last measured (lib/vehicleState) — the gate is asked with it. */
+    motion: Motion;
     jobText: JobTextTable | null;
     mode: ActuationMode;
     arming: Arming;
@@ -81,11 +85,12 @@ export function ActuatorView({
                 mayActuate(job, bestTelegram(telegrams, job.id), ledger, {
                     moduleId: profile.id,
                     mode,
+                    motion,
                 }),
             );
         }
         return out;
-    }, [jobs, telegrams, ledger, profile.id, mode]);
+    }, [jobs, telegrams, ledger, profile.id, mode, motion]);
 
     const runnableCount = useMemo(
         () => [...verdicts.values()].filter((v) => v.allowed).length,

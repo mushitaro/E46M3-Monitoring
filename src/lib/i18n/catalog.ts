@@ -1,5 +1,6 @@
 import type { Audience, JobClass, ResultDelivery, ResultRole, Actor, Termination, Risk } from '../ecuCatalog';
 import type { IrreversibleKey, OpKind, WhyKey } from '../jobOps';
+import type { RunBlockKey } from '../runGate';
 import type { Chrome } from './chrome';
 
 /**
@@ -289,16 +290,7 @@ export interface Localised {
     op_blocked_args: string;
     op_blocked_practice: string;
     /** Why a run control will not fire. One key per RunBlockKey — see runGate.ts. */
-    runBlock: Record<
-        | 'run_block_programming'
-        | 'run_block_identity'
-        | 'run_block_noTelegram'
-        | 'run_block_needsArgs'
-        | 'run_block_notRead'
-        | 'run_block_controlWrites'
-        | 'run_block_notVerified',
-        string
-    >;
+    runBlock: Record<RunBlockKey, string>;
     run_result: string;
     run_request: string;
     run_response: string;

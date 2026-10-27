@@ -31,6 +31,10 @@ const CACHE_PREFIX = 'e46m3mon-';
  *   version.json   build-id.mjs writes it for the deploy verifier, which fetches it from the
  *                  network on purpose. A cached copy would answer "which build is deployed" with
  *                  whatever was deployed last time, which is the one wrong answer that matters.
+ *   kill-list.json the central list of withdrawn jobs (lib/ledger). Its whole job is to change
+ *                  without a deploy reaching the worker first; a precached copy would keep a job
+ *                  runnable on the device after it had been withdrawn. Not precached, so the worker
+ *                  passes it to the network, and a failed fetch leaves the page's last list standing.
  *   *.map          source maps are for a debugger on a desk, not for a car
  *   .well-known/*  reserved for host-level verification files that the browser fetches outside
  *                  this scope. Nothing uses it today; the exclusion is here so that adding one
@@ -48,6 +52,7 @@ const PAGES_CONFIG = new Set(['/_headers', '/_routes.json', '/_redirects']);
 const isAsset = (url) =>
     url !== '/sw.js' &&
     url !== '/version.json' &&
+    url !== '/kill-list.json' &&
     !PAGES_CONFIG.has(url) &&
     !url.endsWith('.map') &&
     !url.startsWith('/.well-known/');

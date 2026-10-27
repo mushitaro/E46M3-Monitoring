@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { Ds2Address, Ds2Link, WebSerialTransport, simulatedPort } from '@tsunagi/ds2-core';
+import { blockBySelection, channelId, decodeLiveBlock, liveBlockRequest } from '@tsunagi/ds2-mss54';
 import { moduleProtocol } from './moduleProtocol';
 import { practiceBus } from './practiceEcu';
 import type { TelegramTable } from './telegrams';
 import { HAVE_SHIPPED_DATA, readShipped } from './testing/shipped';
 import type { EcuIndex } from './ecuCatalog';
+import { motionOf, vehicleStateFrom } from './vehicleState';
 
 /**
  * The frames a module's own SGBD gives the app, sent the way the app sends them, over PRACTICE.
@@ -65,4 +67,16 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('a fault read for SMG II and DSC goes to SMG
             );
         });
     }
+});
+
+describe('the speed preflight, against PRACTICE', () => {
+    it('reads a standing car from the simulated DME’s block 19', async () => {
+        const { link } = await practiceLink([0x56]);
+        const req = liveBlockRequest(19);
+        const frame = await link.to(0x12).exchangeWithRetry(req.control, req.payload);
+        const values: Record<string, number | null> = {};
+        for (const v of decodeLiveBlock(blockBySelection(19)!, frame)) values[channelId(19, v.symbol)] = v.value;
+        const now = Date.now();
+        expect(motionOf(vehicleStateFrom(values, now), now)).toBe('parked');
+    });
 });

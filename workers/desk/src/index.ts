@@ -19,6 +19,9 @@
  *   - **On record.** Every call answered leaves a row in monitoring_desk_audit, written before the
  *     answer goes.
  *
+ * This file is MONITORING's own part — what a mandate covers, what is withheld, what may be written.
+ * Who may call, the audit row and the answer's shape are door.ts, which every app's desk shares.
+ *
  * Routes:
  *   GET  /investigations                        the records whose mandate stands
  *   GET  /investigations/:record                its entries, runs (listed) and read records
@@ -30,6 +33,9 @@ import { blobBytes, type D1Database } from '../../../functions/_lib/sync';
 import { openAsks, type NotebookBody, type NotebookEntry } from '../../../src/lib/notebook/rules';
 import { redactDeep, redactResponse, redactRun, redactText } from '../../../src/lib/investigation/redact';
 import { delegatedWindows, deskProblem, standingMandates } from '../../../src/lib/investigation/share';
+import { audit, gunzipJson, json, tokenOf, type DeskTables } from './door';
+
+export { sha256Hex } from './door';
 
 export interface Env {
     RUNS_DB: D1Database;
@@ -37,36 +43,7 @@ export interface Env {
 
 const MAX_WRITE = 20;
 const MAX_READS = 2000;
-
-function json(body: unknown, status = 200): Response {
-    return new Response(JSON.stringify(body), {
-        status,
-        headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' },
-    });
-}
-
-export async function sha256Hex(s: string): Promise<string> {
-    const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
-    return Array.from(new Uint8Array(d), (b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-/** The token's id, if the bearer is one that stands now. */
-async function tokenOf(request: Request, db: D1Database, now: number): Promise<string | null> {
-    const m = /^Bearer ([A-Za-z0-9_-]{32,128})$/.exec(request.headers.get('authorization') ?? '');
-    if (!m) return null;
-    const row = await db
-        .prepare('SELECT id FROM monitoring_desk_tokens WHERE hash = ? AND revoked_at IS NULL AND expires_at > ?')
-        .bind(await sha256Hex(m[1]), now)
-        .first<{ id: string }>();
-    return row?.id ?? null;
-}
-
-async function audit(db: D1Database, now: number, token: string, action: string, record: string | null, detail: unknown): Promise<void> {
-    await db
-        .prepare('INSERT INTO monitoring_desk_audit (at, token, action, record, detail) VALUES (?,?,?,?,?)')
-        .bind(now, token, action, record, detail === null ? null : JSON.stringify(detail))
-        .run();
-}
+const TABLES: DeskTables = { tokens: 'monitoring_desk_tokens', audit: 'monitoring_desk_audit' };
 
 /**
  * The owner a record belongs to — the desk never says it, but every query needs it. A record id the
@@ -136,11 +113,6 @@ async function investigation(db: D1Database, d: { owner: string; entries: Notebo
     return { record, entries: redactDeep(d.entries), runs, reads, readsTruncated: truncated };
 }
 
-async function gunzipJson(bytes: Uint8Array): Promise<unknown> {
-    const stream = new Blob([bytes as BlobPart]).stream().pipeThrough(new DecompressionStream('gzip'));
-    return JSON.parse(await new Response(stream).text());
-}
-
 async function oneRun(db: D1Database, owner: string, record: string, n: number) {
     const row = await db.prepare('SELECT run_gz FROM monitoring_runs WHERE owner = ? AND record = ? AND n = ? ORDER BY ended_at DESC LIMIT 1').bind(owner, record, n).first<{ run_gz: unknown }>();
     const bytes = row ? blobBytes(row.run_gz) : null;
@@ -164,7 +136,7 @@ async function write(db: D1Database, d: { owner: string; entries: NotebookEntry[
 /** The whole Worker, with its clock passed in so a test can hold it still. */
 export async function handle(request: Request, env: Env, now = Date.now()): Promise<Response> {
     const db = env.RUNS_DB;
-    const token = await tokenOf(request, db, now);
+    const token = await tokenOf(request, db, TABLES, now);
     if (!token) return json({ error: 'unauthorized' }, 401);
 
     const parts = new URL(request.url).pathname.split('/').filter(Boolean);
@@ -172,7 +144,7 @@ export async function handle(request: Request, env: Env, now = Date.now()): Prom
 
     if (parts.length === 1 && request.method === 'GET') {
         const out = await list(db, now);
-        await audit(db, now, token, 'list', null, { records: out.length });
+        await audit(db, TABLES, now, token, 'list', null, { records: out.length });
         return json({ investigations: out });
     }
 
@@ -180,20 +152,20 @@ export async function handle(request: Request, env: Env, now = Date.now()): Prom
     if (!RECORD.test(record)) return json({ error: 'not_found' }, 404);
     const d = await delegated(db, record, now);
     if (!d) {
-        await audit(db, now, token, 'refused', record, { reason: 'not delegated now' });
+        await audit(db, TABLES, now, token, 'refused', record, { reason: 'not delegated now' });
         return json({ error: 'not_delegated', reason: 'No mandate of this record stands now; the desk reads only an investigation handed over.' }, 404);
     }
 
     if (parts.length === 2 && request.method === 'GET') {
         const out = await investigation(db, d, record, now);
-        await audit(db, now, token, 'read', record, { entries: out.entries.length, runs: out.runs.length, reads: out.reads.length });
+        await audit(db, TABLES, now, token, 'read', record, { entries: out.entries.length, runs: out.runs.length, reads: out.reads.length });
         return json(out);
     }
     if (parts.length === 4 && parts[2] === 'runs' && request.method === 'GET') {
         const n = Number(parts[3]);
         if (!Number.isInteger(n) || n < 1) return json({ error: 'not_found' }, 404);
         const run = await oneRun(db, d.owner, record, n);
-        await audit(db, now, token, 'run', record, { n, found: run !== null });
+        await audit(db, TABLES, now, token, 'run', record, { n, found: run !== null });
         return run ? json(run) : json({ error: 'not_found' }, 404);
     }
     if (parts.length === 3 && parts[2] === 'entries' && request.method === 'POST') {
@@ -204,7 +176,7 @@ export async function handle(request: Request, env: Env, now = Date.now()): Prom
             return json({ error: 'Body is not JSON.' }, 400);
         }
         const r = await write(db, d, record, now, body);
-        await audit(db, now, token, r.status === 200 ? 'write' : 'write-refused', record, r.status === 200 ? { ids: (r.body as { ids: string[] }).ids } : r.body);
+        await audit(db, TABLES, now, token, r.status === 200 ? 'write' : 'write-refused', record, r.status === 200 ? { ids: (r.body as { ids: string[] }).ids } : r.body);
         return json(r.body, r.status);
     }
     return json({ error: 'not_found' }, 404);

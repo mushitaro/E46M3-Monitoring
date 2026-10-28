@@ -18,17 +18,21 @@
 // ============================================================================
 import { createHash, randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import path from 'node:path';
 
 const DB = 'tsunagi-m-preview-runs';
 const DAY = 86_400_000;
+/** wrangler's own entry script, run by this Node with no shell between: `npx` needs one on
+ *  Windows, and cmd splits the SQL at its spaces, so wrangler never sees the statement. */
+const WRANGLER = path.join(path.dirname(createRequire(import.meta.url).resolve('wrangler/package.json')), 'bin', 'wrangler.js');
 
 function d1(sql) {
-    const out = execFileSync('npx', ['wrangler', 'd1', 'execute', DB, '--remote', '--json', '--command', sql], {
+    const out = execFileSync(process.execPath, [WRANGLER, 'd1', 'execute', DB, '--remote', '--json', '--command', sql], {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'inherit'],
-        shell: process.platform === 'win32',
     });
-    return JSON.parse(out)[0]?.results ?? [];
+    return JSON.parse(out.slice(out.indexOf('[')))[0]?.results ?? [];
 }
 
 const fail = (msg) => {

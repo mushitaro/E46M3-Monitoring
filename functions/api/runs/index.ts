@@ -1,5 +1,6 @@
 import { MAX_ROW_BYTES, conflict, json, ownerOf, rowBytes, tooLarge, unauthorized } from '../../_owner-gate/owner';
 import { recordEntries } from '../../_lib/investigation';
+import { wakeDesk } from '../../_lib/wake';
 import { type SyncContext, gzipField, isRowId, optInt, optText } from '../../_lib/sync';
 import { sendableRun } from '../../../src/lib/investigation/share';
 
@@ -95,5 +96,7 @@ export const onRequestPost = async (ctx: SyncContext): Promise<Response> => {
     `).bind(...values).run();
 
     if (res.meta.changes === 0) return conflict();
+    // A run is what the plan was waiting for: the loop reads it now.
+    ctx.waitUntil?.(wakeDesk(ctx.env, owner.id, body.record, `run ${n}`));
     return json({ id: body.id, storedBytes: bytes });
 };

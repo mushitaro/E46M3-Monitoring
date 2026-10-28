@@ -20,8 +20,12 @@
 
 - **タブ**は、机が置いた計画の「起きたら取る」項目を自分で捕まえる。読取だけ。運転を指示しない。
   ネットが切れても走り、記録は後で上がる。
-- **机**は定期起動の Claude Code。記録を読み、仮説を確定・否定し、次の計画（再試験・別モジュール）か、
-  道具の穴（拒否・未知のテレグラム・デコード不明）を開発タスクにして PR まで進める。
+- **机**は Claude Code の自律ループ。頼まれた瞬間に起きる：WORKS が委任・机への問い・問いへの答え・PROBE の
+  実行を D1 に入れると、`functions/_lib/wake.ts` がループの定期実行を API で起こす（合図は記録の id だけ。
+  一つの記録は 10 分に 1 回、全体で 1 時間に 20 回まで）。定期の巡回は取りこぼしと CI・レビュー・例題の穴を
+  拾う予備。記録を読み、仮説を確定・否定し、次の計画（再試験・別モジュール）か、道具の穴（拒否・未知の
+  テレグラム・デコード不明）を開発タスクにして PR まで進める。承認の要らない直しは、マージされるとすぐ
+  配信される（`autonomy-merge.yml` が `deploy-works.yml` を呼ぶ）。
 - **例題**は受入テスト。各例題が要る能力を宣言し、例題 × 能力の表が「完成」の物差しになる。
 
 ## 2. TUNER の作法から引き継ぐもの、足すもの
@@ -125,23 +129,35 @@ guide が名乗るツールは `src/lib/bridge/tools.ts` の一覧だけ（`guid
 ## 6. 運営者に一度だけ頼むこと
 
 済んだもの（2026-10-28）：ポリシーの公開（tsunagi-m3 #29）、段 0–4 のマージ（#1）、`.prg` と SIM（データ
-repo #1）、中継 0.11.0 の配備と MONITORING 用の秘密、MONITORING WORKS の配信（build 141.5323e48、本物の中継で
-hello_accepted まで確認）、定期実行（専用セッション「MONITORING 自律ループ」を 3 時間ごとに起こす）。GitHub の
-ラベル・自動マージ・ブランチ保護は `autonomy.yml` と `autonomy-merge.yml` が要らなくした。
+repo #1）、中継 0.11.0 の配備と MONITORING 用の秘密、定期実行（専用セッション「MONITORING 自律ループ」）。
+段 2 と机（#4・#5）：D1 の `0002`、WORKS の配信（build 143.c0d3826）、机（`https://monitoring-desk.pages.dev`、
+Pages の別プロジェクト。Worker の `workers.dev` はアカウント名が URL に出るので使わない）、机のトークン
+（`loop`、2026-11-27 まで）とクラウド環境の `MONITORING_DESK_URL`・`MONITORING_DESK_TOKEN`・ネットワークの許可。
+GitHub のラベル・自動マージ・ブランチ保護は `autonomy.yml` と `autonomy-merge.yml` が要らなくした。
+
+机のトークンは期限（既定 30 日）の前に `npm run desk:token -- issue loop` で新しいものを出し、クラウド環境を
+差し替えてから、古いものを `revoke` する。Cloudflare の鍵はクラウドのセッションに置かない（運営者、2026-10-28）。
 
 残るもの：
 
-1. 段 2 と机の PR のレビュー（人の承認クラス）。
-2. PC で一度だけ、この順に（Cloudflare の鍵はクラウドのセッションに置かない。運営者、2026-10-28）：
-   1. `npx wrangler d1 migrations apply tsunagi-m-preview-runs --remote`（`0002`。WORKS を配信する前に）
-   2. 一度だけ `npx wrangler pages project create monitoring-desk --production-branch main`、それから
-      `npm run desk:deploy`（`https://monitoring-desk.pages.dev`。Worker の `workers.dev` はアカウント名が URL に出る
-      ので使わない。`tsunagi.app` の DNS は Cloudflare に無いので、そこに名前を付けるなら CNAME を足す）
-   3. `npm run desk:token -- issue loop`（出たトークンは一度しか表示されない。会話には貼らない）
-   4. クラウド環境の設定に `MONITORING_DESK_URL`（`https://monitoring-desk.pages.dev`）と `MONITORING_DESK_TOKEN` を
-      置き、ネットワークの許可に `monitoring-desk.pages.dev` を足す。期限（既定 30 日）の前に新しいものを出し、古いものを `revoke` する。
-3. ヘッドユニットで MONITORING WORKS を開き直し（新しいビルド）、お知らせ v2 に同意、SESSIONS → ASSISTANT を
+1. この変更（起こす口・すぐの配信・机の分け方）のレビュー（人の承認クラス）。
+2. ヘッドユニットで MONITORING WORKS を開き直し（新しいビルド）、お知らせ v2 に同意、SESSIONS → ASSISTANT を
    オン、端末に名前を付ける。走る前に CONNECT、計画があれば PROBE。
+3. 頼まれた瞬間に起こす口（`functions/_lib/wake.ts`）。この順に。トークンは会話には貼らない：
+   1. PC で `npx wrangler d1 migrations apply tsunagi-m-preview-runs --remote`（`0003`、起こした記録の表）。
+   2. claude.ai/code/routines → 「MONITORING 自律ループ」→ Edit → Trigger の「+」→ API → Generate token。
+      トークンは一度しか出ない。その定期実行を起こすことにしか使えない。
+   3. PC で `npx wrangler pages secret put LOOP_FIRE_TOKEN --project-name e46m3-monitoring-preview` を実行し、
+      聞かれたところに貼る。`LOOP_TRIGGER_ID` は `wrangler.jsonc` にある。トークンが無いうちは、起こす口は
+      何もしない（ループは定期の巡回だけ）。
+4. 承認の要らない直しを、マージしたらすぐ配信する鍵（`deploy-works.yml`）：
+   1. Cloudflare の API トークンを一つ：権限は Account → Cloudflare Pages: Edit だけ、期限つき。
+   2. GitHub → Settings → Environments → `works` を作り、Deployment branches を `main` だけにする。そこに
+      `CLOUDFLARE_API_TOKEN` と `CLOUDFLARE_ACCOUNT_ID`。
+   3. リポジトリの secret に `MONITORING_DATA_TOKEN`：fine-grained の読み取り専用（Contents: Read）で、
+      `E46M3-Monitoring-data` と `tsunagi-m3` の二つだけ、期限つき。配信は、データと、ゲートの正本との
+      一致の確認にこの二つを読む。
+5. 定期の巡回を予備（1 日 1〜2 回）に減らす。定期実行の設定を変えるので、運営者の一言で机が行う。
 
 ## 7. 机への道
 

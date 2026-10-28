@@ -1,5 +1,6 @@
 import { json, ownerOf, unauthorized } from '../../_owner-gate/owner';
 import { insertEntries, recordEntries } from '../../_lib/investigation';
+import { wakeDesk, wakeWorthy } from '../../_lib/wake';
 import { type SyncContext, isRowId } from '../../_lib/sync';
 import { addProblem, entryProblem, mergeEntries, type NotebookEntry } from '../../../src/lib/notebook/rules';
 import { sendableEntry } from '../../../src/lib/investigation/share';
@@ -74,6 +75,9 @@ export const onRequestPost = async (ctx: SyncContext): Promise<Response> => {
         const taken = await insertEntries(ctx.env.RUNS_DB, owner.id, accepted, now);
         for (const id of taken) refused.push({ id, reason: 'id_taken' });
         stored += accepted.length - taken.length;
+        // Something the loop is asked to do wakes it now, not at its next scheduled turn.
+        const asks = accepted.filter((e) => !taken.includes(e.id) && wakeWorthy(e, whole));
+        if (asks.length > 0) ctx.waitUntil?.(wakeDesk(ctx.env, owner.id, record, asks.map((e) => e.body.kind).join(', ')));
     }
     return json({ stored, refused });
 };

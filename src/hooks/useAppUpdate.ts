@@ -283,7 +283,7 @@ export async function reloadForUpdate({ probeMs = 4000, installMs = 60_000, swap
  * The check is one no-store GET of the entry document. Against a datalog's measured 0.3 ms of host
  * gap per sample it is not a cost worth trading a quarter hour of confusion for.
  */
-export function useAppUpdate(pollMs = 2 * 60 * 1000) {
+export function useAppUpdate(pollMs = 2 * 60 * 1000, enabled = true) {
     const [updateAvailable, setUpdateAvailable] = useState(false);
     /**
      * The build whose download has already been started, as its chunk set.
@@ -326,6 +326,8 @@ export function useAppUpdate(pollMs = 2 * 60 * 1000) {
     }, []);
 
     useEffect(() => {
+        // Off where the build may make no request of its own (production; see AppHeader).
+        if (!enabled) return;
         listenForPrecache();
         // Every setState in check() sits behind `await fetch`, so none of them runs during this
         // effect and the cascade the rule guards against cannot happen. The rule cannot see
@@ -340,7 +342,7 @@ export function useAppUpdate(pollMs = 2 * 60 * 1000) {
         const onShow = () => { if (document.visibilityState === 'visible') check(); };
         document.addEventListener('visibilitychange', onShow);
         return () => { clearInterval(t); document.removeEventListener('visibilitychange', onShow); };
-    }, [check, pollMs]);
+    }, [check, pollMs, enabled]);
 
     return updateAvailable;
 }

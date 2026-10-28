@@ -15,7 +15,8 @@ import { ControlPanel } from '@/components/shell/ControlPanel';
 import { Overlaid } from '@/components/shell/Overlaid';
 import { LABEL, TextButton } from '@/components/ui';
 import { useActuatorArming } from '@/hooks/useActuatorArming';
-import { reloadForUpdate, useUpdateRunning } from '@/hooks/useAppUpdate';
+import { reloadForUpdate, useAppUpdate, useUpdateRunning } from '@/hooks/useAppUpdate';
+import { ADOPT_AFTER_DISCONNECTED_MS, shouldAdoptBuild } from '@/lib/adoptBuild';
 import { useDs2Link, type ParkedObservation } from '@/hooks/useDs2Link';
 import { useHub } from '@/hooks/useHub';
 import { useProbe } from '@/hooks/useProbe';
@@ -420,6 +421,19 @@ export default function Home() {
     // build that sends: `next dev` shows SESSIONS but sends nothing, so it has nothing to disclose
     // and its dialog is production's.
     const preview = useBuildVariant() === 'preview';
+    // WORKS takes a newer build by itself, once nothing would be lost by the reload (lib/adoptBuild):
+    // the link down for a minute and nothing unsaved. Production makes no request of its own, so
+    // it never learns a build waits; there RELOAD is pressed, as before.
+    const updateWaiting = useAppUpdate(undefined, preview);
+    useEffect(() => {
+        if (!preview || !updateWaiting || link.state !== 'disconnected' || sessions.unsaved || reloading) return;
+        const since = Date.now();
+        const t = setTimeout(() => {
+            const go = shouldAdoptBuild({ waiting: true, linkState: 'disconnected', disconnectedSince: since, now: Date.now(), unsaved: false, updating: false });
+            if (go) void reloadForUpdate();
+        }, ADOPT_AFTER_DISCONNECTED_MS);
+        return () => clearTimeout(t);
+    }, [preview, updateWaiting, link.state, sessions.unsaved, reloading]);
     const noticeAcknowledged = useSyncExternalStore(
         previewNoticeStore.subscribe,
         previewNoticeStore.snapshot,
@@ -431,7 +445,7 @@ export default function Home() {
     // until switched on on this device). The facade is what the tools may reach — the screen's own
     // controls, never a run.
     const buildId = useBuildId();
-    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, tab, changeTab, selectJob });
+    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, tab, changeTab, selectJob, updateWaiting });
     const assistant = useAssistantBridge({
         allowed: preview && noticeAcknowledged,
         facade,

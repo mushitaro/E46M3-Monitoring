@@ -29,6 +29,9 @@ export interface D1Database {
 
 export interface Env {
     RUNS_DB: D1Database;
+    /** The autonomous loop's scheduled task, and its API-trigger token (functions/_lib/wake.ts). */
+    LOOP_TRIGGER_ID?: string;
+    LOOP_FIRE_TOKEN?: string;
 }
 
 export interface SyncContext {
@@ -36,6 +39,8 @@ export interface SyncContext {
     env: Env;
     data: Record<string, unknown>;
     params: Record<string, string | string[]>;
+    /** Pages keeps the function alive for a promise after the response has gone. */
+    waitUntil?(promise: Promise<unknown>): void;
 }
 
 /**

@@ -3,10 +3,17 @@ name: Deploy WORKS
 # Builds main and deploys it to e46m3-monitoring-preview with `npm run deploy`, which refuses
 # anything but a clean, pushed main with the data in place, and then reads the served build back.
 #
-# Inert until the secrets exist (docs/AUTONOMY.md §6): CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID
-# (Pages), MONITORING_DATA_TOKEN (the private data). A merge the loop's auto-class change makes is
-# done with the workflow token, which starts no other workflow — so this also runs every six hours
-# and deploys a main it has not deployed yet.
+# A change that needs no approval is on the head unit minutes after it merges (operator, 2026-10-28):
+# a person's merge pushes main, and the loop's own auto-class merge — made with the workflow token,
+# which starts no push-triggered workflow — dispatches this run itself (autonomy-merge.yml). The
+# six-hourly run is the net under both; a commit already deployed is skipped.
+#
+# Inert until the secrets exist (docs/AUTONOMY.md §6), all three in the `works` environment, whose
+# deployment branches are main alone — never repository secrets, which any branch's own copy of a
+# workflow could read before review: CLOUDFLARE_API_TOKEN (Cloudflare Pages: Edit, nothing else,
+# with an expiry), CLOUDFLARE_ACCOUNT_ID, and MONITORING_DATA_TOKEN, read-only on the two private
+# repositories a deploy needs — E46M3-Monitoring-data (the ECU data) and tsunagi-m3 (the canonical
+# owner gate, which `npm run deploy` checks this copy against before it uploads anything).
 #
 # verify-deploy reads the inside of the owner gate with an owner session, which a runner does not
 # have: it then ends "deployed, not verified" (exit 2), said here as a warning. The outside — the
@@ -29,6 +36,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: works
     env:
       HAVE_DEPLOY: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' && secrets.MONITORING_DATA_TOKEN != '' }}
     steps:
@@ -67,6 +75,9 @@ jobs:
           cp -r ../E46M3-Monitoring-data/ecu-data/. public/ecu-data/
           cp -r ../E46M3-Monitoring-data/terms/. tools/terms/
           cp -r ../E46M3-Monitoring-data/recordings/. recordings/
+          # The canonical owner gate, where scripts/gate-verify.mjs looks for it.
+          git clone --depth 1 --filter=blob:none --sparse "https://x-access-token:${TOKEN}@github.com/mushitaro/tsunagi-m3.git" ../tsunagi-m3
+          git -C ../tsunagi-m3 sparse-checkout set tools/owner-gate
 
       - name: Deploy
         if: env.HAVE_DEPLOY == 'true' && steps.done.outputs.cache-hit != 'true'

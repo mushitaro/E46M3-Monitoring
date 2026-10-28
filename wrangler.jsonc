@@ -41,6 +41,11 @@
   // `bridge_unavailable` — the switch for turning the bridge off for everyone without a code
   // change. BRIDGE_TICKET_SECRET is a Pages secret, never here.
   "vars": {
-    "BRIDGE_TAB_URL": "wss://matrix-mcp.tsunagi.app/tab"
+    "BRIDGE_TAB_URL": "wss://matrix-mcp.tsunagi.app/tab",
+    // The autonomous loop's scheduled task ("MONITORING 自律ループ"), which a delegated investigation
+    // wakes the moment it asks something (functions/_lib/wake.ts). Firing it also takes
+    // LOOP_FIRE_TOKEN, the task's API-trigger token — a Pages secret, never here; without it, the
+    // loop keeps only its scheduled turns.
+    "LOOP_TRIGGER_ID": "trig_01TrL8w14QvVQNPv64HA4TYW"
   }
 }

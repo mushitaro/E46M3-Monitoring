@@ -65,6 +65,16 @@ export interface Localised {
     disclaimer_lede: string;
     disclaimer_points: string[];
     /**
+     * The one exit from the disclaimer, in the reader's language — not a chrome verb. Pressing it
+     * IS the agreement, and the note under the points names it word for word, so the two have to be
+     * one string in one language (TUNER's 同意して続ける / Agree & Continue).
+     */
+    disclaimer_agree: string;
+    /** What the press means, said once, under the points. */
+    disclaimer_agreeNote: string;
+    /** The checkbox beside the answer (TUNER's 今後表示しない). Ticked, the agreement is kept. */
+    disclaimer_dontShow: string;
+    /**
      * What the preview sends, and why: a section under the points, in the preview build only
      * (lib/previewNotice.ts). m3's notice for `monitoring-preview` — its NOTICE_COPY with
      * NOTICE_APPS' `sessions` and `records`, field names kept — moved here when the operator retired
@@ -151,9 +161,12 @@ export interface Localised {
     precond_engine_off: string;
     module: string;
     faultRef: string;
-    faultRef_note: string;
+    faultRef_info: string;
     catalog_jobs: (n: number) => string;
     cancel: string;
+    /** The ⓘ beside a section title that opens its explanation (ui.tsx `Section` `info`). */
+    info_show: string;
+    info_hide: string;
     /** How few of a module's actuator jobs this app can actually send. */
     actuator_runnable: (n: number, total: number) => string;
     actuator_onlyRunnable: string;
@@ -192,9 +205,23 @@ export interface Localised {
     probe_line: (v: number, settled: number, total: number, samples: number) => string;
     /** SESSIONS — the preview's saved sessions and SYNC (lib/features.ts `sessionSync`). */
     sessions_current: string;
-    sessions_current_note: string;
-    /** ASSISTANT (chrome.ts) — the owner's assistant reaching this tab through TSUNAGI///Matrix. WORKS only. */
-    assistant_note: string;
+    /** The explanation behind this connection's ⓘ: what SAVE and SYNC each do. */
+    sessions_current_info: string;
+    /** What a press of SAVE / SYNC would do, or why it cannot — `title`, beside the one-word label. */
+    save_title: Record<'nothing' | 'ready' | 'busy' | 'saved', string>;
+    sync_title: Record<'signedOut' | 'unreachable' | 'offline' | 'busy' | 'clean', string> & { ready: (n: number) => string };
+    /**
+     * ASSISTANT (chrome.ts) — the owner's assistant reaching this tab through TSUNAGI///Matrix. WORKS
+     * only. What turning it on sends, by where, to whom, and what it can and cannot do: the notice
+     * shown before it turns on, item by item rather than as one paragraph (tsunagi-m-ux §17). Each
+     * item says what m3's privacy policy (#preview, アシスタント連携) says of MONITORING, shorter.
+     */
+    assistant_consent: {
+        title: string;
+        lead: string;
+        items: { title: string; body: string }[];
+        off: string;
+    };
     assistant_turnOn: string;
     assistant_turnOff: string;
     /** When the switch cannot be used yet: the WORKS notice is not confirmed, or this is not the WORKS build. */
@@ -213,7 +240,7 @@ export interface Localised {
     assistant_catalogRefused: (reason: string) => string;
     assistant_device: string;
     /** WHILE MOVING (chrome.ts) — the owner allows a read while the car moves (lib/ledger `grantMovingOk`). WORKS only. */
-    movingOk_note: string;
+    movingOk_info: string;
     movingOk_none: string;
     movingOk_answered: (n: number) => string;
     /** What a read brings back: how many values, and the first of them. */
@@ -227,7 +254,7 @@ export interface Localised {
     sessions_onDevice: string;
     sessions_inAccount: string;
     sessions_errors: string;
-    sessions_errors_note: string;
+    sessions_errors_info: string;
     sessions_account: (label: string) => string;
     sessions_account_unknown: string;
     sessions_account_expired: string;
@@ -336,17 +363,27 @@ export interface Localised {
     op_blocked_practice: string;
     /** Why a run control will not fire. One key per RunBlockKey — see runGate.ts. */
     runBlock: Record<RunBlockKey, string>;
+    /**
+     * The same refusals in a word or two, for the row: the reason has to be drawn where the control
+     * is (a phone has no hover), and a sentence repeated down eighty-five rows is a wall. The row
+     * says which; the sentence is where the job's detail is, and in the list's ⓘ.
+     */
+    runBlockShort: Record<RunBlockKey, string>;
+    /** ACTUATOR's explanation, behind its ⓘ, before the glossary of the reasons its rows carry. */
+    actuator_info: string;
     run_result: string;
     run_request: string;
     run_response: string;
     run_undecoded: string;
     adaptations: string;
-    adaptations_note: string;
+    adaptations_info: string;
     adaptations_short: (got: number, need: number) => string;
     /** Said where the module has adaptation data but this app has no decoder for it. */
     adaptations_noDecoder: string;
+    /** Why, behind the ⓘ: which module has a table, and where SMG II’s values can be read instead. */
+    adaptations_noDecoderInfo: string;
     adaptationsReset: string;
-    adaptationsReset_note: string;
+    adaptationsReset_info: string;
     adaptationsReset_none: string;
     /** A module this app has not surveyed. Never shown as "there are none". */
     adaptationsReset_unknown: string;
@@ -378,7 +415,7 @@ export interface Localised {
     jobClass: Record<JobClass, string>;
     /** One line saying what the class IS — the answer to "what is different
      *  between the jobs under CALIBRATION and the ones under ACTUATOR TEST". */
-    jobClassNote: Record<JobClass, string>;
+    jobClassInfo: Record<JobClass, string>;
     audience: Record<Audience, string>;
     audienceNote: Record<Audience, string>;
     system: Record<string, string>;
@@ -397,7 +434,7 @@ export interface Localised {
     // --- The job's contents -------------------------------------------------
     det_results: string;
     det_resultCount: (n: number) => string;
-    det_results_note: string;
+    det_results_info: string;
     det_args: string;
     det_values: string;
     det_noValues: string;

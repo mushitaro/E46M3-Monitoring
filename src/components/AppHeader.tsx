@@ -1,7 +1,7 @@
 'use client';
 
-import { RefreshCw } from 'lucide-react';
-import { LABEL, Pill, WORDMARK } from './ui';
+import { Github, Medal, RefreshCw, Shield, type LucideIcon } from 'lucide-react';
+import { Pill, WORDMARK } from './ui';
 import { AiSwitch } from './AiSwitch';
 import type { AssistantBridge } from '@/hooks/useAssistantBridge';
 import { MMark } from './MMark';
@@ -9,7 +9,7 @@ import { StatusLed } from './StatusLed';
 import { APP_VERSION } from '@/lib/version';
 import { useBuildLabel, useBuildVariant } from '@/lib/build-variant';
 import { useLang } from '@/lib/i18n';
-import { PRIVACY_PREVIEW } from '@/lib/links';
+import { PRIVACY_PREVIEW, REPOSITORY } from '@/lib/links';
 import type { LinkState, LinkMode } from '@/hooks/useDs2Link';
 
 /**
@@ -25,7 +25,7 @@ import type { LinkState, LinkMode } from '@/hooks/useDs2Link';
  *
  * Composition follows the recipe exactly:
  *
- *   [ status-dot · TITLE /// ROLE · build-badge · version | identity-readouts ] ⟷ [ links ]
+ *   [ status-dot · TITLE /// ROLE · build-badge · AI · version | identity-readouts ] ⟷ [ icons ]
  *
  * The build badge says which build this URL serves — WORKS on the owner build,
  * nothing at all on production — and only says it: a tinted span, never a
@@ -56,13 +56,11 @@ import type { LinkState, LinkMode } from '@/hooks/useDs2Link';
  *     first thing the DIAGNOSIS pane shows, with the whole hex, and the M menu's
  *     VEHICLE band; the version is at the foot of CREDITS and under the M menu's
  *     strip;
- *   - the links step aside too, into the M menu's strip — PRIVACY | CREDITS |
- *     RELOAD in this order, the family's (tsunagi-m-chrome §1). They were glyphs
- *     here while the app had no menu for them to move into; hidden then they
- *     would not have been harder to reach, they would not have existed, and the
+ *   - the icons step aside too, into the M menu's strip — PRIVACY | GITHUB |
+ *     CREDITS | RELOAD in this order, the family's (tsunagi-m-chrome §1). The
  *     credits are what the licence of the work under this app asks to stay
- *     reachable. The sheet is that place now. Every one of them is still here
- *     from 900 up (tsunagi-m-mobile §8, the mirror).
+ *     reachable, and the sheet is where they are below 900. Every one of them is
+ *     still here from 900 up (tsunagi-m-mobile §8, the mirror).
  *
  * TUNER keeps one exception, RELOAD drawn on a phone while a newer build waits.
  * There is none here, because nothing here knows a newer build waits: the poll
@@ -150,20 +148,22 @@ export function AppHeader({
                 </div>
             </div>
 
-            {/* Credits, always reachable. The licence of the work this app
-                rests on asks that attribution stay intact, and a PWA user never
-                opens the README. It is NOT in the disclaimer — that is
-                acknowledged once and then gone, which is the worst home for
-                something that has to remain available.
-                PRIVACY first, CREDITS after it, RELOAD last: the order of every
-                M tool, and the M menu's strip below 900, which is where this
-                group goes there. RELOAD hard against the corner because it is
-                the one that drops the link. */}
-            <div className="ml-auto hidden items-center gap-1 border-l border-slate-800 pl-4 min-[900px]:flex">
-                {preview && <HeaderLink word={t.privacy} href={PRIVACY_PREVIEW[lang]} />}
-                <HeaderLink word={t.credits_open} onClick={onCredits} />
-                <HeaderLink
-                    word={t.reload}
+            {/* The family's group, as TUNER draws it (tsunagi-m-chrome §1): icons
+                only, 20px, 16px apart, neutral slate, the destination in `title`.
+                It was four words here — PRIVACY CREDITS RELOAD — beside a tool
+                whose identical row is four glyphs; one family, one row.
+                PRIVACY first, GITHUB, the medal (CREDITS) in the middle, RELOAD
+                last and hard against the corner because it is the one that drops
+                the link. Credits are always reachable: the licence of the work
+                this app rests on asks that attribution stay intact, and a PWA user
+                never opens the README. No GUIDE — this app has no destination for
+                one, and the family keeps no empty slot. */}
+            <div className="ml-auto hidden items-center gap-4 min-[900px]:flex">
+                {preview && <HeaderIcon Icon={Shield} title={t.privacy} href={PRIVACY_PREVIEW[lang]} />}
+                <HeaderIcon Icon={Github} title={t.github} href={REPOSITORY} />
+                <HeaderIcon Icon={Medal} title={t.credits_open} onClick={onCredits} />
+                <HeaderIcon
+                    Icon={RefreshCw}
                     title={reloading ? t.reload_running : t.reload_title}
                     onClick={reloading ? undefined : onReload}
                     running={reloading}
@@ -174,41 +174,41 @@ export function AppHeader({
 }
 
 /**
- * One of the header's links, as a word — from 900px up, the only width it is
- * drawn at. Below it the same destinations are the M menu's strip, in the same
- * order (tsunagi-m-chrome §1).
+ * One of the header's group — from 900px up, the only width it is drawn at.
+ * Below it the same destinations are the M menu's strip, in the same order
+ * (tsunagi-m-chrome §1).
  *
- * `running` is RELOAD's while it fetches the newest build: the word keeps its
- * place and turns blue with a spinning glyph before it, since that can take
- * seconds and a press with no sign of life reads as a missed one.
+ * `running` is RELOAD's while it fetches the newest build: the glyph turns blue
+ * and spins in its own place, since that can take seconds and a press with no
+ * sign of life reads as a missed one. `py-3 -my-3`: the head unit is a
+ * touchscreen and these draw 20px tall, so the hit box grows by padding the
+ * margin cancels — the row still lays out at 20 and nothing moves.
  */
-function HeaderLink({
-    word,
+function HeaderIcon({
+    Icon,
+    title,
     href,
     onClick,
-    title,
     running = false,
 }: {
-    word: string;
+    Icon: LucideIcon;
+    title: string;
     href?: string;
     onClick?: () => void;
-    title?: string;
     running?: boolean;
 }) {
-    const className = `${LABEL} inline-flex items-center gap-1.5 px-1.5 py-0.5 transition-colors ${
-        running ? 'cursor-default text-blue-400' : 'text-slate-600 hover:text-slate-400'
-    }`;
+    const className = `-my-3 py-3 transition-colors ${running ? 'cursor-default text-blue-400' : 'text-slate-500 hover:text-slate-300'}`;
+    const glyph = <Icon aria-hidden="true" className={`size-5 ${running ? 'animate-spin' : ''}`} />;
 
     // `_blank` is not decoration: a same-tab navigation would drop the cable
     // link and whatever has not been saved (lib/links).
     return href ? (
-        <a href={href} target="_blank" rel="noopener noreferrer" title={title} className={className}>
-            {word}
+        <a href={href} target="_blank" rel="noopener noreferrer" title={title} aria-label={title} className={className}>
+            {glyph}
         </a>
     ) : (
-        <button type="button" onClick={onClick} title={title} className={className}>
-            {running && <RefreshCw aria-hidden="true" className="size-3 animate-spin" />}
-            {word}
+        <button type="button" onClick={onClick} title={title} aria-label={title} className={className}>
+            {glyph}
         </button>
     );
 }

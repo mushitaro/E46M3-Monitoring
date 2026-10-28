@@ -29,6 +29,7 @@ import {
     type SavedSession,
 } from '@/lib/sync/session';
 import { deleteLocal, listLocal, putLocal } from '@/lib/sync/sessionStore';
+import { describeSave, describeSync, savePhase, syncPhase, toSend } from '@/lib/sync/status';
 import type { Datalog } from '@/views/datalog/useDatalog';
 
 /**
@@ -361,6 +362,15 @@ export function useSessions(input: {
     const canReauth = cloudEnabled && gate?.state === 'expired' && online && link.state === 'disconnected';
     const reauth = useCallback(() => location.assign(reauthHref()), []);
 
+    // What SAVE and SYNC say, for both places they are drawn (lib/sync/status). SYNC has no look on
+    // a build with nowhere to send: no cell and no button, rather than one that can only fail.
+    const pending = (local ?? []).filter(needsSync).length;
+    const counts = { busy, content, unsaved, pending };
+    const saveLook = describeSave(savePhase(counts), t);
+    const syncLook = cloudEnabled
+        ? describeSync(syncPhase({ ...counts, online, gate: gate?.state ?? null }), toSend(counts), t)
+        : null;
+
     return {
         enabled,
         cloudEnabled,
@@ -379,7 +389,9 @@ export function useSessions(input: {
             samples: datalog.samples.length,
             failures: failures.notes.length,
         },
-        pending: (local ?? []).filter(needsSync).length,
+        pending,
+        saveLook,
+        syncLook,
         canReauth,
         save,
         sync,

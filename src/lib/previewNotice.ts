@@ -98,10 +98,11 @@ export const previewNoticeStore = {
 };
 
 /**
- * AGREE. Production records the disclaimer, as it always has, and never writes the notice's key;
- * the preview records both, because its dialog said both.
+ * AGREE. The disclaimer is kept when the owner ticked 今後表示しない (`dontShowAgain`), as in TUNER;
+ * production never writes the notice's key, and the preview records the notice on every AGREE,
+ * because its dialog said it either way.
  */
-export function agreeToFirstRun(preview: boolean): void {
-    disclaimerStore.agree();
+export function agreeToFirstRun(preview: boolean, dontShowAgain: boolean): void {
+    disclaimerStore.agree(dontShowAgain);
     if (preview) previewNoticeStore.acknowledge();
 }

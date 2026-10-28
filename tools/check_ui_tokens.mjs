@@ -51,9 +51,12 @@ const OUTLINE_ALLOWED = new Set([
     // the rule allows.
     'views/shared/Awaiting.tsx',
     // Floating surfaces get exactly one outline each: they are detached from the
-    // page and need an edge.
+    // page and need an edge. Every modal wears DialogFrame's, so it is the one
+    // dialog file here.
     'components/LogPopover.tsx',
-    'components/ElectricalFaultDialog.tsx',
+    'components/DialogFrame.tsx',
+    // The disclaimer's pin of that frame's markup, outline included.
+    'components/DisclaimerDialog.test.ts',
     // The hub ring is a STATE indicator, not a frame. Named here so a second
     // ring cannot appear without this list changing.
     'components/Hub.tsx',

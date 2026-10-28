@@ -1,13 +1,15 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Download, Medal, RefreshCw, Shield, X } from 'lucide-react';
+import { CloudUpload, Database, Download, Github, Medal, RefreshCw, Shield, X } from 'lucide-react';
 import { Field, LABEL } from './ui';
 import type { LinkMode, LinkState } from '@/hooks/useDs2Link';
 import type { InstallState } from '@/hooks/useInstallPrompt';
 import { useShortLandscape } from '@/hooks/useWideLayout';
 import { useBuildId } from '@/lib/build-variant';
 import { useLang } from '@/lib/i18n';
+import { REPOSITORY } from '@/lib/links';
+import { SAVE_TONE, SYNC_TONE, type StatusLook } from '@/lib/sync/status';
 import type { Tab } from '@/lib/tabs';
 import { APP_VERSION } from '@/lib/version';
 
@@ -24,17 +26,16 @@ import { APP_VERSION } from '@/lib/version';
  * press landed on. Press, slide up, release: one gesture, no second aim.
  *
  *   - The strip is the header's right-hand group, in its order (tsunagi-m-chrome §1): PRIVACY (the
- *     WORKS build only, as in the header) | CREDITS | RELOAD, then INSTALL, which has no desk twin
- *     because a desk does not install this. No GITHUB — the repository is private, so there is no
- *     page to open — and no GUIDE, which this app has no destination for. The family does not keep
- *     an empty slot for a link a tool lacks.
+ *     WORKS build only, as in the header) | GITHUB | CREDITS | RELOAD, then INSTALL, which has no
+ *     desk twin because a desk does not install this. No GUIDE, which this app has no destination
+ *     for — the family does not keep an empty slot for a link a tool lacks.
  *   - VEHICLE is the module being addressed and what it said its identity was: the header's IDENT
  *     and LEN, which the desk shows beside the wordmark.
  *   - SESSION is this connection's work: the link and its mode, and what a SAVE would hold (the
- *     fault read and the datalog). Readouts only. SAVE and SYNC are not repeated here as TUNER's
- *     cells are: in this app they are the SESSIONS view's own controls, with the one fact SYNC needs
- *     said beside it, and VIEW below reaches that view in one sweep — a second SAVE in the narrow
- *     layout would be two doors to one job (tsunagi-m-ux §11). Production has no sessions at all.
+ *     fault read and the datalog), and under it SAVE and SYNC as TUNER's cells — the one place they
+ *     are below 900. The SESSIONS view draws its own pair from 900 up only, so each layout has one
+ *     door to each (tsunagi-m-ux §11). Labels, sentences and tones from lib/sync/status, the same
+ *     the desk reads. Production has no sessions, and no cells.
  *   - VIEW is the tab row, which below 900 is not drawn anywhere else.
  *
  * Deliberately NOT in here: anything that is sent to the car, and anything that connects. CONNECT,
@@ -84,11 +85,27 @@ interface Props {
     /** Whether this device can take the app, and how. See hooks/useInstallPrompt. */
     installState: InstallState;
     onInstall: () => void;
+    /** SAVE's look, or null where there are no sessions (production). */
+    save: StatusLook | null;
+    /** SYNC's look, or null on a build with nowhere to send. */
+    sync: StatusLook | null;
+    /** Anything of the sessions' in flight — every cell waits for it. */
+    sessionsBusy: boolean;
+    onSave: () => void;
+    onSync: () => void;
 }
 
 /** The strip's controls — the header's group, drawn small. 40px is the target; the icons are 14px. */
 const STRIP_ITEM =
     'w-10 h-10 [@media(max-height:560px)]:w-9 [@media(max-height:560px)]:h-9 flex items-center justify-center rounded transition-colors';
+
+/**
+ * A SESSION cell, TUNER's MENU_CELL: a square-ish target in a row on a 360px screen, glyph over the
+ * state's word. 56, not 44, because it is what a thumb finds without looking. The word truncates: a
+ * cell that grew to fit it would break the row it shares. LABEL, not TUNER's 9px — this repo's ramp
+ * has no 9px step.
+ */
+const MENU_CELL = `flex h-full min-h-[56px] w-full flex-col items-center justify-center gap-1 rounded px-1 transition-colors enabled:hover:bg-slate-800 ${LABEL}`;
 
 /** The breathing room inside a band. Halved on a short viewport, the only place the sheet is short of
  *  height — nothing here is a tap target, so nothing loses one. */
@@ -151,6 +168,11 @@ export function MobileMenu({
     reloading,
     installState,
     onInstall,
+    save,
+    sync,
+    sessionsBusy,
+    onSave,
+    onSync,
 }: Props) {
     const { t } = useLang();
     const buildId = useBuildId();
@@ -289,6 +311,15 @@ export function MobileMenu({
                                         <Shield className="size-3.5" />
                                     </a>
                                 )}
+                                <a
+                                    href={REPOSITORY}
+                                    {...away}
+                                    title={t.github}
+                                    aria-label={t.github}
+                                    className={`${STRIP_ITEM} text-slate-600 hover:text-slate-300`}
+                                >
+                                    <Github className="size-3.5" />
+                                </a>
                             </div>
                             {/* A medal, centred: the one control in the strip that is not a tool but an
                                 acknowledgement — whose work this app stands on. */}
@@ -366,6 +397,17 @@ export function MobileMenu({
                                     <Readout label={t.field_faults} value={faults === null ? null : String(faults)} />
                                     <Readout label={t.field_log} value={samples > 0 ? String(samples) : null} />
                                 </div>
+                                {/* None of these carries `data-menu-key`: a finger sweeping up the
+                                    sheet must not let go onto SAVE and write the database, or onto
+                                    SYNC and start an upload. Do not add one. */}
+                                {save && (
+                                    <div className={`mt-2 grid gap-2 ${sync ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                                        <SessionCell look={save} tones={SAVE_TONE} Icon={Database} busy={sessionsBusy} onClick={onSave} />
+                                        {sync && (
+                                            <SessionCell look={sync} tones={SYNC_TONE} Icon={CloudUpload} busy={sessionsBusy} onClick={onSync} />
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </Band>
                     </div>
@@ -469,6 +511,35 @@ export function MobileMenu({
                 </div>
             </div>
         </>
+    );
+}
+
+/** SAVE or SYNC in the sheet. Does not close it: the cell's own word reports what the press did. */
+function SessionCell({
+    look,
+    tones,
+    Icon,
+    busy,
+    onClick,
+}: {
+    look: StatusLook;
+    tones: Record<StatusLook['tone'], string>;
+    Icon: typeof Database;
+    busy: boolean;
+    onClick: () => void;
+}) {
+    const disabled = look.disabled || busy;
+    return (
+        <button
+            type="button"
+            onClick={disabled ? undefined : onClick}
+            disabled={disabled}
+            title={look.title}
+            className={`${MENU_CELL} ${tones[look.tone]}`}
+        >
+            <Icon className="size-4 shrink-0" />
+            <span className="max-w-full truncate">{look.label}</span>
+        </button>
     );
 }
 

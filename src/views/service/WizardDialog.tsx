@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useReducer, useState } from 'react';
 import { AlertTriangle, PlayCircle, Square } from 'lucide-react';
 import { DialogFrame } from '@/components/DialogFrame';
-import { Field, LABEL, MicroLabel, Provenance, TextButton, Well, emphasise } from '@/components/ui';
+import { DialogButton, Field, LABEL, MicroLabel, Provenance, Well, emphasise } from '@/components/ui';
 import { useProcedureRun } from '@/hooks/useProcedureRun';
 import type { JobRunResult } from '@/hooks/useDs2Link';
 import type { CatalogJob } from '@/lib/ecuCatalog';
@@ -140,7 +140,6 @@ export function WizardDialog({
             title={t.wiz_title(pick(procedure.name))}
             Icon={procedure.risk === 'high' ? AlertTriangle : PlayCircle}
             tone={procedure.risk === 'high' ? 'danger' : 'neutral'}
-            width="max-w-lg"
             // Handed only when the state says leaving is allowed. That is the
             // one-way-out rule expressed as a missing prop rather than as an
             // early return inside a key handler.
@@ -403,25 +402,29 @@ function Footer({
     const { t } = useLang();
     if (step === 'run') {
         return (
-            <TextButton onClick={onAbort} tone="destructive" Icon={Square} disabled={!live}>
+            <DialogButton onClick={onAbort} tone="danger" Icon={Square} disabled={!live}>
                 {t.op_abort}
-            </TextButton>
+            </DialogButton>
         );
     }
     if (step === 'result') {
-        return <TextButton onClick={onClose}>{t.wiz_close}</TextButton>;
+        return <DialogButton onClick={onClose}>{t.wiz_close}</DialogButton>;
     }
     return (
         <>
-            {canBack && <TextButton onClick={onBack}>{t.wiz_back}</TextButton>}
+            {canBack && (
+                <DialogButton onClick={onBack} tone="neutral">
+                    {t.wiz_back}
+                </DialogButton>
+            )}
             {step === 'safety' ? (
-                <TextButton onClick={onStart} disabled={!canNext || blocked !== null} tone="danger" Icon={PlayCircle}>
+                <DialogButton onClick={onStart} disabled={!canNext || blocked !== null} tone="danger" Icon={PlayCircle}>
                     {t.op_start}
-                </TextButton>
+                </DialogButton>
             ) : (
-                <TextButton onClick={onNext} disabled={!canNext} tone="primary">
+                <DialogButton onClick={onNext} disabled={!canNext}>
                     {t.wiz_next}
-                </TextButton>
+                </DialogButton>
             )}
         </>
     );

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Heart } from 'lucide-react';
 import { DialogFrame } from '@/components/DialogFrame';
-import { MicroLabel, TextButton, emphasise } from '@/components/ui';
+import { MicroLabel, emphasise } from '@/components/ui';
 import { useBuildLabel } from '@/lib/build-variant';
 import { useLang } from '@/lib/i18n';
 import { APP_VERSION } from '@/lib/version';
@@ -56,9 +56,8 @@ export function CreditsDialog({ onClose }: { onClose: () => void }) {
         <DialogFrame
             title={t.credits_title}
             Icon={Heart}
-            width="max-w-lg"
+            tone="danger"
             onClose={onClose}
-            footer={<TextButton onClick={onClose}>{t.wiz_close}</TextButton>}
         >
             <p className="text-[11px] leading-relaxed text-slate-400">{t.credits_lede}</p>
 
@@ -121,7 +120,7 @@ export function CreditsDialog({ onClose }: { onClose: () => void }) {
                             </p>
                         )}
                         {supporters.others && <p className="mt-1">{t.credits_supportersOthers}</p>}
-                        <p className="mt-1 font-mono text-[9px] tracking-wider">{t.credits_supportersAsOf(supporters.asOf)}</p>
+                        <p className="mt-1 font-mono text-[10px] tracking-wider">{t.credits_supportersAsOf(supporters.asOf)}</p>
                     </div>
                 )}
                 <p className="mt-2">

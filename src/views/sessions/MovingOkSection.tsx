@@ -71,7 +71,7 @@ export function MovingOkSection({
     );
 
     return (
-        <Section title={t.movingOk} note={t.movingOk_note} count={proposals.length + cleared.length}>
+        <Section title={t.movingOk} info={t.movingOk_info} count={proposals.length + cleared.length}>
             <p className={`min-h-[18px] text-[11px] ${moving ? 'text-amber-400' : 'text-slate-500'}`}>
                 {moving ? t.movingOk_blocked : proposals.length + cleared.length === 0 ? t.movingOk_none : null}
             </p>

@@ -1,6 +1,8 @@
 'use client';
 
-import type { LucideIcon } from 'lucide-react';
+import { useId, useState } from 'react';
+import { Info, type LucideIcon } from 'lucide-react';
+import { useLang } from '@/lib/i18n';
 
 /**
  * The primitives that carry the ///M border rule.
@@ -75,8 +77,8 @@ export const WORDMARK =
  * of the same scale.
  *
  * 8px is the ///M "tiny tag" step and it is what the reference tool sets on this
- * exact control. At LABEL's 10px the verb crowded a 72px circle that also
- * carries a 18px icon; the ring is read by its shape and its colour from across
+ * exact control. At LABEL's 10px the verb crowded an 80px circle that also
+ * carries a 20px icon; the ring is read by its shape and its colour from across
  * a garage, and the word is confirmation once you are already looking at it.
  *
  * Only legible because these verbs are short and English — CONNECT, READ, RUN,
@@ -302,11 +304,16 @@ export function MicroLabel({ children, className = '' }: { children: React.React
  * It lives here because three different places render authored text now — the
  * caution callout, a step's absence sentence, and the DSC stop's provenance
  * note — and a second copy would drift.
+ *
+ * `plain` is the disclaimer's: there the bold marks what a sentence turns on,
+ * and colouring it caution would make five ordinary statements read as five
+ * warnings (TUNER's disclaimer does the same, in near-white).
  */
-export function emphasise(text: string): React.ReactNode {
+export function emphasise(text: string, tone: 'caution' | 'plain' = 'caution'): React.ReactNode {
+    const cls = tone === 'plain' ? 'font-bold text-slate-100' : 'font-bold text-amber-300';
     return text.split(/\*\*(.+?)\*\*/g).map((part, i) =>
         i % 2 === 1 ? (
-            <strong key={i} className="font-bold text-amber-300">
+            <strong key={i} className={cls}>
                 {part}
             </strong>
         ) : (
@@ -329,25 +336,50 @@ export function Well({ children, className = '' }: { children: React.ReactNode; 
  * belongs to the CONTAINER — a `flex flex-col gap-6` column — so this component
  * deliberately carries no outer margin: a block that spaces itself cannot be
  * rearranged without re-tuning every neighbour.
+ *
+ * ## Where its words go (tsunagi-m-ux §17)
+ *
+ * A main screen carries names, values and states — not paragraphs. Two slots,
+ * and they are not the same kind of text:
+ *
+ *   - `note` is ONE line, always on, for a fact about the block that changes
+ *     with it (`85 件中 0 件が実行可能`, `2 項目 = 1 往復`). It truncates rather
+ *     than wraps; the whole of it is in `title` for a mouse.
+ *   - `info` is the explanation — what this block is, why it behaves as it does.
+ *     It is drawn on request, behind the ⓘ beside the title, and only then. The
+ *     owner who already knows does not read it every time they open the tab; the
+ *     one who does not is one tap from it, on a phone as on a desk (a `title`
+ *     would not reach a phone at all — tsunagi-m-mobile §10).
+ *
+ * Opening the explanation moves what is below it. That is the one move this
+ * system allows: the reader asked for it, and nothing moves on its own.
  */
 export function Section({
     title,
     count,
     actions,
     note,
+    info,
     children,
 }: {
     title: React.ReactNode;
     count?: number;
     actions?: React.ReactNode;
-    /** One line under the title, for a caveat about the whole block. */
+    /** One line under the title: a fact about the whole block. Never a paragraph. */
     note?: React.ReactNode;
+    /** The explanation, behind the ⓘ beside the title. */
+    info?: React.ReactNode;
     children: React.ReactNode;
 }) {
+    const [open, setOpen] = useState(false);
+    const id = useId();
     return (
         <section>
             <div className="flex min-h-[20px] items-baseline justify-between gap-3">
-                <MicroLabel>{title}</MicroLabel>
+                <div className="flex min-w-0 items-baseline gap-1.5">
+                    <MicroLabel>{title}</MicroLabel>
+                    {info && <InfoToggle open={open} controls={id} onToggle={() => setOpen((v) => !v)} />}
+                </div>
                 <div className="flex shrink-0 items-baseline gap-3">
                     {actions}
                     {count !== undefined && (
@@ -355,9 +387,91 @@ export function Section({
                     )}
                 </div>
             </div>
-            {note && <p className="mt-1 max-w-[70ch] text-[11px] leading-relaxed text-slate-500">{note}</p>}
+            {info && open && <Explain id={id}>{info}</Explain>}
+            {note && (
+                <p className="mt-1 truncate text-[11px] text-slate-500" title={typeof note === 'string' ? note : undefined}>
+                    {note}
+                </p>
+            )}
             <div className="mt-1.5">{children}</div>
         </section>
+    );
+}
+
+/**
+ * The ⓘ that opens an explanation. One glyph for it everywhere, so the reader learns once where the
+ * long form lives. Sunk until reached for, blue while what it opened is showing. The hit box is
+ * widened by padding cancelled with margin, so the row lays out as if it were the 12px glyph alone
+ * (tsunagi-m-mobile §9).
+ */
+export function InfoToggle({ open, controls, onToggle }: { open: boolean; controls: string; onToggle: () => void }) {
+    const { t } = useLang();
+    return (
+        <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={open}
+            aria-controls={controls}
+            aria-label={open ? t.info_hide : t.info_show}
+            title={open ? t.info_hide : t.info_show}
+            className={`-mx-1.5 -my-3 self-center px-1.5 py-3 transition-colors ${
+                open ? 'text-blue-400' : 'text-slate-600 hover:text-slate-300'
+            }`}
+        >
+            <Info className="size-3" />
+        </button>
+    );
+}
+
+/** An explanation, once asked for: under the heading it explains, set off by a rule on its left. */
+export function Explain({ id, children }: { id?: string; children: React.ReactNode }) {
+    return (
+        <div id={id} className="mt-1.5 max-w-[70ch] border-l border-slate-700 pl-3 text-[11px] leading-relaxed text-slate-400">
+            {children}
+        </div>
+    );
+}
+
+const DIALOG_TONE = {
+    neutral: 'text-slate-400 hover:text-slate-200',
+    primary: 'bg-blue-500/15 text-blue-300 hover:bg-blue-500/25',
+    danger: 'bg-red-500/15 text-red-300 hover:bg-red-500/25',
+    // The disclaimer's AGREE alone: the one press that lets the app open.
+    solid: 'bg-blue-600 text-white hover:bg-blue-500',
+} as const;
+
+/**
+ * A dialog's answer — TUNER's (MessageDialog): the way out plain, the way forward tinted.
+ *
+ * A fill here and nowhere else on a dialog: the footer holds at most two answers, and the one that
+ * acts has to be told from the one that does not at a glance, at arm's length. `py-3` is the touch
+ * height. Disabled loses the fill, so an answer that cannot be given does not look given.
+ */
+export function DialogButton({
+    children,
+    onClick,
+    tone = 'primary',
+    Icon,
+    disabled,
+    ...rest
+}: {
+    children: React.ReactNode;
+    onClick?: () => void;
+    tone?: keyof typeof DIALOG_TONE;
+    Icon?: LucideIcon;
+    disabled?: boolean;
+} & Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'onClick' | 'className'>) {
+    return (
+        <button
+            type="button"
+            onClick={disabled ? undefined : onClick}
+            disabled={disabled}
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded px-4 py-3 ${LABEL} transition-colors disabled:cursor-not-allowed disabled:bg-transparent disabled:text-slate-600 ${DIALOG_TONE[tone]}`}
+            {...rest}
+        >
+            {Icon && <Icon className="size-3 shrink-0" />}
+            {children}
+        </button>
     );
 }
 

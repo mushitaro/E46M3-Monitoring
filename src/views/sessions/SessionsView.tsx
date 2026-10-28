@@ -1,14 +1,15 @@
 'use client';
 
 import { memo, useState } from 'react';
-import { ArrowLeft, CloudDownload, CloudUpload, Eye, LogIn, Save, Trash2 } from 'lucide-react';
+import { ArrowLeft, CloudDownload, CloudUpload, Database, Eye, LogIn, Trash2, type LucideIcon } from 'lucide-react';
 import { formatErrorCode } from '@tsunagi/ds2-mss54';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { DataList, DataRow, Field, Pane, Pill, Section, TextButton, Well, humanName } from '@/components/ui';
+import { DataList, DataRow, Field, LABEL, Pane, Pill, Section, TextButton, Well, humanName } from '@/components/ui';
 import { normCode } from '@/lib/faultCode';
 import { useLang } from '@/lib/i18n';
 import { text as resolveText, type EcuProfile } from '@/lib/ecuCatalog';
 import { needsSync, parseCsv, summarise, type SavedSession } from '@/lib/sync/session';
+import { SAVE_TONE, SYNC_TONE, type StatusLook, type StatusTone } from '@/lib/sync/status';
 import { CountReadout } from '@/views/shared/CountReadout';
 import type { AssistantBridge } from '@/hooks/useAssistantBridge';
 import type { Ledger } from '@/lib/ledger';
@@ -135,22 +136,18 @@ export const SessionsView = memo(function SessionsView({
         <Pane>
             <Section
                 title={t.sessions_current}
-                note={t.sessions_current_note}
+                info={t.sessions_current_info}
                 actions={
-                    <>
-                        <TextButton onClick={() => void s.save()} disabled={busy || !s.content} Icon={Save}>
-                            {t.save}
-                        </TextButton>
-                        {s.cloudEnabled && (
-                            <TextButton
-                                onClick={() => void s.sync()}
-                                disabled={busy || (!s.unsaved && s.pending === 0)}
-                                Icon={CloudUpload}
-                            >
-                                {t.sync}
-                            </TextButton>
+                    // From 900px only. Below it SAVE and SYNC are the menu sheet's SESSION cells,
+                    // where TUNER keeps them — two doors on a phone would be two to one job
+                    // (tsunagi-m-ux §11). Labels, sentences and tones from lib/sync/status, so the
+                    // two places cannot disagree.
+                    <span className="hidden items-baseline gap-4 min-[900px]:flex">
+                        <StatusButton look={s.saveLook} tones={SAVE_TONE} Icon={Database} busy={busy} onClick={() => void s.save()} />
+                        {s.syncLook && (
+                            <StatusButton look={s.syncLook} tones={SYNC_TONE} Icon={CloudUpload} busy={busy} onClick={() => void s.sync()} />
                         )}
-                    </>
+                    </span>
                 }
             >
                 <div className="flex flex-col gap-1.5">
@@ -269,7 +266,7 @@ export const SessionsView = memo(function SessionsView({
             )}
 
             {s.cloudEnabled && (
-                <Section title={t.sessions_errors} count={s.diagnostics?.length} note={t.sessions_errors_note}>
+                <Section title={t.sessions_errors} count={s.diagnostics?.length} info={t.sessions_errors_info}>
                     {s.diagnostics !== null && s.diagnostics.length === 0 ? (
                         <p className="py-2 text-xs text-slate-500">{t.sessions_emptyErrors}</p>
                     ) : (
@@ -314,6 +311,38 @@ export const SessionsView = memo(function SessionsView({
         </Pane>
     );
 });
+
+/**
+ * SAVE or SYNC on the desk: TUNER's session-bar control — a glyph and the state's word, in the
+ * state's colour, `title` carrying the sentence. Unpressable while anything else is in flight too.
+ */
+function StatusButton({
+    look,
+    tones,
+    Icon,
+    busy,
+    onClick,
+}: {
+    look: StatusLook;
+    tones: Record<StatusTone, string>;
+    Icon: LucideIcon;
+    busy: boolean;
+    onClick: () => void;
+}) {
+    const disabled = look.disabled || busy;
+    return (
+        <button
+            type="button"
+            onClick={disabled ? undefined : onClick}
+            disabled={disabled}
+            title={look.title}
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap ${LABEL} transition-colors ${tones[look.tone]}`}
+        >
+            <Icon className="size-3 shrink-0" />
+            {look.label}
+        </button>
+    );
+}
 
 function CurrentCounts({ s }: { s: Sessions }) {
     const { t } = useLang();

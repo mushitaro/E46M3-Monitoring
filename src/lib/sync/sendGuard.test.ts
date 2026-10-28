@@ -215,7 +215,7 @@ describe('the preview, before its notice is acknowledged', () => {
             await vi.waitFor(() => expect(idb.rows('monitoring-reads-outbox')).toHaveLength(1));
             expect(fetch).not.toHaveBeenCalled();
 
-            notice.agreeToFirstRun(true);
+            notice.agreeToFirstRun(true, true);
             expect(await reads.flushReadRecords()).toBe(1);
             expect(fetch.mock.calls.map(([url, init]) => `${init?.method ?? 'GET'} ${url}`)).toEqual(['GET /_gate/status', 'POST /api/reads']);
             const sent = JSON.parse(String(fetch.mock.calls[1][1]?.body));
@@ -236,7 +236,7 @@ describe('the preview, before its notice is acknowledged', () => {
         const [queued] = idb.rows('monitoring-outbox');
         expect(queued.account).toBe(ACCOUNT);
 
-        notice.agreeToFirstRun(true);
+        notice.agreeToFirstRun(true, true);
         expect(cloud.canSync()).toBe(true);
 
         expect(await records.flushErrorRecords()).toBe(1);
@@ -252,7 +252,7 @@ describe('the preview, before its notice is acknowledged', () => {
 
     it('after AGREE, SYNC sends and an error record goes at once', async () => {
         const { cloud, records, notice } = await load();
-        notice.agreeToFirstRun(true);
+        notice.agreeToFirstRun(true, true);
 
         expect((await cloud.sendSession(session())).ok).toBe(true);
 

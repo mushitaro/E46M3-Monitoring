@@ -141,8 +141,8 @@ GitHub のラベル・自動マージ・ブランチ保護は `autonomy.yml` と
 残るもの：
 
 1. この変更（起こす口・すぐの配信・机の分け方）のレビュー（人の承認クラス）。
-2. ヘッドユニットで MONITORING WORKS を開き直し（新しいビルド）、お知らせ v2 に同意、SESSIONS → ASSISTANT を
-   オン、端末に名前を付ける。走る前に CONNECT、計画があれば PROBE。
+2. ヘッドユニットで MONITORING WORKS を開き直し（新しいビルド）、お知らせ v2 に同意、ヘッダの AI で ASSISTANT を
+   オン、SESSIONS で端末に名前を付ける。走る前に CONNECT、計画があれば PROBE。
 3. 頼まれた瞬間に起こす口（`functions/_lib/wake.ts`）。この順に。トークンは会話には貼らない：
    1. PC で `npx wrangler d1 migrations apply tsunagi-m-preview-runs --remote`（`0003`、起こした記録の表）。
    2. claude.ai/code/routines → 「MONITORING 自律ループ」→ Edit → Trigger の「+」→ API → Generate token。

@@ -3,7 +3,7 @@
 import { AlertTriangle, Play } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { DialogFrame } from '@/components/DialogFrame';
-import { LABEL, MicroLabel, Pill, TextButton, Well, emphasise } from '@/components/ui';
+import { DialogButton, LABEL, MicroLabel, Pill, Well, emphasise } from '@/components/ui';
 import { planLines, type Phase } from '@/lib/actuatorArgs';
 import type { CatalogJob } from '@/lib/ecuCatalog';
 import { execStyleOf } from '@/lib/execStyle';
@@ -95,15 +95,16 @@ export function GateDialog({
             title={job.ja}
             tone={job.risk === 'high' ? 'danger' : 'neutral'}
             Icon={job.risk === 'high' ? AlertTriangle : Play}
-            onClose={onCancel}
-            width="max-w-lg"
+            // A decision: CANCEL and RUN are its answers, Escape is CANCEL, and there is no X — a
+            // third way out of the step before bytes leave (components/ConfirmDialog, the same rule).
+            onEscape={onCancel}
             testId={TEST_ID.gateDialog}
             footer={
                 <>
-                    <TextButton onClick={onCancel} {...tid(TEST_ID.gateCancel)}>
+                    <DialogButton onClick={onCancel} tone="neutral" {...tid(TEST_ID.gateCancel)}>
                         {t.cancel}
-                    </TextButton>
-                    <TextButton
+                    </DialogButton>
+                    <DialogButton
                         onClick={onRun}
                         disabled={!ready}
                         tone={job.risk === 'high' ? 'danger' : 'primary'}
@@ -111,7 +112,7 @@ export function GateDialog({
                         {...tid(TEST_ID.gateRun)}
                     >
                         {phase === 'start' ? t.op_start : t.op_run}
-                    </TextButton>
+                    </DialogButton>
                 </>
             }
         >

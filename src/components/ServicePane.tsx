@@ -181,8 +181,9 @@ export function ServicePane({
             <Section
                 title={t.tab_service}
                 count={jobs.length}
-                // The sentence that used to exist only in a code comment.
-                note={cls !== 'all' ? t.jobClassNote[cls] : undefined}
+                // The sentence that used to exist only in a code comment — behind the ⓘ now, where
+                // every block's explanation is (tsunagi-m-ux §17).
+                info={cls !== 'all' ? t.jobClassInfo[cls] : undefined}
             >
                 <ListControls
                     query={query}
@@ -234,7 +235,7 @@ export function ServicePane({
                                 key={c}
                                 active={cls === c}
                                 count={classCounts.find((x) => x.key === c)?.count}
-                                title={t.jobClassNote[c]}
+                                title={t.jobClassInfo[c]}
                                 onClick={() => setCls(cls === c ? 'all' : c)}
                             >
                                 {t.jobClass[c]}

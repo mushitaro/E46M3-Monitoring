@@ -1,18 +1,27 @@
 'use client';
 
-import { ExternalLink, ShieldAlert } from 'lucide-react';
+import { useState } from 'react';
+import { AlertTriangle, Check } from 'lucide-react';
 import { DialogFrame } from '@/components/DialogFrame';
-import { MicroLabel, TextButton, emphasise } from '@/components/ui';
+import { DialogButton, emphasise } from '@/components/ui';
 import { useLang, type Localised } from '@/lib/i18n';
 import { PRIVACY_PREVIEW } from '@/lib/links';
 
 /**
  * What this tool is, said once, with one way out.
  *
+ * ## The family's disclaimer
+ *
+ * TUNER's (`DisclaimerDialog.tsx`), part for part, so the gate into either tool
+ * is the same object (tsunagi-m-ux §6): the shared frame with a red caution
+ * glyph, the statements as a dash list in the body's own size, the sentence that
+ * says what the press means, and one filled answer — in the reader's language,
+ * because pressing it is the agreement.
+ *
  * ## One exit
  *
  * No `onClose` is passed. That is not an omission — `DialogFrame`'s contract is
- * that a dialog without one cannot be dismissed by Escape or by the backdrop,
+ * that a dialog without one cannot be dismissed by Escape, an X or the backdrop,
  * so AGREE is the only way forward and nobody can add a second exit without
  * adding a prop. The other dialogs in this app ask you to decide something and
  * take CANCEL for an answer; this one is not a decision.
@@ -24,10 +33,13 @@ import { PRIVACY_PREVIEW } from '@/lib/links';
  * possible home for a statement that must remain available — the moment it is
  * acknowledged, the attribution would be gone from the app.
  *
- * Nor is there a "do not show this again" checkbox. There is nothing to opt out
- * of: agreeing IS the opt-out, and it lasts until the text says something
- * materially different. `lib/disclaimer` holds that rule and the version it
- * turns on.
+ * ## Don't show again
+ *
+ * TUNER's checkbox, beside the answer: the owner chooses whether the gate comes
+ * back. Ticked, the agreement is stored and lasts until the text says something
+ * materially different (`lib/disclaimer` holds that rule and the version it turns
+ * on); unticked, it lasts for this page and the gate is there on the next visit.
+ * The operator kept it in TUNER and put it in every tool (2026-10-28).
  *
  * ## Why the copy is a list of four
  *
@@ -40,42 +52,69 @@ import { PRIVACY_PREVIEW } from '@/lib/links';
  * ## The preview adds what it sends
  *
  * `preview` is the branded build's bit (page.tsx), and with it the same dialog
- * carries one more section — `PreviewNotice`, below the points — and AGREE
- * records that too (`lib/previewNotice`). Without it the dialog is exactly what
- * it was before the preview existed; `DisclaimerDialog.test.ts` pins that
- * markup. One dialog rather than a second one after it: the owner reads what the
- * tool is and what this build sends in one place, and answers once.
- *
- * The preview's card is 560px, the ///M modal width, where production keeps
- * DialogFrame's 448: the notice more than doubles the text. Measured at
- * 1280×860, at 448 the card hit the window's height with the policy link below
- * the fold; at 560 the whole of it fits.
+ * carries one more section — `PreviewNotice`, below the agree note — and AGREE
+ * records that too (`lib/previewNotice`). Below the note, not above it: the note
+ * says the press accepts "the above", and the above stays the four statements.
+ * The notice is something the owner is told and the same press confirms having
+ * seen. Without it the dialog is exactly the production one;
+ * `DisclaimerDialog.test.ts` pins that markup.
  */
-export function DisclaimerDialog({ onAgree, preview = false }: { onAgree: () => void; preview?: boolean }) {
+export function DisclaimerDialog({
+    onAgree,
+    preview = false,
+}: {
+    /** The one press; `dontShowAgain` is the checkbox beside it. */
+    onAgree: (dontShowAgain: boolean) => void;
+    preview?: boolean;
+}) {
     const { lang, t } = useLang();
+    const [dontShowAgain, setDontShowAgain] = useState(false);
 
     return (
         <DialogFrame
             title={t.disclaimer_title}
-            Icon={ShieldAlert}
-            width={preview ? 'max-w-[560px]' : undefined}
+            Icon={AlertTriangle}
+            tone="danger"
             footer={
-                <TextButton onClick={onAgree} tone="primary">
-                    {t.disclaimer_agree}
-                </TextButton>
+                <>
+                    <label className="mr-auto flex cursor-pointer select-none items-center gap-2 text-[11px] text-slate-400">
+                        <input
+                            type="checkbox"
+                            checked={dontShowAgain}
+                            onChange={(e) => setDontShowAgain(e.target.checked)}
+                            className="size-3 accent-blue-500"
+                        />
+                        <span>{t.disclaimer_dontShow}</span>
+                    </label>
+                    <DialogButton onClick={() => onAgree(dontShowAgain)} tone="solid" Icon={Check}>
+                        {t.disclaimer_agree}
+                    </DialogButton>
+                </>
             }
         >
-            <p className="text-xs leading-relaxed text-slate-300">{emphasise(t.disclaimer_lede)}</p>
-            <ul className="mt-4 space-y-2.5">
-                {t.disclaimer_points.map((point) => (
-                    <li key={point} className="flex gap-2.5 text-[11px] leading-relaxed text-slate-400">
-                        <span aria-hidden className="mt-1.5 size-1 shrink-0 rounded-full bg-slate-600" />
-                        <span>{emphasise(point)}</span>
-                    </li>
-                ))}
-            </ul>
-            {preview && <PreviewNotice copy={t.disclaimer_preview} policyHref={PRIVACY_PREVIEW[lang]} />}
+            <div className="space-y-3 text-xs leading-relaxed text-slate-300">
+                <p>{emphasise(t.disclaimer_lede, 'plain')}</p>
+                <ul className="space-y-2">
+                    {t.disclaimer_points.map((point) => (
+                        <Item key={point}>{emphasise(point, 'plain')}</Item>
+                    ))}
+                </ul>
+                <p className="text-[11px] text-slate-500">{t.disclaimer_agreeNote}</p>
+                {preview && <PreviewNotice copy={t.disclaimer_preview} policyHref={PRIVACY_PREVIEW[lang]} />}
+            </div>
         </DialogFrame>
+    );
+}
+
+/** One statement: an em dash, then the line. The dash is TUNER's, and the list's only mark. */
+function Item({ children }: { children: React.ReactNode }) {
+    return (
+        <li className="flex gap-2">
+            <span aria-hidden="true" className="shrink-0 text-slate-600">
+                —
+            </span>
+            <span>{children}</span>
+        </li>
     );
 }
 
@@ -90,55 +129,56 @@ export function DisclaimerDialog({ onAgree, preview = false }: { onAgree: () => 
  * then its purpose, where it is kept and how to delete it, then the policy that
  * says all of it at length.
  *
- * A rule above it, and nothing around it: the section is the second half of one
- * dialog, not a card inside it. The link opens a new tab, like every link out of
- * this app — a same-tab navigation would drop the cable and anything unsaved.
+ * Built from the dialog's own parts, as TUNER's is, so it reads as the same dialog and not a second
+ * page: the dash list, a bold title per item, the grey small print for when each is sent. The one
+ * rule above it is the line between the two things this dialog says. The link opens a new tab, like
+ * every link out of this app — a same-tab navigation would drop the cable and anything unsaved.
  */
 export function PreviewNotice({ copy: n, policyHref }: { copy: Localised['disclaimer_preview']; policyHref: string }) {
     return (
-        <section className="mt-4 border-t border-slate-800 pt-4">
-            <p className="text-xs leading-relaxed text-slate-300">{n.lead}</p>
-            <div className="mt-3 space-y-2.5">
-                <Sent title={n.sessionsTitle} what={n.sessions} when={n.sessionsWhen} />
-                <Sent title={n.recordsTitle} what={n.records} when={n.recordsWhen} />
-                <Sent title={n.readsTitle} what={n.reads} when={n.readsWhen} />
-                <Sent title={n.investigationsTitle} what={n.investigations} when={n.investigationsWhen} />
-            </div>
-            <p className="mt-2 text-[11px] leading-relaxed text-slate-500">{n.alsoSent}</p>
-            <div className="mt-3 space-y-2">
-                {(
-                    [
-                        [n.purposeTitle, n.purpose],
-                        [n.whereTitle, n.where],
-                        [n.deleteTitle, n.deleteBody],
-                    ] as const
-                ).map(([title, body]) => (
-                    <div key={title}>
-                        <MicroLabel>{title}</MicroLabel>
-                        <p className="mt-0.5 text-[11px] leading-relaxed text-slate-400">{body}</p>
-                    </div>
-                ))}
-            </div>
-            <a
-                href={policyHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-3 inline-flex items-center gap-1.5 text-[11px] text-blue-400 transition-colors hover:text-blue-300"
-            >
-                <ExternalLink className="size-3 shrink-0" />
-                {n.policy}
-            </a>
+        <section className="space-y-2 border-t border-slate-800 pt-3">
+            <p>{n.lead}</p>
+            <ul className="space-y-2">
+                <Sent title={n.sessionsTitle} when={n.sessionsWhen}>
+                    {n.sessions}
+                </Sent>
+                <Sent title={n.recordsTitle} when={n.recordsWhen}>
+                    {n.records}
+                </Sent>
+                <Sent title={n.readsTitle} when={n.readsWhen}>
+                    {n.reads}
+                </Sent>
+                <Sent title={n.investigationsTitle} when={n.investigationsWhen}>
+                    {n.investigations}
+                </Sent>
+            </ul>
+            <p className="text-[11px] text-slate-500">{n.alsoSent}</p>
+            <ul className="space-y-2">
+                <Sent title={n.purposeTitle}>{n.purpose}</Sent>
+                <Sent title={n.whereTitle}>{n.where}</Sent>
+                <Sent title={n.deleteTitle}>{n.deleteBody}</Sent>
+            </ul>
+            <p>
+                <a
+                    href={policyHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] text-blue-400 underline underline-offset-2 transition-colors hover:text-blue-300"
+                >
+                    {n.policy}
+                </a>
+            </p>
         </section>
     );
 }
 
 /** One kind of thing that is sent: its name, what it holds, and when it goes. */
-function Sent({ title, what, when }: { title: string; what: string; when: string }) {
+function Sent({ title, when, children }: { title: string; when?: string; children: React.ReactNode }) {
     return (
-        <div>
-            <MicroLabel>{title}</MicroLabel>
-            <p className="mt-0.5 text-[11px] leading-relaxed text-slate-300">{what}</p>
-            <p className="text-[11px] leading-relaxed text-slate-500">{when}</p>
-        </div>
+        <Item>
+            <span className="block font-bold text-slate-100">{title}</span>
+            {children}
+            {when && <span className="block text-[11px] text-slate-500">{when}</span>}
+        </Item>
     );
 }

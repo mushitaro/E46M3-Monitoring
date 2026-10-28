@@ -21,6 +21,7 @@ import { bestTelegram, type TelegramTable } from '@/lib/telegrams';
 import { Awaiting } from '@/views/shared/Awaiting';
 import { CountReadout } from '@/views/shared/CountReadout';
 import type { Motion } from '@/lib/vehicleState';
+import { ReasonGlossary, ReasonTag } from '@/views/shared/RunReason';
 
 /**
  * The ECU's learned values, and the ECU's own way of throwing them away.
@@ -69,9 +70,12 @@ export const AdaptationView = memo(function AdaptationView({
 
     return (
         <Pane>
-            <Section title={t.adaptations} note={t.adaptations_note}>
+            <Section
+                title={t.adaptations}
+                info={hasDecoder(ecuId) ? t.adaptations_info : t.adaptations_noDecoderInfo}
+            >
                 {!hasDecoder(ecuId) ? (
-                    <p className="py-2 text-[11px] leading-relaxed text-slate-500">{t.adaptations_noDecoder}</p>
+                    <p className="py-2 text-xs text-slate-500">{t.adaptations_noDecoder}</p>
                 ) : blocks === null ? (
                     <p className="py-2 font-mono text-xs uppercase text-slate-600">{t.awaiting_read}</p>
                 ) : (
@@ -115,7 +119,7 @@ export const AdaptationView = memo(function AdaptationView({
                 on SMG II and DSC its absence would otherwise read as "reset is
                 available here", which is the one misreading that costs someone
                 an engine's worth of learned values. */}
-            <Section title={t.adaptationsReset} note={t.adaptationsReset_note}>
+            <Section title={t.adaptationsReset} info={<ReasonGlossary lead={t.adaptationsReset_info} reasons={resets.map((r) => r.verdict)} />}>
                 {resets.length === 0 ? (
                     // "None" and "not checked" are different sentences. An empty
                     // list under the wrong one is the app asserting a module has
@@ -132,15 +136,10 @@ export const AdaptationView = memo(function AdaptationView({
                                 name={label(job, lang)}
                                 ident={job.id}
                                 trailing={
-                                    <span className={`shrink-0 ${LABEL} text-slate-600`}>
-                                        {verdict.allowed ? t.gate_verified : t.op_blocked}
-                                    </span>
-                                }
-                                detail={
-                                    verdict.allowed ? undefined : (
-                                        <p className="text-[11px] leading-relaxed text-slate-500">
-                                            {t.runBlock[verdict.reason]}
-                                        </p>
+                                    verdict.allowed ? (
+                                        <span className={`shrink-0 ${LABEL} text-slate-600`}>{t.gate_verified}</span>
+                                    ) : (
+                                        <ReasonTag reason={verdict.reason} />
                                     )
                                 }
                             />

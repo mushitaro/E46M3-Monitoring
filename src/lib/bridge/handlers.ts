@@ -58,6 +58,10 @@ export interface TabFacade {
     sync(): Promise<unknown>;
     /** Leave for TUNER WORKS, or say why not (running, unsaved). */
     openTuner(discardUnsaved: boolean): unknown;
+    /** Connect again through an already-allowed cable, or say why not. */
+    connect(): Promise<unknown>;
+    /** Let the cable go, or say why not (a recording to stop first). */
+    disconnect(stopRecording: boolean): Promise<unknown>;
 }
 
 const DAY_MS = 86_400_000;
@@ -369,6 +373,16 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
         monitoring_sync_upload: async (args) => {
             if (args.confirmed !== true) throw new Error('Send when the owner asks for it, with confirmed: true.');
             return f.sync();
+        },
+
+        monitoring_connect: async (args) => {
+            if (args.confirmed !== true) throw new Error('Connect when the owner asks for it, with confirmed: true.');
+            return f.connect();
+        },
+
+        monitoring_disconnect: async (args) => {
+            if (args.confirmed !== true) throw new Error('Disconnect when the owner asks for it, with confirmed: true.');
+            return f.disconnect(args.stop_recording === true);
         },
 
         monitoring_open_tuner: async (args) => {

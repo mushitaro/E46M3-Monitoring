@@ -197,6 +197,21 @@ export const MONITORING_TOOLS = {
         description: "Save, then send every session the owner's account does not have yet (the screen's SYNC). Returns how many were sent, or why not (signed out, offline).",
         inputSchema: obj({ confirmed: CONFIRMED }, ['confirmed']),
     },
+    monitoring_connect: {
+        scope: 'control',
+        description:
+            "Connect again to the car through the cable this device has already been allowed — the one a person connected on the screen before (operator, 2026-10-28). Never asks for a new device: with none allowed yet the answer says so, and the first connection is made on the screen. Connects to the car (not PRACTICE), to the module the screen has selected. The owner's own words ('つないで') are the yes: confirmed: true.",
+        inputSchema: obj({ confirmed: CONFIRMED }, ['confirmed']),
+    },
+    monitoring_disconnect: {
+        scope: 'control',
+        description:
+            "Let the cable go (the screen's DISCONNECT). If a recording or a PROBE run is going, the answer says so and nothing changes: read back that it will stop, and only after a clear yes call again with stop_recording: true. Refused while a read is in flight.",
+        inputSchema: obj(
+            { confirmed: CONFIRMED, stop_recording: bool('True only after the read-back that the recording or PROBE run will stop was answered yes.') },
+            ['confirmed'],
+        ),
+    },
     monitoring_open_tuner: {
         scope: 'control',
         description:

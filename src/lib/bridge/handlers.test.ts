@@ -44,6 +44,8 @@ function tab(over: Partial<TabFacade> = {}) {
         save: async () => ({ saved: true }),
         sync: async () => ({ sent: 0 }),
         openTuner: (discard) => ({ opened: discard }),
+        connect: async () => ({ connected: true }),
+        disconnect: async (stop) => ({ disconnected: true, stopped: stop }),
         ...over,
     };
     return {
@@ -157,6 +159,15 @@ describe('what loses something waits for a yes', () => {
         expect(openTuner).not.toHaveBeenCalled();
         await expect(t.h.monitoring_open_tuner({ confirmed: true })).resolves.toEqual({ opened: false });
         await expect(t.h.monitoring_open_tuner({ confirmed: true, discard_unsaved: true })).resolves.toEqual({ opened: true });
+    });
+
+    it('connects again and lets the cable go on the owner’s word, and passes on a confirmed stop', async () => {
+        const t = tab();
+        await expect(t.h.monitoring_connect({})).rejects.toThrow(/confirmed/);
+        await expect(t.h.monitoring_connect({ confirmed: true })).resolves.toEqual({ connected: true });
+        await expect(t.h.monitoring_disconnect({})).rejects.toThrow(/confirmed/);
+        await expect(t.h.monitoring_disconnect({ confirmed: true })).resolves.toEqual({ disconnected: true, stopped: false });
+        await expect(t.h.monitoring_disconnect({ confirmed: true, stop_recording: true })).resolves.toEqual({ disconnected: true, stopped: true });
     });
 
     it('passes a refusal to start through as the answer’s error', async () => {

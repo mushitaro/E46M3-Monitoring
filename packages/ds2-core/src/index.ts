@@ -89,6 +89,7 @@ export {
     WebUsbFtdiTransport,
     FtdiLineError,
     FTDI_DATA_8E1_TX_BREAK,
+    FTDI_VENDOR_ID,
 } from './webUsbFtdiTransport';
 
 export {

@@ -31,7 +31,9 @@ import type { Sessions } from '@/views/sessions/useSessions';
  * never part of an answer, and neither is a session's.
  *
  * What it can reach is what the screen's own controls reach — READ, RECORD and its STOP, SAVE,
- * SYNC, a tab, a job selected on SERVICE — and nothing else. Running a job is not one of them.
+ * SYNC, a tab, a job selected on SERVICE — and, since the operator allowed it (2026-10-28), CONNECT
+ * again through a cable already allowed on this device, DISCONNECT, and the move to TUNER. Nothing
+ * else. Allowing a new device, running a job, an adjustment, a clear or a write is not among them.
  */
 const KINDS: Record<string, readonly JobClass[]> = {
     read: ['read'],
@@ -241,6 +243,28 @@ export function useMonitoringFacade(input: {
             await sessions.save();
             const s = (await listLocal().catch(() => []))[0];
             return s ? { saved: true, label: s.label, ...summarise(s) } : { saved: false, reason: 'Nothing was written to this device.' };
+        },
+
+        connect: async () => {
+            if (link.state !== 'disconnected') return { connected: link.state !== 'connecting', reason: `The link is ${link.state}.` };
+            const reason = await link.reconnectPermitted();
+            return reason === null ? { connected: true, module: { id: ecuId, name: moduleName(ecuId) } } : { connected: false, reason };
+        },
+
+        disconnect: async (stopRecording) => {
+            if (link.state === 'disconnected') return { disconnected: true, note: 'The link was not open.' };
+            if (link.state === 'busy' || link.state === 'connecting') return { disconnected: false, reason: 'A read is in flight. Ask again in a moment.' };
+            if (link.state === 'logging' && !stopRecording) {
+                return {
+                    disconnected: false,
+                    recording: running ? 'probe' : 'recording',
+                    reason: 'A recording or a PROBE run is going. Read back that it will stop, and after a clear yes call again with stop_recording: true.',
+                };
+            }
+            if (running) probe.stop();
+            else if (link.state === 'logging') datalog.stop();
+            await link.disconnect();
+            return { disconnected: true };
         },
 
         openTuner: (discardUnsaved) => {

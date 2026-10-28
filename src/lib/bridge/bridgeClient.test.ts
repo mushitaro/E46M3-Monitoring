@@ -204,6 +204,25 @@ describe('a socket the network dropped', () => {
     });
 });
 
+describe('a tab of the same device replaced', () => {
+    it('waits for "switch here" instead of taking the assistant back', async () => {
+        vi.useFakeTimers();
+        const { c, statuses } = client();
+        c.start();
+        await vi.advanceTimersByTimeAsync(0);
+        const first = FakeSocket.last!;
+        first.open();
+        first.onclose?.({ code: 4003, reason: 'replaced' });
+        expect(statuses.at(-1)).toMatchObject({ state: 'held' });
+        await vi.advanceTimersByTimeAsync(10 * 60_000);
+        expect(FakeSocket.last).toBe(first);
+        c.takeover();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(FakeSocket.last).not.toBe(first);
+        c.stop();
+    });
+});
+
 describe('the device a socket names', () => {
     it('carries its id, and nav=1 on the head unit', async () => {
         const { c } = client({}, { device: () => ({ id: 'a'.repeat(22), nav: true }) });

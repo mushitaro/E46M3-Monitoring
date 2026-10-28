@@ -126,6 +126,8 @@ const BACKOFF_S = [1, 2, 5, 10, 30];
 const HELD_RETRY_S = 60;
 /** The relay's refusal: another device's live tab has the assistant. */
 export const HELD_CLOSE_CODE = 4002;
+/** The relay's replacement: a newer socket from this same device (another tab of it) took over. */
+export const REPLACED_CLOSE_CODE = 4003;
 const PING_MS = 25_000;
 /** Pongs missed in a row before the socket is taken for dead and replaced. */
 export const MISSED_PONGS = 2;
@@ -220,12 +222,12 @@ export class BridgeClient {
         this.set('offline', 'No network. Connecting again the moment it is back.');
     }
 
-    /** Held by another device: wait, and ask again in a minute. */
-    private hold(holder: string | null, detail: string) {
+    /** Held by another device: wait, and ask again in a minute — or, `again: false`, only when asked. */
+    private hold(holder: string | null, detail: string, again = true) {
         if (!this.running) return;
         this.status = { ...this.status, state: 'held', detail, holder };
         this.emit();
-        this.timer = setTimeout(() => { this.timer = null; void this.connect(); }, HELD_RETRY_S * 1000);
+        if (again) this.timer = setTimeout(() => { this.timer = null; void this.connect(); }, HELD_RETRY_S * 1000);
     }
 
     private emit() {
@@ -360,6 +362,13 @@ export class BridgeClient {
             }
             if (ev.code === 4000) {
                 this.hold(null, 'Another device took the assistant. This tab takes it back when that one goes quiet, or now with "switch here".');
+                return;
+            }
+            // Another tab of this same device opened a newer socket. Asking again would take it back
+            // from that tab a minute later, and the two would trade it all drive; this one waits for
+            // "switch here".
+            if (ev.code === REPLACED_CLOSE_CODE) {
+                this.hold(null, 'Another tab on this device has the assistant now. "Switch here" brings it back to this one.', false);
                 return;
             }
             this.retry('The bridge connection closed.');

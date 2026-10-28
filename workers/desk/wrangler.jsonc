@@ -6,7 +6,12 @@
   "name": "monitoring-desk",
   "main": "src/index.ts",
   "compatibility_date": "2026-07-31",
-  "workers_dev": true,
+
+  // Its own name under tsunagi.app, like the relay (matrix-mcp.tsunagi.app), and no workers.dev
+  // address: that one is named after the Cloudflare account, which is a person's name, and a
+  // public URL does not carry one (2026-10-28). The cloud environment allows this host by name.
+  "workers_dev": false,
+  "routes": [{ "pattern": "monitoring-desk.tsunagi.app", "custom_domain": true }],
 
   // The WORKS build's own database. Its schema is migrations/ at the repository root, applied
   // from the root wrangler.jsonc; this Worker applies none.

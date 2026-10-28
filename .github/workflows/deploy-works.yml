@@ -83,11 +83,23 @@ jobs:
       - name: Deploy
         if: env.HAVE_DEPLOY == 'true' && steps.done.outputs.cache-hit != 'true'
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_MONITORING }}
+          PASTED_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_MONITORING }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_MONITORING }}
           CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
+          # The token is pasted into the secret by hand, and a copy can bring a line break nobody
+          # saw (the first deploy stopped on wrangler's "Headers.set: … is an invalid header value").
+          # A Cloudflare API token is one run of [A-Za-z0-9_-], so use the one line of that shape,
+          # and say how the secret is laid out: its line lengths, never a character of it.
+          lines="$(printf '%s\n' "$PASTED_TOKEN" | tr -d '\r' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+          shape="$(printf '%s' "$lines" | awk '{ printf "%s%d", (NR > 1 ? "+" : ""), length($0) }')"
+          token="$(printf '%s\n' "$lines" | grep -E '^[A-Za-z0-9_-]{20,}$' | sort -u || true)"
+          if [ -z "$token" ] || [ "$(printf '%s\n' "$token" | wc -l)" -ne 1 ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN_MONITORING does not hold one token (line lengths ${shape}). Put the token alone in it."
+            exit 1
+          fi
+          echo "Cloudflare token: one token line (line lengths ${shape})."
+          export CLOUDFLARE_API_TOKEN="$token" CF_API_TOKEN="$token"
           set +e
           npm run deploy
           code=$?

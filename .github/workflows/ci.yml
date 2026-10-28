@@ -25,6 +25,12 @@ jobs:
       # it they run. The public-tree check below reads tracked files only, and these paths are
       # gitignored, so placing them cannot trip it. The data repository was regenerated from the .prg
       # files (2026-10-28, its #2), and every test passes on it (docs/AUTONOMY.md §8).
+      #
+      # The read token is NOT a repository secret, so here it is absent and the data tests skip: a
+      # repository secret is readable by any branch's own copy of this workflow, before review, and
+      # the token reads two private repositories. It lives in the `works` environment, which only
+      # main deploys from (deploy-works.yml). The data tests run in cloud sessions, which place the
+      # data themselves (.claude/hooks/session-start.sh).
       - name: Private data
         if: env.HAVE_DATA_TOKEN == 'true'
         env:

@@ -150,13 +150,15 @@ GitHub のラベル・自動マージ・ブランチ保護は `autonomy.yml` と
    3. PC で `npx wrangler pages secret put LOOP_FIRE_TOKEN --project-name e46m3-monitoring-preview` を実行し、
       聞かれたところに貼る。`LOOP_TRIGGER_ID` は `wrangler.jsonc` にある。トークンが無いうちは、起こす口は
       何もしない（ループは定期の巡回だけ）。
-4. 承認の要らない直しを、マージしたらすぐ配信する鍵（`deploy-works.yml`）：
-   1. Cloudflare の API トークンを一つ：権限は Account → Cloudflare Pages: Edit だけ、期限つき。
-   2. GitHub → Settings → Environments → `works` を作り、Deployment branches を `main` だけにする。そこに
-      `CLOUDFLARE_API_TOKEN` と `CLOUDFLARE_ACCOUNT_ID`。
-   3. リポジトリの secret に `MONITORING_DATA_TOKEN`：fine-grained の読み取り専用（Contents: Read）で、
-      `E46M3-Monitoring-data` と `tsunagi-m3` の二つだけ、期限つき。配信は、データと、ゲートの正本との
-      一致の確認にこの二つを読む。
+4. 承認の要らない直しを、マージしたらすぐ配信する鍵（`deploy-works.yml`）。三つとも Environment `works` に置き、
+   リポジトリの secret にはしない（リポジトリの secret は、マージ前のブランチが書き換えたワークフローからも読める）：
+   1. GitHub → Settings → Environments → `works` を作り、Deployment branches を `main` だけにする。
+   2. Cloudflare の API トークンを一つ（権限は Account → Cloudflare Pages: Edit だけ、期限つき）。`works` に
+      `CLOUDFLARE_API_TOKEN` として、アカウント ID を `CLOUDFLARE_ACCOUNT_ID` として。
+   3. GitHub の fine-grained トークンを一つ（Contents: Read だけ、`E46M3-Monitoring-data` と `tsunagi-m3` の二つ
+      だけ、期限つき）。`works` に `MONITORING_DATA_TOKEN` として。配信は、データと、ゲートの正本との一致の
+      確認にこの二つを読む。CI はこの環境を使わないので、CI のデータの試験は飛ばされる（クラウドの
+      セッションでは回る）。
 5. 定期の巡回を予備（1 日 1〜2 回）に減らす。定期実行の設定を変えるので、運営者の一言で机が行う。
 
 ## 7. 机への道

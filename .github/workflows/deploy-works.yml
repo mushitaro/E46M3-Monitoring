@@ -8,9 +8,10 @@ name: Deploy WORKS
 # which starts no push-triggered workflow — dispatches this run itself (autonomy-merge.yml). The
 # six-hourly run is the net under both; a commit already deployed is skipped.
 #
-# Inert until the secrets exist (docs/AUTONOMY.md §6). In the `works` environment, which only main
-# may deploy from: CLOUDFLARE_API_TOKEN (Cloudflare Pages: Edit, nothing else, with an expiry) and
-# CLOUDFLARE_ACCOUNT_ID. In the repository: MONITORING_DATA_TOKEN, read-only on the two private
+# Inert until the secrets exist (docs/AUTONOMY.md §6), all three in the `works` environment, whose
+# deployment branches are main alone — never repository secrets, which any branch's own copy of a
+# workflow could read before review: CLOUDFLARE_API_TOKEN (Cloudflare Pages: Edit, nothing else,
+# with an expiry), CLOUDFLARE_ACCOUNT_ID, and MONITORING_DATA_TOKEN, read-only on the two private
 # repositories a deploy needs — E46M3-Monitoring-data (the ECU data) and tsunagi-m3 (the canonical
 # owner gate, which `npm run deploy` checks this copy against before it uploads anything).
 #

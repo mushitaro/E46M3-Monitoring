@@ -57,9 +57,6 @@ const OUTLINE_ALLOWED = new Set([
     // The hub ring is a STATE indicator, not a frame. Named here so a second
     // ring cannot appear without this list changing.
     'components/Hub.tsx',
-    // The AI switch's outline is its OFF state, the family's (tsunagi-m-chrome
-    // §2): the same box in every state, transparent when filled.
-    'components/AiSwitch.tsx',
 ]);
 
 /** Row padding. One list, one row height. */

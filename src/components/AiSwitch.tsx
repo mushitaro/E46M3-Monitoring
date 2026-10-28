@@ -14,25 +14,26 @@ import { useLang } from '@/lib/i18n';
  * shows the device's name and the state, and says where the switch is.
  *
  * A switch, not a link: `role="switch"` and `aria-checked`. Off, a press shows what turning it on
- * sends, and turns it on only when that is agreed; on, a press turns it off. Its look is its state —
- * sky when the assistant can reach this tab, a pulse while connecting or reconnecting, amber when
- * another device has it, an outline when off. The outline is the switch's OFF, a state and not a
- * frame (tools/check_ui_tokens.mjs lists this file for it). Every state keeps the same box, so the
- * header does not move as it changes.
+ * sends, and turns it on only when that is agreed; on, a press turns it off. Its look is its state,
+ * in tint alone, as the badge beside it — sky when the assistant can reach this tab, a pulse while
+ * connecting or reconnecting, amber when another device has it, slate when off. No outline in any
+ * state (operator, 2026-10-28). Every state keeps the same box, so the header does not move.
  *
  * Not drawn on a build that has no assistant (production).
  *
  * The notice is put on the body, not beside the switch: the header is a stacking context of its own
  * (z-10, backdrop blur), and a dialog inside it is drawn under the panes below it, unpressable.
  */
+const OFF = 'bg-slate-500/10 text-slate-500';
+const TRYING = 'bg-slate-500/10 text-slate-400 animate-pulse';
 const LOOK: Record<BridgeState, string> = {
-    live: 'border-transparent bg-sky-500/15 text-sky-400',
-    connecting: 'border-transparent bg-sky-500/10 text-sky-400 animate-pulse',
-    retrying: 'border-transparent bg-sky-500/10 text-sky-400 animate-pulse',
-    offline: 'border-transparent bg-sky-500/10 text-sky-400 animate-pulse',
-    held: 'border-transparent bg-amber-500/15 text-amber-400',
-    off: 'border-slate-700 bg-transparent text-slate-500',
-    stopped: 'border-slate-700 bg-transparent text-slate-600',
+    live: 'bg-sky-500/15 text-sky-300',
+    connecting: TRYING,
+    retrying: TRYING,
+    offline: TRYING,
+    held: 'bg-amber-500/15 text-amber-300',
+    off: OFF,
+    stopped: OFF,
 };
 
 export function AiSwitch({ assistant: a }: { assistant: AssistantBridge }) {
@@ -51,7 +52,7 @@ export function AiSwitch({ assistant: a }: { assistant: AssistantBridge }) {
                 title={title}
                 disabled={!a.allowed}
                 onClick={() => (a.on ? a.setOn(false) : setAsking(true))}
-                className={`shrink-0 rounded border px-1.5 py-0.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${LABEL} ${LOOK[a.on ? state : 'off']}`}
+                className={`shrink-0 rounded px-1.5 py-0.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${LABEL} ${LOOK[a.on ? state : 'off']}`}
             >
                 AI
             </button>

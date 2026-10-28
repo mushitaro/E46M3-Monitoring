@@ -18,10 +18,12 @@ description: 'The desk side of E46M3 /// MONITORING (DS2 diagnosis of a BMW E46 
 | モジュールごとの送れるフレーム | `src/lib/moduleProtocol.ts` |
 | 台帳（停車中に答えた・走行中に読んでよい） | `src/lib/ledger.ts` |
 | ジョブのカタログ（BMW SGBD 由来） | `public/ecu-data/`（private の `E46M3-Monitoring-data` から置く） |
+| 任された調査（アカウントの写し） | `npm run desk -- list`・`pull <record>`・`run <record> <n>`（`workers/desk` を通す。オーナーの ID と VIN は出ない。取ったものは `desk-work/` に置き、コミットしない） |
 | 車 | Matrix MONITORING WORKS（`monitoring_*`）。TUNER の RAM の名前は `tuner_ram` |
 
 ## 先に読む
 
+0. **取る。** `npm run desk -- list` で委任が立っている調査を見て、`pull <record>` で記録・実行の一覧・読み取りの記録を、要る実行だけ `run <record> <n>` で取る。委任が立っていない調査は机には見えない — それが正しい。
 1. **委任を読む。** 誰の言葉で、どのモジュールまで、いつまでか。範囲の外には手を出さない。期限が切れていたら、問い（`ask`、`to: driver`）を残して止まる。
 2. **ドライバーの言葉と問いを読む。** 待っている問いに答えが来ていれば、それを前提にする。ドライバーがしたことをデータから決めない — 問いにする（tsunagi-m-research の「走行を読む前に」と同じ）。
 3. **前の読みを読む。** 違う結論なら `re` で並べる。上書きしない。
@@ -33,6 +35,7 @@ description: 'The desk side of E46M3 /// MONITORING (DS2 diagnosis of a BMW E46 
 3. **証拠は安い順**：故障とフリーズフレーム → 停車中の状態 → 停車中のライブ値 → 走行中の捕捉（条件で取る。運転は指示しない） → DME の RAM（master の窓、`tuner_ram`） → 画面での手順（作動テスト・システムチェック。人が実行）。
 4. **計画を書く**：委任の範囲の読み取りだけ。手順は 12 まで、判定（`judge`）には基準値の**出所**（sgbd・inpa・authored・observed）。出所の無い値は `authored` と書き、そう言う。書く前に catalog と runGate で**送れるか**を確かめる。送れないものを計画に入れても、タブが断るだけ。
 5. **読む**：タブの判定をそのまま使う。計算し直さない。`fact` は区間と値と読み方つき、`read` は確かさつき。
+   書くのは `npm run desk -- write <record> <file>`（`[{ "body": … }]`）。`desk` として、サーバーの時刻で書き足される。全部通るか一つも書かないかで、拒否はどの項目がどの規則に当たったかを言う — その文のまま直す。
 6. **次の一手**：
    - 支持 → 対策の提案（修理、画面での手順、マップの変更は TUNER・SMG2 MAPPING）と、直ったかを確かめる計画。
    - 否定 → 次の仮説。モジュールを替えるなら理由を書く。

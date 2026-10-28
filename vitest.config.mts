@@ -54,7 +54,7 @@ export default defineConfig({
         // global soup here would let a "pure" module quietly start depending on
         // one.
         environment: 'node',
-        include: ['packages/**/*.test.ts', 'src/**/*.test.ts'],
+        include: ['packages/**/*.test.ts', 'src/**/*.test.ts', 'workers/**/*.test.ts'],
         exclude: ['**/node_modules/**', ...NEEDS_DATA],
     },
 });

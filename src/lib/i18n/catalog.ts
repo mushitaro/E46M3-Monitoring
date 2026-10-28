@@ -74,6 +74,11 @@ export interface Localised {
      * type. `lead` also names the build as the operator renamed it for its users (2026-09-25): this
      * WORKS build / このワークス版, where m3 said preview. What it lists must stay what lib/sync/
      * sends, and what m3's privacy policy (#preview) says of this app.
+     *
+     * `reads` and `investigations` were added with v2 of the notice (2026-10-28), when the build
+     * began to send what the policy's 「読み取りの記録」 and 「調査の記録」 had already said it would
+     * (lib/sync/readRecords, lib/sync/investigations); `lead`, `alsoSent`, `purpose`, `where` and
+     * `deleteBody` grew to match.
      */
     disclaimer_preview: {
         lead: string;
@@ -83,6 +88,12 @@ export interface Localised {
         recordsTitle: string;
         records: string;
         recordsWhen: string;
+        readsTitle: string;
+        reads: string;
+        readsWhen: string;
+        investigationsTitle: string;
+        investigations: string;
+        investigationsWhen: string;
         alsoSent: string;
         purposeTitle: string;
         purpose: string;

@@ -20,6 +20,9 @@
     "check:public": "node scripts/check-public-tree.mjs",
     "hooks:install": "git config core.hooksPath .githooks",
     "deploy": "node scripts/deploy.mjs",
+    "desk": "node scripts/desk.mjs",
+    "desk:token": "node scripts/desk-token.mjs",
+    "desk:deploy": "wrangler deploy --config workers/desk/wrangler.jsonc",
     "verify:deploy": "node scripts/verify-deploy.mjs"
   },
   "dependencies": {

@@ -92,7 +92,9 @@ guide が名乗るツールは `src/lib/bridge/tools.ts` の一覧だけ（`guid
 | 意味的失敗（0xB0 など）は再送しない。再送は transport の失敗だけ | `packages/ds2-core/src/link.ts` | 済（以前から） |
 | 読取以外は画面に置くだけ。実行は停車中に画面で人。DSC 油圧系は出さない | `mayRun`（非読取は拒否）、`monitoring_stage` | 拒否は済。stage は段 3 |
 | キルリストで任意のジョブを即時に止める | `public/kill-list.json`、`lib/ledger.ts`、SW は precache しない | 取得と適用は済。D1 からの配信は段 2 |
-| タブは新しい計画の版と新しいビルドを停車中・リンク休止中にだけ採る | 計画は `useProbe` が開始時に一度だけ読む（開始は人が画面で）。ビルドは Service Worker | 計画は済。ビルドは段 4 |
+| タブは新しい計画の版と新しいビルドを停車中・リンク休止中にだけ採る | 計画は `useProbe` が開始時に一度だけ読む（開始は人が画面で）。ビルドは、リンクが 1 分続けて切れていて未保存が無いときだけ（`lib/adoptBuild.ts`） | 済（ビルドは 2026-10-28） |
+| 送るのは、委任が立っている調査だけ。取り下げたら、まだ送っていないものも送らない | `lib/investigation/share.ts`（タブ・`functions/api/notebook`・`/runs`・机が同じ関数を使う） | 済（2026-10-28） |
+| 机が読むのは委任中の調査だけ。オーナーの ID と VIN は出さない。書くのは `desk` としての追記だけ | `workers/desk/`、`lib/investigation/redact.ts`、`deskProblem`、監査の行 | 済（2026-10-28）。配備は §6 |
 
 ## 5. 段取り
 
@@ -100,7 +102,7 @@ guide が名乗るツールは `src/lib/bridge/tools.ts` の一覧だけ（`guid
 |---|---|---|
 | 0 | 宛先の修正、実測の車両状態、台帳の段階、キルリスト、試験とクラウドの足場 | 人 |
 | 1 | タブの実行器（`src/lib/probe/`）と CO-WORK（TUNER の `notebook/rules.ts` の形）。実行器・判定・委任の規則、端末の保存（`notebook/store.ts`）、PROBE（副操作で開始、ハブで STOP と一行）は済 | 人 |
-| 2 | ポリシーの改訂（成功した読取の送信・中継の catalog）→ D1 → 机の CLI | 人 |
+| 2 | ポリシーの改訂（成功した読取の送信・中継の catalog）→ D1 → 机の CLI。ポリシーは済（tsunagi-m3 #29）。お知らせ v2、D1（`0002`）、端末の送信（読み取りの記録・調査の記録）、机の Worker と `npm run desk` は作成済み（§8） | 人 |
 | 3 | Matrix MONITORING：ticket・同一オリジンのソケット・hello・19 のツール・SESSIONS の ASSISTANT。タブ側は済（代わりの中継で確認）。中継 0.11.0 は作成済み、未配備 | 人 |
 | 4 | guide の全トピック、机と自律の Skill、例題と能力の表、自動マージの分類（`.github/autonomy.json`・`scripts/autonomy-class.mjs`・CODEOWNERS・`autonomy.yml`）、配信（`deploy-works.yml`）は済。定期実行は PR #1 が main に入ってから | 分類による |
 | 5 | テレグラムを SGBD の実行トレースで得る（`.prg` をデータ repo へ） | 人 |
@@ -129,13 +131,36 @@ hello_accepted まで確認）、定期実行（専用セッション「MONITORI
 
 残るもの：
 
-1. Cloudflare の API トークン（Pages・D1 の編集）を一つ。クラウド環境の設定に `CLOUDFLARE_API_TOKEN` と
-   `CLOUDFLARE_ACCOUNT_ID` として置けば、机とループが PC を通さずに配信と D1（段 2）を扱える。
-2. プラグイン 0.5.0 の公開（matrix-tsunagi-dev の publish-main）と、claude.ai での入れ直し、`monitoring-works` のサインイン。
-3. ヘッドユニットで MONITORING WORKS を開き直し（新しいビルド）、SESSIONS → ASSISTANT をオン、端末に名前を付ける。
-   走る前に CONNECT、計画があれば PROBE。
+1. 段 2 と机の PR のレビュー（人の承認クラス）。
+2. PC で一度だけ、この順に（Cloudflare の鍵はクラウドのセッションに置かない。運営者、2026-10-28）：
+   1. `npx wrangler d1 migrations apply tsunagi-m-preview-runs --remote`（`0002`。WORKS を配信する前に）
+   2. `npm run desk:deploy`（`monitoring-desk` を配備し、URL を控える）
+   3. `npm run desk:token -- issue loop`（出たトークンは一度しか表示されない。会話には貼らない）
+   4. クラウド環境の設定に `MONITORING_DESK_URL` と `MONITORING_DESK_TOKEN` を置き、ネットワークの許可に
+      Worker のホストを足す。期限（既定 30 日）の前に新しいものを出し、古いものを `revoke` する。
+3. ヘッドユニットで MONITORING WORKS を開き直し（新しいビルド）、お知らせ v2 に同意、SESSIONS → ASSISTANT を
+   オン、端末に名前を付ける。走る前に CONNECT、計画があれば PROBE。
 
-## 7. 分かっている穴
+## 7. 机への道
+
+```
+ タブ ──/api/notebook・/api/runs・/api/reads（オーナーのゲートの内側）──► D1 tsunagi-m-preview-runs
+   ▲                                                                          │
+   └──── 机の書いた計画（2 分ごとの同期で取り込み、端末の規則でもう一度確かめる）     ▼
+                                     机（npm run desk）──Bearer トークン──► monitoring-desk（Worker）
+```
+
+- タブは、委任のある記録ごとに、アカウントの写しを読み、机の書いたものを取り込み、足りないものを送る
+  （`lib/sync/investigations.ts`）。送った印は端末に持たない。アカウントの写しが一覧なので、途中で切れた
+  回は次の回が仕上げる。読み取りの記録は別の口で、1 分に 1 件の種類ごと、30 秒ごとにまとめて送る。
+- 机は `npm run desk -- list | pull <record> | run <record> <n> | write <record> <file>`。取ったものは
+  `desk-work/<record>/` に置く（git に入らない。公開 repo なので）。
+- 机の答えには、オーナーの ID も VIN も無い。識別の読取（IDENT・AIF など）は中身ごと伏せ、ほかの応答と
+  文字列の中の VIN は伏せ字にする。
+- 机が書けるのは、計画（委任の範囲の読取だけ）・事実・読み・問い・机への問いへの答え・自分の書いたものの
+  状態。全部通るか、一つも書かないか。
+
+## 8. 分かっている穴
 
 - DSC のテレグラムは静的な抜き出しでは決まらない（52 ジョブのうち一意は 1 件）。SGBD の実行トレースが要る（段 5）。
   データ repo の表は `.prg` から作り直した（2026-10-28、データ repo #2）。それで試験は 611 件すべて通る。
@@ -143,3 +168,5 @@ hello_accepted まで確認）、定期実行（専用セッション「MONITORI
   台帳とハッシュが合わない（大きさが数 % 違い、改行コードの違いに見える）。
 - `node tools/check_ui_tokens.mjs` が `CreditsDialog.tsx:124` の `text-[9px]` で落ちる（main から）。
 - 切り替え時に `0x9F` を送るかは未決（PLAN §2-4）。実車で測って決める。
+- 机の Worker は `workers.dev` の上にある。カスタムドメインに移すなら、ネットワークの許可も一緒に直す。
+- 読み取りの記録とまとめて送る前の待ちは、ページを閉じると失われる（最大 30 秒ぶん）。

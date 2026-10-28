@@ -77,3 +77,7 @@ trace/
 # scripts/check-public-tree.mjs refuses both, and `npm run gate:verify` checks the first is ignored.
 .dev.vars
 .wrangler/
+
+# What the desk pulled (scripts/desk.mjs): an owner's investigation, without the VIN but still
+# theirs. Read where it was pulled, never committed.
+desk-work/

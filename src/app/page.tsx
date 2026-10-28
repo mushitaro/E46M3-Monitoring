@@ -20,6 +20,7 @@ import { ADOPT_AFTER_DISCONNECTED_MS, shouldAdoptBuild } from '@/lib/adoptBuild'
 import { useDs2Link, type ParkedObservation } from '@/hooks/useDs2Link';
 import { useHub } from '@/hooks/useHub';
 import { useProbe } from '@/hooks/useProbe';
+import { useInvestigationSync } from '@/hooks/useInvestigationSync';
 import { useAssistantBridge } from '@/hooks/useAssistantBridge';
 import { useMonitoringFacade } from '@/hooks/useMonitoringFacade';
 import { useInstallPrompt } from '@/hooks/useInstallPrompt';
@@ -49,6 +50,7 @@ import { loadSmg2Workflows, type Smg2Workflows } from '@/lib/smg2Workflows';
 import { TAB_ORDER, type Tab } from '@/lib/tabs';
 import { bestTelegram, loadTelegrams, type TelegramTable } from '@/lib/telegrams';
 import { moduleProtocol, noProtocol } from '@/lib/moduleProtocol';
+import { recordRead } from '@/lib/sync/readRecords';
 import { ActuatorView } from '@/views/actuator/ActuatorView';
 import { ActuatorViz } from '@/views/actuator/ActuatorViz';
 import { AdaptationView, AdaptationViz } from '@/views/adaptation/AdaptationView';
@@ -223,7 +225,8 @@ export default function Home() {
             ),
         [],
     );
-    const link = useDs2Link({ onFailure: failures.onFailure, target, onObserved });
+    // Every read sent to the car, either way, is a read record in the WORKS build (lib/sync/readRecords).
+    const link = useDs2Link({ onFailure: failures.onFailure, target, onObserved, onRead: sessionsEnabled ? recordRead : undefined });
 
     // The kill list: fetched when the page opens and every ten minutes, from this origin. It can
     // only withdraw, never grant (lib/ledger), and a failed fetch leaves the last list standing.
@@ -241,6 +244,8 @@ export default function Home() {
     const ledger: Ledger = useMemo(() => (killList ? applyKillList(observed, killList) : observed), [observed, killList]);
     // PROBE: the plan of an investigation the owner handed over, run on this link (WORKS only).
     const probe = useProbe({ enabled: featureEnabled('probe', previewSurfaces), link, index: ecuIndex, ledger });
+    // A delegated investigation kept level with the owner's account, both ways (lib/sync/investigations).
+    const syncInvestigations = useInvestigationSync({ enabled: sessionsEnabled, onPulled: probe.refresh, lastRun: probe.lastRun });
 
     const [loaded, setLoaded] = useState<{ id: string; catalog: EcuProfile } | null>(null);
     const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -445,7 +450,7 @@ export default function Home() {
     // until switched on on this device). The facade is what the tools may reach — the screen's own
     // controls, never a run.
     const buildId = useBuildId();
-    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, tab, changeTab, selectJob, updateWaiting });
+    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, tab, changeTab, selectJob, updateWaiting, syncInvestigations });
     const assistant = useAssistantBridge({
         allowed: preview && noticeAcknowledged,
         facade,

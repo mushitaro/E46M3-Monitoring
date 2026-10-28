@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ReadRecord } from '@/lib/investigation/readRecord';
 import type { FailureReport } from './errorRecords';
 import type { SavedSession } from './session';
 
@@ -100,6 +101,7 @@ function server() {
         const body = (data: unknown) => new Response(JSON.stringify(data), { status: 200 });
         if (input === '/_gate/status') return body({ state: 'active', account_label: ACCOUNT });
         if (input === '/api/diagnostics' && method === 'POST') return body({ ok: true });
+        if (input === '/api/reads' && method === 'POST') return body({ stored: 1, refused: [] });
         if (input === '/api/sessions' && method === 'POST') return body({ id: 'x', storedBytes: 1 });
         if (input === '/api/sessions') return body({ sessions: [] });
         if (input === '/api/diagnostics') return body({ diagnostics: [] });
@@ -134,12 +136,27 @@ const failure: FailureReport = {
     excerpt: ['1970-01-01T00:00:00.000Z TX    12 04 04 12'],
 };
 
+const read = (over: Partial<ReadRecord> = {}): Omit<ReadRecord, 'id'> => ({
+    at: 1_800_000_000_000,
+    module: 'mss54',
+    job: 'LIVE_19',
+    request: '12 05 0b 13 0f',
+    response: '00 00 00 00',
+    outcome: 'ok',
+    reason: null,
+    speedKmh: 0,
+    motion: 'parked',
+    ...over,
+});
+
 /** Fresh modules, so the acknowledgement held in lib/previewNotice starts unset in every case. */
 async function load() {
     vi.resetModules();
     return {
         cloud: await import('./cloud'),
         records: await import('./errorRecords'),
+        reads: await import('./readRecords'),
+        investigations: await import('./investigations'),
         notice: await import('@/lib/previewNotice'),
     };
 }
@@ -171,7 +188,7 @@ describe('the preview, before its notice is acknowledged', () => {
     });
 
     it('makes no request at all', async () => {
-        const { cloud, records } = await load();
+        const { cloud, records, reads, investigations } = await load();
         expect(cloud.canSync()).toBe(false);
 
         expect((await cloud.sendSession(session())).ok).toBe(false);
@@ -183,8 +200,31 @@ describe('the preview, before its notice is acknowledged', () => {
         // Not even the /_gate/status question a flush starts with.
         expect(await records.flushErrorRecords()).toBe(0);
         expect(await records.waitingErrorRecords()).toBe(0);
+        expect(await reads.flushReadRecords()).toBe(0);
+        expect(await investigations.syncInvestigations()).toEqual({ pulled: 0, sent: 0, refused: [] });
 
         expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('keeps read records in their outbox, unsent, and sends them with the first flush after AGREE', async () => {
+        vi.useFakeTimers();
+        try {
+            const { reads, notice } = await load();
+            reads.recordRead(read());
+            await vi.advanceTimersByTimeAsync(30_000);
+            await vi.waitFor(() => expect(idb.rows('monitoring-reads-outbox')).toHaveLength(1));
+            expect(fetch).not.toHaveBeenCalled();
+
+            notice.agreeToFirstRun(true);
+            expect(await reads.flushReadRecords()).toBe(1);
+            expect(fetch.mock.calls.map(([url, init]) => `${init?.method ?? 'GET'} ${url}`)).toEqual(['GET /_gate/status', 'POST /api/reads']);
+            const sent = JSON.parse(String(fetch.mock.calls[1][1]?.body));
+            expect(sent.reads).toHaveLength(1);
+            expect(sent.reads[0]).toMatchObject({ module: 'mss54', job: 'LIVE_19', outcome: 'ok', motion: 'parked' });
+            expect(sent.appBuild).toBe('118.test');
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('keeps an error record in the outbox, unsent, and sends it with the first flush after AGREE', async () => {
@@ -245,16 +285,18 @@ describe('production and next dev (no app-variant tag)', () => {
     beforeEach(() => {
         vi.stubGlobal('document', documentOf(null));
         // Even a device that once acknowledged a preview's notice on this origin.
-        storage.setItem('preview-notice:v1', '2026-09-24T00:00:00.000Z');
+        storage.setItem('preview-notice:v2', '2026-09-24T00:00:00.000Z');
     });
 
     it('sends nothing and keeps nothing, as before', async () => {
-        const { cloud, records } = await load();
+        const { cloud, records, reads } = await load();
         expect(cloud.canSync()).toBe(false);
         expect((await cloud.sendSession(session())).ok).toBe(false);
         expect(await records.flushErrorRecords()).toBe(0);
 
         records.reportFailure(failure);
+        reads.recordRead(read());
+        expect(await reads.flushReadRecords()).toBe(0);
         await new Promise((r) => setTimeout(r, 20));
 
         expect(fetch).not.toHaveBeenCalled();

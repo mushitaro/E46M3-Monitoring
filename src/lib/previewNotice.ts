@@ -31,7 +31,12 @@
  */
 import { disclaimerStore } from './disclaimer';
 
-export const PREVIEW_NOTICE_KEY = 'preview-notice:v1';
+/**
+ * v2 (2026-10-28): read records and the investigations an owner hands over joined what is sent
+ * (lib/sync/readRecords, lib/sync/investigations). An acknowledgement of v1 did not cover them, so
+ * every owner is asked again, and nothing new leaves the device before they agree.
+ */
+export const PREVIEW_NOTICE_KEY = 'preview-notice:v2';
 
 /** Given on this page. Storage that refused to keep it does not take it back. */
 let acknowledgedHere = false;

@@ -23,9 +23,8 @@ jobs:
       # The BMW-derived data (E46M3-Monitoring-data, private) is what the twelve data tests check
       # the code against. Without the token those tests skip and say so (vitest.config.mts); with
       # it they run. The public-tree check below reads tracked files only, and these paths are
-      # gitignored, so placing them cannot trip it. Add the secret once the data repository has been regenerated
-      # from the .prg files: its telegrams.json predates a5635d4, and 16 tests fail on it
-      # (docs/AUTONOMY.md §7).
+      # gitignored, so placing them cannot trip it. The data repository was regenerated from the .prg
+      # files (2026-10-28, its #2), and every test passes on it (docs/AUTONOMY.md §8).
       - name: Private data
         if: env.HAVE_DATA_TOKEN == 'true'
         env:

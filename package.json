@@ -22,7 +22,7 @@
     "deploy": "node scripts/deploy.mjs",
     "desk": "node scripts/desk.mjs",
     "desk:token": "node scripts/desk-token.mjs",
-    "desk:deploy": "wrangler deploy --config workers/desk/wrangler.jsonc",
+    "desk:deploy": "cd workers/desk && wrangler pages deploy pages --project-name monitoring-desk --branch main",
     "verify:deploy": "node scripts/verify-deploy.mjs"
   },
   "dependencies": {

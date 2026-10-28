@@ -205,14 +205,17 @@ export interface Localised {
     assistant_catalogOk: string;
     assistant_catalogRefused: (reason: string) => string;
     assistant_device: string;
-    /** WHILE MOVING (chrome.ts) — the owner clears a read for a moving car (lib/ledger `grantMovingOk`). WORKS only. */
+    /** WHILE MOVING (chrome.ts) — the owner allows a read while the car moves (lib/ledger `grantMovingOk`). WORKS only. */
     movingOk_note: string;
     movingOk_none: string;
     movingOk_answered: (n: number) => string;
+    /** What a read brings back: its first values, and how many more. */
+    movingOk_reads: (first: string[], more: number) => string;
     movingOk_cleared: (at: string) => string;
     movingOk_blocked: string;
     movingOk_confirmTitle: string;
-    movingOk_consequence: (name: string, n: number) => string;
+    /** `what` is movingOk_reads, or the read's description, or '' when both only repeat its name. */
+    movingOk_consequence: (name: string, what: string, n: number) => string;
     sessions_nothing: string;
     sessions_onDevice: string;
     sessions_inAccount: string;

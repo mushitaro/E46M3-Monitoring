@@ -118,9 +118,10 @@ export const CHROME = {
     sync: 'Sync',
     // The assistant bridge's switch (hooks/useAssistantBridge). TUNER's word for it too.
     assistant: 'ASSISTANT',
-    // The owner clearing a read for a moving car (lib/ledger `grantMovingOk`), and its button.
+    // The owner allowing a read while the car moves (lib/ledger `grantMovingOk`), and its button.
+    // Allow, not Clear: on DIAGNOSIS, Clear is what the fault memory gets (clearFaults).
     movingOk: 'WHILE MOVING',
-    movingOk_grant: 'Clear',
+    movingOk_grant: 'Allow',
     restore: 'Restore',
     view: 'View',
     back: 'Back',

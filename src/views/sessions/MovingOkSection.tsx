@@ -1,19 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { DataList, DataRow, Section, TextButton, humanName, type HumanName } from '@/components/ui';
-import { label, type EcuProfile } from '@/lib/ecuCatalog';
+import { description, label, text, type EcuProfile } from '@/lib/ecuCatalog';
 import { movingOkChoices, type Ledger, type VerificationRecord } from '@/lib/ledger';
 import { useLang } from '@/lib/i18n';
 import type { Motion } from '@/lib/vehicleState';
 
 /**
- * WHILE MOVING — where the owner clears a read for a moving car (lib/ledger `grantMovingOk`).
+ * WHILE MOVING — where the owner allows a read while the car moves (lib/ledger `grantMovingOk`).
  *
  * Offers only what `movingOkChoices` proposes: reads that answered on this car while it was
- * measured stationary, enough times, with nothing standing against them. Nothing here clears a
+ * measured stationary, enough times, with nothing standing against them. Nothing here allows a
  * read by itself; the owner presses, reads the consequence, and confirms. Not while the car is
  * measured moving: the screen is not operated on the road.
  *
@@ -40,11 +40,35 @@ export function MovingOkSection({
 
     // A read of the module in session is named from its catalogue; another module's shows its id,
     // which DataRow promotes in the identifier's own style rather than as a name.
-    const nameOf = (id: string): HumanName => {
+    const jobOf = (id: string) => {
         const [module, job] = id.split(':');
-        const known = module === ecuId ? catalog?.jobs.find((j) => j.id === job) : undefined;
+        return module === ecuId ? catalog?.jobs.find((j) => j.id === job) : undefined;
+    };
+    const nameOf = (id: string): HumanName => {
+        const known = jobOf(id);
         return known ? label(known, lang) : humanName('');
     };
+    // What the read brings back, because a job's name alone ("Digital") does not say what the owner
+    // is allowing: the first values it returns and how many more, or else its own description.
+    // Nothing when both only repeat the name.
+    const whatOf = (id: string): string => {
+        const known = jobOf(id);
+        if (!known || !catalog) return '';
+        const name = label(known, lang);
+        const values = known.results
+            .filter((r) => r.role === 'value')
+            .map((r) => text(catalog, r.comment, lang).text)
+            .filter((v) => v !== '' && v !== name);
+        if (values.length > 0) return t.movingOk_reads(values.slice(0, 3), values.length - 3);
+        const own = description(catalog, known, lang).text;
+        return own && !own.startsWith(name) ? own : '';
+    };
+    const detailOf = (r: VerificationRecord, state: ReactNode) => (
+        <>
+            {whatOf(r.id) && <p className="text-[11px] text-slate-400">{whatOf(r.id)}</p>}
+            {state}
+        </>
+    );
 
     return (
         <Section title={t.movingOk} note={t.movingOk_note} count={proposals.length + cleared.length}>
@@ -63,7 +87,7 @@ export function MovingOkSection({
                                     {t.movingOk_grant}
                                 </TextButton>
                             }
-                            detail={<p className="text-[11px] text-slate-500">{t.movingOk_answered(r.observations ?? 0)}</p>}
+                            detail={detailOf(r, <p className="text-[11px] text-slate-500">{t.movingOk_answered(r.observations ?? 0)}</p>)}
                         />
                     ))}
                     {cleared.map((r) => (
@@ -71,11 +95,12 @@ export function MovingOkSection({
                             key={r.id}
                             name={nameOf(r.id)}
                             ident={r.id}
-                            detail={
+                            detail={detailOf(
+                                r,
                                 <p className="text-[11px] text-emerald-400">
                                     {t.movingOk_cleared(r.movingOkAt ? new Date(r.movingOkAt).toLocaleString() : '—')}
-                                </p>
-                            }
+                                </p>,
+                            )}
                         />
                     ))}
                 </DataList>
@@ -83,7 +108,7 @@ export function MovingOkSection({
             {asking && (
                 <ConfirmDialog
                     title={t.movingOk_confirmTitle}
-                    consequence={t.movingOk_consequence(nameOf(asking.id) || asking.id, asking.observations ?? 0)}
+                    consequence={t.movingOk_consequence(nameOf(asking.id) || asking.id, whatOf(asking.id), asking.observations ?? 0)}
                     confirmLabel={t.movingOk_grant}
                     onConfirm={() => {
                         if (!moving) onGrant(asking.id);

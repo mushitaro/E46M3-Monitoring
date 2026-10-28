@@ -564,14 +564,15 @@ export const en: Localised = {
     assistant_catalogRefused: (reason) => `The relay refused the tools and the guide (it keeps the previous ones): ${reason}`,
     assistant_device: 'This device’s name (e.g. Head unit)',
     movingOk_note:
-        'A read that has answered at least 3 times on a stationary car can be cleared to be sent while the car moves. Only the owner decides; neither the app nor the assistant clears anything by itself. A clearance lasts while this page is open.',
-    movingOk_none: 'No candidates yet. A read appears here once it has answered 3 times on a stationary car.',
-    movingOk_answered: (n) => `${n} answers while stationary`,
-    movingOk_cleared: (at) => `Cleared while moving (${at})`,
+        'A read that has answered at least 3 times while the car was stopped can be allowed while it moves. Only the owner decides; neither the app nor the assistant allows anything by itself. It lasts while this page is open.',
+    movingOk_none: 'Nothing yet. A read appears here once it has answered 3 times while the car was stopped.',
+    movingOk_answered: (n) => `Answered ${n} times while stopped`,
+    movingOk_reads: (first, more) => `Reads ${first.join(', ')}${more > 0 ? ` and ${more} more` : ''}`,
+    movingOk_cleared: (at) => `Allowed while moving (since ${at})`,
     movingOk_blocked: 'Not while the car is moving. Stop first.',
-    movingOk_confirmTitle: 'Clear a read while moving',
-    movingOk_consequence: (name, n) =>
-        `"${name}" may then be sent while the car moves. It has answered ${n} times on a stationary car, with the same bytes. Asking while moving means asking a unit at work (DSC in a corner, SMG II in a shift). This lasts until the page is closed.`,
+    movingOk_confirmTitle: 'Allow a read while moving',
+    movingOk_consequence: (name, what, n) =>
+        `"${name}" can then be read while the car moves.${what ? ` ${what}.` : ''} It has answered the same request ${n} times while the car was stopped. Reading while moving also asks units that are at work (DSC in a corner, SMG II in a shift). This lasts until the page is closed.`,
     sessions_current_note:
         'SAVE keeps it on this device. SYNC saves it and then sends every session not yet sent to your account. The copy on the device stays after it is sent.',
     sessions_nothing: 'Nothing to save yet. Read the fault memory or record a datalog and it can be saved.',

@@ -572,7 +572,7 @@ export const en: Localised = {
         'A read that has answered at least 3 times while the car was stopped can be allowed while it moves. Only the owner decides; neither the app nor the assistant allows anything by itself. It lasts while this page is open.',
     movingOk_none: 'Nothing yet. A read appears here once it has answered 3 times while the car was stopped.',
     movingOk_answered: (n) => `Answered ${n} times while stopped`,
-    movingOk_reads: (first, more) => `Reads ${first.join(', ')}${more > 0 ? ` and ${more} more` : ''}`,
+    movingOk_reads: (first, total) => `Reads ${total} values: ${first.join(', ')}${total > first.length ? ' and more' : ''}`,
     movingOk_cleared: (at) => `Allowed while moving (since ${at})`,
     movingOk_blocked: 'Not while the car is moving. Stop first.',
     movingOk_confirmTitle: 'Allow a read while moving',

@@ -557,7 +557,7 @@ export const ja: Localised = {
         '止まっているときに 3 回以上答えた読み取りは、走っている間も読めるようにできます。決めるのはオーナーだけで、アプリもアシスタントも自分では決めません。認めた分は、この画面を開いている間だけ有効です。',
     movingOk_none: 'まだありません。止まっているときに同じ読み取りが 3 回答えると、ここに出ます。',
     movingOk_answered: (n) => `止まっているときに ${n} 回答えた`,
-    movingOk_reads: (first, more) => `読むもの：${first.join('、')}${more > 0 ? ` ほか ${more} 件` : ''}`,
+    movingOk_reads: (first, total) => `読むもの（${total} 項目）：${first.join('、')}${total > first.length ? ' など' : ''}`,
     movingOk_cleared: (at) => `走っている間も読める（${at} から）`,
     movingOk_blocked: '走っている間は認められません。止まってから操作してください。',
     movingOk_confirmTitle: '走っている間も読めるようにする',

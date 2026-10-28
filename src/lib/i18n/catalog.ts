@@ -216,8 +216,8 @@ export interface Localised {
     movingOk_note: string;
     movingOk_none: string;
     movingOk_answered: (n: number) => string;
-    /** What a read brings back: its first values, and how many more. */
-    movingOk_reads: (first: string[], more: number) => string;
+    /** What a read brings back: how many values, and the first of them. */
+    movingOk_reads: (first: string[], total: number) => string;
     movingOk_cleared: (at: string) => string;
     movingOk_blocked: string;
     movingOk_confirmTitle: string;

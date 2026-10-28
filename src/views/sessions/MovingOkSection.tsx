@@ -49,8 +49,8 @@ export function MovingOkSection({
         return known ? label(known, lang) : humanName('');
     };
     // What the read brings back, because a job's name alone ("Digital") does not say what the owner
-    // is allowing: the first values it returns and how many more, or else its own description.
-    // Nothing when both only repeat the name.
+    // is allowing: how many values it returns and the first of them, or else its own description.
+    // A single value is no help ("Result"), and nothing is said when the description repeats the name.
     const whatOf = (id: string): string => {
         const known = jobOf(id);
         if (!known || !catalog) return '';
@@ -59,7 +59,7 @@ export function MovingOkSection({
             .filter((r) => r.role === 'value')
             .map((r) => text(catalog, r.comment, lang).text)
             .filter((v) => v !== '' && v !== name);
-        if (values.length > 0) return t.movingOk_reads(values.slice(0, 3), values.length - 3);
+        if (values.length > 1) return t.movingOk_reads(values.slice(0, 3), values.length);
         const own = description(catalog, known, lang).text;
         return own && !own.startsWith(name) ? own : '';
     };

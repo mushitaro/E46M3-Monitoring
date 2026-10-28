@@ -18,6 +18,7 @@ import type { RunVerdict, SendRequirement } from '@/lib/runGate';
 import { TEST_ID, tid } from '@/lib/testIds';
 import { bestTelegram, type TelegramTable } from '@/lib/telegrams';
 import type { Motion } from '@/lib/vehicleState';
+import { ReasonGlossary, ReasonTag } from '@/views/shared/RunReason';
 
 /**
  * ACTUATOR — the jobs that make the car do something.
@@ -141,6 +142,7 @@ export function ActuatorView({
             <Section
                 title={t.tab_actuator}
                 note={t.actuator_runnable(runnableCount, jobs.length)}
+                info={<ReasonGlossary lead={t.actuator_info} reasons={jobs.map((j) => verdicts.get(j.id))} />}
             >
                 <ListControls
                     query={query}
@@ -240,6 +242,10 @@ function Row({
             ident={job.id}
             trailing={
                 <span className="flex shrink-0 items-center gap-3">
+                    {/* Why it cannot run, in a word, beside the control it disables — the sentence
+                        is in the list's ⓘ and in `title` (views/shared/RunReason). It used to be a
+                        reserved second line under every row, the same sentence eighty-five times. */}
+                    {verdict && !verdict.allowed && <ReasonTag reason={verdict.reason} />}
                     {style === 'hold' ? (
                         <>
                             <TextButton
@@ -273,13 +279,6 @@ function Row({
                         </TextButton>
                     )}
                 </span>
-            }
-            detail={
-                // Reserved height: the reason line is always present, so a row
-                // does not change size when the gate's answer changes.
-                <div className="h-4 truncate text-[11px] text-slate-500">
-                    {verdict && !verdict.allowed ? t.runBlock[verdict.reason] : ''}
-                </div>
             }
         />
     );

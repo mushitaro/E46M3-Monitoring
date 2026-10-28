@@ -67,7 +67,7 @@ export const en: Localised = {
     risk_high: 'High',
     risk_medium: 'Med',
     risk_low: 'Low',
-    disclaimer_title: 'About this tool',
+    disclaimer_title: 'Disclaimer',
     disclaimer_lede:
         'A personal tool for reading a BMW E46 M3 over DS2. **It is not a professional ' +
         'diagnostic device.** Base repair decisions on the service manual (TIS) and on the car in front of you.',
@@ -78,6 +78,9 @@ export const en: Localised = {
         'PRACTICE mode talks to a simulator, not a car. It is the only mode in which an actuator test will fire.',
         'Working on a car is dangerous. Jacking it up, running the engine, moving parts — this tool does none of that for you.',
     ],
+    disclaimer_agree: 'Agree & Continue',
+    disclaimer_agreeNote:
+        'Pressing “Agree & Continue” is taken as your acceptance of the above.',
     disclaimer_preview: {
         lead: 'So that what you save opens on your other devices, so that faults can be investigated, and so that an investigation you hand over can go ahead, this WORKS build sends the following to our server.',
         sessionsTitle: 'Sessions you save',
@@ -184,10 +187,11 @@ export const en: Localised = {
     precond_engine_off: 'Engine off',
     module: 'Module',
     faultRef: 'Fault text reference',
-    faultRef_note:
-        "The SGBD's own FORTTEXTE table. It is keyed by fault code, so a fault that is read gets its text directly; this list is the searchable reference, by code, translation or German original.",
+    faultRef_info: 'The SGBD\'s fault-text table (FORTTEXTE). A fault that is read gets its text from here. Search it by code, translation or the German original.',
     catalog_jobs: (n: number) => `${n} job${n === 1 ? '' : 's'}`,
     cancel: 'Cancel',
+    info_show: 'Show the explanation',
+    info_hide: 'Hide the explanation',
     actuator_runnable: (n, total) => `${n} of ${total} can be sent`,
     actuator_onlyRunnable: 'Only what can run',
     actuator_armed: 'Engaged',
@@ -312,7 +316,7 @@ export const en: Localised = {
     dsc_appConstruct: "the app's own construct",
     dsc_drivesNote:
         "The valve names on each row are every solenoid that operation actuates **at some point** in the extracted bytecode. It does not mean they are driven together — a static extraction has no order. That is why a one-side bleed lists the opposite side's outlet valves, and this app does not interpret it.",
-    dsc_absenceHint: 'This family has a place the SGBD provides no job for. The row above says which, and why.',
+    dsc_absenceHint: 'The SGBD has no job for one place here; its row says why.',
     dsc_runnerUp: (l) =>
         `There are other all-outputs-off candidates: ${l}. They differ only in bits the STEUERN table does not name, so which is correct is not something this app can decide.`,
     seq_title: 'Suggested sequences',
@@ -331,22 +335,33 @@ export const en: Localised = {
         run_block_revoked: 'This read has been withdrawn (kill list or ledger). The reason is in its ledger record.',
         run_block_moving: 'The car is moving. This read has not been cleared by the owner for a moving car, so it waits until the car stops.',
     },
+    runBlockShort: {
+        run_block_programming: 'Programming',
+        run_block_identity: 'Identity',
+        run_block_noTelegram: 'No telegram',
+        run_block_needsArgs: 'Needs arguments',
+        run_block_notRead: 'No run path',
+        run_block_controlWrites: 'Writes control',
+        run_block_notVerified: 'Unverified',
+        run_block_revoked: 'Withdrawn',
+        run_block_moving: 'Moving',
+    },
+    actuator_info: 'Jobs that briefly move a part. On the car, only those the ledger records as verified run, parked, after you confirm. The tag on a row is why it cannot run now.',
     run_result: 'Run result',
     run_request: 'Sent',
     run_response: 'Response',
     run_undecoded:
         'The SGBD names this job’s results but publishes no byte offsets for them, so the payload is shown raw — mapping it onto those names would be inventing a layout. Live values, adaptations, fault memory and ident each go through a real decoder, not this path.',
     adaptations: 'Adaptation values',
-    adaptations_note:
+    adaptations_info:
         'What the ECU has learned in service. Read-only; nothing is written to the car.',
     adaptations_short: (g, n) => `${g} bytes came back; this table needs at least ${n}. Missing fields are not shown.`,
-    adaptations_noDecoder:
-        'MSS54 is the only module with a ported adaptation-block table. SMG II and DSC hold learned values in the ECU too — this app just has no way to read them, which is not the same as the ECU having none. SMG II’s are reachable from ADAPTIONSWERTE_LESEN in the SERVICE tab.',
+    adaptations_noDecoder: 'This app cannot read this module’s learned values.',
+    adaptations_noDecoderInfo:
+        'Only MSS54 has a ported adaptation-block table. SMG II and DSC hold learned values too — this app just cannot read them. SMG II’s are reachable from ADAPTIONSWERTE_LESEN in the SERVICE tab.',
     adaptationsReset: 'Reset adaptations',
-    adaptationsReset_note:
-        'The ECU’s own jobs for erasing what it has learned. This app does not send them; each row says why. After an erase the ECU relearns from its factory defaults, so idle and fuel trim are rough for a while.',
-    adaptationsReset_none:
-        'This module’s SGBD has no adaptation-erase job — checked against every job in the catalogue. (Clearing fault memory is a different thing and lives in the DIAGNOSIS tab.)',
+    adaptationsReset_info: 'The jobs that erase what the ECU has learned. This app does not send them. After an erase the ECU relearns from its defaults, and idle and fuel trim are rough for a while.',
+    adaptationsReset_none: 'This module’s SGBD has no adaptation-erase job (every job checked).',
     adaptationsReset_unknown:
         'This module has not been surveyed. That is not the same as having no erase job.',
     viz_adaptationBlocks: 'Blocks decoded',
@@ -425,7 +440,7 @@ export const en: Localised = {
         protocol: 'Procedure step',
         unclassified: 'Unclassified',
     },
-    jobClassNote: {
+    jobClassInfo: {
         read: 'Reads a value. Nothing about the car changes, and it is safe to repeat.',
         test: 'Moves a part temporarily to check it. When it ends the car is as it was — except for the few that latch, which say so individually.',
         calibration:
@@ -502,12 +517,11 @@ export const en: Localised = {
 
     det_results: 'What this job returns',
     det_resultCount: (n) => `${n} result${n === 1 ? '' : 's'}`,
-    det_results_note:
+    det_results_info:
         'The results the SGBD declares. Value, unit and plain text are folded into one row. Current values need a run.',
     det_args: 'Arguments you must supply',
     det_values: 'Adjustment values',
-    det_noValues:
-        'No published limits for this job. Neither the SGBD nor the decompiled source states a minimum or maximum — that is a fact, not a gap we have yet to fill.',
+    det_noValues: 'No published limits for this job — neither the SGBD nor the decompiled source states one.',
     det_whenArg: (arg, values) => `Returned only when ${arg} is ${values}`,
     det_inferred: 'inferred',
     det_optionsDropped: (l) => `Excluded per the SGBD: ${l}`,
@@ -545,8 +559,33 @@ export const en: Localised = {
 
     // --- SESSIONS (preview only) ------------------------------------------------
     sessions_current: 'This connection',
-    assistant_note:
-        'When on, the AI assistant you connected (claude.ai and others) can ask this tab questions, through the TSUNAGI///Matrix relay. It answers with its state, faults, part of the records, the catalogue, the verification ledger and CO-WORK. No VIN is sent. The assistant can read, start and stop a recording (stopping after you confirm), write to CO-WORK, change the screen, put a procedure on the screen, save and send when you ask, connect again to and let go of a cable this device was connected to on the screen before (stopping a recording only after you confirm), and switch to TUNER. It cannot allow a new device, run an actuator test, an adjustment or a fault clear, or write.',
+    assistant_consent: {
+        title: 'Turn ASSISTANT on',
+        lead: 'The AI assistant you connected (claude.ai and others) will be able to ask this tab questions.',
+        items: [
+            {
+                title: 'What is sent',
+                body: 'Only when the assistant asks: the state, each module’s faults, part of the records, the jobs that can be read and tried, the verification ledger, CO-WORK. No VIN is sent.',
+            },
+            {
+                title: 'The route',
+                body: 'Through the TSUNAGI///Matrix relay, which keeps no question and no answer. On connecting it is told a random number that tells this device apart, and whether it was opened from the head unit.',
+            },
+            {
+                title: 'Where it arrives',
+                body: 'The service you connected (claude.ai and others), under that service’s own terms.',
+            },
+            {
+                title: 'What it can do',
+                body: 'Read; start and stop a recording (stopping after you confirm); write to CO-WORK; change the screen; put a procedure on the screen; save and send when you ask; connect again to, and let go of, a cable connected on the screen before; switch to TUNER.',
+            },
+            {
+                title: 'What it cannot do',
+                body: 'Allow a new device, run an actuator test, an adjustment or a fault clear, or write. You do those on the screen, parked.',
+            },
+        ],
+        off: 'Turn it off at any time with AI in the header.',
+    },
     assistant_turnOn: 'Turn on',
     ai_pressToTurnOn: 'Press to turn it on (what it sends is shown first)',
     ai_pressToTurnOff: 'Press to turn it off',
@@ -568,13 +607,27 @@ export const en: Localised = {
     assistant_catalogOk: 'The relay took the tools and the guide',
     assistant_catalogRefused: (reason) => `The relay refused the tools and the guide (it keeps the previous ones): ${reason}`,
     assistant_device: 'This device’s name (e.g. Head unit)',
-    sessions_current_note:
-        'SAVE keeps it on this device. SYNC saves it and then sends every session not yet sent to your account. The copy on the device stays after it is sent.',
-    sessions_nothing: 'Nothing to save yet. Read the fault memory or record a datalog and it can be saved.',
+    sessions_current_info:
+        'What can be saved is the fault memory read and the datalog recorded on this connection. SAVE keeps it on this device. SYNC saves it and then sends every session not yet sent to your account. The copy on the device stays after it is sent.',
+    save_title: {
+        nothing: 'Nothing to save yet. Read the fault memory or record a datalog and it can be saved.',
+        ready: 'Keep this connection’s reads and records on this device.',
+        busy: 'Saving to this device.',
+        saved: 'Saved on this device. Read or record something new and it can be saved again.',
+    },
+    sync_title: {
+        signedOut: 'Signed out. Everything on this device stays.',
+        unreachable: 'The account could not be confirmed. Press to try sending again.',
+        offline: 'Offline. Everything on this device stays, and can be sent where there is signal.',
+        busy: 'Sending to your account.',
+        ready: (n) => `Save, then send the ${n} not yet sent to your account. The copy on the device stays.`,
+        clean: 'Everything is in your account.',
+    },
+    sessions_nothing: 'Nothing to save yet.',
     sessions_onDevice: 'On this device',
     sessions_inAccount: 'In your account',
     sessions_errors: 'Error records',
-    sessions_errors_note:
+    sessions_errors_info:
         'When a read or a recording fails, this WORKS build sends the ECU, the job, the error text and the comms log just before it, by itself. Anything it could not send waits on this device and goes with the next send that succeeds.',
     sessions_account: (label) => `Saving to account ${label}`,
     sessions_account_unknown: 'Saving to account — cannot confirm (open this again where there is signal)',

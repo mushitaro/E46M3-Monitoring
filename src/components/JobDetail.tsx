@@ -147,7 +147,7 @@ export function JobDetail({
                     "デジタル" for a job that drives eight solenoids and a pump. */}
                 {d.original && <p className="mt-0.5 font-mono text-[10px] text-slate-500">{d.original}</p>}
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-                    <Provenance title={t.jobClassNote[job.class]}>{t.jobClass[job.class]}</Provenance>
+                    <Provenance title={t.jobClassInfo[job.class]}>{t.jobClass[job.class]}</Provenance>
                     <Provenance title={t.audienceNote[job.audience]}>{t.audience[job.audience]}</Provenance>
                     <Provenance>{t.system[job.system] ?? job.system}</Provenance>
                 </div>
@@ -313,7 +313,7 @@ export function JobDetail({
                 <Section
                     title={t.det_results}
                     count={results.length}
-                    note={job.results.length !== results.length ? t.det_results_note : undefined}
+                    info={job.results.length !== results.length ? t.det_results_info : undefined}
                 >
                     {unboundArgValues.map((u) => (
                         <p
@@ -330,8 +330,18 @@ export function JobDetail({
             {/* 5. Adjustment values. The note about the factory default belongs
                 to the TABLE, not to the section — on the ~300 jobs that publish
                 no limits it was a paragraph explaining a column that was not
-                there. */}
-            <Section title={t.det_values}>
+                there. So it is the ⓘ's only when there is a table. */}
+            <Section
+                title={t.det_values}
+                info={
+                    results.some((r) => r.spec) || (job.crossFieldConstraints?.length ?? 0) > 0 ? (
+                        <>
+                            <p>{t.spec_defaultNote}</p>
+                            <p className="mt-1">{t.spec_needsRun}</p>
+                        </>
+                    ) : undefined
+                }
+            >
                 <SpecTable profile={profile} job={job} results={results} />
             </Section>
 
@@ -344,7 +354,7 @@ export function JobDetail({
 
             {/* 7. What came back, if it has been run. */}
             {lastRun && (
-                <Section title={t.run_result}>
+                <Section title={t.run_result} info={t.run_undecoded}>
                     <div className="flex flex-col gap-2">
                         <Field label={t.run_request} labelKind="data" stacked value={lastRun.request} />
                         <Field
@@ -355,8 +365,6 @@ export function JobDetail({
                             unit={`${lastRun.payloadLength} B`}
                         />
                     </div>
-                    {/* The payload is shown raw and stays raw. See the note. */}
-                    <p className="mt-2 text-[11px] leading-relaxed text-slate-500">{t.run_undecoded}</p>
                 </Section>
             )}
 
@@ -487,8 +495,6 @@ function SpecTable({
 
     return (
         <>
-            <p className="mb-1 text-[11px] leading-relaxed text-slate-500">{t.spec_defaultNote}</p>
-            <p className="mb-2 text-[11px] leading-relaxed text-slate-500">{t.spec_needsRun}</p>
             <DataList>
                 {specced.map((r) => {
                     const s = r.spec!;
@@ -724,44 +730,50 @@ function RecordedValues({ profile, block }: { profile: EcuProfile; block: Result
 
             {grid.matched > 0 && (
                 <div className="mb-4">
-                    <MicroLabel>{t.gear_windows}</MicroLabel>
-                    {/* These 42 have no stated range. Saying so is the whole
-                        point — a verdict here would be invented. */}
-                    <p className="mb-1.5 mt-1 text-[11px] leading-relaxed text-slate-500">{t.gear_noSpec}</p>
-                    {/* Which gate a gear sits in is INPA's pairing, not the SGBD's,
-                        so it is said out loud rather than just drawn. */}
-                    <p className="mb-1.5 text-[11px] leading-relaxed text-slate-500">{t.gear_gateNote}</p>
-                    <DataList>
-                        {GEARS.map((g) => (
-                            <DataRow
-                                key={g}
-                                code={GATE_CODE[g]}
-                                name={humanName(t.gear_name[g])}
-                                ident={`GANG${g}`}
-                                detail={
-                                    <div className="grid grid-cols-4 gap-x-3 gap-y-2">
-                                        <Field
-                                            label={t.gear_gate}
-                                            labelKind="data"
-                                            stacked
-                                            tone="text-slate-600"
-                                            value={grid.gate(g) ? GATE_OF[g] : '·'}
-                                        />
-                                        {MEASURES.map((m) => (
+                    {/* These 42 have no stated range — saying so is the whole point, a verdict here
+                        would be invented — and which gate a gear sits in is INPA's pairing, not the
+                        SGBD's. Both are said, behind the ⓘ, rather than just drawn. */}
+                    <Section
+                        title={t.gear_windows}
+                        info={
+                            <>
+                                <p>{t.gear_noSpec}</p>
+                                <p className="mt-1">{t.gear_gateNote}</p>
+                            </>
+                        }
+                    >
+                        <DataList>
+                            {GEARS.map((g) => (
+                                <DataRow
+                                    key={g}
+                                    code={GATE_CODE[g]}
+                                    name={humanName(t.gear_name[g])}
+                                    ident={`GANG${g}`}
+                                    detail={
+                                        <div className="grid grid-cols-4 gap-x-3 gap-y-2">
                                             <Field
-                                                key={m}
-                                                label={t.gear_measure[m]}
+                                                label={t.gear_gate}
                                                 labelKind="data"
                                                 stacked
                                                 tone="text-slate-600"
-                                                value={PASSES.map((p) => (grid.cell(g, m, p) ? '—' : '·')).join(' / ')}
+                                                value={grid.gate(g) ? GATE_OF[g] : '·'}
                                             />
-                                        ))}
-                                    </div>
-                                }
-                            />
-                        ))}
-                    </DataList>
+                                            {MEASURES.map((m) => (
+                                                <Field
+                                                    key={m}
+                                                    label={t.gear_measure[m]}
+                                                    labelKind="data"
+                                                    stacked
+                                                    tone="text-slate-600"
+                                                    value={PASSES.map((p) => (grid.cell(g, m, p) ? '—' : '·')).join(' / ')}
+                                                />
+                                            ))}
+                                        </div>
+                                    }
+                                />
+                            ))}
+                        </DataList>
+                    </Section>
                 </div>
             )}
 

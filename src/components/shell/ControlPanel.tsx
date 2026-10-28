@@ -47,7 +47,7 @@ export function ControlPanel({
 
             {/* The cluster band takes the panel's slack, and the ring sits
                 centred in it. The reference does the same — its band is 120px
-                because its wings reserve that much, and the hub is 72px centred
+                because its wings reserve that much, and the hub is 80px centred
                 inside. Giving the slack to this band rather than letting it pile
                 up at the bottom is what keeps the ring optically centred at every
                 viewport height. */}

@@ -169,7 +169,7 @@ export const DiagnosisView = memo(function DiagnosisView({
             </Section>
 
             {catalog && (
-                <Section title={t.faultRef} count={catalog.faultText.length} note={t.faultRef_note}>
+                <Section title={t.faultRef} count={catalog.faultText.length} info={t.faultRef_info}>
                     <ListControls
                         query={query}
                         onQuery={setQuery}

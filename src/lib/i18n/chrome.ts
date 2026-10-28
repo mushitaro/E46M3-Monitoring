@@ -95,9 +95,6 @@ export const CHROME = {
     clearFaults: 'Clear faults',
 
     tab_service: 'SERVICE',
-    // The one exit from the disclaimer. A verb, like every other verb in this
-    // file; the SENTENCES it agrees to are language-switched, in ja.ts / en.ts.
-    disclaimer_agree: 'Agree',
     // The wizard's navigation. Verbs, like every other verb in this file; the
     // sentences they move between are language-switched.
     // The frame's byte roles. Machine identity, like every hex value beside
@@ -116,6 +113,17 @@ export const CHROME = {
     tab_sessions: 'SESSIONS',
     save: 'Save',
     sync: 'Sync',
+    // SAVE and SYNC say their state in the label, one or two words, TUNER's
+    // (lib/sync/status.ts): a phone has no hover, so the cell's word is all a
+    // finger can read. The sentence behind each is language-switched.
+    save_nothing: 'Nothing yet',
+    save_busy: 'Saving…',
+    save_done: 'Saved',
+    sync_busy: 'Syncing…',
+    sync_done: 'Synced',
+    sync_offline: 'Offline',
+    sync_signedOut: 'Signed out',
+    sync_unreachable: 'Unreachable',
     // The assistant bridge's switch (hooks/useAssistantBridge). TUNER's word for it too.
     assistant: 'ASSISTANT',
     restore: 'Restore',
@@ -123,6 +131,8 @@ export const CHROME = {
     back: 'Back',
     remove: 'Delete',
     privacy: 'Privacy',
+    // The repository's name for itself, in the header's group and the sheet's strip.
+    github: 'GitHub',
     reauth: 'Sign in again',
     pill_synced: 'Synced',
     pill_local: 'Local',

@@ -184,13 +184,20 @@ body {
    intended 6px, the naive combination gives Chrome's `thin`, which is 10px.
 
    So gate the standard properties on engines that have no ::-webkit-scrollbar
-   at all. Chromium keeps 6px and its hover state; Firefox still gets a thin
-   themed bar. Note `thin` is the narrowest the standard property offers - 6px
-   is only reachable through the webkit pseudo-elements. */
-::-webkit-scrollbar { width: 6px; height: 6px; }
+   at all. Chromium keeps its narrow bar and its hover state; Firefox still gets
+   a thin themed one. Note `thin` is the narrowest the standard property offers -
+   anything under it is only reachable through the webkit pseudo-elements.
+
+   3px, the family's width (tsunagi-m-design §1.7; TUNER's since 2026-08-31, on
+   the operator's request). An indicator, not a control: nothing here is
+   scrolled by dragging its bar - the panes are touched or wheeled - so the width
+   buys legibility of where you are, and 3px is enough for that. The thumb's
+   radius is half the width: a full radius draws a capsule and loses the ends
+   that say how long the thumb is. */
+::-webkit-scrollbar { width: 3px; height: 3px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #2A2A33; border-radius: 3px; }  /* slate-700 */
-::-webkit-scrollbar-thumb:hover { background: #4C4C58; }                /* slate-600 */
+::-webkit-scrollbar-thumb { background: #2A2A33; border-radius: 1.5px; }  /* slate-700 */
+::-webkit-scrollbar-thumb:hover { background: #4C4C58; }                  /* slate-600 */
 
 @supports not selector(::-webkit-scrollbar) {
   * { scrollbar-width: thin; scrollbar-color: #2A2A33 transparent; }

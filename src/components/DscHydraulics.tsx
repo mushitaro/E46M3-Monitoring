@@ -45,7 +45,6 @@ export function DscHydraulicsPane({
     selectedId: string | null;
     onSelect: (job: CatalogJob) => void;
 }) {
-    const { t } = useLang();
     return (
         <Pane>
             <StopControl hydraulics={hydraulics} />
@@ -59,7 +58,6 @@ export function DscHydraulicsPane({
                     onSelect={onSelect}
                 />
             ))}
-            <p className="text-[11px] leading-relaxed text-slate-500">{emphasise(t.dsc_drivesNote)}</p>
         </Pane>
     );
 }
@@ -107,12 +105,15 @@ function FamilySection({
     void valveNames;
 
     return (
-        <Section title={lang === 'en' ? family.en : family.ja} count={family.sites.length}>
+        // What a row's valve names mean is said behind each family's ⓘ — it is about those rows — and
+        // the gap, at the family that has one, as its one line, not only on its row.
+        <Section
+            title={lang === 'en' ? family.en : family.ja}
+            count={family.sites.length}
+            note={family.sites.some((s) => s.job === null) ? t.dsc_absenceHint : undefined}
+            info={emphasise(t.dsc_drivesNote)}
+        >
             <StepList plan={plan} />
-            {/* State the gap at the family that has one, not only on its row. */}
-            {family.sites.some((s) => s.job === null) && (
-                <p className="mt-1.5 text-[11px] text-amber-400/90">{t.dsc_absenceHint}</p>
-            )}
         </Section>
     );
 }

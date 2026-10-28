@@ -1,7 +1,7 @@
 /**
  * Where this app links out to, declared once.
  *
- * Two destinations: MESH, from the CREDITS colophon, and the privacy policy's preview section, which says what the preview
+ * Three destinations: the repository (GITHUB), MESH, from the CREDITS colophon, and the privacy policy's preview section, which says what the preview
  * build stores and sends (its SYNC and its error records) and for how long. The header's PRIVACY
  * and the preview's first-run notice (DisclaimerDialog) both open it. Production has no such link
  * because it sends nothing — its promise is in THIRD-PARTY-NOTICES.md §1 and public/_headers.
@@ -18,6 +18,12 @@ export const MESH = {
     ja: 'https://m3.tsunagi.app/mesh',
     en: 'https://m3.tsunagi.app/en/mesh',
 } as const;
+
+/**
+ * The repository — GITHUB in the header's group and the menu sheet's strip (tsunagi-m-chrome §1).
+ * Public: the code is, and the BMW-derived data it reads is not in it (THIRD-PARTY-NOTICES.md §3).
+ */
+export const REPOSITORY = 'https://github.com/mushitaro/E46M3-Monitoring';
 
 export const PRIVACY_PREVIEW = {
     ja: 'https://m3.tsunagi.app/privacy-policy#preview',

@@ -11,10 +11,17 @@
  * The rule this follows: say what will happen, in concrete terms, before asking.
  * "Are you sure?" is not a confirmation — it moves the decision to the operator
  * without giving them anything new to decide with.
+ *
+ * In the one frame every dialog here wears (DialogFrame, TUNER's MessageDialog):
+ * CANCEL plain and first, the confirm tinted red and last — the dangerous answer
+ * is not where the thumb already is. No X and no backdrop: there is no honest
+ * default for "erase this", so the two labelled answers are the only ways out,
+ * and Escape is CANCEL (`onEscape`, which draws no X).
  */
 
 import { AlertTriangle } from 'lucide-react';
-import { LABEL, TextButton } from '@/components/ui';
+import { DialogFrame } from '@/components/DialogFrame';
+import { DialogButton } from '@/components/ui';
 import { useLang } from '@/lib/i18n';
 
 export function ConfirmDialog({
@@ -33,30 +40,24 @@ export function ConfirmDialog({
 }) {
     const { t } = useLang();
     return (
-        <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-6"
-            role="dialog"
-            aria-modal="true"
-            onClick={onCancel}
-        >
-            <div
-                className="w-full max-w-md bg-slate-900 p-5"
-                onClick={(e) => e.stopPropagation()}
-            >
-                <div className="flex items-baseline gap-2">
-                    <AlertTriangle className="size-3.5 shrink-0 self-center text-red-400" />
-                    <span className={`${LABEL} text-red-400`}>{title}</span>
-                </div>
-                <p className="mt-3 text-xs leading-relaxed text-slate-300">{consequence}</p>
-                {/* Cancel first and plain, confirm second and red: the dangerous
-                    one should not be where the thumb already is. */}
-                <div className="mt-5 flex items-center justify-end gap-4">
-                    <TextButton onClick={onCancel}>{t.cancel}</TextButton>
-                    <TextButton onClick={onConfirm} tone="danger" Icon={AlertTriangle}>
+        <DialogFrame
+            title={title}
+            Icon={AlertTriangle}
+            tone="danger"
+            onEscape={onCancel}
+            footer={
+                <>
+                    <DialogButton onClick={onCancel} tone="neutral">
+                        {t.cancel}
+                    </DialogButton>
+                    <DialogButton onClick={onConfirm} tone="danger">
                         {confirmLabel}
-                    </TextButton>
-                </div>
-            </div>
-        </div>
+                    </DialogButton>
+                </>
+            }
+        >
+            <p className="text-xs leading-relaxed text-slate-300">{consequence}</p>
+        </DialogFrame>
     );
 }
+

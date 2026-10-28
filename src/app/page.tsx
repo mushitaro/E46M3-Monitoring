@@ -857,6 +857,11 @@ export default function Home() {
                     reloading={reloading}
                     installState={install.state}
                     onInstall={() => void install.promptInstall()}
+                    save={sessionsEnabled ? sessions.saveLook : null}
+                    sync={sessionsEnabled ? sessions.syncLook : null}
+                    sessionsBusy={sessions.busy !== null}
+                    onSave={() => void sessions.save()}
+                    onSync={() => void sessions.sync()}
                 />
             )}
 

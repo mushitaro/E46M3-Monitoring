@@ -67,7 +67,7 @@ export const ja: Localised = {
     risk_high: '高',
     risk_medium: '中',
     risk_low: '低',
-    disclaimer_title: 'このツールについて',
+    disclaimer_title: '免責事項',
     disclaimer_lede:
         'BMW E46 M3 を DS2 で読むための個人用ツールです。**業務用の診断機ではありません。**' +
         '整備の判断は必ず整備マニュアル（TIS）と実車の状態に基づいて行ってください。',
@@ -78,6 +78,9 @@ export const ja: Localised = {
         'PRACTICE モードが話す相手はシミュレータで、車ではありません。作動テストを試せるのはこのモードだけです。',
         '車の作業には危険が伴います。ジャッキアップ、エンジン運転、可動部——このツールは何も肩代わりしません。',
     ],
+    disclaimer_agree: '同意して続ける',
+    disclaimer_agreeNote:
+        '「同意して続ける」を押した場合、上記に同意したものとみなします。',
     disclaimer_preview: {
         lead: 'このワークス版は、保存した記録を別の端末でも開けるよう、不具合を調べられるよう、また任された調査を進められるよう、次のものを運営者のサーバーへ送ります。',
         sessionsTitle: '保存したセッション',
@@ -185,10 +188,11 @@ export const ja: Localised = {
     // katakana word in that row read as a different app's control.
     module: 'MODULE',
     faultRef: '故障本文リファレンス',
-    faultRef_note:
-        'SGBD の FORTTEXTE 表そのものです。故障コードと本文の対応が付いているので、読み取った故障には本文が直接付きます。ここはコード・訳文・独語原文のいずれでも引ける検索用の一覧です。',
+    faultRef_info: 'SGBD の故障本文表（FORTTEXTE）です。読み取った故障には、ここの本文が付きます。コード・訳文・独語原文で引けます。',
     catalog_jobs: (n: number) => `${n} 件`,
     cancel: 'キャンセル',
+    info_show: '説明を見る',
+    info_hide: '説明を閉じる',
     actuator_runnable: (n, total) => `${total} 件中 ${n} 件が実行可能`,
     actuator_onlyRunnable: '実行できるものだけ',
     actuator_armed: '作動中',
@@ -307,7 +311,7 @@ export const ja: Localised = {
     dsc_appConstruct: 'アプリの構成物',
     dsc_drivesNote:
         '各行の弁名は、抽出したバイトコード中でその操作が**どこかの時点で**駆動する電磁弁の一覧です。同時に駆動するという意味ではなく、静的抽出には順序がありません。片側エア抜きの一覧に反対側の排出弁が入るのはそのためで、こちらでは解釈しません。',
-    dsc_absenceHint: 'この族には SGBD にジョブが存在しない場所があります。上の該当行に理由を書いています。',
+    dsc_absenceHint: 'SGBD にジョブが無い場所があります。理由は該当行に。',
     dsc_runnerUp: (l) =>
         `全出力OFF の候補は他にもあります: ${l}。違いは STEUERN 表が名前を持たないビットなので、どちらが正しいかはこちらでは決められません。`,
     seq_title: '推奨シーケンス',
@@ -325,22 +329,33 @@ export const ja: Localised = {
         run_block_revoked: 'この読取は取り下げられています（キルリストか台帳）。理由は台帳の記録にあります。',
         run_block_moving: '車が動いています。走行中に送ってよいとオーナーが認めた読取ではないので、停車するまで送りません。',
     },
+    runBlockShort: {
+        run_block_programming: '書換系',
+        run_block_identity: '同一性',
+        run_block_noTelegram: 'テレグラム未確定',
+        run_block_needsArgs: '引数が必要',
+        run_block_notRead: '実行経路なし',
+        run_block_controlWrites: '書込フレーム',
+        run_block_notVerified: '未検証',
+        run_block_revoked: '取り下げ',
+        run_block_moving: '走行中',
+    },
+    actuator_info: '部品を一時的に動かすジョブです。実車では、検証済みと台帳にあるものだけを、停車中に確認のあとで動かします。行の札は、いま動かせない理由です。',
     run_result: '実行結果',
     run_request: '送信',
     run_response: '応答',
     run_undecoded:
         'SGBD は結果の名前を持ちますが、バイト位置を公表していません。生バイトのまま出します——名前に当てはめるのはレイアウトの捏造になります。ライブ値・適応値・故障メモリ・識別はそれぞれ専用のデコーダを通っており、この経路ではありません。',
     adaptations: '適応値（学習値）',
-    adaptations_note:
+    adaptations_info:
         'ECU が走行を通じて学習した値です。読取のみで、車には何も書きません。',
     adaptations_short: (g, n) => `応答 ${g} バイト（この表は最低 ${n} バイト必要）——欠けた項目は表示しません。`,
-    adaptations_noDecoder:
-        '適応ブロックの復号表を持っているのは MSS54 だけです。SMG II と DSC にも ECU 側には学習値がありますが、本アプリに読み方がありません——「この ECU に学習値が無い」という意味ではありません。SMG II の学習値は SERVICE タブの ADAPTIONSWERTE_LESEN から読めます。',
+    adaptations_noDecoder: 'このモジュールの学習値は、このアプリでは読めません。',
+    adaptations_noDecoderInfo:
+        '学習値の復号表があるのは MSS54 だけです。SMG II と DSC にも学習値はあり、「無い」という意味ではありません。SMG II の学習値は SERVICE タブの ADAPTIONSWERTE_LESEN から読めます。',
     adaptationsReset: '学習値のリセット',
-    adaptationsReset_note:
-        'ECU 自身が持つ学習値の消去ジョブです。本アプリは送信しません。理由は各行に書いてあります。消去すると ECU は工場出荷の初期値から学習をやり直すため、しばらくの間アイドリングや燃調が荒れます。',
-    adaptationsReset_none:
-        'このモジュールの SGBD に学習値の消去ジョブはありません。カタログ全ジョブを走査して確認済みです（故障メモリの消去は別の話で、DIAGNOSIS タブにあります）。',
+    adaptationsReset_info: '学習値を消すジョブです。このアプリからは送りません。消すと ECU は初期値から学び直し、しばらくアイドリングや燃調が荒れます。',
+    adaptationsReset_none: 'このモジュールの SGBD に、学習値の消去ジョブはありません（全ジョブを確認済み）。',
     adaptationsReset_unknown:
         'このモジュールについては未調査です。「消去ジョブが無い」という意味ではありません。',
     viz_adaptationBlocks: '復号できたブロック',
@@ -412,7 +427,7 @@ export const ja: Localised = {
         protocol: '手順の部品',
         unclassified: '不明',
     },
-    jobClassNote: {
+    jobClassInfo: {
         read: '値を読み出すだけです。車両の状態は変わらず、何度実行しても構いません。',
         test: '部品を一時的に動かして確かめます。終われば元の状態に戻ります（ラッチするものだけは戻りません。個別に明示しています）。',
         calibration: '学習値・調整値を書き換えます。イグニッションを切っても残り、元の値に戻す手段はありません。',
@@ -489,11 +504,11 @@ export const ja: Localised = {
 
     det_results: 'このジョブが返す内容',
     det_resultCount: (n) => `返り値 ${n}`,
-    det_results_note:
+    det_results_info:
         'SGBD が宣言している結果です。値・単位・平文の三つ組は1行にまとめています。実行しないと現在値は入りません。',
     det_args: '指定が必要な引数',
     det_values: '調整値・規定値',
-    det_noValues: 'このジョブに規定値の公表はありません。SGBD にも復元元にも下限・上限が存在しないためで、「まだ調べていない」ではありません。',
+    det_noValues: 'このジョブに規定値の公表はありません（SGBD にも復元元にも下限・上限が無い）。',
     det_whenArg: (arg, values) => `${arg} が ${values} のときだけ返ります`,
     det_inferred: '推定',
     det_optionsDropped: (l) => `SGBD の記述により除外: ${l}`,
@@ -530,8 +545,33 @@ export const ja: Localised = {
 
     // --- SESSIONS (preview only) ------------------------------------------------
     sessions_current: 'この接続',
-    assistant_note:
-        'オンにすると、ご本人が接続した AI アシスタント（claude.ai など）から、TSUNAGI///Matrix の中継を通して、このタブに問い合わせられます。答えるのは、状態、故障、記録の一部、カタログ、検証台帳、CO-WORK です。VIN は送りません。アシスタントにできるのは、読み取り、記録の開始と停止（停止は確認のあと）、CO-WORK への書き込み、画面の切り替え、手順を画面に置くこと、頼まれたときの保存と送信、この端末で一度画面からつないだケーブルへのつなぎ直しと切断（記録中は止める確認のあと）、TUNER への切り替えです。新しい機器の許可、作動テスト・調整・故障消去の実行、書き込みはできません。',
+    assistant_consent: {
+        title: 'ASSISTANT をオンにする',
+        lead: 'あなたが接続した AI アシスタント（claude.ai など）が、このタブに問い合わせられるようになります。',
+        items: [
+            {
+                title: '送るもの',
+                body: 'アシスタントが求めたときだけ。状態、各モジュールの故障、記録の一部、読めるジョブと試せるジョブ、検証台帳、CO-WORK。VIN は送りません。',
+            },
+            {
+                title: '経路',
+                body: 'TSUNAGI///Matrix の中継を通ります。問い合わせと答えは保存しません。つなぐとき、端末を見分ける無作為な番号と、ナビから開いたかどうかを伝えます。',
+            },
+            {
+                title: '届く先',
+                body: 'あなたが接続したサービス（claude.ai など）。そこでの扱いは、そのサービスの規約によります。',
+            },
+            {
+                title: 'できること',
+                body: '読み取り、記録の開始と停止（停止は確認のあと）、CO-WORK への書き込み、画面の切り替え、手順を画面に置くこと、頼まれたときの保存と送信、一度画面でつないだケーブルへのつなぎ直しと切断、TUNER への切り替え。',
+            },
+            {
+                title: 'できないこと',
+                body: '新しい機器の許可、作動テスト・調整・故障消去の実行、書き込み。これらは停車中に、あなたが画面で行います。',
+            },
+        ],
+        off: 'いつでもヘッダーの AI でオフにできます。',
+    },
     assistant_turnOn: 'オンにする',
     ai_pressToTurnOn: '押すとオンにします（先に、送る内容をお知らせします）',
     ai_pressToTurnOff: '押すとオフにします',
@@ -553,13 +593,27 @@ export const ja: Localised = {
     assistant_catalogOk: '中継がツールと手順書を受け取りました',
     assistant_catalogRefused: (reason) => `中継がツールと手順書を断りました（前のものを使います）: ${reason}`,
     assistant_device: 'この端末の名前（例：ナビ）',
-    sessions_current_note:
-        'SAVE はこの端末に保存します。SYNC は保存したうえで、まだ送っていないセッションをアカウントへ送ります。送ったあとも端末の分は残ります。',
-    sessions_nothing: '保存するものはまだありません。故障メモリを読むか、データログを記録すると保存できます。',
+    sessions_current_info:
+        '保存できるのは、この接続で読んだ故障メモリと記録したデータログです。SAVE はこの端末に保存します。SYNC は保存したうえで、まだ送っていないセッションをアカウントへ送ります。送ったあとも端末の分は残ります。',
+    save_title: {
+        nothing: 'まだ保存するものがありません。故障メモリを読むか、データログを記録すると保存できます。',
+        ready: 'この接続の読み取りと記録を、この端末に保存します。',
+        busy: 'この端末に保存しています。',
+        saved: 'この端末に保存済みです。新しく読むか記録すると、また保存できます。',
+    },
+    sync_title: {
+        signedOut: 'サインインが切れています。端末の分はそのまま残ります。',
+        unreachable: 'アカウントを確かめられませんでした。押すと、もう一度送ってみます。',
+        offline: 'オフラインです。端末の分はそのまま残り、電波のある所で送れます。',
+        busy: 'アカウントへ送っています。',
+        ready: (n) => `保存したうえで、まだ送っていない ${n} 件をアカウントへ送ります。送ったあとも端末の分は残ります。`,
+        clean: 'すべてアカウントへ送ってあります。',
+    },
+    sessions_nothing: '保存するものはまだありません。',
     sessions_onDevice: 'この端末',
     sessions_inAccount: 'アカウント',
     sessions_errors: 'エラー記録',
-    sessions_errors_note:
+    sessions_errors_info:
         '読み取りや記録が失敗したとき、このワークス版は ECU・ジョブ・エラー文・直前の通信ログを自動で送ります。送れなかった分はこの端末で待ち、次に送れたときに送ります。',
     sessions_account: (label) => `保存先 アカウント ${label}`,
     sessions_account_unknown: '保存先 アカウント（確認できません。電波のある所でもう一度開いてください）',

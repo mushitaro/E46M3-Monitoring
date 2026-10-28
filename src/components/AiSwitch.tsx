@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Power } from 'lucide-react';
-import { LABEL, TextButton } from './ui';
+import { Bot } from 'lucide-react';
+import { DialogFrame } from './DialogFrame';
+import { DialogButton, LABEL } from './ui';
 import type { AssistantBridge } from '@/hooks/useAssistantBridge';
 import type { BridgeState } from '@/lib/bridge/bridgeClient';
 import { useLang } from '@/lib/i18n';
@@ -21,8 +22,14 @@ import { useLang } from '@/lib/i18n';
  *
  * Not drawn on a build that has no assistant (production).
  *
- * The notice is put on the body, not beside the switch: the header is a stacking context of its own
- * (z-10, backdrop blur), and a dialog inside it is drawn under the panes below it, unpressable.
+ * The notice is TUNER's (its `toggleAssistant`): the shared dialog frame with the assistant's glyph,
+ * titled for what the press will do, CANCEL plain and the answer tinted. What it says is one item
+ * per question — what is sent, by which route, where it arrives, what the assistant can and cannot
+ * do — rather than one paragraph to be read through for the part that matters (tsunagi-m-ux §17).
+ *
+ * It is put on the body, not beside the switch: the header is a stacking context of its own and
+ * carries a backdrop blur, which is a containing block for anything fixed inside it — a dialog
+ * placed there is laid out against the 48px header and drawn under the panes below it.
  */
 const OFF = 'bg-slate-500/10 text-slate-500';
 const TRYING = 'bg-slate-500/10 text-slate-400 animate-pulse';
@@ -42,6 +49,7 @@ export function AiSwitch({ assistant: a }: { assistant: AssistantBridge }) {
     const state: BridgeState = a.status.state;
     const hint = !a.allowed ? t.assistant_unavailable : a.on ? t.ai_pressToTurnOff : t.ai_pressToTurnOn;
     const title = `${t.assistant}: ${a.allowed ? t.assistant_state[state] : t.assistant_state.off}. ${hint}`;
+    const c = t.assistant_consent;
     return (
         <>
             <button
@@ -58,32 +66,40 @@ export function AiSwitch({ assistant: a }: { assistant: AssistantBridge }) {
             </button>
             {asking &&
                 createPortal(
-                    <div
-                        className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-6"
-                        role="dialog"
-                        aria-modal="true"
-                        aria-label={t.assistant}
-                        onClick={() => setAsking(false)}
-                    >
-                        <div className="w-full max-w-md bg-slate-900 p-5" onClick={(e) => e.stopPropagation()}>
-                            <span className={`${LABEL} text-sky-400`}>{t.assistant}</span>
-                            <p className="mt-3 max-h-[50svh] overflow-y-auto text-xs leading-relaxed text-slate-300">{t.assistant_note}</p>
-                            <div className="mt-5 flex items-center justify-end gap-4">
-                                <TextButton onClick={() => setAsking(false)} tone="neutral">
+                    <DialogFrame
+                        title={c.title}
+                        Icon={Bot}
+                        tone="primary"
+                        onEscape={() => setAsking(false)}
+                        footer={
+                            <>
+                                <DialogButton onClick={() => setAsking(false)} tone="neutral">
                                     {t.cancel}
-                                </TextButton>
-                                <TextButton
+                                </DialogButton>
+                                <DialogButton
                                     onClick={() => {
                                         setAsking(false);
                                         a.setOn(true);
                                     }}
-                                    Icon={Power}
                                 >
                                     {t.assistant_turnOn}
-                                </TextButton>
-                            </div>
+                                </DialogButton>
+                            </>
+                        }
+                    >
+                        <div className="space-y-3 text-xs leading-relaxed text-slate-300">
+                            <p>{c.lead}</p>
+                            <dl className="space-y-2">
+                                {c.items.map((item) => (
+                                    <div key={item.title}>
+                                        <dt className="font-bold text-slate-100">{item.title}</dt>
+                                        <dd>{item.body}</dd>
+                                    </div>
+                                ))}
+                            </dl>
+                            <p className="text-[11px] text-slate-500">{c.off}</p>
                         </div>
-                    </div>,
+                    </DialogFrame>,
                     document.body,
                 )}
         </>

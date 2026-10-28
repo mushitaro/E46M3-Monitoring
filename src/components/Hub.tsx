@@ -83,22 +83,21 @@ const FACE: Record<HubTone, string> = {
 };
 
 /**
- * 72px, not 80.
+ * 80px, with a 20px glyph — TUNER's ring as it is drawn now.
  *
- * `layout-and-structure.md` writes the hub down as `w-20 h-20` and this used to
- * follow it literally — but the reference tool does NOT render 80. Its cluster
- * sits in a box whose height its own wings set (3 rows of 28 + 2 gaps of 18 =
- * 120), and its fit-scale then divides `clientHeight - 12` by that: 108/120 =
- * 0.9, permanently. Measured at 1280x720, 1280x800, 1280x1400 and 1920x1080 —
- * 0.9 every time. So the instrument everyone has actually looked at has a 72px
- * ring with an 18px glyph, and this app was the odd one out at 80/20.
+ * This was 72/18, from a measurement of the reference that no longer holds: its
+ * cluster was then scaled to fit a 120px band at 0.9, permanently, so the ring
+ * everyone looked at was 72. Measured again on 2026-10-28 (Chromium, 1280×800,
+ * 683×400 and 375×812, TUNER WORKS 643): its fit-scale reads 1.0 at all three,
+ * and the ring is 80×80 with a 20px glyph. So this app was the odd one out,
+ * the other way round this time (operator, 2026-10-28).
  *
- * Declared rather than reproduced with a transform. `scale-90` would paint 72
- * while still occupying an 80px box, which would silently put 8px back into the
- * gaps below — and those gaps are measured against the same reference.
+ * Declared rather than reproduced with a transform. `scale-*` would paint one
+ * size while occupying another, and the panel's floor is added up from the
+ * declared one.
  */
-const HUB_SIZE = 'size-[72px]';
-const HUB_ICON = 'size-[18px]';
+const HUB_SIZE = 'size-20';
+const HUB_ICON = 'size-5';
 
 export function Hub({ config }: { config: HubConfig }) {
     const { label, Icon, onClick, tone, disabled, spin } = config;

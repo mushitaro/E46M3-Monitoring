@@ -28,7 +28,7 @@
   "records.sync": { "status": "missing", "what": "read records sent to the owner's account", "where": "stage 2, after the policy (tsunagi-m3 #29)" },
   "bridge": { "status": "built", "what": "Matrix MONITORING tools on the tab", "where": "src/lib/bridge/handlers.ts, functions/api/bridge/; on the served WORKS build 141.5323e48 through relay 0.11.0: hello_accepted, 19 tools, 12 topics (2026-10-28). Not yet from a claude.ai conversation in the car" },
   "stage.screen": { "status": "built", "what": "monitoring_stage: put a non-read job on the screen", "where": "src/hooks/useMonitoringFacade.ts" },
-  "ledger.grant": { "status": "missing", "what": "the owner clears a read for a moving car, on the screen", "where": "src/lib/ledger.ts grantMovingOk exists; the screen does not" },
+  "ledger.grant": { "status": "built", "what": "the owner clears a read for a moving car, on the screen", "where": "src/views/sessions/MovingOkSection.tsx (SESSIONS → WHILE MOVING, confirmed, not while measured moving) over lib/ledger movingOkChoices and grantMovingOk; Chromium on next dev 2026-10-28. Lasts the page's life until the ledger is kept" },
   "service.run": { "status": "missing", "what": "actuator tests and procedures on a vehicle, run by a person on the screen", "where": "PLAN §4 safety mechanism first" },
   "tuning.handoff": { "status": "car", "what": "the map change itself, in TUNER", "where": "TUNER WORKS on the car" }
 }

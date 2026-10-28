@@ -126,6 +126,10 @@ export const CHROME = {
     sync_unreachable: 'Unreachable',
     // The assistant bridge's switch (hooks/useAssistantBridge). TUNER's word for it too.
     assistant: 'ASSISTANT',
+    // The owner allowing a read while the car moves (lib/ledger `grantMovingOk`), and its button.
+    // Allow, not Clear: on DIAGNOSIS, Clear is what the fault memory gets (clearFaults).
+    movingOk: 'WHILE MOVING',
+    movingOk_grant: 'Allow',
     restore: 'Restore',
     view: 'View',
     back: 'Back',

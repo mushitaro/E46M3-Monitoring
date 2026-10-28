@@ -12,7 +12,10 @@ import { needsSync, parseCsv, summarise, type SavedSession } from '@/lib/sync/se
 import { SAVE_TONE, SYNC_TONE, type StatusLook, type StatusTone } from '@/lib/sync/status';
 import { CountReadout } from '@/views/shared/CountReadout';
 import type { AssistantBridge } from '@/hooks/useAssistantBridge';
+import type { Ledger } from '@/lib/ledger';
+import type { Motion } from '@/lib/vehicleState';
 import { AssistantSection } from './AssistantSection';
+import { MovingOkSection } from './MovingOkSection';
 import type { Sessions } from './useSessions';
 
 /** Rows of a saved datalog the viewer draws. The CSV keeps every row; the screen does not need to. */
@@ -48,8 +51,15 @@ export const SessionsView = memo(function SessionsView({
     catalog,
     ecuId,
     assistant,
+    ledger,
+    motion,
+    onGrantMovingOk,
 }: {
     sessions: Sessions;
+    /** The verified ledger, and the owner's press that clears a read for a moving car (MovingOkSection). */
+    ledger: Ledger;
+    motion: Motion;
+    onGrantMovingOk: (id: string) => void;
     /** The assistant bridge's switch and state (hooks/useAssistantBridge). */
     assistant: AssistantBridge;
     /** The loaded module's catalogue, used to name a saved fault when the session is for the same module. */
@@ -164,6 +174,8 @@ export const SessionsView = memo(function SessionsView({
             </Section>
 
             <AssistantSection assistant={assistant} />
+
+            <MovingOkSection ledger={ledger} motion={motion} catalog={catalog} ecuId={ecuId} onGrant={onGrantMovingOk} />
 
             <Section title={t.sessions_onDevice} count={s.local?.length}>
                 {s.local !== null && s.local.length === 0 ? (

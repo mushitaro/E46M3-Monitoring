@@ -17,7 +17,7 @@ import { needsSync, summarise } from '@/lib/sync/session';
 import { listLocal } from '@/lib/sync/sessionStore';
 import type { Tab } from '@/lib/tabs';
 import { bestTelegram, loadTelegrams } from '@/lib/telegrams';
-import { deviceLabel, type DeviceKind } from '@/hooks/useAssistantBridge';
+import { LAUNCHER_QUERY, deviceLabel, isHeadUnit, type DeviceKind } from '@/hooks/useAssistantBridge';
 import type { Datalog } from '@/views/datalog/useDatalog';
 import type { Sessions } from '@/views/sessions/useSessions';
 
@@ -255,11 +255,13 @@ export function useMonitoringFacade(input: {
                     reason: 'This screen holds a session that is not saved (its fault read, recording or failures). Save it with monitoring_save, or read back that it would be lost and call again with discard_unsaved: true after a clear yes.',
                 };
             }
+            // The head unit says so to TUNER too, as the launcher does, so TUNER's tab takes the bridge there.
+            const url = isHeadUnit() ? `${TUNER_WORKS}?${LAUNCHER_QUERY}` : TUNER_WORKS;
             // After the answer has gone: the socket goes with the page.
             setTimeout(() => {
-                void link.disconnect().finally(() => window.location.assign(TUNER_WORKS));
+                void link.disconnect().finally(() => window.location.assign(url));
             }, 500);
-            return { opened: true, url: TUNER_WORKS, note: "This tab is moving to TUNER WORKS; from now on TUNER's tab answers, through TUNER's tools." };
+            return { opened: true, url, note: "This tab is moving to TUNER WORKS; from now on TUNER's tab answers, through TUNER's tools." };
         },
 
         sync: async () => {

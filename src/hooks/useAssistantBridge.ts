@@ -35,6 +35,17 @@ export const DEVICE_ID_KEY = 'assistant-bridge:id';
 export const NAV_KEY = 'assistant-bridge:nav';
 /** What the launcher (E46M3-Launcher, a Trusted Web Activity) leaves as the referrer of the first page. */
 export const LAUNCHER_REFERRER = 'android-app://app.tsunagi.e46m3.launcher';
+/** What the launcher puts on every web key's URL (v0.3.1). The owner gate keeps the query through
+ *  m3's sign-in, where the referrer is lost — so this is the sign that survives, the referrer the
+ *  fallback. */
+export const LAUNCHER_QUERY = 'from=manifold';
+
+/** Whether the launcher opened this page — read once, as the module loads, before anything could
+ *  tidy the URL. Kept to memory; written to the device only when the assistant is used. */
+export const OPENED_BY_LAUNCHER =
+    typeof location !== 'undefined' &&
+    (new URLSearchParams(location.search).get('from') === 'manifold' ||
+        (typeof document !== 'undefined' && document.referrer.startsWith(LAUNCHER_REFERRER)));
 const MAX_DEVICE_NAME = 24;
 
 /** This page's answers when storage refuses, so the switch and the name still work for the session. */
@@ -97,10 +108,11 @@ export function deviceId(): string {
     return id;
 }
 
-/** Whether this is the head unit: remembered from the first page the launcher opened. */
+/** Whether this is the head unit: the launcher opened this page, or one it opened before. Called
+ *  only while the assistant is in use, which is when it may be remembered on the device. */
 export function isHeadUnit(): boolean {
     if (tryGet(NAV_KEY) === '1') return true;
-    if (typeof document !== 'undefined' && document.referrer.startsWith(LAUNCHER_REFERRER)) {
+    if (OPENED_BY_LAUNCHER) {
         trySet(NAV_KEY, '1');
         return true;
     }
@@ -142,10 +154,11 @@ export function useAssistantBridge(input: {
         defaultsRef.current = input.defaultDevice;
     });
 
-    // The launcher's referrer is on the first page it opens and on no later one: look while it is there.
+    // Remembered once the assistant is in use, so a later page the launcher did not open (a reload
+    // from the menu) is still the head unit's.
     useEffect(() => {
-        if (allowed) isHeadUnit();
-    }, [allowed]);
+        if (allowed && on) isHeadUnit();
+    }, [allowed, on]);
 
     const setOn = useCallback(
         (next: boolean) => {

@@ -154,7 +154,7 @@ GitHub のラベル・自動マージ・ブランチ保護は `autonomy.yml` と
    リポジトリの secret にはしない（リポジトリの secret は、マージ前のブランチが書き換えたワークフローからも読める）：
    1. GitHub → Settings → Environments → `works` を作り、Deployment branches を `main` だけにする。
    2. Cloudflare の API トークンを一つ（権限は Account → Cloudflare Pages: Edit だけ、期限つき）。`works` に
-      `CLOUDFLARE_API_TOKEN` として、アカウント ID を `CLOUDFLARE_ACCOUNT_ID` として。
+      `CLOUDFLARE_API_TOKEN_MONITORING` として（配信の中で wrangler に `CLOUDFLARE_API_TOKEN` として渡す）、アカウント ID を `CLOUDFLARE_ACCOUNT_ID` として。
    3. GitHub の fine-grained トークンを一つ（Contents: Read だけ、`E46M3-Monitoring-data` と `tsunagi-m3` の二つ
       だけ、期限つき）。`works` に `MONITORING_DATA_TOKEN` として。配信は、データと、ゲートの正本との一致の
       確認にこの二つを読む。CI はこの環境を使わないので、CI のデータの試験は飛ばされる（クラウドの

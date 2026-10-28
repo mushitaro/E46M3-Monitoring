@@ -118,6 +118,9 @@ export const CHROME = {
     sync: 'Sync',
     // The assistant bridge's switch (hooks/useAssistantBridge). TUNER's word for it too.
     assistant: 'ASSISTANT',
+    // The owner clearing a read for a moving car (lib/ledger `grantMovingOk`), and its button.
+    movingOk: 'WHILE MOVING',
+    movingOk_grant: 'Clear',
     restore: 'Restore',
     view: 'View',
     back: 'Back',

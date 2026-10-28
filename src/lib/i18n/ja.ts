@@ -79,6 +79,7 @@ export const ja: Localised = {
         '車の作業には危険が伴います。ジャッキアップ、エンジン運転、可動部——このツールは何も肩代わりしません。',
     ],
     disclaimer_agree: '同意して続ける',
+    disclaimer_dontShow: '今後表示しない',
     disclaimer_agreeNote:
         '「同意して続ける」を押した場合、上記に同意したものとみなします。',
     disclaimer_preview: {

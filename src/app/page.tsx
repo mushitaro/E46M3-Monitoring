@@ -871,7 +871,7 @@ export default function Home() {
                 />
             )}
 
-            {firstRun && <DisclaimerDialog preview={preview} onAgree={() => agreeToFirstRun(preview)} />}
+            {firstRun && <DisclaimerDialog preview={preview} onAgree={(dontShowAgain) => agreeToFirstRun(preview, dontShowAgain)} />}
 
             {wizardOpen && procedure && catalog && workflows && (
                 <WizardDialog

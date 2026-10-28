@@ -79,6 +79,7 @@ export const en: Localised = {
         'Working on a car is dangerous. Jacking it up, running the engine, moving parts — this tool does none of that for you.',
     ],
     disclaimer_agree: 'Agree & Continue',
+    disclaimer_dontShow: "Don't show again",
     disclaimer_agreeNote:
         'Pressing “Agree & Continue” is taken as your acceptance of the above.',
     disclaimer_preview: {

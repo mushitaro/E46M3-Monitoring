@@ -61,7 +61,7 @@ describe('the preview notice acknowledgement', () => {
         const heard = vi.fn();
         notice.previewNoticeStore.subscribe(heard);
 
-        notice.agreeToFirstRun(true);
+        notice.agreeToFirstRun(true, true);
 
         expect(storage.getItem('preview-notice:v2')).not.toBeNull();
         expect(storage.getItem('e46m3.disclaimer')).toBe('1');
@@ -75,11 +75,27 @@ describe('the preview notice acknowledgement', () => {
         vi.stubGlobal('localStorage', storage);
         const { notice } = await fresh();
 
-        notice.agreeToFirstRun(false);
+        notice.agreeToFirstRun(false, true);
 
         expect(storage.getItem('e46m3.disclaimer')).toBe('1');
         expect(storage.getItem('preview-notice:v2')).toBeNull();
         expect(notice.previewNoticeAcknowledged()).toBe(false);
+    });
+
+    it("AGREE without 今後表示しない holds for this page only; the preview's notice is kept either way", async () => {
+        const storage = memoryStorage();
+        vi.stubGlobal('localStorage', storage);
+        const { notice, disclaimer } = await fresh();
+
+        notice.agreeToFirstRun(true, false);
+
+        expect(disclaimer.disclaimerStore.snapshot()).toBe(true);
+        expect(storage.getItem('e46m3.disclaimer')).toBeNull();
+        expect(storage.getItem('preview-notice:v2')).not.toBeNull();
+
+        // The next visit asks again.
+        const next = await fresh();
+        expect(next.disclaimer.disclaimerStore.snapshot()).toBe(false);
     });
 
     it('an acknowledgement given in another tab counts — a send asks storage, not this tab', async () => {
@@ -97,7 +113,7 @@ describe('the preview notice acknowledgement', () => {
         expect(notice.previewNoticeAcknowledged()).toBe(false);
         expect(notice.previewNoticeStore.snapshot()).toBe(false);
 
-        expect(() => notice.agreeToFirstRun(true)).not.toThrow();
+        expect(() => notice.agreeToFirstRun(true, true)).not.toThrow();
         expect(notice.previewNoticeAcknowledged()).toBe(true);
         expect(notice.previewNoticeStore.snapshot()).toBe(true);
 

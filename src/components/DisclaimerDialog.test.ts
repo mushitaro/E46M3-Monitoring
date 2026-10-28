@@ -21,7 +21,8 @@ const dialog = (preview?: boolean) =>
 
 /**
  * The production dialog, pinned. Re-captured from the component when it took the family's form —
- * TUNER's frame, dash list and filled answer (operator, 2026-10-28). A change to what production
+ * TUNER's frame, dash list and filled answer (operator, 2026-10-28) — and again when it took
+ * TUNER's 今後表示しない beside the answer (operator, the same day). A change to what production
  * shows has to change this literal — as a deliberate act, in a diff someone reads — rather than ride
  * in on a commit about the preview.
  */
@@ -47,6 +48,8 @@ const PRODUCTION = [
     '<span>車の作業には危険が伴います。ジャッキアップ、エンジン運転、可動部——このツールは何も肩代わりしません。</span></li></ul>',
     '<p class="text-[11px] text-slate-500">「同意して続ける」を押した場合、上記に同意したものとみなします。</p></div></div>',
     '<div class="mt-3 flex shrink-0 items-center justify-end gap-2 border-t border-slate-800 pt-3">',
+    '<label class="mr-auto flex cursor-pointer select-none items-center gap-2 text-[11px] text-slate-400">',
+    '<input type="checkbox" class="size-3 accent-blue-500"/><span>今後表示しない</span></label>',
     `<button type="button" class="inline-flex items-center gap-1.5 whitespace-nowrap rounded px-4 py-3 ${LABEL} transition-colors disabled:cursor-not-allowed disabled:bg-transparent disabled:text-slate-600 bg-blue-600 text-white hover:bg-blue-500">`,
     '<svg class="lucide lucide-check size-3 shrink-0"></svg>同意して続ける</button></div></div>',
 ].join('');

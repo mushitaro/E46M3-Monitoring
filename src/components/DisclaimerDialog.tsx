@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { AlertTriangle, Check } from 'lucide-react';
 import { DialogFrame } from '@/components/DialogFrame';
 import { DialogButton, emphasise } from '@/components/ui';
@@ -32,11 +33,13 @@ import { PRIVACY_PREVIEW } from '@/lib/links';
  * possible home for a statement that must remain available — the moment it is
  * acknowledged, the attribution would be gone from the app.
  *
- * Nor is there a "do not show this again" checkbox (TUNER has one). There is
- * nothing to opt out of: agreeing IS the opt-out, and it lasts until the text
- * says something materially different. `lib/disclaimer` holds that rule and the
- * version it turns on. One answer is one decision; a checkbox beside it is a
- * second one, asked on every launch of a head unit that is started every drive.
+ * ## Don't show again
+ *
+ * TUNER's checkbox, beside the answer: the owner chooses whether the gate comes
+ * back. Ticked, the agreement is stored and lasts until the text says something
+ * materially different (`lib/disclaimer` holds that rule and the version it turns
+ * on); unticked, it lasts for this page and the gate is there on the next visit.
+ * The operator kept it in TUNER and put it in every tool (2026-10-28).
  *
  * ## Why the copy is a list of four
  *
@@ -56,8 +59,16 @@ import { PRIVACY_PREVIEW } from '@/lib/links';
  * seen. Without it the dialog is exactly the production one;
  * `DisclaimerDialog.test.ts` pins that markup.
  */
-export function DisclaimerDialog({ onAgree, preview = false }: { onAgree: () => void; preview?: boolean }) {
+export function DisclaimerDialog({
+    onAgree,
+    preview = false,
+}: {
+    /** The one press; `dontShowAgain` is the checkbox beside it. */
+    onAgree: (dontShowAgain: boolean) => void;
+    preview?: boolean;
+}) {
     const { lang, t } = useLang();
+    const [dontShowAgain, setDontShowAgain] = useState(false);
 
     return (
         <DialogFrame
@@ -65,9 +76,20 @@ export function DisclaimerDialog({ onAgree, preview = false }: { onAgree: () => 
             Icon={AlertTriangle}
             tone="danger"
             footer={
-                <DialogButton onClick={onAgree} tone="solid" Icon={Check}>
-                    {t.disclaimer_agree}
-                </DialogButton>
+                <>
+                    <label className="mr-auto flex cursor-pointer select-none items-center gap-2 text-[11px] text-slate-400">
+                        <input
+                            type="checkbox"
+                            checked={dontShowAgain}
+                            onChange={(e) => setDontShowAgain(e.target.checked)}
+                            className="size-3 accent-blue-500"
+                        />
+                        <span>{t.disclaimer_dontShow}</span>
+                    </label>
+                    <DialogButton onClick={() => onAgree(dontShowAgain)} tone="solid" Icon={Check}>
+                        {t.disclaimer_agree}
+                    </DialogButton>
+                </>
             }
         >
             <div className="space-y-3 text-xs leading-relaxed text-slate-300">

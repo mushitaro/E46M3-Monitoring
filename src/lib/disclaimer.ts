@@ -20,6 +20,13 @@
  * `Provenance` chips carry the standing claim, and what is left for a modal is
  * the one-time acknowledgement those cannot make.
  *
+ * ## Kept only when the owner asks
+ *
+ * The dialog has TUNER's 今後表示しない beside its answer (operator, 2026-10-28:
+ * kept in TUNER and taken into every tool). Ticked, the version is stored and the
+ * gate stays away until the text changes; unticked, the agreement stands for this
+ * page alone and the gate is back on the next visit.
+ *
  * A failure to read or write storage is not a failure to disclaim: private mode
  * gets the dialog every session, which is the safe direction to err in.
  */
@@ -99,9 +106,9 @@ export const disclaimerStore = {
     },
     snapshot,
     serverSnapshot,
-    /** Record the agreement and tell everyone reading it. */
-    agree(version = DISCLAIMER_VERSION): void {
-        write(version);
+    /** Record the agreement and tell everyone reading it. Stored only when `remember` (今後表示しない). */
+    agree(remember: boolean, version = DISCLAIMER_VERSION): void {
+        if (remember) write(version);
         cached = true;
         listeners.forEach((l) => l());
     },

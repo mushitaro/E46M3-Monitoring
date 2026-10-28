@@ -72,6 +72,8 @@ export interface Localised {
     disclaimer_agree: string;
     /** What the press means, said once, under the points. */
     disclaimer_agreeNote: string;
+    /** The checkbox beside the answer (TUNER's 今後表示しない). Ticked, the agreement is kept. */
+    disclaimer_dontShow: string;
     /**
      * What the preview sends, and why: a section under the points, in the preview build only
      * (lib/previewNotice.ts). m3's notice for `monitoring-preview` — its NOTICE_COPY with

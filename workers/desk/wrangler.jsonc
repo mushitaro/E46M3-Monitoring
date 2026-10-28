@@ -1,15 +1,20 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
   // The desk's door into what owners handed over (src/index.ts says what it serves and to whom).
-  // A Worker of its own, not a route of the Pages project: the Pages project is behind the owner
-  // gate, which this is not, and this answers only a desk token, which the Pages project never does.
+  //
+  // A Pages project of its own, `monitoring-desk` → monitoring-desk.pages.dev, whose only content is
+  // pages/_worker.js. Not a Worker: a Worker's own address is on the account's workers.dev name,
+  // which is a person's, and a public URL does not carry one; and not a route of the WORKS Pages
+  // project either, which is behind the owner gate, where this answers only a desk token.
+  // tsunagi.app's DNS is not a Cloudflare zone, so a name under it would be a CNAME added there.
+  //
+  // Deploy:  npm run desk:deploy   (from the repository root; it runs wrangler in this folder)
   "name": "monitoring-desk",
-  "main": "src/index.ts",
+  "pages_build_output_dir": "pages",
   "compatibility_date": "2026-07-31",
-  "workers_dev": true,
 
   // The WORKS build's own database. Its schema is migrations/ at the repository root, applied
-  // from the root wrangler.jsonc; this Worker applies none.
+  // from the root wrangler.jsonc; this project applies none.
   "d1_databases": [
     {
       "binding": "RUNS_DB",

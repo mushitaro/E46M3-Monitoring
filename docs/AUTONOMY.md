@@ -134,10 +134,12 @@ hello_accepted まで確認）、定期実行（専用セッション「MONITORI
 1. 段 2 と机の PR のレビュー（人の承認クラス）。
 2. PC で一度だけ、この順に（Cloudflare の鍵はクラウドのセッションに置かない。運営者、2026-10-28）：
    1. `npx wrangler d1 migrations apply tsunagi-m-preview-runs --remote`（`0002`。WORKS を配信する前に）
-   2. `npm run desk:deploy`（`monitoring-desk` を配備し、URL を控える）
+   2. 一度だけ `npx wrangler pages project create monitoring-desk --production-branch main`、それから
+      `npm run desk:deploy`（`https://monitoring-desk.pages.dev`。Worker の `workers.dev` はアカウント名が URL に出る
+      ので使わない。`tsunagi.app` の DNS は Cloudflare に無いので、そこに名前を付けるなら CNAME を足す）
    3. `npm run desk:token -- issue loop`（出たトークンは一度しか表示されない。会話には貼らない）
-   4. クラウド環境の設定に `MONITORING_DESK_URL` と `MONITORING_DESK_TOKEN` を置き、ネットワークの許可に
-      Worker のホストを足す。期限（既定 30 日）の前に新しいものを出し、古いものを `revoke` する。
+   4. クラウド環境の設定に `MONITORING_DESK_URL`（`https://monitoring-desk.pages.dev`）と `MONITORING_DESK_TOKEN` を
+      置き、ネットワークの許可に `monitoring-desk.pages.dev` を足す。期限（既定 30 日）の前に新しいものを出し、古いものを `revoke` する。
 3. ヘッドユニットで MONITORING WORKS を開き直し（新しいビルド）、お知らせ v2 に同意、SESSIONS → ASSISTANT を
    オン、端末に名前を付ける。走る前に CONNECT、計画があれば PROBE。
 
@@ -147,7 +149,7 @@ hello_accepted まで確認）、定期実行（専用セッション「MONITORI
  タブ ──/api/notebook・/api/runs・/api/reads（オーナーのゲートの内側）──► D1 tsunagi-m-preview-runs
    ▲                                                                          │
    └──── 机の書いた計画（2 分ごとの同期で取り込み、端末の規則でもう一度確かめる）     ▼
-                                     机（npm run desk）──Bearer トークン──► monitoring-desk（Worker）
+                                     机（npm run desk）──Bearer トークン──► monitoring-desk（Pages）
 ```
 
 - タブは、委任のある記録ごとに、アカウントの写しを読み、机の書いたものを取り込み、足りないものを送る
@@ -168,5 +170,4 @@ hello_accepted まで確認）、定期実行（専用セッション「MONITORI
   台帳とハッシュが合わない（大きさが数 % 違い、改行コードの違いに見える）。
 - `node tools/check_ui_tokens.mjs` が `CreditsDialog.tsx:124` の `text-[9px]` で落ちる（main から）。
 - 切り替え時に `0x9F` を送るかは未決（PLAN §2-4）。実車で測って決める。
-- 机の Worker は `workers.dev` の上にある。カスタムドメインに移すなら、ネットワークの許可も一緒に直す。
 - 読み取りの記録とまとめて送る前の待ちは、ページを閉じると失われる（最大 30 秒ぶん）。

@@ -11,6 +11,8 @@
  * those WITHOUT cookies when it installs the app. They are the BRANDED names — the preview build is
  * the only one deployed here, and scripts/brand-preview.mjs moves every reference to the -dev- set
  * — and scripts/verify-export.mjs fails a branded build that references an icon not listed here.
+ * The one entry that is neither is `/.well-known/assetlinks.json`, for the head unit's launcher —
+ * see its comment below.
  */
 import { createGate, type GateContext } from './_owner-gate/gate';
 
@@ -29,6 +31,14 @@ const gate = createGate({
         '/icons/monitoring-dev-maskable-512.png',
         '/icons/monitoring-dev-256.png',
         '/icons/monitoring-dev-32.png',
+        // Read by Chrome, with no cookie, to decide whether TSUNAGI///Manifold (the head unit's
+        // launcher, app.tsunagi.e46m3.launcher) may open this build as a full-screen Trusted Web
+        // Activity — its M console's MONITORING key opens this origin (operator, 2026-10-28). A 401
+        // here is not an error Chrome reports anywhere: it shows its toolbar and carries on. The
+        // file names one package and one signing-certificate fingerprint, both already public (TUNER
+        // serves the same bytes). Nothing under /ecu-data/ is opened by this entry: it is one exact
+        // path, not a prefix. Measured 401 on 2026-10-28, before the file or this line existed.
+        '/.well-known/assetlinks.json',
     ],
 });
 

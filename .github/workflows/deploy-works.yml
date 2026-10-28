@@ -94,11 +94,20 @@ jobs:
           lines="$(printf '%s\n' "$PASTED_TOKEN" | tr -d '\r' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
           shape="$(printf '%s' "$lines" | awk '{ printf "%s%d", (NR > 1 ? "+" : ""), length($0) }')"
           token="$(printf '%s\n' "$lines" | grep -E '^[A-Za-z0-9_-]{20,}$' | sort -u || true)"
+          if [ -z "$token" ]; then
+            # Cloudflare shows the new token once, with a box under it to test it, and that box has
+            # its own copy button: what it copies is a curl command with the token after "Bearer"
+            # (the second deploy found lines of 64 and 80 characters, that command's shape).
+            token="$(printf '%s\n' "$lines" | grep -oE 'Bearer [A-Za-z0-9_-]{20,}' | cut -d' ' -f2 | sort -u || true)"
+            if [ -n "$token" ]; then
+              echo "::notice::CLOUDFLARE_API_TOKEN_MONITORING holds Cloudflare's test command; the token inside it is used. Store the token alone when it is next rolled."
+            fi
+          fi
           if [ -z "$token" ] || [ "$(printf '%s\n' "$token" | wc -l)" -ne 1 ]; then
             echo "::error::CLOUDFLARE_API_TOKEN_MONITORING does not hold one token (line lengths ${shape}). Put the token alone in it."
             exit 1
           fi
-          echo "Cloudflare token: one token line (line lengths ${shape})."
+          echo "Cloudflare token found (secret line lengths ${shape})."
           export CLOUDFLARE_API_TOKEN="$token" CF_API_TOKEN="$token"
           set +e
           npm run deploy

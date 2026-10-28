@@ -28,6 +28,10 @@ export const onRequestGet = async ({ request, env, data }: { request: Request; e
     if (!upstream) return json({ error: 'bridge_unavailable' }, 503);
     const headers = new Headers(request.headers);
     for (const h of KEPT_HERE) headers.delete(h);
-    // fetch speaks http(s); the runtime performs the upgrade and hands back the relay's 101.
-    return fetch(upstream.replace(/^ws(s?):/, 'http$1:'), { headers });
+    // fetch speaks http(s); the runtime performs the upgrade and hands back the relay's 101. The
+    // query is the tab's and goes on as it came — `takeover`, the device's `did`, `nav` — and the
+    // relay is where they mean something; this used to drop it, and "switch here" with it.
+    const target = new URL(upstream.replace(/^ws(s?):/, 'http$1:'));
+    target.search = new URL(request.url).search;
+    return fetch(target.toString(), { headers });
 };

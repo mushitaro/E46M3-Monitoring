@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Download, Medal, RefreshCw, Shield, X } from 'lucide-react';
-import { Field, LABEL } from './ui';
+import { Download, Medal, Power, PowerOff, RefreshCw, Shield, X } from 'lucide-react';
+import { Field, LABEL, TextButton } from './ui';
+import type { AssistantBridge } from '@/hooks/useAssistantBridge';
 import type { LinkMode, LinkState } from '@/hooks/useDs2Link';
 import type { InstallState } from '@/hooks/useInstallPrompt';
 import { useShortLandscape } from '@/hooks/useWideLayout';
@@ -10,6 +11,7 @@ import { useBuildId } from '@/lib/build-variant';
 import { useLang } from '@/lib/i18n';
 import type { Tab } from '@/lib/tabs';
 import { APP_VERSION } from '@/lib/version';
+import { STATE_TONE } from '@/views/sessions/AssistantSection';
 
 /**
  * The M menu: what this app keeps behind the footer's M button below 900px.
@@ -36,6 +38,11 @@ import { APP_VERSION } from '@/lib/version';
  *     said beside it, and VIEW below reaches that view in one sweep — a second SAVE in the narrow
  *     layout would be two doors to one job (tsunagi-m-ux §11). Production has no sessions at all.
  *   - VIEW is the tab row, which below 900 is not drawn anywhere else.
+ *
+ * ASSISTANT, in the WORKS build, sits above all of it (2026-10-28, as in TUNER): on the head unit the
+ * M menu is the way in, and an owner who could not find the switch on SESSIONS could not use the
+ * assistant at all. Its state and its switch, one row, outside the sweep — a finger travelling up
+ * must not turn the assistant on or off on the way past. Once on, it stays on for this device.
  *
  * Deliberately NOT in here: anything that is sent to the car, and anything that connects. CONNECT,
  * CLEAR FAULTS, the actuator controls and DISCONNECT stay on DASH, one tap apart and visible
@@ -83,6 +90,8 @@ interface Props {
     /** Whether this device can take the app, and how. See hooks/useInstallPrompt. */
     installState: InstallState;
     onInstall: () => void;
+    /** The assistant bridge, in the WORKS build; null in production, which has none. */
+    assistant?: AssistantBridge | null;
 }
 
 /** The strip's controls — the header's group, drawn small. 40px is the target; the icons are 14px. */
@@ -150,6 +159,7 @@ export function MobileMenu({
     reloading,
     installState,
     onInstall,
+    assistant = null,
 }: Props) {
     const { t } = useLang();
     const buildId = useBuildId();
@@ -264,6 +274,25 @@ export function MobileMenu({
                     for the case where the arithmetic does not work at all, where a band you have to
                     scroll to is still better than a Close that is not on the screen. */}
                 <div className="no-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
+                    {assistant && (
+                        <div className="flex h-11 shrink-0 items-center gap-3 border-b border-slate-800 px-4">
+                            <span className={`${LABEL} shrink-0 text-slate-500`}>{t.assistant}</span>
+                            <span
+                                className={`min-w-0 flex-1 truncate text-[11px] ${assistant.allowed ? STATE_TONE[assistant.status.state] : 'text-slate-500'}`}
+                            >
+                                {assistant.allowed ? t.assistant_state[assistant.status.state] : t.assistant_unavailable}
+                            </span>
+                            {assistant.allowed && (
+                                <TextButton
+                                    onClick={() => assistant.setOn(!assistant.on)}
+                                    tone={assistant.on ? 'neutral' : 'primary'}
+                                    Icon={assistant.on ? PowerOff : Power}
+                                >
+                                    {assistant.on ? t.assistant_turnOff : t.assistant_turnOn}
+                                </TextButton>
+                            )}
+                        </div>
+                    )}
                     {/* The header's group, as icons. Furthest from the thumb, and outside the sweep:
                         none of these carries `data-menu-key`, so a finger travelling up can cross the
                         strip and let go without opening a legal page or reloading. Do not add one. */}

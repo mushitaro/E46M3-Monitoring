@@ -56,6 +56,8 @@ export interface TabFacade {
     stopLog(): 'recording' | 'probe' | null;
     save(): Promise<unknown>;
     sync(): Promise<unknown>;
+    /** Leave for TUNER WORKS, or say why not (running, unsaved). */
+    openTuner(discardUnsaved: boolean): unknown;
 }
 
 const DAY_MS = 86_400_000;
@@ -367,6 +369,11 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
         monitoring_sync_upload: async (args) => {
             if (args.confirmed !== true) throw new Error('Send when the owner asks for it, with confirmed: true.');
             return f.sync();
+        },
+
+        monitoring_open_tuner: async (args) => {
+            if (args.confirmed !== true) throw new Error('Open TUNER when the owner asks for it, with confirmed: true.');
+            return f.openTuner(args.discard_unsaved === true);
         },
     };
 }

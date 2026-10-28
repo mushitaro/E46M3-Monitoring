@@ -1135,6 +1135,23 @@ export function useDs2Link(options: {
     // backgrounded is a fact about the session. The surfaces that report a failure ask for it.
     void wasHidden;
 
+    // Hidden and idle, the cable is let go (operator, 2026-10-28). The interface is the device's one
+    // claim, and a tab that keeps it while out of sight starves the next one: on the head unit the
+    // launcher pauses this app, and TUNER WORKS opened beside it then failed claimInterface on a
+    // cable this tab was not using. Only an idle link on the car — never while a read is in flight
+    // (`busy`) or a recording or a PROBE run is going (`logging`): those the owner left running, and
+    // the wake lock above is there to keep them. Connecting again is on the screen, as always.
+    useEffect(() => {
+        if (typeof document === 'undefined') return;
+        const onVisibility = () => {
+            if (document.visibilityState !== 'hidden' || state !== 'connected' || modeRef.current !== 'vehicle') return;
+            append('info', 'The screen was hidden while the link was idle: the cable is released for other apps.');
+            void disconnect();
+        };
+        document.addEventListener('visibilitychange', onVisibility);
+        return () => document.removeEventListener('visibilitychange', onVisibility);
+    }, [state, append, disconnect]);
+
     const clearLog = useCallback(() => {
         logRef.current = [];
         setLog([]);

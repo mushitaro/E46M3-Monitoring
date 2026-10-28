@@ -43,6 +43,7 @@ function tab(over: Partial<TabFacade> = {}) {
         stopLog: () => 'recording',
         save: async () => ({ saved: true }),
         sync: async () => ({ sent: 0 }),
+        openTuner: (discard) => ({ opened: discard }),
         ...over,
     };
     return {
@@ -147,6 +148,15 @@ describe('what loses something waits for a yes', () => {
         await expect(t.h.monitoring_save({})).rejects.toThrow(/confirmed/);
         await expect(t.h.monitoring_save({ confirmed: true })).resolves.toEqual({ saved: true });
         await expect(t.h.monitoring_sync_upload({ confirmed: true })).resolves.toEqual({ sent: 0 });
+    });
+
+    it('opens TUNER on the owner’s word, and passes on whether unsaved work may go', async () => {
+        const openTuner = vi.fn((discard: boolean) => ({ opened: discard }));
+        const t = tab({ openTuner });
+        await expect(t.h.monitoring_open_tuner({})).rejects.toThrow(/confirmed/);
+        expect(openTuner).not.toHaveBeenCalled();
+        await expect(t.h.monitoring_open_tuner({ confirmed: true })).resolves.toEqual({ opened: false });
+        await expect(t.h.monitoring_open_tuner({ confirmed: true, discard_unsaved: true })).resolves.toEqual({ opened: true });
     });
 
     it('passes a refusal to start through as the answer’s error', async () => {

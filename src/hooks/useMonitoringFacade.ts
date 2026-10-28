@@ -7,6 +7,7 @@ import type { TabFacade } from '@/lib/bridge/handlers';
 import { jobRiskOf, loadEcuCatalog, text as resolveText, type EcuIndex, type EcuProfile, type JobClass } from '@/lib/ecuCatalog';
 import { normCode } from '@/lib/faultCode';
 import { en } from '@/lib/i18n/en';
+import { TUNER_WORKS } from '@/lib/links';
 import type { Ledger } from '@/lib/ledger';
 import type { ModuleProtocol } from '@/lib/moduleProtocol';
 import { addEntries, listAllEntries } from '@/lib/notebook/store';
@@ -16,7 +17,7 @@ import { needsSync, summarise } from '@/lib/sync/session';
 import { listLocal } from '@/lib/sync/sessionStore';
 import type { Tab } from '@/lib/tabs';
 import { bestTelegram, loadTelegrams } from '@/lib/telegrams';
-import { readDeviceName } from '@/hooks/useAssistantBridge';
+import { deviceLabel, type DeviceKind } from '@/hooks/useAssistantBridge';
 import type { Datalog } from '@/views/datalog/useDatalog';
 import type { Sessions } from '@/views/sessions/useSessions';
 
@@ -56,6 +57,8 @@ export function useMonitoringFacade(input: {
     updateWaiting: boolean;
     /** Bring the delegated investigations level with the account (hooks/useInvestigationSync). */
     syncInvestigations: () => void;
+    /** The name a device answers as when the owner gave it none. */
+    defaultDevice: Record<DeviceKind, string>;
 }): TabFacade {
     const { link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, tab } = input;
     const moduleName = (id: string) => ecuIndex?.modules.find((m) => m.id === id)?.name_en ?? id;
@@ -66,7 +69,7 @@ export function useMonitoringFacade(input: {
         newId: () => crypto.randomUUID(),
 
         status: () => ({
-            device: readDeviceName(),
+            device: deviceLabel(input.defaultDevice),
             practice: link.mode === 'practice',
             link: link.state,
             module: { id: ecuId, name: moduleName(ecuId) },
@@ -238,6 +241,25 @@ export function useMonitoringFacade(input: {
             await sessions.save();
             const s = (await listLocal().catch(() => []))[0];
             return s ? { saved: true, label: s.label, ...summarise(s) } : { saved: false, reason: 'Nothing was written to this device.' };
+        },
+
+        openTuner: (discardUnsaved) => {
+            if (running || link.state === 'logging') {
+                return { opened: false, reason: 'A recording or a PROBE run is going. Stop it first (monitoring_stop_log, read back), then ask again.' };
+            }
+            if (link.state === 'busy') return { opened: false, reason: 'A read is in flight. Ask again in a moment.' };
+            if (sessions.unsaved && !discardUnsaved) {
+                return {
+                    opened: false,
+                    unsaved: true,
+                    reason: 'This screen holds a session that is not saved (its fault read, recording or failures). Save it with monitoring_save, or read back that it would be lost and call again with discard_unsaved: true after a clear yes.',
+                };
+            }
+            // After the answer has gone: the socket goes with the page.
+            setTimeout(() => {
+                void link.disconnect().finally(() => window.location.assign(TUNER_WORKS));
+            }, 500);
+            return { opened: true, url: TUNER_WORKS, note: "This tab is moving to TUNER WORKS; from now on TUNER's tab answers, through TUNER's tools." };
         },
 
         sync: async () => {

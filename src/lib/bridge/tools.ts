@@ -197,6 +197,15 @@ export const MONITORING_TOOLS = {
         description: "Save, then send every session the owner's account does not have yet (the screen's SYNC). Returns how many were sent, or why not (signed out, offline).",
         inputSchema: obj({ confirmed: CONFIRMED }, ['confirmed']),
     },
+    monitoring_open_tuner: {
+        scope: 'control',
+        description:
+            "Move this tab to TUNER WORKS (MAPPING: the DME's calibration and its logs), in the same tab, when the owner asks for it — an answer that is a map belongs there. The cable is let go first. Refused while a recording or a PROBE run is going (stop it first) and while a read is in flight. If anything on the screen is unsaved, the answer says so: save it, or read back what would be lost and call again with discard_unsaved: true after a clear yes. Afterwards the assistant reaches TUNER's tab, through TUNER's tools.",
+        inputSchema: obj(
+            { confirmed: CONFIRMED, discard_unsaved: bool('True only after the owner, told what is unsaved, said yes to losing it.') },
+            ['confirmed'],
+        ),
+    },
 } as const satisfies Record<string, ToolDef>;
 
 export type MonitoringToolName = keyof typeof MONITORING_TOOLS;

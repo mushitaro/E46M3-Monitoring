@@ -6,12 +6,14 @@ import { Section, TextButton, TextInput } from '@/components/ui';
 import type { AssistantBridge } from '@/hooks/useAssistantBridge';
 import { useLang } from '@/lib/i18n';
 
-const STATE_TONE = {
+/** The state's colour, here and in the M menu's ASSISTANT row. */
+export const STATE_TONE = {
     off: 'text-slate-500',
     connecting: 'text-slate-400',
     live: 'text-emerald-400',
     retrying: 'text-amber-400',
     held: 'text-amber-400',
+    offline: 'text-amber-400',
     stopped: 'text-red-400',
 } as const;
 

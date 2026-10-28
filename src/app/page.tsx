@@ -450,11 +450,12 @@ export default function Home() {
     // until switched on on this device). The facade is what the tools may reach — the screen's own
     // controls, never a run.
     const buildId = useBuildId();
-    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, tab, changeTab, selectJob, updateWaiting, syncInvestigations });
+    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, tab, changeTab, selectJob, updateWaiting, syncInvestigations, defaultDevice: t.assistant_defaultDevice });
     const assistant = useAssistantBridge({
         allowed: preview && noticeAcknowledged,
         facade,
         hello: { build: buildId || null, variant: preview ? 'preview' : null },
+        defaultDevice: t.assistant_defaultDevice,
     });
 
     // One verdict, computed once, used by the hub AND by the panel. They used to
@@ -562,6 +563,7 @@ export default function Home() {
                 onCredits={() => setCreditsOpen(true)}
                 onReload={reload}
                 reloading={reloading}
+                assistant={sessionsEnabled ? assistant : null}
             />
 
             {/* Below 900 one grid cell holds both panes; from 900 they are flex siblings, as

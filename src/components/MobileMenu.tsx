@@ -39,7 +39,8 @@ import { APP_VERSION } from '@/lib/version';
  *
  * Deliberately NOT in here: anything that is sent to the car, and anything that connects. CONNECT,
  * CLEAR FAULTS, the actuator controls and DISCONNECT stay on DASH, one tap apart and visible
- * together (tsunagi-m-mobile §8). Changing VIEW releases an armed output first, exactly as the tab
+ * together (tsunagi-m-mobile §8). Nor the assistant's switch: that is AI in the header, at every
+ * width (components/AiSwitch). Changing VIEW releases an armed output first, exactly as the tab
  * row does — the shell's `changeTab` is what it calls.
  *
  * The one type change from TUNER: its 9px labels are this app's LABEL (10px). This repo's ramp has

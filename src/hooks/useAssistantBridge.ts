@@ -28,6 +28,24 @@ export const ASSISTANT_KEY = 'assistant-bridge:v1';
 /** The name the owner gives this device ("ナビ"), so the assistant — and another device's tab — can
  *  say which device answers. Per device, like the switch. */
 export const DEVICE_KEY = 'assistant-bridge:device';
+/** A random id this device keeps, so the relay can tell this device's own stale socket from another
+ *  device's and replace it at once (2026-10-28). Says nothing about the device or its owner. */
+export const DEVICE_ID_KEY = 'assistant-bridge:id';
+/** Set once on the head unit: the launcher opened this build, which the relay gives the bridge to. */
+export const NAV_KEY = 'assistant-bridge:nav';
+/** What the launcher (E46M3-Launcher, a Trusted Web Activity) leaves as the referrer of the first page. */
+export const LAUNCHER_REFERRER = 'android-app://app.tsunagi.e46m3.launcher';
+/** What the launcher puts on every web key's URL (v0.3.1). The owner gate keeps the query through
+ *  m3's sign-in, where the referrer is lost — so this is the sign that survives, the referrer the
+ *  fallback. */
+export const LAUNCHER_QUERY = 'from=manifold';
+
+/** Whether the launcher opened this page — read once, as the module loads, before anything could
+ *  tidy the URL. Kept to memory; written to the device only when the assistant is used. */
+export const OPENED_BY_LAUNCHER =
+    typeof location !== 'undefined' &&
+    (new URLSearchParams(location.search).get('from') === 'manifold' ||
+        (typeof document !== 'undefined' && document.referrer.startsWith(LAUNCHER_REFERRER)));
 const MAX_DEVICE_NAME = 24;
 
 /** This page's answers when storage refuses, so the switch and the name still work for the session. */
@@ -60,7 +78,66 @@ export function readDeviceName(): string | null {
     }
 }
 
-export function useAssistantBridge(input: { allowed: boolean; facade: TabFacade; hello: Pick<Hello, 'build' | 'variant'> }) {
+export type DeviceKind = 'nav' | 'phone' | 'pc';
+
+const tryGet = (key: string): string | null => {
+    try {
+        return localStorage.getItem(key);
+    } catch {
+        return null;
+    }
+};
+const trySet = (key: string, value: string) => {
+    try {
+        localStorage.setItem(key, value);
+    } catch {
+        /* this page keeps it in memory instead */
+    }
+};
+
+let memoryId: string | null = null;
+
+/** This device's id: made once, kept per device, 22 URL-safe characters. */
+export function deviceId(): string {
+    const kept = tryGet(DEVICE_ID_KEY) ?? memoryId;
+    if (kept && /^[A-Za-z0-9_-]{16,64}$/.test(kept)) return kept;
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    const id = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    memoryId = id;
+    trySet(DEVICE_ID_KEY, id);
+    return id;
+}
+
+/** Whether this is the head unit: the launcher opened this page, or one it opened before. Called
+ *  only while the assistant is in use, which is when it may be remembered on the device. */
+export function isHeadUnit(): boolean {
+    if (tryGet(NAV_KEY) === '1') return true;
+    if (OPENED_BY_LAUNCHER) {
+        trySet(NAV_KEY, '1');
+        return true;
+    }
+    return false;
+}
+
+/** The head unit, a phone or a computer — for the name a device answers as when it has none. */
+export function deviceKind(): DeviceKind {
+    if (isHeadUnit()) return 'nav';
+    const coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
+    return coarse ? 'phone' : 'pc';
+}
+
+/** The name this device answers as: the owner's, or the default for its kind. */
+export function deviceLabel(defaults: Record<DeviceKind, string>): string {
+    return readDeviceName() ?? defaults[deviceKind()];
+}
+
+export function useAssistantBridge(input: {
+    allowed: boolean;
+    facade: TabFacade;
+    hello: Pick<Hello, 'build' | 'variant'>;
+    /** The names a device answers as when the owner has given it none (i18n). */
+    defaultDevice: Record<DeviceKind, string>;
+}) {
     const { allowed, facade, hello } = input;
     // Stores rather than state set from an effect: read only while allowed, never during the
     // prerender (the server snapshot is "off"), and every mount agrees.
@@ -70,10 +147,18 @@ export function useAssistantBridge(input: { allowed: boolean; facade: TabFacade;
     const clientRef = useRef<BridgeClient | null>(null);
     const facadeRef = useRef(facade);
     const helloRef = useRef(hello);
+    const defaultsRef = useRef(input.defaultDevice);
     useEffect(() => {
         facadeRef.current = facade;
         helloRef.current = hello;
+        defaultsRef.current = input.defaultDevice;
     });
+
+    // Remembered once the assistant is in use, so a later page the launcher did not open (a reload
+    // from the menu) is still the head unit's.
+    useEffect(() => {
+        if (allowed && on) isHeadUnit();
+    }, [allowed, on]);
 
     const setOn = useCallback(
         (next: boolean) => {
@@ -102,8 +187,9 @@ export function useAssistantBridge(input: { allowed: boolean; facade: TabFacade;
                     guide = null;
                     throw e;
                 });
-                return { ...helloRef.current, tools: helloTools(), guide: await guide, device: readDeviceName() };
+                return { ...helloRef.current, tools: helloTools(), guide: await guide, device: deviceLabel(defaultsRef.current) };
             },
+            device: () => ({ id: deviceId(), nav: isHeadUnit() }),
             onStatus: setStatus,
         });
         clientRef.current = client;

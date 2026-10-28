@@ -2,6 +2,8 @@
 
 import { RefreshCw } from 'lucide-react';
 import { LABEL, Pill, WORDMARK } from './ui';
+import { AiSwitch } from './AiSwitch';
+import type { AssistantBridge } from '@/hooks/useAssistantBridge';
 import { MMark } from './MMark';
 import { StatusLed } from './StatusLed';
 import { APP_VERSION } from '@/lib/version';
@@ -28,7 +30,9 @@ import type { LinkState, LinkMode } from '@/hooks/useDs2Link';
  * The build badge says which build this URL serves — WORKS on the owner build,
  * nothing at all on production — and only says it: a tinted span, never a
  * control (tsunagi-m-chrome §2). Its word is `app-label`, not the variant, so
- * what the build is called can change without moving a feature gate.
+ * what the build is called can change without moving a feature gate. Right of
+ * it, on a build with an assistant, is AI — the assistant's one switch, in the
+ * same place in every M tool (AiSwitch, tsunagi-m-chrome §2, 2026-10-28).
  *
  * The status dot belongs HERE, not in a pane. It is the app's single statement
  * of what the machine is doing, and it has to be in the one place that is on
@@ -80,6 +84,7 @@ export function AppHeader({
     onCredits,
     onReload,
     reloading,
+    assistant = null,
 }: {
     ident: { hex: string; length: number } | null;
     state: LinkState;
@@ -90,6 +95,8 @@ export function AppHeader({
     /** Reloads into the newest build. The shell confirms first when something would be lost. */
     onReload: () => void;
     reloading: boolean;
+    /** The assistant bridge, on a build that has one; its AI switch sits right of the badge. */
+    assistant?: AssistantBridge | null;
 }) {
     const { lang, t } = useLang();
     // The preview sends what production never does, so it links to where that is written down —
@@ -127,6 +134,7 @@ export function AppHeader({
                 </h1>
 
                 {buildLabel && <Pill tone="caution">{buildLabel}</Pill>}
+                {assistant && <AiSwitch assistant={assistant} />}
 
                 <span className="hidden shrink-0 whitespace-nowrap font-mono text-[10px] text-slate-500 min-[900px]:inline">
                     {APP_VERSION}

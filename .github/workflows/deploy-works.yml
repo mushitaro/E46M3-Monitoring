@@ -10,10 +10,11 @@ name: Deploy WORKS
 #
 # Inert until the secrets exist (docs/AUTONOMY.md §6), all three in the `works` environment, whose
 # deployment branches are main alone — never repository secrets, which any branch's own copy of a
-# workflow could read before review: CLOUDFLARE_API_TOKEN (Cloudflare Pages: Edit, nothing else,
-# with an expiry), CLOUDFLARE_ACCOUNT_ID, and MONITORING_DATA_TOKEN, read-only on the two private
-# repositories a deploy needs — E46M3-Monitoring-data (the ECU data) and tsunagi-m3 (the canonical
-# owner gate, which `npm run deploy` checks this copy against before it uploads anything).
+# workflow could read before review: CLOUDFLARE_API_TOKEN_MONITORING (Cloudflare Pages: Edit, nothing
+# else, with an expiry; handed to wrangler as CLOUDFLARE_API_TOKEN), CLOUDFLARE_ACCOUNT_ID, and
+# MONITORING_DATA_TOKEN, read-only on the two private repositories a deploy needs —
+# E46M3-Monitoring-data (the ECU data) and tsunagi-m3 (the canonical owner gate, which
+# `npm run deploy` checks this copy against before it uploads anything).
 #
 # verify-deploy reads the inside of the owner gate with an owner session, which a runner does not
 # have: it then ends "deployed, not verified" (exit 2), said here as a warning. The outside — the
@@ -38,11 +39,11 @@ jobs:
     runs-on: ubuntu-latest
     environment: works
     env:
-      HAVE_DEPLOY: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' && secrets.MONITORING_DATA_TOKEN != '' }}
+      HAVE_DEPLOY: ${{ secrets.CLOUDFLARE_API_TOKEN_MONITORING != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' && secrets.MONITORING_DATA_TOKEN != '' }}
     steps:
       - name: Not configured
         if: env.HAVE_DEPLOY != 'true'
-        run: echo "::notice::Deploy WORKS needs CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID and MONITORING_DATA_TOKEN. Nothing was deployed."
+        run: echo "::notice::Deploy WORKS needs CLOUDFLARE_API_TOKEN_MONITORING, CLOUDFLARE_ACCOUNT_ID and MONITORING_DATA_TOKEN. Nothing was deployed."
 
       - name: Deployed already?
         if: env.HAVE_DEPLOY == 'true'
@@ -82,11 +83,32 @@ jobs:
       - name: Deploy
         if: env.HAVE_DEPLOY == 'true' && steps.done.outputs.cache-hit != 'true'
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          PASTED_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_MONITORING }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
+          # The token is pasted into the secret by hand, and a copy can bring a line break nobody
+          # saw (the first deploy stopped on wrangler's "Headers.set: … is an invalid header value").
+          # A Cloudflare API token is one run of [A-Za-z0-9_-], so use the one line of that shape,
+          # and say how the secret is laid out: its line lengths, never a character of it.
+          lines="$(printf '%s\n' "$PASTED_TOKEN" | tr -d '\r' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+          shape="$(printf '%s' "$lines" | awk '{ printf "%s%d", (NR > 1 ? "+" : ""), length($0) }')"
+          token="$(printf '%s\n' "$lines" | grep -E '^[A-Za-z0-9_-]{20,}$' | sort -u || true)"
+          if [ -z "$token" ]; then
+            # Cloudflare shows the new token once, with a box under it to test it, and that box has
+            # its own copy button: what it copies is a curl command with the token after "Bearer"
+            # (the second deploy found lines of 64 and 80 characters, that command's shape).
+            token="$(printf '%s\n' "$lines" | grep -oE 'Bearer [A-Za-z0-9_-]{20,}' | cut -d' ' -f2 | sort -u || true)"
+            if [ -n "$token" ]; then
+              echo "::notice::CLOUDFLARE_API_TOKEN_MONITORING holds Cloudflare's test command; the token inside it is used. Store the token alone when it is next rolled."
+            fi
+          fi
+          if [ -z "$token" ] || [ "$(printf '%s\n' "$token" | wc -l)" -ne 1 ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN_MONITORING does not hold one token (line lengths ${shape}). Put the token alone in it."
+            exit 1
+          fi
+          echo "Cloudflare token found (secret line lengths ${shape})."
+          export CLOUDFLARE_API_TOKEN="$token" CF_API_TOKEN="$token"
           set +e
           npm run deploy
           code=$?

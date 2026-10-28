@@ -37,7 +37,7 @@
 - 事実は手順書に書かない。ツールの説明とタブの応答が持つ。数はタブが計算し、ツールは読むだけ。
 - CO-WORK（計画・手順の印・ドライバーの言葉・fact / read / ask / answer / status）。上書きしない。
 - ドライバーの言葉がログに勝つ。推測は書かずに問いにする。結論を一文目に、確かさを言い分ける。
-- 確認は二種類（頼まれた言葉が「はい」／失うものは復唱）。車への接続・書込・フラッシュは画面で人。
+- 確認は二種類（頼まれた言葉が「はい」／失うものは復唱）。新しいケーブルの許可・書込・フラッシュは画面で人。一度画面でつないだケーブルへのつなぎ直しと切断は声でよい（運営者 2026-10-28。記録中の切断は止める確認のあと）。
 
 TUNER に無いのは自律だけなので、そこだけ足す。
 
@@ -154,7 +154,7 @@ GitHub のラベル・自動マージ・ブランチ保護は `autonomy.yml` と
    リポジトリの secret にはしない（リポジトリの secret は、マージ前のブランチが書き換えたワークフローからも読める）：
    1. GitHub → Settings → Environments → `works` を作り、Deployment branches を `main` だけにする。
    2. Cloudflare の API トークンを一つ（権限は Account → Cloudflare Pages: Edit だけ、期限つき）。`works` に
-      `CLOUDFLARE_API_TOKEN` として、アカウント ID を `CLOUDFLARE_ACCOUNT_ID` として。
+      `CLOUDFLARE_API_TOKEN_MONITORING` として（配信の中で wrangler に `CLOUDFLARE_API_TOKEN` として渡す）、アカウント ID を `CLOUDFLARE_ACCOUNT_ID` として。
    3. GitHub の fine-grained トークンを一つ（Contents: Read だけ、`E46M3-Monitoring-data` と `tsunagi-m3` の二つ
       だけ、期限つき）。`works` に `MONITORING_DATA_TOKEN` として。配信は、データと、ゲートの正本との一致の
       確認にこの二つを読む。CI はこの環境を使わないので、CI のデータの試験は飛ばされる（クラウドの

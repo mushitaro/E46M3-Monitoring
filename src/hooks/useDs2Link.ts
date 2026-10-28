@@ -23,6 +23,7 @@ import { useUnloadGuard } from './useUnloadGuard';
 import {
     Ds2Address,
     Ds2Link,
+    FTDI_VENDOR_ID,
     buildDs2Frame,
     describeStatus,
     isPositiveResponse,
@@ -276,6 +277,43 @@ export interface ParkedObservation {
     at: string;
     /** The module's IDENT answer, hex, when it has been read this session. */
     ecuIdent?: string;
+}
+
+/** A cable this browser has already been allowed: an FTDI device over WebUSB, or a port over Web Serial. */
+async function hasPermittedCable(): Promise<boolean> {
+    const nav = navigator as unknown as {
+        usb?: { getDevices(): Promise<{ vendorId: number }[]> };
+        serial?: { getPorts(): Promise<unknown[]> };
+    };
+    try {
+        const kind = detectTransportKind();
+        if (kind === 'web-usb-ftdi') return (await nav.usb!.getDevices()).some((d) => d.vendorId === FTDI_VENDOR_ID);
+        if (kind === 'web-serial') return (await nav.serial!.getPorts()).length > 0;
+        return false;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * The transport for a reconnect: over WebUSB the FTDI transport already takes an allowed device
+ * before it would ask; over Web Serial the first allowed port is handed in, so `requestPort` — the
+ * chooser — is never reached.
+ */
+function permittedTransport(): ReturnType<typeof createDs2Transport> {
+    const selected = createDs2Transport();
+    if (selected.kind !== 'web-serial') return selected;
+    const serial = (navigator as unknown as { serial: { getPorts(): Promise<unknown[]> } }).serial;
+    return {
+        kind: 'web-serial',
+        transport: new WebSerialTransport({
+            requestPort: async () => {
+                const [port] = await serial.getPorts();
+                if (!port) throw new Error('No allowed serial port.');
+                return port as never;
+            },
+        }),
+    };
 }
 
 export function useDs2Link(options: {
@@ -541,7 +579,12 @@ export function useDs2Link(options: {
     );
 
     const connect = useCallback(
-        async (nextMode: LinkMode) => {
+        /**
+         * `permittedOnly`: open only a device this browser has already been allowed — never the
+         * chooser. The assistant's reconnect (operator, 2026-10-28) goes this way: a voice cannot
+         * pick a device, and must not be the one to allow a new one.
+         */
+        async (nextMode: LinkMode, permittedOnly = false) => {
             clearError();
             setState('connecting');
             try {
@@ -557,7 +600,9 @@ export function useDs2Link(options: {
                                   requestPort: simulatedPort(practiceBus([address])).requestPort,
                               }),
                           }
-                        : createDs2Transport();
+                        : permittedOnly
+                          ? permittedTransport()
+                          : createDs2Transport();
                 // The link's own address is the DME's only because it has to be something; every
                 // operation below names the module it sends to (`session`).
                 const link = new Ds2Link(selected.transport, { address: Ds2Address.DME });
@@ -595,6 +640,20 @@ export function useDs2Link(options: {
         },
         [append, clearError, failWith, notifyFailure],
     );
+
+    /**
+     * Connect again, to the car, through a cable this browser has already been allowed. Null when the
+     * link is open; otherwise why not, in a sentence. The chooser is never shown: no allowed cable is
+     * a refusal, and the first connection stays a person's, on the screen.
+     */
+    const reconnectPermitted = useCallback(async (): Promise<string | null> => {
+        if (linkRef.current) return 'The link is already open.';
+        if (!(await hasPermittedCable())) {
+            return 'No cable has been allowed on this device yet. The first connection is made on the screen (CONNECT); after that it can be made again by voice.';
+        }
+        await connect('vehicle', true);
+        return linkRef.current ? null : 'The allowed cable did not open. Check that it is plugged in, then try again or connect on the screen.';
+    }, [connect]);
 
     const disconnect = useCallback(async () => {
         pollingRef.current = false;
@@ -1135,6 +1194,23 @@ export function useDs2Link(options: {
     // backgrounded is a fact about the session. The surfaces that report a failure ask for it.
     void wasHidden;
 
+    // Hidden and idle, the cable is let go (operator, 2026-10-28). The interface is the device's one
+    // claim, and a tab that keeps it while out of sight starves the next one: on the head unit the
+    // launcher pauses this app, and TUNER WORKS opened beside it then failed claimInterface on a
+    // cable this tab was not using. Only an idle link on the car — never while a read is in flight
+    // (`busy`) or a recording or a PROBE run is going (`logging`): those the owner left running, and
+    // the wake lock above is there to keep them. Connecting again is on the screen, as always.
+    useEffect(() => {
+        if (typeof document === 'undefined') return;
+        const onVisibility = () => {
+            if (document.visibilityState !== 'hidden' || state !== 'connected' || modeRef.current !== 'vehicle') return;
+            append('info', 'The screen was hidden while the link was idle: the cable is released for other apps.');
+            void disconnect();
+        };
+        document.addEventListener('visibilitychange', onVisibility);
+        return () => document.removeEventListener('visibilitychange', onVisibility);
+    }, [state, append, disconnect]);
+
     const clearLog = useCallback(() => {
         logRef.current = [];
         setLog([]);
@@ -1157,6 +1233,7 @@ export function useDs2Link(options: {
         transportKind,
         connect,
         disconnect,
+        reconnectPermitted,
         readIdent,
         readFaults,
         readAdaptations,

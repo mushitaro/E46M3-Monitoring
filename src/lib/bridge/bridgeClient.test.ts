@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BRIDGE_PROTOCOL, BridgeClient, toSocketUrl, type BridgeStatus, type Hello } from './bridgeClient';
+import { BRIDGE_PROTOCOL, BridgeClient, MISSED_PONGS, toSocketUrl, type BridgeStatus, type Hello, type Net } from './bridgeClient';
 
 /**
  * The client against a fake socket and a fake ticket endpoint: what it offers, what it says first,
@@ -22,7 +22,10 @@ class FakeSocket {
     send(s: string) {
         this.sent.push(s);
     }
-    close() {}
+    closed: number | null = null;
+    close(code?: number) {
+        this.closed = code ?? 1000;
+    }
     open() {
         this.onopen?.();
     }
@@ -39,7 +42,21 @@ const hello: Hello = {
     guide: { version: 'deadbeef', index: '# MONITORING', topics: { drive: '## drive' } },
 };
 
-function client(handlers: Record<string, (a: Record<string, unknown>) => Promise<unknown>> = {}) {
+/** A network the test switches on and off, as the window's online/offline events would. */
+function fakeNet(initially = true) {
+    let online = initially;
+    const listeners = new Set<(o: boolean) => void>();
+    const net: Net = {
+        online: () => online,
+        subscribe: (cb) => {
+            listeners.add(cb);
+            return () => listeners.delete(cb);
+        },
+    };
+    return { net, set: (o: boolean) => { online = o; listeners.forEach((cb) => cb(o)); } };
+}
+
+function client(handlers: Record<string, (a: Record<string, unknown>) => Promise<unknown>> = {}, extra: { net?: Net; device?: () => { id: string; nav: boolean } } = {}) {
     const statuses: BridgeStatus[] = [];
     const c = new BridgeClient({
         ticketUrl: '/api/bridge/ticket',
@@ -49,6 +66,8 @@ function client(handlers: Record<string, (a: Record<string, unknown>) => Promise
         onStatus: (s) => statuses.push(s),
         fetch: (async () => new Response(JSON.stringify({ ticket: 'v1.abc.def', url: '/api/bridge/socket' }))) as unknown as typeof fetch,
         WebSocket: FakeSocket as unknown as typeof WebSocket,
+        net: extra.net ?? fakeNet().net,
+        device: extra.device,
     });
     return { c, statuses };
 }
@@ -126,6 +145,103 @@ describe('the bridge client', () => {
         await vi.advanceTimersByTimeAsync(0);
         FakeSocket.last!.onclose?.({ code: 4002, reason: 'held:ラップトップ' });
         expect(statuses.at(-1)).toMatchObject({ state: 'held', holder: 'ラップトップ' });
+        c.stop();
+    });
+});
+
+describe('a socket the network dropped', () => {
+    it('is taken for dead after two pongs missed in a row, and replaced', async () => {
+        vi.useFakeTimers();
+        const { c, statuses } = client();
+        c.start();
+        await vi.advanceTimersByTimeAsync(0);
+        const first = FakeSocket.last!;
+        first.open();
+        expect(statuses.at(-1)!.state).toBe('live');
+        // Each ping answered: the socket stands.
+        for (let i = 0; i < 3; i++) {
+            await vi.advanceTimersByTimeAsync(25_000);
+            first.onmessage?.({ data: 'pong' });
+        }
+        expect(first.closed).toBeNull();
+        // Then silence: MISSED_PONGS pings go unanswered, and the next tick drops it.
+        await vi.advanceTimersByTimeAsync(25_000 * (MISSED_PONGS + 1));
+        expect(first.closed).toBe(4100);
+        expect(statuses.at(-1)!.state).toBe('retrying');
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(FakeSocket.last).not.toBe(first);
+        c.stop();
+    });
+
+    it('says offline while the browser is, and connects the moment it is back', async () => {
+        vi.useFakeTimers();
+        const n = fakeNet();
+        const { c, statuses } = client({}, { net: n.net });
+        c.start();
+        await vi.advanceTimersByTimeAsync(0);
+        const first = FakeSocket.last!;
+        first.open();
+        n.set(false);
+        expect(statuses.at(-1)!.state).toBe('offline');
+        expect(first.closed).toBe(4100);
+        await vi.advanceTimersByTimeAsync(120_000);
+        expect(FakeSocket.last).toBe(first);
+        n.set(true);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(FakeSocket.last).not.toBe(first);
+        c.stop();
+    });
+
+    it('does not start a socket while offline', async () => {
+        const n = fakeNet(false);
+        const { c, statuses } = client({}, { net: n.net });
+        FakeSocket.last = null;
+        c.start();
+        await flush();
+        expect(FakeSocket.last).toBeNull();
+        expect(statuses.at(-1)!.state).toBe('offline');
+        c.stop();
+    });
+});
+
+describe('a tab of the same device replaced', () => {
+    it('waits for "switch here" instead of taking the assistant back', async () => {
+        vi.useFakeTimers();
+        const { c, statuses } = client();
+        c.start();
+        await vi.advanceTimersByTimeAsync(0);
+        const first = FakeSocket.last!;
+        first.open();
+        first.onclose?.({ code: 4003, reason: 'replaced' });
+        expect(statuses.at(-1)).toMatchObject({ state: 'held' });
+        await vi.advanceTimersByTimeAsync(10 * 60_000);
+        expect(FakeSocket.last).toBe(first);
+        c.takeover();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(FakeSocket.last).not.toBe(first);
+        c.stop();
+    });
+});
+
+describe('the device a socket names', () => {
+    it('carries its id, and nav=1 on the head unit', async () => {
+        const { c } = client({}, { device: () => ({ id: 'a'.repeat(22), nav: true }) });
+        c.start();
+        await flush();
+        const u = new URL(FakeSocket.last!.url);
+        expect(u.searchParams.get('did')).toBe('a'.repeat(22));
+        expect(u.searchParams.get('nav')).toBe('1');
+        c.stop();
+    });
+
+    it('carries no nav off the head unit, and takeover beside the id', async () => {
+        const { c } = client({}, { device: () => ({ id: 'b'.repeat(22), nav: false }) });
+        c.takeover();
+        await flush();
+        const u = new URL(FakeSocket.last!.url);
+        expect(u.searchParams.get('nav')).toBeNull();
+        expect(u.searchParams.get('takeover')).toBe('1');
+        expect(u.searchParams.get('did')).toBe('b'.repeat(22));
         c.stop();
     });
 });

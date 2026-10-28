@@ -27,6 +27,14 @@
  * 'held', naming the device that has it; so is a tab another one took the bridge from (4000). A held
  * tab asks again once a minute and gets the bridge when the holder has gone quiet (asleep, closed),
  * or at once when the owner presses "switch here" on it (`takeover`). Two live tabs never trade it.
+ *
+ * Two corrections from a drive (2026-10-28). A socket the network dropped under it used to stay
+ * 'live': the tab sent pings and never listened for the pongs. It now closes a socket that misses
+ * two pongs running and opens a new one, and the browser's `online` event brings that forward;
+ * while the browser says it is offline the status says so instead of 'live'. And each socket names
+ * its device — a random id kept per device, and whether this is the head unit — so the relay can
+ * replace this device's own stale socket at once rather than refuse it as another device's, and
+ * give the head unit the bridge (`did`, `nav`; matrix-tsunagi's relay keeps one tab per device).
  */
 import type { Handler } from './handlers';
 import type { HelloGuide } from './guide';
@@ -44,6 +52,8 @@ export type BridgeState =
     /** Another device's tab has the assistant. Asks again each minute; takes it when that one is
      *  quiet, or at once with takeover(). */
     | 'held'
+    /** The browser says there is no network. Tries again the moment it comes back. */
+    | 'offline'
     /** Not connected, and will not try again until ASSISTANT is switched off and on. */
     | 'stopped';
 
@@ -76,10 +86,36 @@ export interface BridgeClientOptions {
     onStatus: (s: BridgeStatus) => void;
     /** Where a relative socket path is resolved; the page's location otherwise. */
     base?: string;
+    /** This device: a random id it keeps, and whether it is the head unit. Read for each socket. */
+    device?: () => { id: string; nav: boolean } | null;
     /** Injectable for the tests; the browser's own otherwise. */
     fetch?: typeof fetch;
     WebSocket?: typeof WebSocket;
+    /** Whether the browser is online, and its online/offline events; the window's otherwise. */
+    net?: Net;
 }
+
+export interface Net {
+    online(): boolean;
+    /** Calls back on every change; returns the unsubscribe. */
+    subscribe(onChange: (online: boolean) => void): () => void;
+}
+
+/** The window's network state, or always-online where there is no window (tests, the prerender). */
+const browserNet: Net = {
+    online: () => (typeof navigator === 'undefined' ? true : navigator.onLine !== false),
+    subscribe: (onChange) => {
+        if (typeof window === 'undefined') return () => {};
+        const on = () => onChange(true);
+        const off = () => onChange(false);
+        window.addEventListener('online', on);
+        window.addEventListener('offline', off);
+        return () => {
+            window.removeEventListener('online', on);
+            window.removeEventListener('offline', off);
+        };
+    },
+};
 
 export const BRIDGE_PROTOCOL = 'works-bridge.v1';
 export const HELLO_PROTO = 2;
@@ -90,7 +126,11 @@ const BACKOFF_S = [1, 2, 5, 10, 30];
 const HELD_RETRY_S = 60;
 /** The relay's refusal: another device's live tab has the assistant. */
 export const HELD_CLOSE_CODE = 4002;
+/** The relay's replacement: a newer socket from this same device (another tab of it) took over. */
+export const REPLACED_CLOSE_CODE = 4003;
 const PING_MS = 25_000;
+/** Pongs missed in a row before the socket is taken for dead and replaced. */
+export const MISSED_PONGS = 2;
 /** A handler that has not answered by now is reported as failed; the bridge itself waits 20 s. */
 const HANDLER_TIMEOUT_MS = 15_000;
 /** Largest answer sent; the bridge refuses anything over 2 MB. */
@@ -102,6 +142,9 @@ export class BridgeClient {
     private attempt = 0;
     private timer: ReturnType<typeof setTimeout> | null = null;
     private ping: ReturnType<typeof setInterval> | null = null;
+    /** Pings sent on the open socket since its last pong. */
+    private unanswered = 0;
+    private unsubscribeNet: (() => void) | null = null;
     private status: BridgeStatus = { state: 'off', detail: null, calls: 0 };
     /** The next socket asks the relay to take the assistant from a live tab — the owner's press. */
     private takeoverNext = false;
@@ -118,11 +161,14 @@ export class BridgeClient {
         this.attempt = 0;
         this.status = { state: 'connecting', detail: null, calls: 0 };
         this.emit();
+        this.unsubscribeNet = this.net().subscribe((online) => (online ? this.backOnline() : this.wentOffline()));
         void this.connect();
     }
 
     stop(): void {
         this.running = false;
+        this.unsubscribeNet?.();
+        this.unsubscribeNet = null;
         if (this.timer) clearTimeout(this.timer);
         this.timer = null;
         this.clearPing();
@@ -145,12 +191,43 @@ export class BridgeClient {
         void this.connect();
     }
 
-    /** Held by another device: wait, and ask again in a minute. */
-    private hold(holder: string | null, detail: string) {
+    private net(): Net {
+        return this.o.net ?? browserNet;
+    }
+
+    /** Drop the socket in hand, whatever state it is in, without its close deciding anything. */
+    private drop(reason: string) {
+        const ws = this.ws;
+        this.ws = null;
+        this.clearPing();
+        try { ws?.close(4100, reason); } catch { /* already closed */ }
+    }
+
+    /** The network is back: whatever this tab was waiting for, connect now with a fresh socket. */
+    private backOnline() {
+        if (!this.running || this.status.state === 'held') return;
+        if (this.timer) clearTimeout(this.timer);
+        this.timer = null;
+        this.drop('network back');
+        this.attempt = 0;
+        void this.connect();
+    }
+
+    /** No network: say so, and wait for it rather than count retries against nothing. */
+    private wentOffline() {
+        if (!this.running) return;
+        if (this.timer) clearTimeout(this.timer);
+        this.timer = null;
+        this.drop('offline');
+        this.set('offline', 'No network. Connecting again the moment it is back.');
+    }
+
+    /** Held by another device: wait, and ask again in a minute — or, `again: false`, only when asked. */
+    private hold(holder: string | null, detail: string, again = true) {
         if (!this.running) return;
         this.status = { ...this.status, state: 'held', detail, holder };
         this.emit();
-        this.timer = setTimeout(() => { this.timer = null; void this.connect(); }, HELD_RETRY_S * 1000);
+        if (again) this.timer = setTimeout(() => { this.timer = null; void this.connect(); }, HELD_RETRY_S * 1000);
     }
 
     private emit() {
@@ -177,6 +254,10 @@ export class BridgeClient {
 
     private async connect(): Promise<void> {
         if (!this.running) return;
+        if (!this.net().online()) {
+            this.wentOffline();
+            return;
+        }
         this.set('connecting', null);
         const doFetch = this.o.fetch ?? fetch;
         let ticket: string;
@@ -196,10 +277,16 @@ export class BridgeClient {
             ticket = body.ticket;
             // The function answers with a path on this origin; a socket needs the ws(s) scheme.
             url = toSocketUrl(body.url, this.o.base);
-            if (this.takeoverNext) url += `${url.includes('?') ? '&' : '?'}takeover=1`;
+            if (this.takeoverNext) url = withParam(url, 'takeover', '1');
             this.takeoverNext = false;
+            const device = this.o.device?.() ?? null;
+            if (device) {
+                url = withParam(url, 'did', device.id);
+                if (device.nav) url = withParam(url, 'nav', '1');
+            }
         } catch {
-            this.retry('No network.');
+            if (!this.net().online()) this.wentOffline();
+            else this.retry('No network.');
             return;
         }
         if (!this.running) return;
@@ -229,10 +316,25 @@ export class BridgeClient {
                     this.emit();
                 });
             this.clearPing();
-            this.ping = setInterval(() => { try { ws.send('ping'); } catch { /* close handler */ } }, PING_MS);
+            this.unanswered = 0;
+            this.ping = setInterval(() => {
+                if (this.ws !== ws) return;
+                // A socket the network dropped under it never says so; its silence does.
+                if (this.unanswered >= MISSED_PONGS) {
+                    this.drop('no pong');
+                    this.retry('The bridge stopped answering.');
+                    return;
+                }
+                this.unanswered++;
+                try { ws.send('ping'); } catch { /* close handler */ }
+            }, PING_MS);
         };
         ws.onmessage = (ev: MessageEvent) => {
-            if (this.ws !== ws || typeof ev.data !== 'string' || ev.data === 'pong') return;
+            if (this.ws !== ws || typeof ev.data !== 'string') return;
+            if (ev.data === 'pong') {
+                this.unanswered = 0;
+                return;
+            }
             let msg: { type?: unknown; id?: unknown; tool?: unknown; args?: unknown; hash?: unknown; reason?: unknown };
             try { msg = JSON.parse(ev.data); } catch { return; }
             if (msg.type === 'hello_accepted' || msg.type === 'hello_refused') {
@@ -262,6 +364,13 @@ export class BridgeClient {
                 this.hold(null, 'Another device took the assistant. This tab takes it back when that one goes quiet, or now with "switch here".');
                 return;
             }
+            // Another tab of this same device opened a newer socket. Asking again would take it back
+            // from that tab a minute later, and the two would trade it all drive; this one waits for
+            // "switch here".
+            if (ev.code === REPLACED_CLOSE_CODE) {
+                this.hold(null, 'Another tab on this device has the assistant now. "Switch here" brings it back to this one.', false);
+                return;
+            }
             this.retry('The bridge connection closed.');
         };
         ws.onerror = () => { /* onclose follows and decides */ };
@@ -286,6 +395,13 @@ export class BridgeClient {
         this.status = { ...this.status, calls: this.status.calls + 1 };
         this.emit();
     }
+}
+
+/** `url` with one query parameter set. */
+function withParam(url: string, key: string, value: string): string {
+    const u = new URL(url);
+    u.searchParams.set(key, value);
+    return u.toString();
 }
 
 /** A path on this origin, or an absolute URL, as a WebSocket URL. */

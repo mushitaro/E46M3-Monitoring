@@ -23,3 +23,11 @@ export const PRIVACY_PREVIEW = {
     ja: 'https://m3.tsunagi.app/privacy-policy#preview',
     en: 'https://m3.tsunagi.app/en/privacy-policy#preview',
 } as const;
+
+/**
+ * TUNER WORKS, the MAPPING tool's WORKS build, which the assistant can move this tab to on the
+ * owner's word (monitoring_open_tuner). The same tab, not a new one: on the head unit both builds
+ * open full-screen from the launcher, and its asset statements name both origins, so the move stays
+ * full-screen. Kept in step with tsunagi-m3 lib/apps.ts (`previewUrl`).
+ */
+export const TUNER_WORKS = 'https://mss54hp-csl-convert-tuner-preview.pages.dev/';

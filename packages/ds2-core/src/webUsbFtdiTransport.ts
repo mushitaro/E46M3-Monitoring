@@ -46,7 +46,7 @@ import {
  */
 
 /** FTDI's USB vendor ID. The chooser filter — a CH340 cable can never reach this code. */
-const FTDI_VENDOR_ID = 0x0403;
+export const FTDI_VENDOR_ID = 0x0403;
 
 const SIO_RESET = 0x00;
 const SIO_SET_MODEM_CTRL = 0x01;

@@ -7,6 +7,7 @@ import type { TabFacade } from '@/lib/bridge/handlers';
 import { jobRiskOf, loadEcuCatalog, text as resolveText, type EcuIndex, type EcuProfile, type JobClass } from '@/lib/ecuCatalog';
 import { normCode } from '@/lib/faultCode';
 import { en } from '@/lib/i18n/en';
+import { TUNER_WORKS } from '@/lib/links';
 import type { Ledger } from '@/lib/ledger';
 import type { ModuleProtocol } from '@/lib/moduleProtocol';
 import { addEntries, listAllEntries } from '@/lib/notebook/store';
@@ -16,7 +17,7 @@ import { needsSync, summarise } from '@/lib/sync/session';
 import { listLocal } from '@/lib/sync/sessionStore';
 import type { Tab } from '@/lib/tabs';
 import { bestTelegram, loadTelegrams } from '@/lib/telegrams';
-import { readDeviceName } from '@/hooks/useAssistantBridge';
+import { LAUNCHER_QUERY, deviceLabel, isHeadUnit, type DeviceKind } from '@/hooks/useAssistantBridge';
 import type { Datalog } from '@/views/datalog/useDatalog';
 import type { Sessions } from '@/views/sessions/useSessions';
 
@@ -30,7 +31,9 @@ import type { Sessions } from '@/views/sessions/useSessions';
  * never part of an answer, and neither is a session's.
  *
  * What it can reach is what the screen's own controls reach — READ, RECORD and its STOP, SAVE,
- * SYNC, a tab, a job selected on SERVICE — and nothing else. Running a job is not one of them.
+ * SYNC, a tab, a job selected on SERVICE — and, since the operator allowed it (2026-10-28), CONNECT
+ * again through a cable already allowed on this device, DISCONNECT, and the move to TUNER. Nothing
+ * else. Allowing a new device, running a job, an adjustment, a clear or a write is not among them.
  */
 const KINDS: Record<string, readonly JobClass[]> = {
     read: ['read'],
@@ -56,6 +59,8 @@ export function useMonitoringFacade(input: {
     updateWaiting: boolean;
     /** Bring the delegated investigations level with the account (hooks/useInvestigationSync). */
     syncInvestigations: () => void;
+    /** The name a device answers as when the owner gave it none. */
+    defaultDevice: Record<DeviceKind, string>;
 }): TabFacade {
     const { link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, tab } = input;
     const moduleName = (id: string) => ecuIndex?.modules.find((m) => m.id === id)?.name_en ?? id;
@@ -66,7 +71,7 @@ export function useMonitoringFacade(input: {
         newId: () => crypto.randomUUID(),
 
         status: () => ({
-            device: readDeviceName(),
+            device: deviceLabel(input.defaultDevice),
             practice: link.mode === 'practice',
             link: link.state,
             module: { id: ecuId, name: moduleName(ecuId) },
@@ -238,6 +243,49 @@ export function useMonitoringFacade(input: {
             await sessions.save();
             const s = (await listLocal().catch(() => []))[0];
             return s ? { saved: true, label: s.label, ...summarise(s) } : { saved: false, reason: 'Nothing was written to this device.' };
+        },
+
+        connect: async () => {
+            if (link.state !== 'disconnected') return { connected: link.state !== 'connecting', reason: `The link is ${link.state}.` };
+            const reason = await link.reconnectPermitted();
+            return reason === null ? { connected: true, module: { id: ecuId, name: moduleName(ecuId) } } : { connected: false, reason };
+        },
+
+        disconnect: async (stopRecording) => {
+            if (link.state === 'disconnected') return { disconnected: true, note: 'The link was not open.' };
+            if (link.state === 'busy' || link.state === 'connecting') return { disconnected: false, reason: 'A read is in flight. Ask again in a moment.' };
+            if (link.state === 'logging' && !stopRecording) {
+                return {
+                    disconnected: false,
+                    recording: running ? 'probe' : 'recording',
+                    reason: 'A recording or a PROBE run is going. Read back that it will stop, and after a clear yes call again with stop_recording: true.',
+                };
+            }
+            if (running) probe.stop();
+            else if (link.state === 'logging') datalog.stop();
+            await link.disconnect();
+            return { disconnected: true };
+        },
+
+        openTuner: (discardUnsaved) => {
+            if (running || link.state === 'logging') {
+                return { opened: false, reason: 'A recording or a PROBE run is going. Stop it first (monitoring_stop_log, read back), then ask again.' };
+            }
+            if (link.state === 'busy') return { opened: false, reason: 'A read is in flight. Ask again in a moment.' };
+            if (sessions.unsaved && !discardUnsaved) {
+                return {
+                    opened: false,
+                    unsaved: true,
+                    reason: 'This screen holds a session that is not saved (its fault read, recording or failures). Save it with monitoring_save, or read back that it would be lost and call again with discard_unsaved: true after a clear yes.',
+                };
+            }
+            // The head unit says so to TUNER too, as the launcher does, so TUNER's tab takes the bridge there.
+            const url = isHeadUnit() ? `${TUNER_WORKS}?${LAUNCHER_QUERY}` : TUNER_WORKS;
+            // After the answer has gone: the socket goes with the page.
+            setTimeout(() => {
+                void link.disconnect().finally(() => window.location.assign(url));
+            }, 500);
+            return { opened: true, url, note: "This tab is moving to TUNER WORKS; from now on TUNER's tab answers, through TUNER's tools." };
         },
 
         sync: async () => {

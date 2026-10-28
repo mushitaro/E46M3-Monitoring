@@ -6,6 +6,7 @@ import {
     grantMovingOk,
     mayReadWhileMoving,
     mayRunOnVehicle,
+    movingOkChoices,
     recordParkedObservation,
     withdrawn,
     type Ledger,
@@ -139,5 +140,23 @@ describe('reads observed on a stationary car', () => {
         for (let i = 0; i < 3; i++) l = recordParkedObservation(l, id, seen(i));
         l = grantMovingOk(l, id, { who: 'owner', at: 'x' }).ledger;
         expect(mayRunOnVehicle(l, id).allowed).toBe(false);
+    });
+
+    it('are offered to the owner only with enough of them and nothing standing against them', () => {
+        const few = 'mss54:STATUS_A';
+        const killed = 'smg2:STATUS_B';
+        let l = EMPTY_LEDGER;
+        for (let i = 0; i < MOVING_OK_MIN_OBSERVATIONS; i++) {
+            l = recordParkedObservation(l, id, seen(i));
+            l = recordParkedObservation(l, killed, seen(i));
+        }
+        l = recordParkedObservation(l, few, seen(0));
+        l = applyKillList(l, { version: 1, revoked: [{ id: killed, reason: 'wrong frame' }] });
+        expect(movingOkChoices(l)).toEqual({ proposals: [l.records[id]], cleared: [] });
+
+        l = grantMovingOk(l, id, { who: 'owner', at: '2026-10-28T06:00:00Z' }).ledger;
+        const after = movingOkChoices(l);
+        expect(after.proposals).toEqual([]);
+        expect(after.cleared.map((r) => r.id)).toEqual([id]);
     });
 });

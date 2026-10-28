@@ -131,6 +131,19 @@ export function grantMovingOk(
     return { ledger: { ...ledger, records: { ...ledger.records, [id]: record } }, refused: null };
 }
 
+/**
+ * What the owner's screen offers: the reads that may be PROPOSED for a moving car (enough stationary
+ * answers, nothing standing against them) and the ones already cleared. Proposing is all this does;
+ * the owner's press is `grantMovingOk`.
+ */
+export function movingOkChoices(ledger: Ledger): { proposals: VerificationRecord[]; cleared: VerificationRecord[] } {
+    const all = Object.values(ledger.records).sort((a, b) => a.id.localeCompare(b.id));
+    return {
+        proposals: all.filter((r) => r.status === 'observed-parked' && (r.observations ?? 0) >= MOVING_OK_MIN_OBSERVATIONS),
+        cleared: all.filter((r) => r.status === 'moving-ok'),
+    };
+}
+
 /** Whether a read may be sent while the car moves. Only an owner's grant says yes. */
 export function mayReadWhileMoving(ledger: Ledger, id: string): boolean {
     return ledger.records[id]?.status === 'moving-ok';

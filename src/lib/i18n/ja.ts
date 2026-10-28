@@ -553,6 +553,16 @@ export const ja: Localised = {
     assistant_catalogOk: '中継がツールと手順書を受け取りました',
     assistant_catalogRefused: (reason) => `中継がツールと手順書を断りました（前のものを使います）: ${reason}`,
     assistant_device: 'この端末の名前（例：ナビ）',
+    movingOk_note:
+        '止まっているときに 3 回以上答えた読み取りは、走っている間も読めるようにできます。決めるのはオーナーだけで、アプリもアシスタントも自分では決めません。認めた分は、この画面を開いている間だけ有効です。',
+    movingOk_none: 'まだありません。止まっているときに同じ読み取りが 3 回答えると、ここに出ます。',
+    movingOk_answered: (n) => `止まっているときに ${n} 回答えた`,
+    movingOk_reads: (first, total) => `読むもの（${total} 項目）：${first.join('、')}${total > first.length ? ' など' : ''}`,
+    movingOk_cleared: (at) => `走っている間も読める（${at} から）`,
+    movingOk_blocked: '走っている間は認められません。止まってから操作してください。',
+    movingOk_confirmTitle: '走っている間も読めるようにする',
+    movingOk_consequence: (name, what, n) =>
+        `「${name}」を、走っている間も読めるようにします。${what ? `${what}。` : ''}止まっているときに、同じ問い合わせで ${n} 回答えています。走っている間に読むと、動いている装置（コーナー中の DSC、変速中の SMG II など）にも問い合わせることになります。この画面を閉じるまで有効です。`,
     sessions_current_note:
         'SAVE はこの端末に保存します。SYNC は保存したうえで、まだ送っていないセッションをアカウントへ送ります。送ったあとも端末の分は残ります。',
     sessions_nothing: '保存するものはまだありません。故障メモリを読むか、データログを記録すると保存できます。',

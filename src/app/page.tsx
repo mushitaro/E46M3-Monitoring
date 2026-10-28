@@ -44,7 +44,7 @@ import { loadJobText, type JobTextTable } from '@/lib/jobText';
 import { PRIVACY_PREVIEW } from '@/lib/links';
 import { loadDscHydraulics, type DscHydraulics } from '@/lib/dscHydraulics';
 import { enabledTabs, featureEnabled } from '@/lib/features';
-import { EMPTY_LEDGER, applyKillList, fetchKillList, recordParkedObservation, type KillList, type Ledger } from '@/lib/ledger';
+import { EMPTY_LEDGER, applyKillList, fetchKillList, grantMovingOk, recordParkedObservation, type KillList, type Ledger } from '@/lib/ledger';
 import { mayRun, type RunVerdict } from '@/lib/runGate';
 import { loadSmg2Workflows, type Smg2Workflows } from '@/lib/smg2Workflows';
 import { TAB_ORDER, type Tab } from '@/lib/tabs';
@@ -210,7 +210,7 @@ export default function Home() {
     }, [ecuIndex, ecuId, telegrams]);
     // The verified ledger, for this page's life. Reads that answer on a car measured stationary are
     // recorded into it as facts (`observed-parked`); nothing here promotes a read further — clearing
-    // one for a moving car is the owner's decision (lib/ledger `grantMovingOk`). Not persisted yet:
+    // one for a moving car is the owner's press on SESSIONS (`onGrantMovingOk`). Not persisted yet:
     // the production build stores nothing on the device, and the WORKS build's copy goes with SYNC.
     const [observed, setObserved] = useState<Ledger>(EMPTY_LEDGER);
     const onObserved = useCallback(
@@ -223,6 +223,12 @@ export default function Home() {
                     ecuIdent: o.ecuIdent,
                 }),
             ),
+        [],
+    );
+    // The owner's press on SESSIONS → WHILE MOVING, after the confirmation. grantMovingOk refuses
+    // anything without enough stationary answers, so a stale screen cannot clear more than it showed.
+    const onGrantMovingOk = useCallback(
+        (id: string) => setObserved((l) => grantMovingOk(l, id, { who: 'owner', at: new Date().toISOString() }).ledger),
         [],
     );
     // Every read sent to the car, either way, is a read record in the WORKS build (lib/sync/readRecords).
@@ -526,7 +532,7 @@ export default function Home() {
         ),
         // Rendered only where the registry opens it: a production build never mounts it, so it
         // never opens the device store or asks the network for anything.
-        sessions: sessionsEnabled ? <SessionsView sessions={sessions} catalog={catalog} ecuId={ecuId} assistant={assistant} /> : null,
+        sessions: sessionsEnabled ? <SessionsView sessions={sessions} catalog={catalog} ecuId={ecuId} assistant={assistant} ledger={ledger} motion={link.motion} onGrantMovingOk={onGrantMovingOk} /> : null,
     };
 
     const vizzes: Record<Tab, React.ReactNode> = {

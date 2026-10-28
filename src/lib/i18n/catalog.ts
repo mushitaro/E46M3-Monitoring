@@ -200,6 +200,11 @@ export interface Localised {
     /** When the switch cannot be used yet: the WORKS notice is not confirmed, or this is not the WORKS build. */
     assistant_unavailable: string;
     assistant_state: Record<'off' | 'connecting' | 'live' | 'retrying' | 'held' | 'offline' | 'stopped', string>;
+    /** The header's AI switch: what a press does, for its title. */
+    ai_pressToTurnOn: string;
+    ai_pressToTurnOff: string;
+    /** On SESSIONS: where the switch is now that it is not here. */
+    assistant_whereSwitch: string;
     /** The name a device answers as when the owner gave it none: the head unit, a phone, a computer. */
     assistant_defaultDevice: Record<'nav' | 'phone' | 'pc', string>;
     assistant_calls: (n: number) => string;

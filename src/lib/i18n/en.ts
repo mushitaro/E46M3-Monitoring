@@ -546,8 +546,11 @@ export const en: Localised = {
     // --- SESSIONS (preview only) ------------------------------------------------
     sessions_current: 'This connection',
     assistant_note:
-        'When on, the AI assistant you connected (claude.ai and others) can ask this tab questions, through the TSUNAGI///Matrix relay. It answers with its state, faults, part of the records, the catalogue, the verification ledger and CO-WORK. No VIN is sent. The assistant can read, start and stop a recording (stopping after you confirm), write to CO-WORK, change the screen, put a procedure on the screen, and save and send when you ask. It cannot connect to the car, run an actuator test, an adjustment or a fault clear, or write.',
+        'When on, the AI assistant you connected (claude.ai and others) can ask this tab questions, through the TSUNAGI///Matrix relay. It answers with its state, faults, part of the records, the catalogue, the verification ledger and CO-WORK. No VIN is sent. The assistant can read, start and stop a recording (stopping after you confirm), write to CO-WORK, change the screen, put a procedure on the screen, save and send when you ask, connect again to and let go of a cable this device was connected to on the screen before (stopping a recording only after you confirm), and switch to TUNER. It cannot allow a new device, run an actuator test, an adjustment or a fault clear, or write.',
     assistant_turnOn: 'Turn on',
+    ai_pressToTurnOn: 'Press to turn it on (what it sends is shown first)',
+    ai_pressToTurnOff: 'Press to turn it off',
+    assistant_whereSwitch: 'It is turned on and off with AI, right of WORKS at the top of the screen.',
     assistant_turnOff: 'Turn off',
     assistant_unavailable: 'Available once the WORKS notice has been confirmed.',
     assistant_state: {

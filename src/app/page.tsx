@@ -563,6 +563,7 @@ export default function Home() {
                 onCredits={() => setCreditsOpen(true)}
                 onReload={reload}
                 reloading={reloading}
+                assistant={sessionsEnabled ? assistant : null}
             />
 
             {/* Below 900 one grid cell holds both panes; from 900 they are flex siblings, as
@@ -848,7 +849,6 @@ export default function Home() {
                     faults={link.faults === null ? null : link.faults.length}
                     samples={datalog.samples.length}
                     privacyUrl={preview ? PRIVACY_PREVIEW[lang] : null}
-                    assistant={sessionsEnabled ? assistant : null}
                     onOpenCredits={() => {
                         setCreditsOpen(true);
                         setMenuOpen(false);

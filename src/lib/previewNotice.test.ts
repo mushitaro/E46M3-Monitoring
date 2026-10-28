@@ -32,8 +32,16 @@ afterEach(() => {
 describe('the preview notice acknowledgement', () => {
     it('is a key of its own, with its version in its name', async () => {
         const { notice, disclaimer } = await fresh();
-        expect(notice.PREVIEW_NOTICE_KEY).toBe('preview-notice:v1');
+        expect(notice.PREVIEW_NOTICE_KEY).toBe('preview-notice:v2');
         expect(notice.PREVIEW_NOTICE_KEY).not.toBe(disclaimer.STORAGE_KEY);
+    });
+
+    it('asks again when the notice says more: an acknowledgement of v1 does not cover v2', async () => {
+        const storage = memoryStorage();
+        storage.setItem('preview-notice:v1', '2026-09-24T00:00:00.000Z');
+        vi.stubGlobal('localStorage', storage);
+        const { notice } = await fresh();
+        expect(notice.previewNoticeAcknowledged()).toBe(false);
     });
 
     it('is missing until AGREE, however long ago the disclaimer was agreed to', async () => {
@@ -55,7 +63,7 @@ describe('the preview notice acknowledgement', () => {
 
         notice.agreeToFirstRun(true);
 
-        expect(storage.getItem('preview-notice:v1')).not.toBeNull();
+        expect(storage.getItem('preview-notice:v2')).not.toBeNull();
         expect(storage.getItem('e46m3.disclaimer')).toBe('1');
         expect(notice.previewNoticeAcknowledged()).toBe(true);
         expect(notice.previewNoticeStore.snapshot()).toBe(true);
@@ -70,7 +78,7 @@ describe('the preview notice acknowledgement', () => {
         notice.agreeToFirstRun(false);
 
         expect(storage.getItem('e46m3.disclaimer')).toBe('1');
-        expect(storage.getItem('preview-notice:v1')).toBeNull();
+        expect(storage.getItem('preview-notice:v2')).toBeNull();
         expect(notice.previewNoticeAcknowledged()).toBe(false);
     });
 
@@ -79,7 +87,7 @@ describe('the preview notice acknowledgement', () => {
         vi.stubGlobal('localStorage', storage);
         const { notice } = await fresh();
         expect(notice.previewNoticeAcknowledged()).toBe(false);
-        storage.setItem('preview-notice:v1', '2026-09-24T00:00:00.000Z');
+        storage.setItem('preview-notice:v2', '2026-09-24T00:00:00.000Z');
         expect(notice.previewNoticeAcknowledged()).toBe(true);
     });
 

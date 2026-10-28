@@ -50,6 +50,15 @@ for how long it is kept, and the WORKS build links it from that dialog and from 
 header. `src/lib/features.ts` keeps all of it (`sessionSync`, `preview-only`) out of
 the production build, and its test pins that.
 
+Since 2026-10-28 (v2 of that notice, which every owner is asked to acknowledge
+again), the WORKS build also sends, by itself and to the same `/api/*`: read
+records — each kind of read it sent to the car and what came back, at most once a
+minute (`src/lib/sync/readRecords.ts`) — and, for an investigation the owner handed
+over and only while it is handed over, its CO-WORK record and PROBE runs
+(`src/lib/sync/investigations.ts`). The operator's development environment reads the
+latter through its own Worker (`workers/desk/`), which serves only what a standing
+mandate covers and gives out neither the owner's account nor the VIN.
+
 The WORKS build has one more, off until the owner switches it on, on each device:
 ASSISTANT (2026-10-27). The tab then holds a WebSocket to `/api/bridge/socket` on its
 own origin, which passes it through to the TSUNAGI///Matrix relay (the operator's own

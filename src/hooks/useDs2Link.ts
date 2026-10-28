@@ -23,6 +23,9 @@ import { useUnloadGuard } from './useUnloadGuard';
 import {
     Ds2Address,
     Ds2Link,
+    buildDs2Frame,
+    describeStatus,
+    isPositiveResponse,
     WebSerialTransport,
     createDs2Transport,
     detectTransportKind,
@@ -34,6 +37,7 @@ import {
     type Ds2ErrorKind,
     type Ds2Frame,
     type Ds2Target,
+    type RetryOptions,
     type TransportKind,
 } from '@tsunagi/ds2-core';
 import {
@@ -55,6 +59,7 @@ import {
     type ErrorMemoryQuickTest,
 } from '@tsunagi/ds2-mss54';
 import { whyNotSendable } from '@/lib/actuationGate';
+import type { ReadRecord } from '@/lib/investigation/readRecord';
 import type { ModuleProtocol } from '@/lib/moduleProtocol';
 import { practiceBus } from '@/lib/practiceEcu';
 import { runProbe, type ProbeDeps, type ProbePlan, type ProbeRun } from '@/lib/probe/executor';
@@ -286,6 +291,9 @@ export function useDs2Link(options: {
     target: ModuleProtocol;
     /** Told about each read that answered on a car measured stationary. Vehicle only. */
     onObserved?: (o: ParkedObservation) => void;
+    /** Told about every read sent to the car and what came back, either way (the preview's read
+     *  records, lib/sync/readRecords). Vehicle only: PRACTICE sends nothing to a car. */
+    onRead?: (r: Omit<ReadRecord, 'id'>) => void;
 }) {
     const [state, setState] = useState<LinkState>('disconnected');
     const [mode, setMode] = useState<LinkMode>('vehicle');
@@ -358,9 +366,11 @@ export function useDs2Link(options: {
      */
     const onFailureRef = useRef(options.onFailure);
     const onObservedRef = useRef(options.onObserved);
+    const onReadRef = useRef(options.onRead);
     useEffect(() => {
         onFailureRef.current = options.onFailure;
         onObservedRef.current = options.onObserved;
+        onReadRef.current = options.onRead;
     });
     const transportKindRef = useRef<TransportKind | null>(null);
 
@@ -386,6 +396,56 @@ export function useDs2Link(options: {
         }
         return { target, to: link.to(at) };
     }, []);
+
+    /**
+     * Tell `onRead` about one read: the frame as it went, and the frame that came back or the error
+     * that came instead. Only the car's — PRACTICE sends nothing to one — and never into the read:
+     * a record of a read must not become a failure of it.
+     */
+    const noteRead = useCallback((to: Ds2Target, moduleId: string, job: string, control: number, payload: Uint8Array, result: { frame: Ds2Frame } | { error: unknown }) => {
+        if (modeRef.current !== 'vehicle' || !onReadRef.current) return;
+        try {
+            const state = vehicleStateRef.current;
+            const base = {
+                at: Date.now(),
+                module: moduleId,
+                job,
+                request: toHex(buildDs2Frame(to.address, control, payload)),
+                speedKmh: state?.speedKmh ?? null,
+                motion: motionOf(state, Date.now()),
+            };
+            if ('frame' in result) {
+                const ok = isPositiveResponse(result.frame);
+                const status = result.frame.controlOrStatus;
+                onReadRef.current({
+                    ...base,
+                    response: toHex(result.frame.payload),
+                    outcome: ok ? 'ok' : 'rejected',
+                    reason: ok ? null : `${describeStatus(status)} (status 0x${status.toString(16).padStart(2, '0')})`,
+                });
+            } else {
+                const message = result.error instanceof Error ? result.error.message : String(result.error);
+                onReadRef.current({ ...base, response: null, outcome: 'failed', reason: message.slice(0, 300) });
+            }
+        } catch {
+            /* the record is lost, the read is not */
+        }
+    }, []);
+
+    /** `exchangeWithRetry`, with the read told to `onRead` whichever way it went. */
+    const readFrame = useCallback(
+        async (to: Ds2Target, moduleId: string, job: string, control: number, payload: Uint8Array, options?: RetryOptions): Promise<Ds2Frame> => {
+            try {
+                const frame = await to.exchangeWithRetry(control, payload, options);
+                noteRead(to, moduleId, job, control, payload, { frame });
+                return frame;
+            } catch (e) {
+                noteRead(to, moduleId, job, control, payload, { error: e });
+                throw e;
+            }
+        },
+        [noteRead],
+    );
 
     /**
      * A new reading of the car. The motion it implies lapses to `unknown` by itself once the
@@ -421,7 +481,7 @@ export function useDs2Link(options: {
             const req = liveBlockRequest(SPEED_BLOCK);
             try {
                 append('tx', `Speed preflight (DME block ${SPEED_BLOCK})`);
-                const frame = await link.to(DME).exchangeWithRetry(req.control, req.payload, { attempts: 2 });
+                const frame = await readFrame(link.to(DME), 'mss54', `LIVE_${SPEED_BLOCK}`, req.control, req.payload, { attempts: 2 });
                 link.assertPositive(frame, `Speed (DME block ${SPEED_BLOCK})`);
                 const values: LiveValues = {};
                 for (const v of decodeLiveBlock(block, frame)) values[channelId(SPEED_BLOCK, v.symbol)] = v.value;
@@ -435,7 +495,7 @@ export function useDs2Link(options: {
                 return 'unknown';
             }
         },
-        [append, noteVehicle],
+        [append, noteVehicle, readFrame],
     );
 
     /**
@@ -587,7 +647,7 @@ export function useDs2Link(options: {
                 const ident = target.ident ?? refuse(`${target.moduleId}: its SGBD carries no short IDENT frame; nothing is sent.`);
                 await preflight(link, 'Identity read', requires);
                 append('tx', `IDENT ${ident.hex} (${ident.source})`);
-                const frame = await to.exchangeWithRetry(ident.control, ident.payload);
+                const frame = await readFrame(to, target.moduleId, 'IDENT', ident.control, ident.payload);
                 link.assertPositive(frame, 'Identity read');
                 append('rx', toHex(frame.payload));
                 const value = { hex: toHex(frame.payload), length: frame.payload.length };
@@ -595,7 +655,7 @@ export function useDs2Link(options: {
                 setIdent(value);
                 return value;
             }),
-        [append, preflight, run, session],
+        [append, preflight, readFrame, run, session],
     );
 
     const readFaults = useCallback(
@@ -611,7 +671,7 @@ export function useDs2Link(options: {
                     const out: RawFaultRead[] = [];
                     for (const f of target.faults) {
                         append('tx', `FS ${f.hex} (${f.source})`);
-                        const frame = await to.exchangeWithRetry(f.control, f.payload);
+                        const frame = await readFrame(to, target.moduleId, 'FS_LESEN', f.control, f.payload);
                         link.assertPositive(frame, `Fault read ${f.hex}`);
                         append('rx', `${frame.payload.length} bytes — no decoder for this module`);
                         out.push({ request: f.hex, response: toHex(frame.payload), source: f.source });
@@ -622,20 +682,14 @@ export function useDs2Link(options: {
                     return null;
                 }
                 append('tx', 'FS quicktest (control 0x04, arg 0x00)');
-                const q = await to.exchangeWithRetry(
-                    ERROR_MEMORY_QUICKTEST.control,
-                    ERROR_MEMORY_QUICKTEST.payload,
-                );
+                const q = await readFrame(to, target.moduleId, 'FS_QUICKTEST', ERROR_MEMORY_QUICKTEST.control, ERROR_MEMORY_QUICKTEST.payload);
                 link.assertPositive(q, 'Fault quicktest');
                 const parsedQuick = parseQuickTest(q, 'errorMemory');
                 setQuickTest(parsedQuick);
                 append('rx', `quicktest status 0x${parsedQuick.status.toString(16)}`);
 
                 append('tx', 'FS entries (control 0x04, arg 0x01)');
-                const e = await to.exchangeWithRetry(
-                    ERROR_MEMORY_ENTRIES.control,
-                    ERROR_MEMORY_ENTRIES.payload,
-                );
+                const e = await readFrame(to, target.moduleId, 'FS_LESEN', ERROR_MEMORY_ENTRIES.control, ERROR_MEMORY_ENTRIES.payload);
                 link.assertPositive(e, 'Fault entries');
                 const entries = parseErrorMemoryEntries(e, 'errorMemory');
                 append('rx', `${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}`);
@@ -643,7 +697,7 @@ export function useDs2Link(options: {
                 setFaults(entries);
                 return entries;
             }),
-        [append, preflight, run, session],
+        [append, preflight, readFrame, run, session],
     );
 
     /**
@@ -676,7 +730,7 @@ export function useDs2Link(options: {
                     const req = liveBlockRequest(block.selection);
                     append('tx', `Adaptation block ${block.selection} (control 0x${req.control.toString(16)})`);
                     try {
-                        const frame = await to.exchangeWithRetry(req.control, req.payload);
+                        const frame = await readFrame(to, target.moduleId, `ADAPT_${block.selection}`, req.control, req.payload);
                         link.assertPositive(frame, `Adaptation block ${block.selection}`);
                         const need = adaptationBlockMinLength(block);
                         const short = frame.payload.length < need;
@@ -708,7 +762,7 @@ export function useDs2Link(options: {
                 setAdaptations(out);
                 return out;
             }),
-        [append, run, session],
+        [append, readFrame, run, session],
     );
 
     /**
@@ -762,7 +816,7 @@ export function useDs2Link(options: {
                 // 0 km/h in this same call.
                 const measured = await preflight(link, jobId, requires);
                 append('tx', `${jobId}: ${hex}`);
-                const frame = await to.exchangeWithRetry(control, payload);
+                const frame = await readFrame(to, target.moduleId, jobId, control, payload);
                 link.assertPositive(frame, jobId);
                 const result: JobRunResult = {
                     jobId,
@@ -790,7 +844,7 @@ export function useDs2Link(options: {
                 }
                 return result;
             }),
-        [append, preflight, run, session],
+        [append, preflight, readFrame, run, session],
     );
 
     /**
@@ -900,6 +954,7 @@ export function useDs2Link(options: {
                             // partial row is worse than a missing one, because
                             // it looks like a reading.
                             if (frame === null) { incomplete = true; break; }
+                            noteRead(to, targetRef.current.moduleId, `LIVE_${block.selection}`, req.control, req.payload, { frame });
                             link.assertPositive(frame, `Live block ${block.selection}`);
                             // Keyed by (selection, symbol). `block.selection` was
                             // already in hand here; the old line threw it away
@@ -946,7 +1001,7 @@ export function useDs2Link(options: {
                 }
             })();
         },
-        [append, failWith, noteVehicle, notifyFailure, session],
+        [append, failWith, noteRead, noteVehicle, notifyFailure, session],
     );
 
     const stopLog = useCallback(() => {
@@ -977,6 +1032,27 @@ export function useDs2Link(options: {
             try {
                 const run = await runProbe(plan, {
                     ...deps,
+                    // Each frame the plan sent is a read record too; a frame the gate held back was
+                    // never sent, and is not.
+                    onExchange: (x) => {
+                        deps.onExchange?.(x);
+                        if (x.outcome === 'refused' || modeRef.current !== 'vehicle') return;
+                        try {
+                            onReadRef.current?.({
+                                at: Date.now(),
+                                module: x.module,
+                                job: x.what,
+                                request: x.request,
+                                response: x.response,
+                                outcome: x.outcome,
+                                reason: x.reason?.slice(0, 300) ?? null,
+                                speedKmh: vehicleStateRef.current?.speedKmh ?? null,
+                                motion: x.motion,
+                            });
+                        } catch {
+                            /* the record is lost, the run is not */
+                        }
+                    },
                     link,
                     now: () => Date.now(),
                     pause: yieldToEventLoop,

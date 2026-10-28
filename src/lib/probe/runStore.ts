@@ -17,6 +17,8 @@ export interface StoredRun extends ProbeRun {
     sessionId: string;
     /** 1, 2, 3 … within that record. */
     n: number;
+    /** PRACTICE: the simulated car. Absent on runs kept before it was recorded. */
+    mock?: boolean;
 }
 
 /** The run in progress, as the bridge reads it: whose plan, which run of that record, since when,

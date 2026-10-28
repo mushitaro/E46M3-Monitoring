@@ -94,7 +94,7 @@ export function useProbe(input: {
                 },
             );
             if (run) {
-                const stored: StoredRun = { ...run, id: `${r.sessionId}-run-${n}-${run.startedAt}`, sessionId: r.sessionId, n };
+                const stored: StoredRun = { ...run, id: `${r.sessionId}-run-${n}-${run.startedAt}`, sessionId: r.sessionId, n, mock: link.mode === 'practice' };
                 setLastRun(stored);
                 // Kept for the desk and the next conversation; a failed write loses the copy, not the run.
                 await putRun(stored).catch(() => {});

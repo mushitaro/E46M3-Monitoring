@@ -101,6 +101,8 @@ export function PreviewNotice({ copy: n, policyHref }: { copy: Localised['discla
             <div className="mt-3 space-y-2.5">
                 <Sent title={n.sessionsTitle} what={n.sessions} when={n.sessionsWhen} />
                 <Sent title={n.recordsTitle} what={n.records} when={n.recordsWhen} />
+                <Sent title={n.readsTitle} what={n.reads} when={n.readsWhen} />
+                <Sent title={n.investigationsTitle} what={n.investigations} when={n.investigationsWhen} />
             </div>
             <p className="mt-2 text-[11px] leading-relaxed text-slate-500">{n.alsoSent}</p>
             <div className="mt-3 space-y-2">

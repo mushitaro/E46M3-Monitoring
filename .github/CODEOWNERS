@@ -4,8 +4,12 @@
 /.claude/                         @mushitaro
 /CLAUDE.md                        @mushitaro
 /functions/                       @mushitaro
+/migrations/                      @mushitaro
+/workers/                         @mushitaro
 /wrangler.jsonc                   @mushitaro
 /scripts/deploy.mjs               @mushitaro
+/scripts/desk.mjs                 @mushitaro
+/scripts/desk-token.mjs           @mushitaro
 /packages/ds2-core/               @mushitaro
 /public/kill-list.json            @mushitaro
 /public/guide/index.md            @mushitaro
@@ -15,6 +19,9 @@
 /src/lib/moduleProtocol.ts        @mushitaro
 /src/lib/vehicleState.ts          @mushitaro
 /src/lib/probe/                   @mushitaro
+/src/lib/investigation/           @mushitaro
+/src/lib/sync/                    @mushitaro
+/src/lib/previewNotice.ts         @mushitaro
 /src/lib/notebook/rules.ts        @mushitaro
 /src/lib/bridge/tools.ts          @mushitaro
 /src/lib/bridge/handlers.ts       @mushitaro

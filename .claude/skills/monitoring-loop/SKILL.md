@@ -10,7 +10,7 @@ description: 'One firing of MONITORING''s autonomous loop: the scheduled Claude 
 ## 1. 状態を読む
 
 - main の CI が赤なら、それが一件目（下の 2 の最初）。
-- 委任のある調査と、その CO-WORK の新しい項目（ドライバーの答え、タブの記録、待っている問い）。
+- 委任のある調査と、その CO-WORK の新しい項目（ドライバーの答え、タブの記録、待っている問い）：`npm run desk -- list`、`pull <record>`。`MONITORING_DESK_URL` か `MONITORING_DESK_TOKEN` が無い、あるいは 401 なら、調査は進めずにそれを一行で報告する（トークンの期限切れ。`docs/AUTONOMY.md` §6）。
 - 開いている PR（自分のもの）の CI とレビュー。
 - 例題と能力の表（`scenarios/`、`tools/scenario_coverage.mjs`）。
 

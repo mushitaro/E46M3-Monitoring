@@ -52,6 +52,10 @@ export function useMonitoringFacade(input: {
     tab: Tab;
     changeTab: (tab: Tab) => void;
     selectJob: (job: EcuProfile['jobs'][number]) => void;
+    /** A newer build is downloaded; it is taken once the link has been down a minute (lib/adoptBuild). */
+    updateWaiting: boolean;
+    /** Bring the delegated investigations level with the account (hooks/useInvestigationSync). */
+    syncInvestigations: () => void;
 }): TabFacade {
     const { link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, tab } = input;
     const moduleName = (id: string) => ecuIndex?.modules.find((m) => m.id === id)?.name_en ?? id;
@@ -76,6 +80,8 @@ export function useMonitoringFacade(input: {
                 : { running: false, planReady: probe.available ? { v: probe.available.v, purpose: probe.available.purpose } : null },
             screen: tab,
             error: link.error,
+            // Said so the assistant can tell the driver: it is taken once the link is down a minute, nothing unsaved.
+            newBuildWaiting: input.updateWaiting,
         }),
 
         faults: (moduleId) => {
@@ -162,6 +168,8 @@ export function useMonitoringFacade(input: {
         add: async (es) => {
             await addEntries(es);
             await probe.refresh();
+            // A delegated record goes to the account as it is written, so the desk reads it soon.
+            input.syncInvestigations();
         },
         live: probe.live,
         lastRun: () => probe.lastRun,

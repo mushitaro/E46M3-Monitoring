@@ -18,6 +18,7 @@ import {
     type CloudSessionRow,
 } from '@/lib/sync/cloud';
 import { flushErrorRecords, reportFailure, waitingErrorRecords } from '@/lib/sync/errorRecords';
+import { flushReadRecords } from '@/lib/sync/readRecords';
 import { gateStatus, reauthHref, type GateState } from '@/lib/sync/owner-sync';
 import {
     excerpt,
@@ -274,6 +275,7 @@ export function useSessions(input: {
             if (sent > 0) {
                 setNotice((n) => (n?.tone === 'warn' ? n : { text: t.sessions_sent(sent), tone: 'ok' }));
                 await flushErrorRecords();
+                await flushReadRecords();
             }
         } finally {
             await refreshLocal();
@@ -407,6 +409,7 @@ async function readCloud() {
         await flushErrorRecords();
         waiting = await waitingErrorRecords();
     }
+    if (gate.state === 'active') await flushReadRecords();
     return {
         gate,
         waiting,

@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useState } from 'react';
-import { ArrowLeft, CloudDownload, CloudUpload, Database, Eye, LogIn, Trash2, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, CloudDownload, CloudUpload, Database, Eye, Trash2, type LucideIcon } from 'lucide-react';
 import { formatErrorCode } from '@tsunagi/ds2-mss54';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { DataList, DataRow, Field, LABEL, Pane, Pill, Section, TextButton, Well, humanName } from '@/components/ui';
@@ -31,8 +31,7 @@ const NOTICE_TONE = {
 type Confirm =
     | { kind: 'local'; id: string; label: string; synced: boolean }
     | { kind: 'cloud'; id: string; label: string }
-    | { kind: 'diag'; id: string }
-    | { kind: 'reauth' };
+    | { kind: 'diag'; id: string };
 
 const when = (ms: number) => new Date(ms).toLocaleString();
 const kb = (bytes: number) => `${(bytes / 1024).toFixed(bytes < 10_240 ? 1 : 0)} KB`;
@@ -88,20 +87,16 @@ export const SessionsView = memo(function SessionsView({
                     ? t.sessions_deleteLocal_title
                     : confirm.kind === 'cloud'
                       ? t.sessions_deleteCloud_title
-                      : confirm.kind === 'diag'
-                        ? t.sessions_deleteError_title
-                        : t.reauth_title
+                      : t.sessions_deleteError_title
             }
             consequence={
                 confirm.kind === 'local'
                     ? t.sessions_deleteLocal_consequence(confirm.label, confirm.synced)
                     : confirm.kind === 'cloud'
                       ? t.sessions_deleteCloud_consequence(confirm.label)
-                      : confirm.kind === 'diag'
-                        ? t.sessions_deleteError_consequence
-                        : t.reauth_consequence
+                      : t.sessions_deleteError_consequence
             }
-            confirmLabel={confirm.kind === 'reauth' ? t.reauth_confirm : t.sessions_delete_confirm}
+            confirmLabel={t.sessions_delete_confirm}
             onCancel={() => setConfirm(null)}
             onConfirm={() => {
                 setConfirm(null);
@@ -109,8 +104,7 @@ export const SessionsView = memo(function SessionsView({
                     if (viewing === confirm.id) setViewing(null);
                     void s.removeLocal(confirm.id);
                 } else if (confirm.kind === 'cloud') void s.removeCloud(confirm.id);
-                else if (confirm.kind === 'diag') void s.removeDiagnostic(confirm.id);
-                else s.reauth();
+                else void s.removeDiagnostic(confirm.id);
             }}
         />
     );
@@ -127,10 +121,6 @@ export const SessionsView = memo(function SessionsView({
             </>
         );
     }
-
-    // Re-signing in reloads the page. With nothing unsaved it costs nothing and goes straight on;
-    // with something unsaved it says what would be lost first.
-    const startReauth = () => (s.unsaved ? setConfirm({ kind: 'reauth' }) : s.reauth());
 
     return (
         <Pane>
@@ -160,14 +150,11 @@ export const SessionsView = memo(function SessionsView({
                         {s.notice?.text}
                     </p>
                     {/* Where SYNC sends. Said beside SYNC, because it is the one fact about the
-                        button the button cannot say. */}
+                        button the button cannot say. An expired sign-in is said here as that fact;
+                        the way back is the header's SIGN IN AGAIN, the one door at every width
+                        (AppHeader `SignInNotice`), which asks first when something is unsaved. */}
                     <div className="flex min-h-[18px] flex-wrap items-baseline gap-x-4 gap-y-1 text-[11px] text-slate-500">
                         <span>{s.cloudEnabled ? (account ?? '…') : t.sessions_noCloud}</span>
-                        {s.canReauth && (
-                            <TextButton onClick={startReauth} tone="caution" Icon={LogIn} title={t.reauth_note}>
-                                {t.reauth}
-                            </TextButton>
-                        )}
                         {s.waiting > 0 && <span className="text-amber-400">{t.sessions_outbox(s.waiting)}</span>}
                     </div>
                 </div>

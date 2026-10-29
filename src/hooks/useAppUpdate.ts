@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { keepSignIn, signInOf, type SignIn } from '@/lib/signInLapse';
 
 /**
  * Where a running update has got to, for the overlay that shows the wait.
@@ -68,6 +69,29 @@ export function useUpdateRunning(): boolean {
 }
 
 /**
+ * The sign-in, as the update check last heard it (lib/signInLapse). A store for the same reason as
+ * the progress: what changes it is a fetch, not a React event. Set only when it changes, so the
+ * shell renders once per lapse, not once per poll. Production never sets it: its check is off.
+ */
+let signIn: SignIn = 'ok';
+const signInListeners = new Set<() => void>();
+
+function setSignIn(next: SignIn) {
+    if (next === signIn) return;
+    signIn = next;
+    for (const listener of signInListeners) listener();
+}
+
+const subscribeSignIn = (listener: () => void) => {
+    signInListeners.add(listener);
+    return () => { signInListeners.delete(listener); };
+};
+
+export function useSignIn(): SignIn {
+    return useSyncExternalStore(subscribeSignIn, () => signIn, () => 'ok');
+}
+
+/**
  * Listen for the installing worker's progress, once, for the tab's lifetime.
  *
  * Registered on first mount rather than inside `reloadForUpdate`, because the download normally
@@ -113,6 +137,11 @@ function listenForPrecache() {
  * Failure is silent and reads as "no update". The check is a convenience — the app is fully usable
  * without it, frequently with no network at all in a garage, and a red herring about updates is
  * worse than nothing while someone is trying to read an ECU.
+ *
+ * Except a 401, which is not a failure of the check but the WORKS gate's answer: this device's
+ * sign-in has lapsed, and no build will arrive until it is renewed. Read silently, it kept the head
+ * unit on an old build for as long as nobody looked, because the service worker hides the gate's
+ * sign-in page (lib/signInLapse). So the answer is published (`useSignIn`) for the shell to act on.
  */
 const CHUNK = /\/_next\/static\/chunks\/[^"'\s>]+\.js/g;
 /** The stamp build-id.mjs puts in every document's head. Attribute order is fixed by that script,
@@ -300,6 +329,13 @@ export function useAppUpdate(pollMs = 2 * 60 * 1000, enabled = true) {
         if (typeof document === 'undefined' || !navigator.onLine) return;
         try {
             const res = await fetch(`${location.origin}/`, { cache: 'no-store' });
+            // The sign-in first, since a 401 carries no build to compare: it says the sign-in has
+            // lapsed, a 2xx that it holds, and anything else neither, so it changes nothing.
+            const heard = signInOf(res);
+            if (heard) setSignIn(heard);
+            // And a held sign-in is offered its daily extension (lib/signInLapse `keepSignIn`,
+            // which decides whether this answer, this clock and this build may ask).
+            void keepSignIn(res);
             if (!res.ok) return;
             const html = await res.text();
             const served = new Set(html.match(CHUNK) ?? []);

@@ -681,11 +681,15 @@ export const en: Localised = {
     reauth_consequence:
         'Signing in again reloads this page. Reads and recordings you have not saved will be lost — SAVE them first.',
     reauth_confirm: 'Continue without saving',
-    reauth_note: 'Your sign-in has expired. Anything not sent is waiting on this device.',
     reload_confirm:
         'Reloading drops the link to the car, and any fault read or datalog you have not saved or exported is lost. Any output still on is switched off first. Reload?',
     reload_title: 'Reload the app — into the newest build, if one has been downloaded',
     reload_running: 'Fetching the newest build — the app reopens into it when it is ready',
+    signIn_lapsed: 'Signed out — updates cannot arrive',
+    signIn_lapsed_title: 'Your sign-in has expired. Until you sign in again, new builds cannot reach this device.',
+    signIn_clock: 'Clock is off — retries once it is right',
+    signIn_clock_title:
+        "Your sign-in has expired, but this device's clock is off, so it cannot sign in again yet. Once the clock is right, it tries again by itself.",
     install_ready: 'Install to this device',
     install_ios: 'Share → Add to Home Screen to install',
     install_dismissed: 'Install was declined — reload to be asked again',

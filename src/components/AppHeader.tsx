@@ -1,7 +1,7 @@
 'use client';
 
-import { Github, Medal, RefreshCw, Shield, type LucideIcon } from 'lucide-react';
-import { Pill, WORDMARK } from './ui';
+import { Github, LogIn, Medal, RefreshCw, Shield, type LucideIcon } from 'lucide-react';
+import { LABEL, Pill, TextButton, WORDMARK } from './ui';
 import { AiSwitch } from './AiSwitch';
 import type { AssistantBridge } from '@/hooks/useAssistantBridge';
 import { MMark } from './MMark';
@@ -10,6 +10,7 @@ import { APP_VERSION } from '@/lib/version';
 import { useBuildLabel, useBuildVariant } from '@/lib/build-variant';
 import { useLang } from '@/lib/i18n';
 import { PRIVACY_PREVIEW, REPOSITORY } from '@/lib/links';
+import type { SignIn } from '@/lib/signInLapse';
 import type { LinkState, LinkMode } from '@/hooks/useDs2Link';
 
 /**
@@ -69,6 +70,9 @@ import type { LinkState, LinkMode } from '@/hooks/useDs2Link';
  * whatever the worker has already fetched, which is the browser's own reload
  * with the waiting worker let in.
  *
+ * The WORKS build draws one thing at every width instead, in that corner: the
+ * notice that its sign-in has lapsed (SignInNotice, below).
+ *
  * There is no language switch, at any width. The language is the browser's
  * (lib/i18n, tsunagi-m-ux §13); the ja | en pair that stood at the end of this
  * row was 59px a phone did not have, spent on overriding an answer the browser
@@ -83,6 +87,8 @@ export function AppHeader({
     onReload,
     reloading,
     assistant = null,
+    signIn = 'ok',
+    onReauth = null,
 }: {
     ident: { hex: string; length: number } | null;
     state: LinkState;
@@ -95,6 +101,11 @@ export function AppHeader({
     reloading: boolean;
     /** The assistant bridge, on a build that has one; its AI switch sits right of the badge. */
     assistant?: AssistantBridge | null;
+    /** The sign-in, as the update check last heard it. Never anything but 'ok' in production. */
+    signIn?: SignIn;
+    /** SIGN IN AGAIN, while it can be pressed; null while it cannot. The shell confirms first when
+     *  something unsaved would be lost. */
+    onReauth?: (() => void) | null;
 }) {
     const { lang, t } = useLang();
     // The preview sends what production never does, so it links to where that is written down —
@@ -148,6 +159,8 @@ export function AppHeader({
                 </div>
             </div>
 
+            {signIn !== 'ok' && <SignInNotice signIn={signIn} onReauth={onReauth} />}
+
             {/* The family's group, as TUNER draws it (tsunagi-m-chrome §1): icons
                 only, 20px, 16px apart, neutral slate, the destination in `title`.
                 It was four words here — PRIVACY CREDITS RELOAD — beside a tool
@@ -170,6 +183,56 @@ export function AppHeader({
                 />
             </div>
         </header>
+    );
+}
+
+/**
+ * The sign-in has lapsed (lib/signInLapse). WORKS only: production never asks, so never hears.
+ *
+ * At every width, unlike the icons beside it. The service worker hides the gate's sign-in page, so
+ * this is the one place the owner learns that no new build can arrive; a menu nobody opens is where
+ * the old silence was (tsunagi-m-chrome §1, the waiting update TUNER draws on a phone). Quiet: a
+ * tint, no motion. It says a state, and the app usually mends it by itself a minute after the link
+ * goes down.
+ *
+ * The sentence from 600px up (the head unit is 683) and the action at every width: below 600 a phone
+ * has the wordmark, the badge and AI to keep, and the action's own words carry the notice. SIGN IN
+ * AGAIN only while it costs nothing but a page load, no link and a network, as on SESSIONS. While it
+ * cannot be pressed SIGNED OUT stands in the same cell, so the sentence does not move when the link
+ * comes and goes. With the clock out there is nothing to press: the next check finds the clock right
+ * and decides again.
+ */
+function SignInNotice({ signIn, onReauth }: { signIn: Exclude<SignIn, 'ok'>; onReauth: (() => void) | null }) {
+    const { t } = useLang();
+    const clock = signIn === 'clock';
+    const signedOut = `${LABEL} text-amber-400 min-[600px]:hidden`;
+
+    return (
+        <div
+            role="status"
+            title={clock ? t.signIn_clock_title : t.signIn_lapsed_title}
+            className="ml-4 flex shrink-0 items-center gap-3 min-[900px]:mr-6"
+        >
+            <span className="hidden max-w-[16rem] truncate text-[11px] text-amber-400 min-[600px]:block">
+                {clock ? t.signIn_clock : t.signIn_lapsed}
+            </span>
+            {clock ? (
+                <span className={signedOut}>{t.sync_signedOut}</span>
+            ) : (
+                <span className="grid items-center justify-items-end">
+                    {/* `-my-3 py-3`, as HeaderIcon's: a finger on the head unit gets the row's
+                        height to aim at, and the row still lays out at the label's. */}
+                    <TextButton
+                        onClick={onReauth ?? undefined}
+                        Icon={LogIn}
+                        className={`-my-3 py-3 [grid-area:1/1] ${onReauth ? '' : 'invisible'}`}
+                    >
+                        {t.reauth}
+                    </TextButton>
+                    <span className={`[grid-area:1/1] ${signedOut} ${onReauth ? 'invisible' : ''}`}>{t.sync_signedOut}</span>
+                </span>
+            )}
+        </div>
     );
 }
 

@@ -355,11 +355,10 @@ export function useSessions(input: {
     );
 
     /**
-     * "Sign in again" — offered only when it cannot cost anything but a page load: the session has
-     * actually expired (not merely "unknown", which is m3 being unreachable), the device is online,
-     * and no link is open, so no cable, run or armed output can be cut by the navigation.
+     * "Sign in again": the same-tab trip through the gate and m3 and back. Offered by the header,
+     * the one door (AppHeader `SignInNotice`), and taken by the shell by itself (lib/signInLapse) —
+     * both only while no link is open, so no cable, run or armed output can be cut by it.
      */
-    const canReauth = cloudEnabled && gate?.state === 'expired' && online && link.state === 'disconnected';
     const reauth = useCallback(() => location.assign(reauthHref()), []);
 
     // What SAVE and SYNC say, for both places they are drawn (lib/sync/status). SYNC has no look on
@@ -392,7 +391,6 @@ export function useSessions(input: {
         pending,
         saveLook,
         syncLook,
-        canReauth,
         save,
         sync,
         restore,

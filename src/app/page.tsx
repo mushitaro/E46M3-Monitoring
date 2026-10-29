@@ -15,8 +15,9 @@ import { ControlPanel } from '@/components/shell/ControlPanel';
 import { Overlaid } from '@/components/shell/Overlaid';
 import { LABEL, TextButton } from '@/components/ui';
 import { useActuatorArming } from '@/hooks/useActuatorArming';
-import { reloadForUpdate, useAppUpdate, useUpdateRunning } from '@/hooks/useAppUpdate';
+import { reloadForUpdate, useAppUpdate, useSignIn, useUpdateRunning } from '@/hooks/useAppUpdate';
 import { ADOPT_AFTER_DISCONNECTED_MS, shouldAdoptBuild } from '@/lib/adoptBuild';
+import { REPASS_AFTER_DISCONNECTED_MS, lapseAction, markRepass, repassAllowed } from '@/lib/signInLapse';
 import { useDs2Link, type ParkedObservation } from '@/hooks/useDs2Link';
 import { useHub } from '@/hooks/useHub';
 import { useProbe } from '@/hooks/useProbe';
@@ -24,6 +25,7 @@ import { useInvestigationSync } from '@/hooks/useInvestigationSync';
 import { useAssistantBridge } from '@/hooks/useAssistantBridge';
 import { useMonitoringFacade } from '@/hooks/useMonitoringFacade';
 import { useInstallPrompt } from '@/hooks/useInstallPrompt';
+import { useOnline } from '@/hooks/useOnline';
 import { useUnloadGuard } from '@/hooks/useUnloadGuard';
 import { useSplitGraph, useWideLayout } from '@/hooks/useWideLayout';
 import { useBuildId, useBuildVariant, usePreviewSurfaces } from '@/lib/build-variant';
@@ -435,7 +437,12 @@ export default function Home() {
     // WORKS takes a newer build by itself, once nothing would be lost by the reload (lib/adoptBuild):
     // the link down for a minute and nothing unsaved. Production makes no request of its own, so
     // it never learns a build waits; there RELOAD is pressed, as before.
-    const updateWaiting = useAppUpdate(undefined, preview);
+    //
+    // Not while the sign-in has lapsed (lib/signInLapse). Nothing new can arrive then, so nothing
+    // says one waits — not the facade to the assistant, and not this swap, which would race the trip
+    // through the gate below for the same idle minute. The check after that trip finds the build again.
+    const signIn = useSignIn();
+    const updateWaiting = useAppUpdate(undefined, preview) && signIn === 'ok';
     useEffect(() => {
         if (!preview || !updateWaiting || link.state !== 'disconnected' || sessions.unsaved || reloading) return;
         const since = Date.now();
@@ -445,6 +452,28 @@ export default function Home() {
         }, ADOPT_AFTER_DISCONNECTED_MS);
         return () => clearTimeout(t);
     }, [preview, updateWaiting, link.state, sessions.unsaved, reloading]);
+
+    // The sign-in lapsed: WORKS goes through the gate again by itself when that costs nothing — the
+    // idle minute the swap above waits for, a network, a clock the server agrees with, and no trip
+    // from this tab in the last ten minutes (lib/signInLapse `lapseAction`). Otherwise the header
+    // says so, with SIGN IN AGAIN while that can be pressed: no link and a network, as on SESSIONS,
+    // asking first when something unsaved would go with the page.
+    const online = useOnline();
+    const { reauth, unsaved } = sessions;
+    useEffect(() => {
+        if (!preview || signIn !== 'lapsed' || link.state !== 'disconnected') return;
+        const since = Date.now();
+        const t = setTimeout(() => {
+            const now = Date.now();
+            const act = lapseAction({ signIn, linkState: link.state, disconnectedSince: since, now, unsaved, updating: reloading, online, guardOpen: repassAllowed(now) });
+            if (act === 'repass' && markRepass(now)) reauth();
+        }, REPASS_AFTER_DISCONNECTED_MS);
+        return () => clearTimeout(t);
+    }, [preview, signIn, link.state, unsaved, reloading, online, reauth]);
+    const [reauthOpen, setReauthOpen] = useState(false);
+    const startReauth = useCallback(() => (unsaved ? setReauthOpen(true) : reauth()), [unsaved, reauth]);
+    const canReauth = preview && signIn === 'lapsed' && link.state === 'disconnected' && online;
+
     const noticeAcknowledged = useSyncExternalStore(
         previewNoticeStore.subscribe,
         previewNoticeStore.snapshot,
@@ -570,6 +599,8 @@ export default function Home() {
                 onReload={reload}
                 reloading={reloading}
                 assistant={sessionsEnabled ? assistant : null}
+                signIn={preview ? signIn : 'ok'}
+                onReauth={canReauth ? startReauth : null}
             />
 
             {/* Below 900 one grid cell holds both panes; from 900 they are flex siblings, as
@@ -898,6 +929,22 @@ export default function Home() {
                     onConfirm={() => {
                         setClearOpen(false);
                         void link.clearFaults();
+                    }}
+                />
+            )}
+
+            {/* The header's SIGN IN AGAIN, with something unsaved: SESSIONS' own words for what the
+                page load takes with it. Checked again on the press, since a link could have been
+                opened by voice while the dialog stood. */}
+            {reauthOpen && (
+                <ConfirmDialog
+                    title={t.reauth_title}
+                    consequence={t.reauth_consequence}
+                    confirmLabel={t.reauth_confirm}
+                    onCancel={() => setReauthOpen(false)}
+                    onConfirm={() => {
+                        setReauthOpen(false);
+                        if (link.state === 'disconnected') reauth();
                     }}
                 />
             )}

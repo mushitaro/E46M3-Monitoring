@@ -284,11 +284,16 @@ export interface Localised {
     reauth_title: string;
     reauth_consequence: string;
     reauth_confirm: string;
-    reauth_note: string;
     /** RELOAD (header and M menu). Asked only when something would be lost: a link, a read, a run. */
     reload_confirm: string;
     reload_title: string;
     reload_running: string;
+    /** The header's sign-in notice (lib/signInLapse), WORKS only. Short enough to stand in the header
+     *  at the head unit's 683px; the `_title` forms are the long ones, for a mouse. */
+    signIn_lapsed: string;
+    signIn_lapsed_title: string;
+    signIn_clock: string;
+    signIn_clock_title: string;
     /** INSTALL (M menu): one sentence per state of hooks/useInstallPrompt, since the greyed glyph cannot say why. */
     install_ready: string;
     install_ios: string;

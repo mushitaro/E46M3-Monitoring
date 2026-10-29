@@ -94,12 +94,19 @@ function documentOf(variant: string | null) {
 
 const ACCOUNT = '#T0';
 
+/**
+ * A request's path as these tests name it. `gateStatus()` asks `/_gate/status?t=<this device's
+ * clock>` — the gate extends the session there, and only with the clock right (owner-sync.ts) — so
+ * the query is checked to be that and then left out of the name.
+ */
+const route = (url: string) => url.replace(/^\/_gate\/status\?t=\d+$/, '/_gate/status');
+
 /** The preview's own origin: the gate says who is signed in, and the API takes what it is sent. */
 function server() {
     return vi.fn(async (input: string, init?: RequestInit) => {
         const method = init?.method ?? 'GET';
         const body = (data: unknown) => new Response(JSON.stringify(data), { status: 200 });
-        if (input === '/_gate/status') return body({ state: 'active', account_label: ACCOUNT });
+        if (route(input) === '/_gate/status') return body({ state: 'active', account_label: ACCOUNT });
         if (input === '/api/diagnostics' && method === 'POST') return body({ ok: true });
         if (input === '/api/reads' && method === 'POST') return body({ stored: 1, refused: [] });
         if (input === '/api/sessions' && method === 'POST') return body({ id: 'x', storedBytes: 1 });
@@ -217,7 +224,7 @@ describe('the preview, before its notice is acknowledged', () => {
 
             notice.agreeToFirstRun(true, true);
             expect(await reads.flushReadRecords()).toBe(1);
-            expect(fetch.mock.calls.map(([url, init]) => `${init?.method ?? 'GET'} ${url}`)).toEqual(['GET /_gate/status', 'POST /api/reads']);
+            expect(fetch.mock.calls.map(([url, init]) => `${init?.method ?? 'GET'} ${route(url)}`)).toEqual(['GET /_gate/status', 'POST /api/reads']);
             const sent = JSON.parse(String(fetch.mock.calls[1][1]?.body));
             expect(sent.reads).toHaveLength(1);
             expect(sent.reads[0]).toMatchObject({ module: 'mss54', job: 'LIVE_19', outcome: 'ok', motion: 'parked' });
@@ -240,7 +247,7 @@ describe('the preview, before its notice is acknowledged', () => {
         expect(cloud.canSync()).toBe(true);
 
         expect(await records.flushErrorRecords()).toBe(1);
-        expect(fetch.mock.calls.map(([url, init]) => `${init?.method ?? 'GET'} ${url}`)).toEqual([
+        expect(fetch.mock.calls.map(([url, init]) => `${init?.method ?? 'GET'} ${route(url)}`)).toEqual([
             'GET /_gate/status',
             'POST /api/diagnostics',
         ]);
@@ -258,9 +265,9 @@ describe('the preview, before its notice is acknowledged', () => {
 
         records.reportFailure(failure);
         // Sent, then the outbox flushed behind it — which is where /_gate/status is asked.
-        await vi.waitFor(() => expect(fetch.mock.calls.map(([url]) => url)).toContain('/_gate/status'));
+        await vi.waitFor(() => expect(fetch.mock.calls.map(([url]) => route(url))).toContain('/_gate/status'));
         await new Promise((r) => setTimeout(r, 20));
-        expect(fetch.mock.calls.map(([url, init]) => `${init?.method ?? 'GET'} ${url}`)).toEqual([
+        expect(fetch.mock.calls.map(([url, init]) => `${init?.method ?? 'GET'} ${route(url)}`)).toEqual([
             'POST /api/sessions',
             'POST /api/diagnostics',
             'GET /_gate/status',

@@ -178,10 +178,16 @@ if (cfReady) {
 }
 
 // ---- without a session: the gate is shut --------------------------------------------------
+// By way of /_gate/start, whose page reads the device's clock before anything is set (the gate's
+// header, 2026-10-29); /_gate/start with a right clock is the hop to m3 authorize.
 const anonHome = await get('/', { cookie: null, navigate: true });
-check('no session: GET / is 302 to m3 authorize',
-    anonHome.status === 302 && /^https:\/\/m3\.tsunagi\.app\/api\/access\/authorize\?/.test(anonHome.location),
+check('no session: GET / is 302 to /_gate/start',
+    anonHome.status === 302 && /^\/_gate\/start\?return=/.test(anonHome.location),
     `${anonHome.status} ${anonHome.location.split('?')[0]}`);
+const anonStart = await get(`/_gate/start?return=%2F&t=${Date.now()}`, { cookie: null, navigate: true });
+check('no session: /_gate/start with the clock right is 302 to m3 authorize',
+    anonStart.status === 302 && /^https:\/\/m3\.tsunagi\.app\/api\/access\/authorize\?/.test(anonStart.location),
+    `${anonStart.status} ${anonStart.location.split('?')[0]}`);
 for (const p of ['/sw.js', '/ecu-data/index.json', '/api/sessions', '/index.html']) {
     const r = await get(p, { cookie: null });
     // /index.html included: Pages would 308 it to / — but only once the gate has let it through.

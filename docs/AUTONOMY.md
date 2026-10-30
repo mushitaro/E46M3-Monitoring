@@ -92,7 +92,7 @@ guide が名乗るツールは `src/lib/bridge/tools.ts` の一覧だけ（`guid
 | 送るかを決めるのは `runGate.ts`（カタログの読取は `mayRun`、アプリが組む読取は `mayRunProtocolRead`）。ツールは K ラインに直接何も足さない | `src/lib/runGate.ts`、`src/lib/probe/executor.ts` | 済。実行器は全フレームでゲートに訊く（2026-10-27） |
 | モジュールには、そのモジュール自身の SGBD が送るものだけ | `src/lib/moduleProtocol.ts`、`link.to(address)` | 済（2026-10-27） |
 | 読取は、送る直前に DME の車速が 0 と読めたときだけ。読めなければ出さない | `useDs2Link` の事前読取、`lib/vehicleState.ts` | 済（2026-10-27） |
-| 走行中に送ってよい読取はオーナーが決める。アプリもアシスタントも格上げしない | `lib/ledger.ts` の `grantMovingOk`。`monitoring_ledger` は読むだけ | 台帳は済。認める画面はまだ |
+| 走行中に送ってよい読取はオーナーが決める。アプリもアシスタントも格上げしない | `lib/ledger.ts` の `grantMovingOk`。画面は SESSIONS の WHILE MOVING（`views/sessions/MovingOkSection.tsx`、確認のあと、走行中は押せない）。`monitoring_ledger` は読むだけ | 済（画面は #9、2026-10-28）。認めた分はページを開いている間だけ |
 | 意味的失敗（0xB0 など）は再送しない。再送は transport の失敗だけ | `packages/ds2-core/src/link.ts` | 済（以前から） |
 | 読取以外は画面に置くだけ。実行は停車中に画面で人。DSC 油圧系は出さない | `mayRun`（非読取は拒否）、`monitoring_stage` | 拒否は済。stage は段 3 |
 | キルリストで任意のジョブを即時に止める | `public/kill-list.json`、`lib/ledger.ts`、SW は precache しない | 取得と適用は済。D1 からの配信は段 2 |

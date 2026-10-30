@@ -98,9 +98,10 @@ export function TabBar({
 }
 
 /**
- * The status row: what is being addressed on the left, its controls on the
- * right — the same shape as the reference app's DME row. Centring a lone chip
- * left the panel with no anchor and no label.
+ * The status row: what is being addressed on the left — the label and, beside
+ * it, the module it names — and the mode or the link's controls at the right
+ * end (operator, 2026-10-28: the select belongs to MODULE, PRACTICE to the
+ * edge). Centring a lone chip left the panel with no anchor and no label.
  *
  * DISCONNECT lives HERE, not in the sub-action row, because this is the row that
  * states what you are talking to. It ends the session the row is describing,
@@ -158,12 +159,20 @@ export function ModuleRow({
 }) {
     const { t } = useLang();
     return (
-        <div className="flex h-[32px] items-center justify-between gap-3 px-2">
+        <div className="flex h-[32px] items-center gap-3 px-2">
             <span className={`flex shrink-0 items-center gap-1.5 ${LABEL} text-slate-500`}>
                 <Cpu className="size-3" />
                 <span className="sr-only min-[1280px]:not-sr-only">{t.module}</span>
             </span>
-            <div className="flex min-w-0 items-center gap-3">
+            <EcuSelect
+                index={index}
+                value={ecuId}
+                // The DS2 address is per module, so switching one under an
+                // open link would silently retarget it.
+                disabled={connected}
+                onChange={onChangeEcu}
+            />
+            <div className="ml-auto flex shrink-0 items-center gap-3">
                 {!connected ? (
                     <PracticeToggle checked={practiceArmed} disabled={false} onChange={onPractice} />
                 ) : (
@@ -174,14 +183,6 @@ export function ModuleRow({
                         </TextButton>
                     </>
                 )}
-                <EcuSelect
-                    index={index}
-                    value={ecuId}
-                    // The DS2 address is per module, so switching one under an
-                    // open link would silently retarget it.
-                    disabled={connected}
-                    onChange={onChangeEcu}
-                />
             </div>
         </div>
     );

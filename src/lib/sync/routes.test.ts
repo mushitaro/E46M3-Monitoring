@@ -39,6 +39,28 @@ const STEPS = [{ n: 1, do: 'DSC faults', kind: 'faults' as const, module: 'dsc_e
 const plan = entry('plan-00000001', T0 + 1000, 'chat', { kind: 'plan', v: 1, mandate: mandate.id, purpose: 'DSC early', steps: STEPS });
 
 describe('/api/notebook', () => {
+    it('puts a head unit clock in 2007 right, so its mandate stands now', async () => {
+        const { d1 } = sqliteD1();
+        const OFF = Date.UTC(2007, 2, 17) - Date.now();
+        const old = (e: NotebookEntry): NotebookEntry =>
+            e.body.kind === 'mandate' ? { ...e, at: e.at + OFF, body: { ...e.body, until: e.body.until + OFF } } : { ...e, at: e.at + OFF };
+        const r = await notebook.onRequestPost(call(d1, ME, 'POST', '/api/notebook', { entries: [old(mandate), old(plan)], clientNow: Date.now() + OFF }));
+        expect(await r.json()).toEqual({ stored: 2, refused: [] });
+        const got = (await (await notebook.onRequestGet(call(d1, ME, 'GET', `/api/notebook?record=${REC}`))).json()) as { entries: NotebookEntry[] };
+        const m = got.entries.find((e) => e.id === mandate.id)!;
+        expect(Math.abs(m.at - mandate.at)).toBeLessThan(60_000);
+        expect(m.body.kind === 'mandate' && m.body.until - m.at).toBe(7 * 86_400_000);
+        expect(got.entries.find((e) => e.id === plan.id)!.at - m.at).toBe(1000);
+    });
+
+    it('moves nothing when the device clock is within a day, or was not sent', async () => {
+        const { d1 } = sqliteD1();
+        await notebook.onRequestPost(call(d1, ME, 'POST', '/api/notebook', { entries: [mandate], clientNow: Date.now() - 3_600_000 }));
+        await notebook.onRequestPost(call(d1, ME, 'POST', '/api/notebook', { entries: [plan] }));
+        const got = (await (await notebook.onRequestGet(call(d1, ME, 'GET', `/api/notebook?record=${REC}`))).json()) as { entries: NotebookEntry[] };
+        expect(got.entries.map((e) => e.at)).toEqual([mandate.at, plan.at]);
+    });
+
     it('keeps a delegated record, the mandate first, and gives it back to its owner only', async () => {
         const { d1 } = sqliteD1();
         const r = await notebook.onRequestPost(call(d1, ME, 'POST', '/api/notebook', { entries: [plan, mandate] }));

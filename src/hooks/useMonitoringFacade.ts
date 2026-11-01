@@ -1,6 +1,6 @@
 'use client';
 
-import { formatErrorCode } from '@tsunagi/ds2-mss54';
+import { formatErrorCode, type ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
 import type { useDs2Link } from '@/hooks/useDs2Link';
 import type { useProbe } from '@/hooks/useProbe';
 import type { TabFacade } from '@/lib/bridge/handlers';
@@ -11,6 +11,10 @@ import { TUNER_WORKS } from '@/lib/links';
 import type { Ledger } from '@/lib/ledger';
 import type { ModuleProtocol } from '@/lib/moduleProtocol';
 import { addEntries, listAllEntries } from '@/lib/notebook/store';
+import { loadScanTargets } from '@/lib/probe/modules';
+import { listRuns } from '@/lib/probe/runStore';
+import { scanCounts, type ScanRun } from '@/lib/probe/scan';
+import type { RunBlockKey } from '@/lib/runGate';
 import { mayRun, mayRunProtocolRead } from '@/lib/runGate';
 import { canSync } from '@/lib/sync/cloud';
 import { needsSync, summarise } from '@/lib/sync/session';
@@ -32,8 +36,10 @@ import type { Sessions } from '@/views/sessions/useSessions';
  *
  * What it can reach is what the screen's own controls reach — READ, RECORD and its STOP, SAVE,
  * SYNC, a tab, a job selected on SERVICE — and, since the operator allowed it (2026-10-28), CONNECT
- * again through a cable already allowed on this device, DISCONNECT, and the move to TUNER. Nothing
- * else. Allowing a new device, running a job, an adjustment, a clear or a write is not among them.
+ * again through a cable already allowed on this device, DISCONNECT, and the move to TUNER; and for
+ * the AI modes (operator, 2026-11-01) every module's fault read, the module on the screen, and a
+ * PROBE run of a plan under a standing mandate. Nothing else. Allowing a new device, running a job,
+ * an adjustment, a clear or a write is not among them.
  */
 const KINDS: Record<string, readonly JobClass[]> = {
     read: ['read'],
@@ -41,6 +47,23 @@ const KINDS: Record<string, readonly JobClass[]> = {
     calibration: ['calibration'],
     live: ['read'],
 };
+
+/** MSS54 entries as the assistant reads them: the code, its text from the SGBD's own table, how often. */
+function describeEntries(entries: readonly ErrorMemoryEntry[], profile: EcuProfile | null) {
+    const byCode = new Map((profile?.faultText ?? []).map((f) => [normCode(f.code), f]));
+    return entries.map((f) => {
+        const code = formatErrorCode(f.errorCode);
+        const known = byCode.get(normCode(code));
+        return {
+            code,
+            type: formatErrorCode(f.errorType),
+            text: known && profile ? resolveText(profile, known.text, 'en').text : null,
+            inTable: !!known,
+            frequency: f.frequencyCounter,
+            freezeFrames: f.environmentSets.length,
+        };
+    });
+}
 
 export function useMonitoringFacade(input: {
     link: ReturnType<typeof useDs2Link>;
@@ -55,6 +78,8 @@ export function useMonitoringFacade(input: {
     tab: Tab;
     changeTab: (tab: Tab) => void;
     selectJob: (job: EcuProfile['jobs'][number]) => void;
+    /** Another module on the screen, the link opened again for it if it was open (page.tsx). */
+    switchModule: (id: string) => Promise<string | null>;
     /** A newer build is downloaded; it is taken once the link has been down a minute (lib/adoptBuild). */
     updateWaiting: boolean;
     /** Bring the delegated investigations level with the account (hooks/useInvestigationSync). */
@@ -65,6 +90,37 @@ export function useMonitoringFacade(input: {
     const { link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, tab } = input;
     const moduleName = (id: string) => ecuIndex?.modules.find((m) => m.id === id)?.name_en ?? id;
     const running = probe.progress !== null;
+
+    /** The module on the screen, as far as it has been read. */
+    const inSession = (moduleId?: string) => {
+        if (moduleId && moduleId !== ecuId) {
+            return { module: moduleId, read: false, reason: `Not read in this session: the screen is on ${moduleName(ecuId)}. monitoring_module puts another module on it; monitoring_scan reads every module's faults.` };
+        }
+        if (link.faults !== null) return { module: ecuId, read: true, decoded: true, faults: describeEntries(link.faults, catalog) };
+        if (link.rawFaults !== null) {
+            return { module: ecuId, read: true, decoded: false, note: 'No decoder for this module: the answer is kept as bytes.', raw: link.rawFaults };
+        }
+        return { module: ecuId, read: false, reason: 'Not read yet in this session.' };
+    };
+
+    /** A scan, module by module: what answered, with the MSS54's codes decoded and the rest as bytes. */
+    const describeScan = async (r: ScanRun) => {
+        const mss54 = ecuId === 'mss54' && catalog ? catalog : await loadEcuCatalog('mss54').catch(() => null);
+        return {
+            end: r.end,
+            at: new Date(r.endedAt).toISOString(),
+            practice: link.mode === 'practice',
+            counts: scanCounts(r.results),
+            modules: r.results.map((x) => ({
+                address: x.address,
+                modules: x.modules.map((id) => ({ id, name: moduleName(id) })),
+                outcome: x.outcome,
+                ...(x.reason ? { reason: en.runBlock[x.reason as RunBlockKey] ?? x.reason } : {}),
+                ...(x.decoded ? { faults: describeEntries(x.decoded as ErrorMemoryEntry[], mss54) } : {}),
+                ...(!x.decoded && x.exchanges.some((e) => e.response !== null) ? { raw: x.exchanges, note: 'No decoder for this module: the answer is kept as bytes.' } : {}),
+            })),
+        };
+    };
 
     return {
         now: () => Date.now(),
@@ -85,38 +141,18 @@ export function useMonitoringFacade(input: {
                 : { running: false, planReady: probe.available ? { v: probe.available.v, purpose: probe.available.purpose } : null },
             screen: tab,
             error: link.error,
+            scan: link.scanProgress
+                ? { running: true, ...link.scanProgress }
+                : link.scan
+                  ? { running: false, end: link.scan.end, at: new Date(link.scan.endedAt).toISOString(), counts: scanCounts(link.scan.results) }
+                  : null,
             // Said so the assistant can tell the driver: it is taken once the link is down a minute, nothing unsaved.
             newBuildWaiting: input.updateWaiting,
         }),
 
-        faults: (moduleId) => {
-            if (moduleId && moduleId !== ecuId) {
-                return { module: moduleId, read: false, reason: `Not read in this session: the screen is connected to ${moduleName(ecuId)}. Switching modules is done on the screen, parked.` };
-            }
-            if (link.faults !== null) {
-                const byCode = new Map((catalog?.faultText ?? []).map((f) => [normCode(f.code), f]));
-                return {
-                    module: ecuId,
-                    read: true,
-                    decoded: true,
-                    faults: link.faults.map((f) => {
-                        const code = formatErrorCode(f.errorCode);
-                        const known = byCode.get(normCode(code));
-                        return {
-                            code,
-                            type: formatErrorCode(f.errorType),
-                            text: known && catalog ? resolveText(catalog, known.text, 'en').text : null,
-                            inTable: !!known,
-                            frequency: f.frequencyCounter,
-                            freezeFrames: f.environmentSets.length,
-                        };
-                    }),
-                };
-            }
-            if (link.rawFaults !== null) {
-                return { module: ecuId, read: true, decoded: false, note: 'No decoder for this module: the answer is kept as bytes.', raw: link.rawFaults };
-            }
-            return { module: ecuId, read: false, reason: 'Not read yet in this session.' };
+        faults: async (moduleId) => {
+            if (!moduleId && link.scan) return { inSession: inSession(), scan: await describeScan(link.scan) };
+            return inSession(moduleId);
         },
 
         refreshFaults: async () => {
@@ -203,7 +239,7 @@ export function useMonitoringFacade(input: {
 
         stage: async (module, jobId) => {
             if (module !== ecuId) {
-                return { staged: false, reason: `The screen is on ${moduleName(ecuId)}. A person switches modules on the screen, parked; then it can be staged.` };
+                return { staged: false, reason: `The screen is on ${moduleName(ecuId)}. Put ${moduleName(module)} on it first (monitoring_module); then it can be staged.` };
             }
             const job = catalog?.jobs.find((j) => j.id === jobId);
             if (!job) return { staged: false, reason: `${jobId} is not a job of ${moduleName(module)}.` };
@@ -287,6 +323,42 @@ export function useMonitoringFacade(input: {
             }, 500);
             return { opened: true, url, note: "This tab is moving to TUNER WORKS; from now on TUNER's tab answers, through TUNER's tools." };
         },
+
+        scan: async () => {
+            if (link.state !== 'connected') return { started: false, reason: `The link is ${link.state}; a scan starts from connected and idle.` };
+            if (!ecuIndex) return { started: false, reason: 'The module index has not loaded yet.' };
+            const targets = await loadScanTargets(ecuIndex);
+            void link.scanAll(targets, () => ledger);
+            return {
+                started: true,
+                addresses: targets.length,
+                modules: ecuIndex.modules.length,
+                takes: `about ${Math.round(targets.length * 1.2)} s`,
+                then: 'monitoring_status shows how far it has got; monitoring_faults without module gives every module once it ends.',
+                ...(link.mode === 'practice' ? { practice: 'PRACTICE: only the DME and the module on the screen answer; the rest are silent.' } : {}),
+            };
+        },
+
+        switchModule: async (id) => {
+            const reason = await input.switchModule(id);
+            return reason ? { switched: false, reason } : { switched: true, module: { id, name: moduleName(id) }, note: 'The screen shows it; an open link was opened again for it.' };
+        },
+
+        probe: async (record) => {
+            if (link.state !== 'connected') return { started: false, reason: `The link is ${link.state}; PROBE starts from connected and idle.` };
+            const r = await probe.start(record);
+            if (r.started) return { started: true, record: r.record, plan: r.v, run: r.n, stop: 'monitoring_stop_log, after a read-back' };
+            const why: Record<typeof r.reason, string> = {
+                off: 'PROBE is not in this build, or the module index has not loaded.',
+                running: 'A PROBE run is already going.',
+                none: 'No plan may run: write one under a standing mandate (monitoring_plan).',
+                forked: 'Two plans rewrite the same one; the driver chooses which to keep.',
+                'mandate-ended': 'The mandate has ended (withdrawn or expired); carry the record on with monitoring_investigate and record.',
+            };
+            return { started: false, reason: why[r.reason] };
+        },
+
+        runs: (record) => listRuns(record).catch(() => []),
 
         sync: async () => {
             if (!canSync()) return { sent: 0, reason: 'This build does not send: it is not the WORKS build, or its notice is not confirmed.' };

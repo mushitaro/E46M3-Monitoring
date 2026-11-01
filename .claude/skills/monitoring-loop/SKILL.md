@@ -21,7 +21,7 @@ description: 'One firing of MONITORING''s autonomous loop: the scheduled Claude 
 0. 合図が記録の id を名指している → その調査（`npm run desk -- pull <id>`）。委任が立っていなければ（机が 404）、何もせずに終わる。
 1. main の CI が赤い → 直す。
 2. 自分の PR の CI が赤い、レビューが付いた → 対応する。
-3. 新しい車の記録がある調査 → `monitoring-desk` の一周（所見、次の計画）。
+3. 新しい車の記録がある調査 → `monitoring-desk` の一周（所見、次の計画）。委任の `mode` に従う：予兆保全なら前回との比較と推移、事後保全なら追うコードの再発、症状なら基準との差。
 4. ドライバーの答えが来た問い → それを前提に計画を直す。
 5. 開いている調査を止めている道具の穴 → 開発（`monitoring-desk` の「道具の穴」）。
 6. 例題の穴 → 開発。

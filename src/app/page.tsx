@@ -362,6 +362,37 @@ export default function Home() {
     const changeTab = useCallback((next: Tab) => void releaseThen(() => setTab(next)), [releaseThen]);
 
     /**
+     * The assistant's module switch (operator, 2026-11-01: "in AI mode the AI switches modules too").
+     *
+     * The link opens for one module — its address is latched at CONNECT — so a switch under an open
+     * link is the screen's own three steps: DISCONNECT, the new module, CONNECT again through the
+     * same door (the cable already allowed on this device, or PRACTICE). Never while a read, a
+     * recording or a PROBE run is going. Null when done; otherwise why not.
+     */
+    const switchModule = useCallback(
+        async (id: string): Promise<string | null> => {
+            const entry = ecuIndex?.modules.find((m) => m.id === id);
+            if (!entry) return `There is no module ${id}. monitoring_catalog and monitoring_scan name them.`;
+            if (id === ecuId) return null;
+            if (link.state === 'busy' || link.state === 'connecting') return 'A read is in flight. Ask again in a moment.';
+            if (link.state === 'logging') return 'A recording or a PROBE run is going. Stop it first (read back, then monitoring_stop_log).';
+            const was = link.state === 'connected' ? link.mode : null;
+            const next = moduleProtocol(id, entry.address, await loadTelegrams(id));
+            await releaseThen(async () => {
+                if (was) await link.disconnect();
+                setEcuId(id);
+            });
+            if (!was) return null;
+            if (was === 'practice') {
+                await link.connect('practice', false, next);
+                return null;
+            }
+            return link.reconnectPermitted(next);
+        },
+        [ecuIndex, ecuId, link, releaseThen],
+    );
+
+    /**
      * RELOAD — the header's last link from 900 up, the M menu's strip below it.
      *
      * The app needs its own: pull-to-refresh is off (globals.css), and installed it has no browser
@@ -485,7 +516,7 @@ export default function Home() {
     // until switched on on this device). The facade is what the tools may reach — the screen's own
     // controls, never a run.
     const buildId = useBuildId();
-    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, tab, changeTab, selectJob, updateWaiting, syncInvestigations, defaultDevice: t.assistant_defaultDevice });
+    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, tab, changeTab, selectJob, switchModule, updateWaiting, syncInvestigations, defaultDevice: t.assistant_defaultDevice });
     const assistant = useAssistantBridge({
         allowed: preview && noticeAcknowledged,
         facade,

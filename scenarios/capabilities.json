@@ -30,5 +30,10 @@
   "stage.screen": { "status": "built", "what": "monitoring_stage: put a non-read job on the screen", "where": "src/hooks/useMonitoringFacade.ts" },
   "ledger.grant": { "status": "built", "what": "the owner clears a read for a moving car, on the screen", "where": "src/views/sessions/MovingOkSection.tsx (SESSIONS → WHILE MOVING, confirmed, not while measured moving) over lib/ledger movingOkChoices and grantMovingOk; Chromium on next dev 2026-10-28. Lasts the page's life until the ledger is kept" },
   "service.run": { "status": "missing", "what": "actuator tests and procedures on a vehicle, run by a person on the screen", "where": "PLAN §4 safety mechanism first" },
-  "tuning.handoff": { "status": "car", "what": "the map change itself, in TUNER", "where": "TUNER WORKS on the car" }
+  "tuning.handoff": { "status": "car", "what": "the map change itself, in TUNER", "where": "TUNER WORKS on the car" },
+  "all.scan": { "status": "built", "what": "every module's fault memory, one address at a time, its own FS_LESEN frames (monitoring_scan)", "where": "src/lib/probe/scan.ts" },
+  "module.switch": { "status": "built", "what": "the assistant puts another module on the screen, the link opened again for it (monitoring_module)", "where": "src/app/page.tsx switchModule" },
+  "probe.assistant": { "status": "built", "what": "a PROBE run of a record's plan started by the assistant (monitoring_probe)", "where": "src/hooks/useProbe.ts" },
+  "probe.adapt": { "status": "built", "what": "the MSS54's learned values read in a PROBE run (adapt step)", "where": "src/lib/probe/executor.ts" },
+  "probe.compare": { "status": "built", "what": "runs compared value by value, and one value across a record's runs (monitoring_compare)", "where": "src/lib/probe/compare.ts" }
 }

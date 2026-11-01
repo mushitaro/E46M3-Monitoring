@@ -578,7 +578,7 @@ export const en: Localised = {
             },
             {
                 title: 'What it can do',
-                body: 'Read; start and stop a recording (stopping after you confirm); write to CO-WORK; change the screen; put a procedure on the screen; save and send when you ask; connect again to, and let go of, a cable connected on the screen before; switch to TUNER.',
+                body: 'Read, every module\'s faults included; start and stop a recording, and an observation (PROBE) of an investigation you handed over (stopping after you confirm); change the module on the screen; write to CO-WORK; change the screen; put a procedure on the screen; save and send when you ask; connect again to, and let go of, a cable connected on the screen before; switch to TUNER.',
             },
             {
                 title: 'What it cannot do',

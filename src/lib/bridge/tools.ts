@@ -61,7 +61,7 @@ export const MONITORING_TOOLS = {
     monitoring_faults: {
         scope: 'read',
         description:
-            "Fault memories the tab has read, per module: for the MSS54 the decoded codes with their text from the module's own SGBD, present or past, frequency; for other modules the raw answer bytes, since the tab has no decoder for them. refresh: true asks the tab to read the module in session again — parked only, through its gate. No VIN.",
+            "Fault memories the tab has read: the module in session, and — without module, once monitoring_scan has run — every module the scan reached (answered, silent, refused, with the reason). For the MSS54 the decoded codes with their text from the module's own SGBD, present or past, frequency; for other modules the raw answer bytes, since the tab has no decoder for them. refresh: true asks the tab to read the module in session again — parked only, through its gate. No VIN.",
         inputSchema: obj({ module: MODULE, refresh: bool('Read the module in session again (parked, gated).') }),
     },
     monitoring_catalog: {
@@ -110,12 +110,15 @@ export const MONITORING_TOOLS = {
     monitoring_investigate: {
         scope: 'control',
         description:
-            "Start an investigation the owner handed over: a new CO-WORK record whose first entry is the mandate — the owner's words as said, the modules it may read, and how many days it stands (at most 30). Plans written later must act under it. Returns the record id and the mandate id.",
+            "Start an investigation the owner handed over — or carry one on: a CO-WORK record whose first entry is the mandate, the owner's words as said, the modules it may read, how many days it stands (at most 30), and its mode. reactive (事後保全): a fault code is there, named in focus. predictive (予兆保全): no fault; every module and value, judged against pass criteria. symptom (症状): the owner's complaint. With record, the mandate is added to that record, so a periodic observation or a mandate that ran out carries the same plans and runs on. Plans written later must act under a standing mandate. Returns the record id and the mandate id.",
         inputSchema: obj(
             {
                 words: str("The owner's own words handing it over, as said."),
                 modules: { type: 'array', items: { type: 'string' }, description: 'Module ids it may read. Empty for any.' },
                 days: num('How long it stands, 1-30.'),
+                mode: str('reactive, predictive or symptom', { enum: ['reactive', 'predictive', 'symptom'] }),
+                focus: { type: 'array', items: { type: 'string' }, maxItems: 12, description: 'reactive: the fault codes it follows, module:code (mss54:0x2A).' },
+                record: str('The record to carry on, from monitoring_cowork. Omit to start a new one.'),
             },
             ['words', 'modules', 'days'],
         ),
@@ -123,7 +126,7 @@ export const MONITORING_TOOLS = {
     monitoring_plan: {
         scope: 'control',
         description:
-            "Write the next plan of a record, under its standing mandate: purpose, hypotheses (each with the observation that would refute it), steps (reads only: faults, read, sample, ram, capture, each with when: parked, moving or any), criteria and machine judgements with their provenance. The tab refuses a plan outside the mandate or with a step it cannot run, and says why. A running PROBE keeps its plan; the new one is taken when PROBE is next started on the screen.",
+            "Write the next plan of a record, under its standing mandate: purpose, hypotheses (each with the observation that would refute it), steps (reads only: faults, read, sample, adapt, ram, capture), criteria and machine judgements (pass criteria, up to 24) with their provenance. The tab refuses a plan outside the mandate or with a step it cannot run, and says why. A running PROBE keeps its plan; the new one is taken when PROBE is next started (monitoring_probe or the screen).",
         inputSchema: obj(
             {
                 record: RECORD,
@@ -133,7 +136,12 @@ export const MONITORING_TOOLS = {
                 hypotheses: { type: 'array', items: { type: 'object' }, description: '{id, text, refutedBy}' },
                 criteria: str('The pass criteria, in words.'),
                 judge: { type: 'array', items: { type: 'object' }, description: '{hypothesis, when, expect, provenance}' },
-                steps: { type: 'array', items: { type: 'object' }, description: 'faults|read|sample|ram|capture steps, numbered n from 1.' },
+                steps: {
+                    type: 'array',
+                    items: { type: 'object' },
+                    description:
+                        'Steps numbered n from 1: faults (a module\'s fault memory), read (a catalogue read job), sample (MSS54 live channels like 19:v, or a whole block like 3:*), adapt (the MSS54\'s learned values), ram, capture. One-shot steps take when: parked, moving or any.',
+                },
             },
             ['mandate', 'purpose', 'steps'],
         ),
@@ -165,6 +173,44 @@ export const MONITORING_TOOLS = {
         scope: 'control',
         description: 'Mark a plan step done, on the clock of the PROBE run in progress.',
         inputSchema: obj({ record: RECORD, n: num('The step number.') }, ['n']),
+    },
+    monitoring_scan: {
+        scope: 'control',
+        description:
+            "Read every module's fault memory, one address at a time, without choosing a module: each module's own fault read (its SGBD's FS_LESEN frames) at its own address, through the tab's gate, only while the DME measures the car stationary (re-measured every few modules). Where several SGBDs share an address, only frames all of them carry are sent. Starts and answers at once; it takes about a second an address. monitoring_status shows progress, monitoring_faults (no module) the result. Only the MSS54 is decoded.",
+        inputSchema: obj({}),
+    },
+    monitoring_module: {
+        scope: 'control',
+        description:
+            "Put another module on the screen (DIAGNOSIS, SERVICE, the catalogue's 'in session'). If the link is open it is let go and opened again for the new module through the same door — the cable already allowed on this device, or PRACTICE — as a person does on the screen. Refused while a read, a recording or a PROBE run is going. The screen shows the switch.",
+        inputSchema: obj({ module: str('The module id to put on the screen.') }, ['module']),
+    },
+    monitoring_probe: {
+        scope: 'control',
+        description:
+            "Start a PROBE run: the record's current plan, under its standing mandate, on the open link (connected and idle). Reads only, every frame through the gate; parked-only steps wait for the car to stop. Answers once the run has begun (record, plan version, run number) or why not (no runnable plan, a fork, the mandate ended, already running). It runs until its steps are done or it is stopped (monitoring_stop_log, after a read-back).",
+        inputSchema: obj({ record: RECORD }),
+    },
+    monitoring_compare: {
+        scope: 'read',
+        description:
+            "Compare PROBE runs. Default: a record's last run against the run before it. run / against pick runs of the record; baseline {record, run} compares with a run of another record (a symptom against an earlier health check). Per value: count, mean, min, max in each and the change, the values that moved most for their own spread first; learned values; each module's fault answer, same or changed; each judgement in each run. trend: true with channels gives those values across every run of the record, oldest first. The runs' conditions (plan version, length, PRACTICE) are given: compare like with like.",
+        inputSchema: obj({
+            record: RECORD,
+            run: num('The later run (default: the last).'),
+            against: num('The earlier run of the same record (default: the one before).'),
+            baseline: {
+                type: 'object',
+                description: 'A run of another record to compare against.',
+                properties: { record: str('Its record id.'), run: num('Its run (default: its last).') },
+                required: ['record'],
+                additionalProperties: false,
+            },
+            channels: { type: 'array', items: { type: 'string' }, maxItems: 40, description: 'Only these values (19:v, adapt:6:lu_adapt). Required with trend.' },
+            trend: bool('Follow the channels across every run of the record.'),
+            limit: num('At most this many values (default 30, max 80).'),
+        }),
     },
     monitoring_display: {
         scope: 'control',

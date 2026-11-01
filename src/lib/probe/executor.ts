@@ -23,7 +23,18 @@
  */
 
 import { Ds2Address, buildDs2Frame, buildReadMemoryPayload, isDs2Error, toHex, type Ds2Link } from '@tsunagi/ds2-core';
-import { channelId, decodeLiveBlock, liveBlockRequest, planBlockReads, type ChannelId, type LiveValueBlock } from '@tsunagi/ds2-mss54';
+import {
+    MSS54_ADAPTATION_BLOCKS,
+    adaptationBlockMinLength,
+    blockBySelection,
+    channelId,
+    decodeAdaptationBlock,
+    decodeLiveBlock,
+    liveBlockRequest,
+    planBlockReads,
+    type ChannelId,
+    type LiveValueBlock,
+} from '@tsunagi/ds2-mss54';
 import type { CatalogJob } from '../ecuCatalog';
 import type { Ledger } from '../ledger';
 import type { ModuleProtocol } from '../moduleProtocol';
@@ -101,15 +112,35 @@ export interface ProbeRun {
     captures: Array<{ step: number; at: number; from: number; to: number }>;
     steps: Array<{ n: number; state: StepState; sent: number; reason?: string }>;
     judges: JudgeResult[];
+    /**
+     * The MSS54's learned values an `adapt` step read, keyed `adapt:<selection>:<symbol>`; null where
+     * the block answered too short to hold the field. Empty when the plan has no such step; absent
+     * on runs kept before the step existed.
+     */
+    adaptations?: Record<string, number | null>;
 }
 
 const isLive = (c: string) => /^\d{1,3}:/.test(c);
+
+/**
+ * `3:*` asks for the whole of block 3. A block is read whole whichever of its values is named, so
+ * one of its own channels stands for it.
+ */
+function expandWhole(c: string): string | null {
+    const m = /^(\d{1,3}):\*$/.exec(c);
+    if (!m) return c;
+    const first = blockBySelection(Number(m[1]))?.fields[0];
+    return first ? channelId(Number(m[1]), first.symbol) : null;
+}
 
 /** Every live channel the plan needs, plus the speed. */
 function liveChannels(steps: readonly ProbeStep[], judges: readonly Judge[]): ChannelId[] {
     const out = new Set<string>(SPEED_CHANNELS);
     for (const s of steps) {
-        if (s.kind === 'sample') s.channels.forEach((c) => out.add(c));
+        if (s.kind === 'sample') s.channels.forEach((c) => {
+            const x = expandWhole(c);
+            if (x) out.add(x);
+        });
         if (s.kind === 'capture') s.condition.forEach((c) => isLive(c.channel) && out.add(c.channel));
     }
     for (const j of judges) {
@@ -126,8 +157,11 @@ function beUint(bytes: Uint8Array): number {
     return v;
 }
 
+const isOneShot = (s: ProbeStep): s is Extract<ProbeStep, { kind: 'faults' | 'read' | 'adapt' }> =>
+    s.kind === 'faults' || s.kind === 'read' || s.kind === 'adapt';
+
 function oneShotDue(s: ProbeStep, motion: Motion): boolean {
-    if (s.kind !== 'faults' && s.kind !== 'read') return false;
+    if (!isOneShot(s)) return false;
     return s.when === 'any' || s.when === motion;
 }
 
@@ -144,8 +178,9 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
         samples: [],
         exchanges: [],
         captures: [],
-        steps: plan.steps.map((s) => ({ n: s.n, state: s.kind === 'faults' || s.kind === 'read' ? 'pending' : 'done', sent: 0 })),
+        steps: plan.steps.map((s) => ({ n: s.n, state: isOneShot(s) ? 'pending' : 'done', sent: 0 })),
         judges: [],
+        adaptations: {},
     };
     const stepOf = (n: number) => run.steps[n - 1];
     const failures = new Map<number, number>();
@@ -261,7 +296,9 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
 
         // ---- the one-shot lane: at most one step, if its `when` is now -------------------------
         const next = plan.steps.find((s) => stepOf(s.n).state === 'pending' && oneShotDue(s, motion));
-        if (next && (next.kind === 'faults' || next.kind === 'read')) {
+        if (next && next.kind === 'adapt') {
+            await adaptShot(next, motion);
+        } else if (next && (next.kind === 'faults' || next.kind === 'read')) {
             await oneShot(next, motion);
         }
 
@@ -276,6 +313,59 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
     run.endedAt = deps.now();
     run.judges = judges.map((j) => judge(j, run.samples));
     return run;
+
+    /**
+     * The MSS54's learned values, every block the table can read, as the ADAPTATION tab reads them.
+     * Each block asks the gate on its own; a block the DME refuses is recorded and the rest still
+     * go, because four of five learned blocks beat none.
+     */
+    async function adaptShot(s: Extract<ProbeStep, { kind: 'adapt' }>, motion: Motion) {
+        const st = stepOf(s.n);
+        const settle = (state: StepState, reason?: string) => {
+            st.state = state;
+            if (reason) st.reason = reason;
+            deps.onStep?.(s.n, state);
+        };
+        const gates = MSS54_ADAPTATION_BLOCKS.map((b) => ({ block: b, gate: mayRunProtocolRead(`mss54:ADAPT_${b.selection}`, 'module', deps.ledger(), motion) }));
+        const blocked = gates.find((g) => !g.gate.allowed);
+        if (blocked && !blocked.gate.allowed) {
+            // A moving car is not a refusal: the step waits for the car to stop.
+            if (blocked.gate.reason === 'run_block_moving') return;
+            settle('refused', blocked.gate.reason);
+            record({ step: s.n, module: 'mss54', what: `ADAPT_${blocked.block.selection}`, request: null, response: null, outcome: 'refused', reason: blocked.gate.reason, motion });
+            return;
+        }
+        if (gates.some((g) => g.gate.allowed && g.gate.requires === 'parked') && motion !== 'parked') return;
+
+        for (const { block } of gates) {
+            const req = liveBlockRequest(block.selection);
+            const what = `ADAPT_${block.selection}`;
+            const hex = toHex(buildDs2Frame(Ds2Address.DME, req.control, req.payload));
+            try {
+                const frame = await dme.exchangeWithRetry(req.control, req.payload, { attempts: 2 });
+                deps.link.assertPositive(frame, `Adaptation block ${block.selection}`);
+                const response = toHex(frame.payload);
+                record({ step: s.n, module: 'mss54', what, request: hex, response, outcome: 'ok', motion });
+                if (frame.payload.length < adaptationBlockMinLength(block)) {
+                    record({ step: s.n, module: 'mss54', what, request: hex, response, outcome: 'rejected', reason: `answered ${frame.payload.length} bytes, needs ${adaptationBlockMinLength(block)}`, motion });
+                }
+                for (const v of decodeAdaptationBlock(block, frame.payload)) run.adaptations![`adapt:${block.selection}:${v.symbol}`] = v.value;
+                if (motion === 'parked') deps.onObserved?.({ id: `mss54:${what}`, telegram: hex, response, at: deps.now() });
+            } catch (e) {
+                const message = e instanceof Error ? e.message : String(e);
+                const refused = isDs2Error(e) && e.code === 'NEGATIVE_RESPONSE';
+                record({ step: s.n, module: 'mss54', what, request: hex, response: null, outcome: refused ? 'rejected' : 'failed', reason: message, motion });
+                if (!refused) {
+                    const n = (failures.get(s.n) ?? 0) + 1;
+                    failures.set(s.n, n);
+                    if (n >= ONE_SHOT_ATTEMPTS) settle('failed', message);
+                    return;
+                }
+            }
+        }
+        st.sent++;
+        if (st.sent >= (s.times ?? 1)) settle('done');
+    }
 
     async function oneShot(s: Extract<ProbeStep, { kind: 'faults' | 'read' }>, motion: Motion) {
         const st = stepOf(s.n);

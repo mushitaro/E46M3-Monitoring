@@ -11,6 +11,7 @@ import { moduleProtocol } from '../moduleProtocol';
 import { bestTelegram, loadTelegrams } from '../telegrams';
 import type { ProbeModule } from './executor';
 import { modulesOf, type ProbeStep } from './plan';
+import { scanTargets, type ScanTarget } from './scan';
 
 export async function loadProbeModules(steps: readonly ProbeStep[], index: EcuIndex): Promise<Map<string, ProbeModule>> {
     const ids = [...new Set(['mss54', ...modulesOf(steps)])];
@@ -31,4 +32,14 @@ export async function loadProbeModules(steps: readonly ProbeStep[], index: EcuIn
         }),
     );
     return out;
+}
+
+/**
+ * Every module in the index with what its own SGBD lets the app send it, grouped by address for
+ * an all-module scan (lib/probe/scan). A module whose telegram table does not load is still listed:
+ * with no frame, its address says it was not asked rather than disappearing from the answer.
+ */
+export async function loadScanTargets(index: EcuIndex): Promise<ScanTarget[]> {
+    const protocols = await Promise.all(index.modules.map(async (m) => moduleProtocol(m.id, m.address, await loadTelegrams(m.id))));
+    return scanTargets(protocols);
 }

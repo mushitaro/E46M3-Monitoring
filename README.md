@@ -133,6 +133,30 @@ Pages Functions がある。どちらも車には触れない。）前身の `Ol
 
 ---
 
+## 画面 — 三つの窓
+
+M のどのツールとも同じ三つの窓でできている（`tsunagi-m-design` §5.12）。
+
+- **LIST** — タブの中身。読んで、選ぶ。
+- **VISU** — 選んだもの、今の状態の絵。見る。
+- **DASH** — 状態行・通知・ハブ・サブアクション。次の一手を押す。
+
+広い画面では三つとも出る（左に LIST、右に VISU と DASH）。900px 未満では DASH が常に出て、残りの場所を
+LIST と VISU がフッタで交代する。ナビ（683×400）と横持ちの電話では DASH は右、縦持ちでは下。
+
+| タブ | LIST | VISU | DASH のハブ |
+|---|---|---|---|
+| DIAGNOSIS | IDENT と故障コード。ALL MODULES ではアドレスごとの答え | 故障の数。ALL MODULES では答えたモジュールの数 | READ（サブに CLEAR FAULTS・OPEN） |
+| DATALOG | 記録する値・周期・ファイルの中身 | 記録のトレース | RECORD / STOP（サブに CSV） |
+| ADAPTATION | 学習値のブロック | 読めたブロックの数 | READ |
+| SERVICE | 手順の一覧 | 選んだ手順と最後の結果 | RUN / START（選んだ手順） |
+| ACTUATOR | 作動テスト（操作は各行に） | このモジュールで何が試せるか | なし |
+| SESSIONS | 保存した記録、SAVE と SYNC | 記録の数 | なし |
+
+接続する前のハブは、どのタブでも CONNECT。
+
+---
+
 ## 開発
 
 ```bash

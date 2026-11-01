@@ -27,7 +27,7 @@ import { useMonitoringFacade } from '@/hooks/useMonitoringFacade';
 import { useInstallPrompt } from '@/hooks/useInstallPrompt';
 import { useOnline } from '@/hooks/useOnline';
 import { useUnloadGuard } from '@/hooks/useUnloadGuard';
-import { useSplitGraph, useWideLayout } from '@/hooks/useWideLayout';
+import { useWideLayout } from '@/hooks/useWideLayout';
 import { useBuildId, useBuildVariant, usePreviewSurfaces } from '@/lib/build-variant';
 import { disclaimerStore } from '@/lib/disclaimer';
 import { agreeToFirstRun, firstRunDialogUp, previewNoticeStore } from '@/lib/previewNotice';
@@ -67,23 +67,29 @@ import { WizardDialog } from '@/views/service/WizardDialog';
 import { SessionsView, SessionsViz } from '@/views/sessions/SessionsView';
 import { useFailureNotes, useSessions } from '@/views/sessions/useSessions';
 
-/**
- * Only where the viewport is narrow AND short: `SPLIT` from hooks/useWideLayout.ts, spelled out
- * because Tailwind generates only the class names it can read in the source. Keep the query
- * identical in both places: the hook decides whether GRAPH can be the pane that is up, these decide
- * what DASH and GRAPH hold, and a viewport that matched one and not the other would land on a pane
- * with nothing in it. It is the one condition in which the picture and the control panel cannot
- * share DASH (the note on the footer has the budget).
- */
-const SPLIT_ONLY_HIDE = '[@media(max-width:899px)_and_(max-height:560px)]:hidden';
-const SPLIT_ONLY_SHOW = 'hidden [@media(max-width:899px)_and_(max-height:560px)]:flex';
-const SPLIT_ONLY_GROW = '[@media(max-width:899px)_and_(max-height:560px)]:flex-1';
-
-/** Below 900, the pane that is not up: still laid out, neither seen nor touched. From 900 both are up. */
+/** Below 900, the window that is not up: still laid out, neither seen nor touched. From 900 all are up. */
 const NARROW_HIDDEN = 'invisible pointer-events-none min-[900px]:visible min-[900px]:pointer-events-auto';
 
-/** The panes below 900, in the order the footer lists them. GRAPH only where SPLIT gives it one. */
-type NarrowPane = 'list' | 'dash' | 'graph';
+/**
+ * The three windows (tsunagi-m-design §5.12; the README has what each tab puts in each): LIST, the
+ * tab's rows, where things are chosen; VISU, the tab's picture; DASH, the status row, the notice,
+ * the hub and the sub-actions — the next step.
+ *
+ * From 900 all three are up: LIST on the left, VISU over DASH on the right. Below 900 DASH stays up,
+ * and the footer picks which of LIST and VISU shares the screen with it: beside it, at φ, when the
+ * screen lies on its side (the head unit, a phone held landscape), above it when the screen stands.
+ *
+ * Spelled out because Tailwind generates only the class names it can read in the source. The two
+ * orientations are written as two queries rather than a base and an override, so no rule depends
+ * on the order Tailwind emits its variants in.
+ */
+const NARROW_GRID =
+    'grid-cols-1 grid-rows-[minmax(0,1fr)_auto] [@media(max-width:899px)_and_(orientation:landscape)]:grid-cols-[minmax(0,61.8fr)_minmax(0,38.2fr)] [@media(max-width:899px)_and_(orientation:landscape)]:grid-rows-1';
+const NARROW_DASH =
+    'max-[900px]:h-auto max-[900px]:bg-slate-900/20 border-slate-900 [@media(max-width:899px)_and_(orientation:portrait)]:[grid-area:2/1] [@media(max-width:899px)_and_(orientation:portrait)]:border-t [@media(max-width:899px)_and_(orientation:landscape)]:[grid-area:1/2] [@media(max-width:899px)_and_(orientation:landscape)]:border-l';
+
+/** The window the footer puts beside DASH below 900, in the order the footer lists them. */
+type NarrowPane = 'list' | 'visu';
 
 /**
  * The shell.
@@ -178,19 +184,13 @@ export default function Home() {
     const [tab, setTab] = useState<Tab>('diagnosis');
     const [ecuId, setEcuId] = useState('mss54');
 
-    // Which pane is up below 900px, where only one fits; the footer switches it. DASH first: it
-    // holds the hub, and the hub is always the next step — CONNECT on a fresh start, while LIST has
-    // nothing to show until something has been read.
-    const [pane, setPane] = useState<NarrowPane>('dash');
+    // Which window shares the screen with DASH below 900; the footer switches it. LIST first: it is
+    // the tab's own rows, and DASH beside it already holds the next step. Not reset when the tab
+    // changes — both windows belong to the tab, so the one chosen shows the new tab too.
+    const [pane, setPane] = useState<NarrowPane>('list');
     const wide = useWideLayout();
-    const split = useSplitGraph();
-    // GRAPH exists only in SPLIT. Rotated out of it, a pane that pointed there lands on DASH —
-    // derived rather than reset, so rotating back returns to GRAPH, and no render shows a pane that
-    // is not there (tsunagi-m-mobile §4).
-    const shownPane: NarrowPane = pane === 'graph' && !split ? 'dash' : pane;
-    // Where the picture is on screen: always in the wide layout; below 900 in DASH, or in GRAPH
-    // where SPLIT gives the panel all of DASH.
-    const pictureUp = wide || shownPane === (split ? 'graph' : 'dash');
+    // Where the picture is on screen: always from 900; below it, while VISU is up.
+    const pictureUp = wide || pane === 'visu';
 
     // What this build may show. Production renders the five instrument tabs and nothing that
     // stores or sends; the preview adds SESSIONS (lib/features.ts, and its pinned test).
@@ -690,10 +690,11 @@ export default function Home() {
                 onReauth={canReauth ? startReauth : null}
             />
 
-            {/* Below 900 one grid cell holds both panes; from 900 they are flex siblings, as
-                they always were. `grid-cols-1` is minmax(0,1fr): an implicit column is `auto`,
-                and the widest thing in either pane would size it. */}
-            <main className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden min-[900px]:flex min-[900px]:flex-row">
+            {/* Below 900 a grid: LIST and VISU share one cell, DASH has the other (NARROW_GRID —
+                beside it on its side, below it standing). From 900 the columns are flex siblings,
+                as they always were. The columns are minmax(0,…): an implicit `auto` track would be
+                sized by the widest thing in either window. */}
+            <main className={`grid min-h-0 flex-1 overflow-hidden ${NARROW_GRID} min-[900px]:flex min-[900px]:flex-row`}>
                 {/* Both columns carry a faint fill. Left at /40, right at /20 over
                     the true-black base: without them the split is a single
                     #0A0A0D hairline on #000000, which measures as a rule and
@@ -707,7 +708,7 @@ export default function Home() {
                     to dismiss the log fired the hub instead, dropping the link. */}
                 <section
                     id="narrow-list"
-                    className={`relative flex min-h-0 flex-col border-slate-900 bg-slate-950/40 [grid-area:1/1] min-[900px]:h-full min-[900px]:w-[61.8%] min-[900px]:border-r min-[900px]:[grid-area:auto] ${shownPane === 'list' ? '' : NARROW_HIDDEN}`}
+                    className={`relative flex min-h-0 flex-col border-slate-900 bg-slate-950/40 [grid-area:1/1] min-[900px]:h-full min-[900px]:w-[61.8%] min-[900px]:border-r min-[900px]:[grid-area:auto] ${pane === 'list' ? '' : NARROW_HIDDEN}`}
                 >
                     <TabBar tab={tab} enabled={tabs} onChange={changeTab}>
                         <LogPopover
@@ -719,7 +720,9 @@ export default function Home() {
                     <Overlaid active={tab} panes={panes} kind="pane" />
                 </section>
 
-                {/* DASH below 900, the right column from 900.
+                {/* The right column from 900: VISU over DASH. Below 900 it is
+                    not a box (`contents`): VISU joins LIST's cell and DASH
+                    takes its own, so the grid on <main> places both.
 
                     It SCROLLS rather than clips. Below its bar it holds two
                     floors, the picture's 140 and the panel's 220, and a short
@@ -728,19 +731,16 @@ export default function Home() {
                     difference off the bottom without a word — the sub-action
                     row with it, out of reach of wheel and finger. Where the
                     floors fit, the declared split fills the column exactly and
-                    nothing scrolls. (Below 900 DASH has the screen to itself
-                    and fits; the footer's note has the numbers.)
+                    nothing scrolls. (Below 900 DASH fits in its own cell; the
+                    footer's note has the numbers.)
 
-                    The blur is the wide layout's only. Below 900 this pane is
-                    the whole screen over a black nothing, which is where a
+                    The blur is the wide layout's only. Below 900 nothing sits
+                    behind these windows but black, which is where a
                     backdrop-filter costs the most and shows the least
                     (tsunagi-m-mobile §16.5). */}
-                <aside
-                    id="narrow-dash"
-                    className={`relative z-20 flex min-h-0 flex-col overflow-y-auto overflow-x-hidden bg-slate-900/20 [grid-area:1/1] min-[900px]:w-[38.2%] min-[900px]:flex-none min-[900px]:backdrop-blur-sm min-[900px]:[grid-area:auto] ${shownPane === 'list' ? NARROW_HIDDEN : ''}`}
-                >
+                <aside className="relative z-20 flex min-h-0 flex-col overflow-y-auto overflow-x-hidden bg-slate-900/20 min-[900px]:w-[38.2%] min-[900px]:flex-none min-[900px]:backdrop-blur-sm max-[900px]:contents">
                     {/* Wide only. It lines up with the tab bar across the split, and below 900
-                        there is no split to line up across — the footer already names the pane. */}
+                        there is no split to line up across — the footer already names the window. */}
                     <div className={`${BAR} max-[900px]:hidden`}>
                         <span className={`truncate ${LABEL} text-slate-500`}>
                             {t.pane_visualization}
@@ -765,17 +765,21 @@ export default function Home() {
                         in it is reserved), so on a viewport too short for 38.2%
                         to hold it, it stops shrinking rather than scrolling the
                         hub off the bottom. */}
-                    <div className="flex min-h-0 flex-1 flex-col">
-                        {/* In SPLIT the two cannot share DASH, so they take a pane
-                            each: the picture is GRAPH, and the panel grows into all
-                            of DASH, its slack going to the hub's band. Everywhere
-                            else they stack, as they always have. */}
-                        <div className={`relative min-h-[140px] flex-1 overflow-hidden bg-gradient-to-b from-slate-900/10 to-transparent p-4 ${shownPane === 'graph' ? '' : SPLIT_ONLY_HIDE}`}>
+                    <div className="flex min-h-0 flex-1 flex-col max-[900px]:contents">
+                        {/* VISU. Below 900 it overlays LIST in the cell beside DASH, with LIST's
+                            fill, so the two read as one window the footer turns over. */}
+                        <div
+                            id="narrow-visu"
+                            className={`relative min-h-[140px] flex-1 overflow-hidden bg-gradient-to-b from-slate-900/10 to-transparent p-4 max-[900px]:min-h-0 max-[900px]:bg-slate-950/40 max-[900px]:[grid-area:1/1] ${pane === 'visu' ? '' : NARROW_HIDDEN}`}
+                        >
                             <Overlaid active={tab} panes={vizzes} kind="viz" />
                         </div>
 
+                        {/* DASH. Below 900 it is always up: its natural height under LIST
+                            standing, the cell's whole height beside it on its side, the slack
+                            going to the hub's band. */}
                         <ControlPanel
-                            className={shownPane === 'graph' ? SPLIT_ONLY_HIDE : SPLIT_ONLY_GROW}
+                            className={NARROW_DASH}
                             module={
                                 <ModuleRow
                                     index={ecuIndex}
@@ -858,62 +862,46 @@ export default function Home() {
                 </aside>
             </main>
 
-            {/* The footer, below 900 (tsunagi-m-mobile §3, §4, §7, §8): the pane switch on the
-                left, the M button at the centre, the triggers of this app's panels on the right.
-                The family's form, copied from TUNER rather than re-derived (tsunagi-m-mobile
-                references/mobile-chrome.md §2, §3).
+            {/* The footer, below 900 (tsunagi-m-mobile §3, §4, §7, §8): the window switch on
+                the left, the M button at the centre, the triggers of this app's panels on the
+                right. The family's form, copied from TUNER rather than re-derived
+                (tsunagi-m-mobile references/mobile-chrome.md §2, §3).
                 ────────────────────────────────────────────────────────
-                Stacked, the two columns were each too small to use: at
-                851x393 the list had 88px and the right column 213.2, less
-                than the control panel alone, and CONNECT was below the fold.
-                So the panes overlay one cell and this row picks the one that
-                is up. LIST is the tab's own view, DASH the hub, the panel and
-                the picture; GRAPH exists only in SPLIT, where the picture's
-                140 cannot sit on the panel's 220. Below 900 the tab bar is
-                not drawn (the views are the M menu's), so LIST has the pane's
-                whole height:
+                DASH is not in it: below 900 DASH is always up, so the next step — CONNECT, READ,
+                OPEN — is never a tap away from the rows it acts on. The switch turns over the
+                window beside it, LIST or VISU. The tab bar is not drawn below 900 (the views are
+                the M menu's), so that window has its cell's whole height:
 
-                  851x393  393 − 48 − 53 = 292   LIST 292   DASH panel 292   GRAPH 292
-                  683x400  400 − 48 − 53 = 299   LIST 299   DASH panel 299   GRAPH 299
-                  360x800  800 − 48 − 53 = 699   LIST 699   DASH picture 432 + panel 267
+                  683x400  400 − 48 − 53 = 299   LIST|VISU 422 × 299   DASH 261 × 299
+                  851x393  393 − 48 − 53 = 292   LIST|VISU 526 × 292   DASH 325 × 292
+                  360x800  800 − 48 − 53 = 699   LIST|VISU 360 × 432   DASH 360 × 267
 
-                Outside both panes, because each pane hides the other. 52px and
-                a rule on top; no blur, because nothing sits behind this row
+                52px and a rule on top; no blur, because nothing sits behind this row
                 (tsunagi-m-mobile §16.5). */}
             <div className="z-30 flex-none border-t border-slate-900 bg-slate-950/80 min-[900px]:hidden">
                 <div className="relative flex h-[52px] items-center px-4">
                     {/* Dressed as the tab row — same label, same 2px indicator — with the
                         indicator on TOP, on the button itself: the bottom edge is the screen's.
-                        Every pane here always has something to show, so none is ever disabled
-                        today; the slate-700 is the family's, for the pane that one day does not.
 
                         The `after:` box is the hit area. With the indicator on the button, the
-                        button is as wide as its word — LIST 26px, DASH 32 — so it is widened by an
-                        invisible box 12px either side rather than by padding, which would widen
-                        the indicator too. 12 is half the 24px gap, so neighbours meet and do not
-                        overlap. Hit-tested along the row: LIST 49.5, DASH 56, GRAPH 65.5 wide, as
-                        the row had before the indicator moved. */}
+                        button is as wide as its word, so it is widened by an invisible box 12px
+                        either side rather than by padding, which would widen the indicator too.
+                        12 is half the 24px gap, so neighbours meet and do not overlap. */}
                     <div className="flex h-full shrink-0 space-x-6">
                         {(
                             [
-                                ['list', t.pane_list, true, ''],
-                                ['dash', t.pane_dash, true, ''],
-                                ['graph', t.pane_graph, true, SPLIT_ONLY_SHOW],
+                                ['list', t.pane_list, 'narrow-list'],
+                                ['visu', t.pane_visu, 'narrow-visu'],
                             ] as const
-                        ).map(([id, label, enabled, only]) => (
+                        ).map(([id, label, controls]) => (
                             <button
                                 key={id}
                                 type="button"
-                                disabled={!enabled}
-                                aria-pressed={shownPane === id}
-                                aria-controls={id === 'list' ? 'narrow-list' : 'narrow-dash'}
+                                aria-pressed={pane === id}
+                                aria-controls={controls}
                                 onClick={() => setPane(id)}
-                                className={`relative h-full ${only || 'flex'} shrink-0 items-center whitespace-nowrap border-t-2 after:absolute after:-inset-x-3 after:inset-y-0 ${LABEL} transition-colors ${
-                                    shownPane === id
-                                        ? 'border-blue-400 text-blue-400'
-                                        : enabled
-                                          ? 'border-transparent text-slate-500 hover:text-slate-300'
-                                          : 'cursor-default border-transparent text-slate-700'
+                                className={`relative flex h-full shrink-0 items-center whitespace-nowrap border-t-2 after:absolute after:-inset-x-3 after:inset-y-0 ${LABEL} transition-colors ${
+                                    pane === id ? 'border-blue-400 text-blue-400' : 'border-transparent text-slate-500 hover:text-slate-300'
                                 }`}
                             >
                                 {label}
@@ -967,12 +955,10 @@ export default function Home() {
                         enabled: true,
                     }))}
                     activeTab={tab}
-                    // Picking a view is also asking to look at it: change the tab AND bring LIST
-                    // up, or the tab changes behind whichever pane was showing (tsunagi-m-mobile §3).
-                    onSelectTab={(id) => {
-                        changeTab(id);
-                        setPane('list');
-                    }}
+                    // Only the tab: LIST and VISU both belong to it, so whichever is up shows the
+                    // new one, and DASH is up regardless (tsunagi-m-mobile §3's second trap does not
+                    // arise when no window is left showing another tab).
+                    onSelectTab={changeTab}
                     module={moduleName(ecuIndex, ecuId)}
                     ident={link.ident}
                     mode={link.mode}

@@ -60,12 +60,12 @@ export const CHROME = {
     hub_stop: 'Stop',
     hub_recording: 'Recording',
     pane_visualization: 'VISUALIZATION & CONTROLS',
-    // The panes below 900px, one at a time, switched from the footer. DASH and GRAPH are TUNER's
-    // and SMG2's words for the same two panes. The third is LIST, not their MAP — this app has no
-    // map — and not VIEW, which is already the SESSIONS verb for opening a saved session.
+    // The three windows' names, the same in every M tool (tsunagi-m-design): LIST, VISU, DASH.
+    // Below 900px DASH is always up and the footer turns over the other two. VISU, not GRAPH: the
+    // picture is a graph on one tab, a count on another, a module's numbers on a third — and not
+    // VIEW, which is already the SESSIONS verb for opening a saved session.
     pane_list: 'LIST',
-    pane_dash: 'DASH',
-    pane_graph: 'GRAPH',
+    pane_visu: 'VISU',
     // The M menu below 900px (components/MobileMenu.tsx): the button's and the close's names, the
     // bands' titles and the readouts' labels — TUNER's words, and IDENT / LEN as the header has them.
     menu_open: 'Menu',

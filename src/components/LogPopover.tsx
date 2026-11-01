@@ -25,7 +25,7 @@ import { useLang } from '@/lib/i18n';
  * Below 900 there is no tab bar — the views are the M menu's — so the trigger
  * is in the footer's right-hand slot, where the family puts the triggers of an
  * app's panels (tsunagi-m-mobile references/mobile-chrome.md §2), and it is
- * reachable from LIST and DASH alike. Hung off the bottom edge, `top-10` would
+ * reachable from either window below 900. Hung off the bottom edge, `top-10` would
  * open the panel off the screen, so `openUp` pins it to the viewport above the
  * footer instead (tsunagi-m-mobile §13): `bottom-[60px]` is the 53px footer
  * and a gap, and `100svh - 72px` keeps a 12px gap at the top too. 420 is the

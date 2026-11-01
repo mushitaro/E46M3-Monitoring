@@ -133,6 +133,12 @@ export function TabBar({
  *      whole: the mode is the one mark that tells a practice run from a car
  *      (tsunagi-m-ux §16).
  *
+ * Below 900 on its side — the head unit, a phone held landscape — DASH stands
+ * beside LIST at φ, 261px wide at 683x400, and the one line would leave the chip
+ * 9px. There the row is two lines in every state: the module on the first, the
+ * mode and DISCONNECT (or PRACTICE) at the right end of the second. Still one
+ * reserved height, only a taller one; the query is page.tsx's NARROW_GRID.
+ *
  * Before this, nothing yielded. The chip was pushed out past the column's edge
  * and clipped there: at 360x800 it ran to x=413, the row overflowed by 73px
  * disconnected and by 222 connected, and the control panel scrolled 53px
@@ -167,13 +173,15 @@ export function ModuleRow({
 }) {
     const { t } = useLang();
     return (
-        <div className="flex h-[32px] items-center gap-3 px-2">
-            <span className={`flex shrink-0 items-center gap-1.5 ${LABEL} text-slate-500`}>
-                <Cpu className="size-3" />
-                <span className="sr-only min-[1280px]:not-sr-only">{t.module}</span>
-            </span>
-            <EcuSelect index={index} value={all && allowAll ? ALL_MODULES : ecuId} module={ecuId} connected={connected} allowAll={allowAll} onChange={onChangeEcu} />
-            <div className="ml-auto flex shrink-0 items-center gap-3">
+        <div className="flex h-[32px] items-center gap-3 px-2 [@media(max-width:899px)_and_(orientation:landscape)]:h-16 [@media(max-width:899px)_and_(orientation:landscape)]:flex-wrap [@media(max-width:899px)_and_(orientation:landscape)]:gap-y-0">
+            <div className="flex min-w-0 items-center gap-3 [@media(max-width:899px)_and_(orientation:landscape)]:h-8 [@media(max-width:899px)_and_(orientation:landscape)]:basis-full">
+                <span className={`flex shrink-0 items-center gap-1.5 ${LABEL} text-slate-500`}>
+                    <Cpu className="size-3" />
+                    <span className="sr-only min-[1280px]:not-sr-only">{t.module}</span>
+                </span>
+                <EcuSelect index={index} value={all && allowAll ? ALL_MODULES : ecuId} module={ecuId} connected={connected} allowAll={allowAll} onChange={onChangeEcu} />
+            </div>
+            <div className="ml-auto flex shrink-0 items-center gap-3 [@media(max-width:899px)_and_(orientation:landscape)]:h-8">
                 {!connected ? (
                     <PracticeToggle checked={practiceArmed} disabled={false} onChange={onPractice} />
                 ) : (

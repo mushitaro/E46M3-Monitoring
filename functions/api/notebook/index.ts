@@ -1,5 +1,6 @@
 import { json, ownerOf, unauthorized } from '../../_owner-gate/owner';
 import { insertEntries, recordEntries } from '../../_lib/investigation';
+import { clockShift, shiftEntry } from '../../_lib/deviceClock';
 import { wakeDesk, wakeWorthy } from '../../_lib/wake';
 import { type SyncContext, isRowId } from '../../_lib/sync';
 import { addProblem, entryProblem, mergeEntries, type NotebookEntry } from '../../../src/lib/notebook/rules';
@@ -28,7 +29,8 @@ export const onRequestGet = async (ctx: SyncContext): Promise<Response> => {
 };
 
 /**
- * POST /api/notebook — `{ entries }`, from one record or several. Each is stored or refused on its
+ * POST /api/notebook — `{ entries, clientNow }`, from one record or several. A device whose clock is
+ * more than a day off has its times put right first (_lib/deviceClock). Each is stored or refused on its
  * own, and a refusal says why: a rule refuses the same entry every time, so it must not hold back
  * the ones behind it.
  */
@@ -36,9 +38,9 @@ export const onRequestPost = async (ctx: SyncContext): Promise<Response> => {
     const owner = ownerOf(ctx.data);
     if (!owner) return unauthorized();
 
-    let body: { entries?: unknown };
+    let body: { entries?: unknown; clientNow?: unknown };
     try {
-        body = (await ctx.request.json()) as { entries?: unknown };
+        body = (await ctx.request.json()) as { entries?: unknown; clientNow?: unknown };
     } catch {
         return json({ error: 'Body is not JSON.' }, 400);
     }
@@ -46,9 +48,11 @@ export const onRequestPost = async (ctx: SyncContext): Promise<Response> => {
         return json({ error: `entries must be 1-${MAX_BATCH} entries.` }, 400);
     }
 
+    const now = Date.now();
+    const shift = clockShift(body.clientNow, now);
     const refused: { id: unknown; reason: string }[] = [];
     const byRecord = new Map<string, NotebookEntry[]>();
-    for (const e of body.entries as NotebookEntry[]) {
+    for (const e of (body.entries as NotebookEntry[]).map((x) => shiftEntry(x, shift))) {
         const record = (e as Partial<NotebookEntry>)?.sessionId;
         if (typeof record !== 'string' || !isRowId(record)) {
             refused.push({ id: (e as Partial<NotebookEntry>)?.id, reason: 'sessionId must be a record id' });
@@ -58,7 +62,6 @@ export const onRequestPost = async (ctx: SyncContext): Promise<Response> => {
     }
 
     let stored = 0;
-    const now = Date.now();
     for (const [record, batch] of byRecord) {
         const existing = await recordEntries(ctx.env.RUNS_DB, owner.id, record);
         // The record as it will stand, so a mandate sent in the same batch delegates what follows it.

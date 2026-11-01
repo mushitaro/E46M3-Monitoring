@@ -12,8 +12,14 @@ describe('whether the car is standing still', () => {
     });
 
     it('is moving when either source reads above zero — a disagreement reads as the unsafe side', () => {
-        expect(motionOf(state(0, 0.0625), at)).toBe('moving');
+        expect(motionOf(state(0, 1), at)).toBe('moving');
+        expect(motionOf(state(0.5, 0), at)).toBe('moving');
+        expect(motionOf(state(null, 0.0625), at)).toBe('moving');
         expect(motionOf(state(3, 0), at)).toBe('moving');
+    });
+
+    it('reads a CAN speed under 1 km/h as standing still when the direct input says 0 (recorded: 0.5625 at standstill)', () => {
+        expect(motionOf(state(0, 0.5625), at)).toBe('parked');
     });
 
     it('is unknown with no reading, no speed in it, or a stale one — never parked by default', () => {

@@ -31,6 +31,13 @@ export interface VehicleState {
 export const VEHICLE_STATE_MAX_AGE_MS = 5000;
 
 /**
+ * The DSC's CAN speed (`v_asc`, 1/16 km/h steps) rests a little above zero on a car that is
+ * standing: a measured stationary read answered 0.5625 km/h while the DME's own `v` said 0.
+ * Under this the CAN figure is counted as zero. The DME's `v` gets no such allowance.
+ */
+export const CAN_SPEED_STANDSTILL_KMH = 1;
+
+/**
  * Parked means BOTH speed sources that answered say zero, and at least one answered.
  *
  * Either one above zero is moving: on a car whose wheel-speed input and CAN speed disagree, the
@@ -38,9 +45,11 @@ export const VEHICLE_STATE_MAX_AGE_MS = 5000;
  */
 export function motionOf(s: VehicleState | null, now: number): Motion {
     if (!s || now - s.at > VEHICLE_STATE_MAX_AGE_MS || now < s.at) return 'unknown';
-    const speeds = [s.speedKmh, s.speedCanKmh].filter((v): v is number => v !== null && Number.isFinite(v));
-    if (speeds.length === 0) return 'unknown';
-    return speeds.every((v) => v === 0) ? 'parked' : 'moving';
+    const wheel = s.speedKmh !== null && Number.isFinite(s.speedKmh) ? s.speedKmh : null;
+    const can = s.speedCanKmh !== null && Number.isFinite(s.speedCanKmh) ? s.speedCanKmh : null;
+    if (wheel === null && can === null) return 'unknown';
+    const still = (wheel === null || wheel === 0) && (can === null || (can >= 0 && can < CAN_SPEED_STANDSTILL_KMH));
+    return still ? 'parked' : 'moving';
 }
 
 /** The decoded values of one or more live blocks, keyed `selection:symbol`. */

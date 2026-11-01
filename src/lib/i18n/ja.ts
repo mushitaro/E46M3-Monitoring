@@ -222,6 +222,23 @@ export const ja: Localised = {
         `${b} バイト — この応答のフィールド配置はまだ判明していません。EdiabasLib が解釈していた部分で、推測せず生値のまま表示しています。`,
     faults_raw_note: (n) =>
         `このモジュールの故障メモリの読み方（バイトの配置）はまだ確かめていません。SGBD 自身の FS_LESEN が送るフレーム ${n} 本を送り、返ったバイトをそのまま表示しています。`,
+    scan_title: '全モジュール',
+    scan_note: (time) => `${time} に読取`,
+    scan_info:
+        '各モジュールに、そのモジュール自身の SGBD の故障読取を、アドレスを一つずつ送ります。送るのは DME が停車を示している間だけで、数アドレスごとに測り直します。同じアドレスを複数の SGBD が使うときは、全員の表にあるフレームだけを送ります。故障の中身を読めるのはエンジン（MSS54）だけで、ほかは返ったバイトのままです。応答なしは、その装備が無いか、眠っているか、この線から届かないかです。',
+    scan_outcome: {
+        faults: (n) => `故障 ${n}`,
+        clean: '故障なし',
+        undecoded: '未解読',
+        silent: '応答なし',
+        rejected: '拒否',
+        refused: '送らない',
+        skipped: '未実施',
+    },
+    scan_shared: 'どれが付いているかは、MODULE で選んで開きます。',
+    scan_progress: (d, n) => `読取中 ${d} / ${n}`,
+    awaiting_scan: '全モジュール読取待機中…',
+    viz_scanAnswered: '応答したモジュール',
     faults_notEstablished:
         'このモジュールの SGBD には、識別と故障読取の短いフレームがありません。送ってよいと言えるものが無いので、読取はしません。',
     datalog_noDecoder:

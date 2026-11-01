@@ -97,6 +97,16 @@ describe('each tab supplies its own verb', () => {
         expect(readFaults).toHaveBeenCalledOnce();
     });
 
+    it('DIAGNOSIS with ALL MODULES reads every module, and counts the scan on the notice line', () => {
+        const readFaults = vi.fn();
+        const run = vi.fn();
+        const cfg = viewHubFor(state({ tab: 'diagnosis', readFaults, faultsAvailable: false, scan: { run, line: 'Scanning 3 / 37' } }));
+        cfg?.onClick?.();
+        expect(cfg).toMatchObject({ label: 'READ', tone: 'ready', notice: 'Scanning 3 / 37' });
+        expect(run).toHaveBeenCalledOnce();
+        expect(readFaults).not.toHaveBeenCalled();
+    });
+
     it('DATALOG records, and states the cost before you press it', () => {
         const cfg = viewHubFor(state({ tab: 'datalog' }));
         expect(cfg?.label).toBe('RECORD');

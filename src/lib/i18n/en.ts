@@ -223,6 +223,23 @@ export const en: Localised = {
         `${b} bytes — the field layout of this response is not known yet. EdiabasLib used to decode it; shown raw rather than guessed at.`,
     faults_raw_note: (n) =>
         `How this module lays out its fault memory has not been established. The ${n} frame(s) its own FS_LESEN sends were sent, and the bytes are shown as they came back.`,
+    scan_title: 'All modules',
+    scan_note: (time) => `Read at ${time}`,
+    scan_info:
+        "Each module is sent its own SGBD's fault read, one address after another, only while the DME shows the car standing still, measured again every few addresses. Where several SGBDs use one address, only the frames all of them carry are sent. Only the engine (MSS54) can be decoded; every other answer is shown as the bytes that came back. No answer means the equipment is not fitted, is asleep, or is not on this line.",
+    scan_outcome: {
+        faults: (n) => `${n} fault${n === 1 ? '' : 's'}`,
+        clean: 'No faults',
+        undecoded: 'Undecoded',
+        silent: 'No answer',
+        rejected: 'Refused',
+        refused: 'Not sent',
+        skipped: 'Not reached',
+    },
+    scan_shared: 'Which one is fitted is chosen on MODULE, then opened.',
+    scan_progress: (d, n) => `Scanning ${d} / ${n}`,
+    awaiting_scan: 'AWAITING SCAN…',
+    viz_scanAnswered: 'modules answered',
     faults_notEstablished:
         'This module’s SGBD carries no short identity or fault-read frame, so there is nothing the app can say is safe to send. Nothing is read.',
     datalog_noDecoder:

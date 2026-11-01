@@ -28,6 +28,10 @@ export const CHROME = {
     tab_log: 'COMMS LOG',
     // Sub-action row, under the hub. Same vocabulary as the hub itself.
     disconnect: 'Disconnect',
+    // The module select's first choice on DIAGNOSIS: every module's fault memory, one after another.
+    module_all: 'ALL MODULES',
+    // The sub-action under the scan: put the chosen module on the screen.
+    open_module: 'Open',
     practice: 'PRACTICE',
     probe: 'PROBE',
     exportCsv: 'Export CSV',

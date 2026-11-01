@@ -4,6 +4,8 @@ import { Cpu } from 'lucide-react';
 import { LABEL, TextButton } from '@/components/ui';
 import type { LinkMode, LinkState } from '@/hooks/useDs2Link';
 import type { EcuIndex } from '@/lib/ecuCatalog';
+import { CHROME } from '@/lib/i18n/chrome';
+import { ALL_MODULES } from '@/lib/probe/scan';
 import { useLang } from '@/lib/i18n';
 import { TAB_ORDER, type Tab } from '@/lib/tabs';
 
@@ -146,6 +148,8 @@ export function ModuleRow({
     onPractice,
     onDisconnect,
     onChangeEcu,
+    allowAll = false,
+    all = false,
 }: {
     index: EcuIndex | null;
     ecuId: string;
@@ -156,6 +160,10 @@ export function ModuleRow({
     onPractice: (v: boolean) => void;
     onDisconnect: () => void;
     onChangeEcu: (id: string) => void;
+    /** DIAGNOSIS offers ALL MODULES (`ALL_MODULES`) above the modules; the other tabs need one. */
+    allowAll?: boolean;
+    /** ALL MODULES is chosen. Shown only where it is offered. */
+    all?: boolean;
 }) {
     const { t } = useLang();
     return (
@@ -164,14 +172,7 @@ export function ModuleRow({
                 <Cpu className="size-3" />
                 <span className="sr-only min-[1280px]:not-sr-only">{t.module}</span>
             </span>
-            <EcuSelect
-                index={index}
-                value={ecuId}
-                // The DS2 address is per module, so switching one under an
-                // open link would silently retarget it.
-                disabled={connected}
-                onChange={onChangeEcu}
-            />
+            <EcuSelect index={index} value={all && allowAll ? ALL_MODULES : ecuId} module={ecuId} connected={connected} allowAll={allowAll} onChange={onChangeEcu} />
             <div className="ml-auto flex shrink-0 items-center gap-3">
                 {!connected ? (
                     <PracticeToggle checked={practiceArmed} disabled={false} onChange={onPractice} />
@@ -283,12 +284,18 @@ function PracticeToggle({
 function EcuSelect({
     index,
     value,
-    disabled,
+    module,
+    connected,
+    allowAll,
     onChange,
 }: {
     index: EcuIndex | null;
+    /** What the select shows: a module id, or ALL_MODULES. */
     value: string;
-    disabled: boolean;
+    /** The module the link is for, whatever the select shows. */
+    module: string;
+    connected: boolean;
+    allowAll: boolean;
     onChange: (id: string) => void;
 }) {
     // The fitment hint is on the rows that NEED it — the ones sharing a DS2 address with
@@ -322,17 +329,26 @@ function EcuSelect({
         <div className="flex min-w-0 items-center rounded bg-slate-800 px-2 py-0.5">
             <select
                 value={value}
-                disabled={disabled || !index || index.modules.length === 0}
+                // Connected, the select still moves between ALL MODULES and the module the link was
+                // opened for — the scan reaches every address on the one link — and nowhere else:
+                // the DS2 address is per module, so another module under an open link would
+                // silently retarget it.
+                disabled={!index || index.modules.length === 0 || (connected && !allowAll)}
                 onChange={(e) => onChange(e.target.value)}
                 className="min-w-0 max-w-52 cursor-pointer truncate bg-transparent text-[10px] font-bold text-blue-400 outline-none disabled:cursor-not-allowed disabled:opacity-60"
             >
+                {allowAll && (
+                    <option value={ALL_MODULES} className="bg-slate-900 text-slate-300">
+                        {CHROME.module_all}
+                    </option>
+                )}
                 {(index?.groups ?? []).map((g) => {
                     const rows = (index?.modules ?? []).filter((e) => e.group === g.key);
                     if (rows.length === 0) return null;
                     return (
                         <optgroup key={g.key} label={g.en} className="bg-slate-900">
                             {rows.map((e) => (
-                                <option key={e.id} value={e.id} className="bg-slate-900 text-slate-300">
+                                <option key={e.id} value={e.id} disabled={connected && e.id !== module} className="bg-slate-900 text-slate-300">
                                     {e.name_en || e.name}
                                     {sharesAddress.has(e.address) && index?.fit[e.fit]
                                         ? ` — ${index.fit[e.fit].en}` : ''}

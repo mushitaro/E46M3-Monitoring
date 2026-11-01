@@ -22,6 +22,7 @@ TSUNAGI ///M の計器系サブブランド。DS2 通信は
 | `packages/ds2-core`（共有 DS2 リンク層・4層構造） | ✅ |
 | `packages/ds2-mss54`（213ライブ値・故障メモリ・テレグラム） | ✅ |
 | UI（診断 / データログ / 通信ログ）＋ PRACTICE モード | ✅ |
+| 全モジュールの故障読取（DIAGNOSIS の ALL MODULES。解読は MSS54 だけ、ほかはバイトのまま） | ✅ |
 | Cloudflare 配信一式（PWA / CSP / CI） | ✅ |
 | **実車読取の検証** | ⏳ **車が必要** |
 | SMG II / DSC のライブ値ブロック配置 | ⏳ 車 or ベンチECU が必要 |

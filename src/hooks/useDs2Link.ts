@@ -1094,7 +1094,10 @@ export function useDs2Link(options: {
                     const result = await runScan(targets, {
                         ledger,
                         measure: () => measureMotion(link),
-                        exchange: (address, moduleId, job, f, options) => readFrame(link.to(address), moduleId, job, f.control, f.payload, options),
+                        // PRACTICE answers only the DME and the module on the screen; the rest are silent there by
+                        // design, and the car's two-second wait for each would make a practice scan a minute of nothing.
+                        exchange: (address, moduleId, job, f, options) =>
+                            readFrame(link.to(address), moduleId, job, f.control, f.payload, modeRef.current === 'practice' ? { ...options, timeoutMs: 400 } : options),
                         // The MSS54 alone: its entries are the frame whose argument is 01.
                         decode: (t, frames) => {
                             const i = t.frames.findIndex((f) => f.payload[0] === 0x01);
@@ -1120,6 +1123,20 @@ export function useDs2Link(options: {
                                 }
                             }
                         }
+                    }
+                    // The module the link is for was among them: what the scan read of it is its fault
+                    // read, the same frames DIAGNOSIS sends, so opening it shows them rather than asking again.
+                    const own = result.results.find(
+                        (r) => r.outcome === 'answered' && sessionAddressRef.current !== null && parseInt(r.address, 16) === sessionAddressRef.current && r.modules.includes(targetRef.current.moduleId),
+                    );
+                    if (own && Array.isArray(own.decoded)) {
+                        setRawFaults(null);
+                        setQuickTest(null);
+                        setFaults(own.decoded as ErrorMemoryEntry[]);
+                    } else if (own) {
+                        setFaults(null);
+                        setQuickTest(null);
+                        setRawFaults(own.exchanges.map((x) => ({ request: x.request, response: x.response ?? '', source: 'FS_LESEN (SGBD telegram)' })));
                     }
                     setScan(result);
                     append('info', `Scan ended (${result.end}).`);

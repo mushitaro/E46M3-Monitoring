@@ -11,7 +11,6 @@ import { TUNER_WORKS } from '@/lib/links';
 import type { Ledger } from '@/lib/ledger';
 import type { ModuleProtocol } from '@/lib/moduleProtocol';
 import { addEntries, listAllEntries } from '@/lib/notebook/store';
-import { loadScanTargets } from '@/lib/probe/modules';
 import { listRuns } from '@/lib/probe/runStore';
 import { scanCounts, type ScanRun } from '@/lib/probe/scan';
 import type { RunBlockKey } from '@/lib/runGate';
@@ -80,6 +79,8 @@ export function useMonitoringFacade(input: {
     selectJob: (job: EcuProfile['jobs'][number]) => void;
     /** Another module on the screen, the link opened again for it if it was open (page.tsx). */
     switchModule: (id: string) => Promise<string | null>;
+    /** Every module's fault read, shown on DIAGNOSIS under ALL MODULES (page.tsx). How many addresses, or why not. */
+    startScan: () => Promise<{ addresses: number } | string>;
     /** A newer build is downloaded; it is taken once the link has been down a minute (lib/adoptBuild). */
     updateWaiting: boolean;
     /** Bring the delegated investigations level with the account (hooks/useInvestigationSync). */
@@ -325,16 +326,13 @@ export function useMonitoringFacade(input: {
         },
 
         scan: async () => {
-            if (link.state !== 'connected') return { started: false, reason: `The link is ${link.state}; a scan starts from connected and idle.` };
-            if (!ecuIndex) return { started: false, reason: 'The module index has not loaded yet.' };
-            const targets = await loadScanTargets(ecuIndex);
-            void link.scanAll(targets, () => ledger);
+            const r = await input.startScan();
+            if (typeof r === 'string') return { started: false, reason: r };
             return {
                 started: true,
-                addresses: targets.length,
-                modules: ecuIndex.modules.length,
-                takes: `about ${Math.round(targets.length * 1.2)} s`,
-                then: 'monitoring_status shows how far it has got; monitoring_faults without module gives every module once it ends.',
+                addresses: r.addresses,
+                takes: 'up to about 2 s for each address that does not answer, less for those that do',
+                then: 'monitoring_status shows how far it has got; monitoring_faults without module gives every module once it ends. The screen shows it on DIAGNOSIS under ALL MODULES.',
                 ...(link.mode === 'practice' ? { practice: 'PRACTICE: only the DME and the module on the screen answer; the rest are silent.' } : {}),
             };
         },

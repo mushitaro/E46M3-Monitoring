@@ -84,6 +84,9 @@ export interface ScanDeps {
     onResult?(r: ScanResult): void;
 }
 
+/** The module select's value for every module at once: DIAGNOSIS's scan (components/shell/Chrome). */
+export const ALL_MODULES = 'all';
+
 /** Re-measure the speed after this many addresses: a scan takes a minute, and cars move. */
 export const SCAN_REMEASURE_EVERY = 6;
 /** Transport failures in a row that mean the line, not the modules, is gone. */

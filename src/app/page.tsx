@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, Download, Radar, RotateCcw, Square } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { AlertTriangle, ArrowRight, Download, Radar, RotateCcw, Square } from 'lucide-react';
 import { AppHeader } from '@/components/AppHeader';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { CreditsDialog } from '@/components/CreditsDialog';
@@ -57,6 +57,9 @@ import { ActuatorView } from '@/views/actuator/ActuatorView';
 import { ActuatorViz } from '@/views/actuator/ActuatorViz';
 import { AdaptationView, AdaptationViz } from '@/views/adaptation/AdaptationView';
 import { DiagnosisView, DiagnosisViz } from '@/views/diagnosis/DiagnosisView';
+import { ScanList, ScanViz } from '@/views/diagnosis/ScanView';
+import { loadScanTargets } from '@/lib/probe/modules';
+import { ALL_MODULES } from '@/lib/probe/scan';
 import { DatalogView, DatalogViz } from '@/views/datalog/DatalogView';
 import { useDatalog } from '@/views/datalog/useDatalog';
 import { ServiceView, ServiceViz, procedureForJob } from '@/views/service/ServiceView';
@@ -393,6 +396,54 @@ export default function Home() {
     );
 
     /**
+     * ALL MODULES — DIAGNOSIS's first choice on the module select (operator, 2026-11-01). READ then
+     * reads every module's fault memory, one address at a time (lib/probe/scan); the link stays
+     * open for the module it was opened for, because the scan reaches every address on the one
+     * K-line. The other tabs need one module, so they keep showing it.
+     */
+    const [allModules, setAllModules] = useState(false);
+    const scopeAll = allModules && tab === 'diagnosis';
+    const [scanOpen, setScanOpen] = useState<string | null>(null);
+    const ledgerRef = useRef(ledger);
+    useEffect(() => {
+        ledgerRef.current = ledger;
+    }, [ledger]);
+    const startScan = useCallback(async (): Promise<{ addresses: number } | string> => {
+        if (link.state !== 'connected') return `The link is ${link.state}; a scan starts from connected and idle.`;
+        if (!ecuIndex) return 'The module index has not loaded yet.';
+        const targets = await loadScanTargets(ecuIndex);
+        setAllModules(true);
+        setScanOpen(null);
+        void link.scanAll(targets, () => ledgerRef.current);
+        return { addresses: targets.length };
+    }, [ecuIndex, link]);
+    // The text of the one module the scan decodes, whichever module the link is for.
+    const [mss54Catalog, setMss54Catalog] = useState<EcuProfile | null>(null);
+    useEffect(() => {
+        if (scopeAll && !mss54Catalog) void loadEcuCatalog('mss54').then(setMss54Catalog).catch(() => {});
+    }, [scopeAll, mss54Catalog]);
+    const chooseModule = useCallback(
+        (id: string) => {
+            if (id === ALL_MODULES) return setAllModules(true);
+            setAllModules(false);
+            if (id !== ecuId) changeEcu(id);
+        },
+        [ecuId, changeEcu],
+    );
+    // OPEN under the scan: the chosen row's module on the screen. A shared address has more than one
+    // SGBD and is chosen on the select instead.
+    const scanOpenModule = scopeAll && scanOpen ? (link.scan?.results.find((x) => x.address === scanOpen)?.modules ?? []) : [];
+    const openScanned = useCallback(
+        (id: string) => {
+            setAllModules(false);
+            if (id === ecuId) return;
+            if (link.state === 'connected') void switchModule(id);
+            else changeEcu(id);
+        },
+        [ecuId, link.state, switchModule, changeEcu],
+    );
+
+    /**
      * RELOAD — the header's last link from 900 up, the M menu's strip below it.
      *
      * The app needs its own: pull-to-refresh is off (globals.css), and installed it has no browser
@@ -516,7 +567,7 @@ export default function Home() {
     // until switched on on this device). The facade is what the tools may reach — the screen's own
     // controls, never a run.
     const buildId = useBuildId();
-    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, tab, changeTab, selectJob, switchModule, updateWaiting, syncInvestigations, defaultDevice: t.assistant_defaultDevice });
+    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, tab, changeTab, selectJob, switchModule, startScan, updateWaiting, syncInvestigations, defaultDevice: t.assistant_defaultDevice });
     const assistant = useAssistantBridge({
         allowed: preview && noticeAcknowledged,
         facade,
@@ -546,10 +597,15 @@ export default function Home() {
         catalogError,
         openProcedure: procedure ? () => setWizardOpen(true) : undefined,
         probe: probe.progress ? { progress: probe.progress, stop: probe.stop } : undefined,
+        scan: scopeAll ? { run: () => void startScan(), progress: link.scanProgress } : undefined,
     });
 
     const panes: Record<Tab, React.ReactNode> = {
-        diagnosis: <DiagnosisView ident={link.ident} faults={link.faults} rawFaults={link.rawFaults} catalog={catalog} />,
+        diagnosis: scopeAll ? (
+            <ScanList run={link.scan} progress={link.scanProgress} index={ecuIndex} mss54={mss54Catalog} selected={scanOpen} onSelect={setScanOpen} />
+        ) : (
+            <DiagnosisView ident={link.ident} faults={link.faults} rawFaults={link.rawFaults} catalog={catalog} />
+        ),
         datalog: <DatalogView datalog={datalog} />,
         adaptation: (
             <AdaptationView
@@ -596,7 +652,7 @@ export default function Home() {
     };
 
     const vizzes: Record<Tab, React.ReactNode> = {
-        diagnosis: <DiagnosisViz faults={link.faults} />,
+        diagnosis: scopeAll ? <ScanViz run={link.scan} progress={link.scanProgress} /> : <DiagnosisViz faults={link.faults} />,
         datalog: <DatalogViz datalog={datalog} active={tab === 'datalog' && pictureUp} />,
         adaptation: <AdaptationViz blocks={link.adaptations} />,
         service: (
@@ -730,7 +786,9 @@ export default function Home() {
                                     practiceArmed={practiceArmed}
                                     onPractice={setPracticeArmed}
                                     onDisconnect={disconnect}
-                                    onChangeEcu={changeEcu}
+                                    onChangeEcu={chooseModule}
+                                    allowAll={tab === 'diagnosis'}
+                                    all={allModules}
                                 />
                             }
                             notice={notice}
@@ -750,6 +808,11 @@ export default function Home() {
                                         {t.retry}
                                     </TextButton>
                                 )
+                            )}
+                            {scanOpenModule.length === 1 && link.state !== 'busy' && (
+                                <TextButton onClick={() => openScanned(scanOpenModule[0])} Icon={ArrowRight}>
+                                    {t.open_module}
+                                </TextButton>
                             )}
                             {/* DISCONNECT was here. It is now on the MODULE row —
                                 see the note in Chrome.tsx. */}

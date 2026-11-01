@@ -65,6 +65,11 @@ export interface ViewHubState {
     readFaults: () => void;
     /** The module's own SGBD gives the app an IDENT or a fault-read frame to send it. */
     faultsAvailable: boolean;
+    /**
+     * DIAGNOSIS with ALL MODULES chosen: READ is every module's fault read, one address at a time
+     * (lib/probe/scan), and `line` says how far one in progress has got.
+     */
+    scan?: { run: () => void; line?: string };
     /** A PROBE plan is running on the link. Its STOP and its line, while it does. */
     probe?: { line: string; stop: () => void };
     datalog: {
@@ -120,6 +125,7 @@ export function viewHubFor(s: ViewHubState): HubConfig | null {
 
     switch (s.tab) {
         case 'diagnosis':
+            if (s.scan) return { label: s.t.hub_read, Icon: s.icons.read, tone: 'ready', onClick: s.scan.run, notice: s.scan.line };
             return s.faultsAvailable
                 ? { label: s.t.hub_read, Icon: s.icons.read, tone: 'ready', onClick: s.readFaults }
                 : {

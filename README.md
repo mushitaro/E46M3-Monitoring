@@ -135,18 +135,17 @@ Pages Functions がある。どちらも車には触れない。）前身の `Ol
 
 ## 画面 — 三つの窓
 
-三つの窓でできている。見出しの LIST・VISU・DASH は、M のツールに共通する開発での呼び名
-（`tsunagi-m-design` §5.12）。
+三つの窓でできている。開発での呼び名は M のツール共通の MAIN・MULTI・HUB（`tsunagi-m-design` §5.12）。
+この画面の名札は、MAIN が LIST、MULTI が VISU。
 
-- **LIST** — タブの中身。読んで、選ぶ。
-- **VISU** — 選んだもの、今の状態の絵。見る。
-- **DASH** — 状態行・通知・ハブ・サブアクション。次の一手を押す。
+- **MAIN（LIST）** — タブの中身。読んで、選ぶ。
+- **MULTI（VISU）** — 選んだもの、今の状態の絵。見る。
+- **HUB** — 状態行・通知・ハブのリング・サブアクション。次の一手を押す。
 
-広い画面では三つとも出る（左に LIST、右に VISU と DASH）。900px 未満では DASH が常に出て、残りの場所を
-二つの窓がフッタで交代する。フッタの名札は LIST と VISU。ナビ（683×400）と横持ちの電話では DASH は右、
-縦持ちでは下。
+広い画面では三つとも出る（左に MAIN、右に MULTI と HUB）。900px 未満では HUB が常に出て、残りの場所を
+MAIN と MULTI がフッタで交代する。ナビ（683×400）と横持ちの電話では HUB は右、縦持ちでは下。
 
-| タブ | LIST | VISU | DASH のハブ |
+| タブ | MAIN（LIST） | MULTI（VISU） | HUB のリング |
 |---|---|---|---|
 | DIAGNOSIS | IDENT と故障コード。ALL MODULES ではアドレスごとの答え | 故障の数。ALL MODULES では答えたモジュールの数 | READ（サブに CLEAR FAULTS・OPEN） |
 | DATALOG | 記録する値・周期・ファイルの中身 | 記録のトレース | RECORD / STOP（サブに CSV） |

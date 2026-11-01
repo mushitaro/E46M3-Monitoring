@@ -71,12 +71,13 @@ import { useFailureNotes, useSessions } from '@/views/sessions/useSessions';
 const NARROW_HIDDEN = 'invisible pointer-events-none min-[900px]:visible min-[900px]:pointer-events-auto';
 
 /**
- * The three windows (tsunagi-m-design §5.12; the README has what each tab puts in each): LIST, the
- * tab's rows, where things are chosen; VISU, the tab's picture; DASH, the status row, the notice,
- * the hub and the sub-actions — the next step.
+ * The three windows, by their development names (tsunagi-m-design §5.12; the README has what each
+ * tab puts in each): MAIN, the tab's rows, where things are chosen, labelled LIST here; MULTI, the
+ * tab's picture, labelled VISU; HUB, the status row, the notice, the hub ring and the sub-actions —
+ * the next step.
  *
- * From 900 all three are up: LIST on the left, VISU over DASH on the right. Below 900 DASH stays up,
- * and the footer picks which of LIST and VISU shares the screen with it: beside it, at φ, when the
+ * From 900 all three are up: MAIN on the left, MULTI over HUB on the right. Below 900 HUB stays up,
+ * and the footer picks which of MAIN and MULTI shares the screen with it: beside it, at φ, when the
  * screen lies on its side (the head unit, a phone held landscape), above it when the screen stands.
  *
  * Spelled out because Tailwind generates only the class names it can read in the source. The two
@@ -85,10 +86,10 @@ const NARROW_HIDDEN = 'invisible pointer-events-none min-[900px]:visible min-[90
  */
 const NARROW_GRID =
     'grid-cols-1 grid-rows-[minmax(0,1fr)_auto] [@media(max-width:899px)_and_(orientation:landscape)]:grid-cols-[minmax(0,61.8fr)_minmax(0,38.2fr)] [@media(max-width:899px)_and_(orientation:landscape)]:grid-rows-1';
-const NARROW_DASH =
+const NARROW_HUB =
     'max-[900px]:h-auto max-[900px]:bg-slate-900/20 border-slate-900 [@media(max-width:899px)_and_(orientation:portrait)]:[grid-area:2/1] [@media(max-width:899px)_and_(orientation:portrait)]:border-t [@media(max-width:899px)_and_(orientation:landscape)]:[grid-area:1/2] [@media(max-width:899px)_and_(orientation:landscape)]:border-l';
 
-/** The window the footer puts beside DASH below 900, in the order the footer lists them. */
+/** The window the footer puts beside HUB below 900 (ids after its labels), in the footer's order. */
 type NarrowPane = 'list' | 'visu';
 
 /**
@@ -130,14 +131,13 @@ type NarrowPane = 'list' | 'visu';
  * every time the link state moves reads as untrustworthy on a tool that
  * commands a car.
  *
- * ## Below 900px: one pane at a time
+ * ## Below 900px: HUB always, MAIN and MULTI in turn
  *
- * The two columns do not stack on a phone. They overlay one grid cell and a
- * footer picks the one that is up — LIST, DASH, and GRAPH where the viewport is
- * also short — as in TUNER and SMG2 (tsunagi-m-mobile §3, §4, §7). Stacked, each
- * got too little to use: at 851x393 the list had 88px and the right column
- * 213.2, less than the control panel alone, so CONNECT sat below the fold. The
- * note on the footer has the budget.
+ * The two columns do not stack on a phone: at 851x393 the list had 88px and the
+ * right column 213.2, less than the control panel alone, so CONNECT sat below
+ * the fold. MAIN and MULTI overlay one grid cell and the footer picks the one
+ * that is up; HUB has a cell of its own and is always on screen (operator,
+ * 2026-11-01; tsunagi-m-mobile §3). The note on the footer has the budget.
  *
  * The footer is the family's (tsunagi-m-mobile references/mobile-chrome.md),
  * copied from TUNER: the pane switch on the left, the M button at the centre
@@ -184,8 +184,8 @@ export default function Home() {
     const [tab, setTab] = useState<Tab>('diagnosis');
     const [ecuId, setEcuId] = useState('mss54');
 
-    // Which window shares the screen with DASH below 900; the footer switches it. LIST first: it is
-    // the tab's own rows, and DASH beside it already holds the next step. Not reset when the tab
+    // Which window shares the screen with HUB below 900; the footer switches it. MAIN first: it is
+    // the tab's own rows, and HUB beside it already holds the next step. Not reset when the tab
     // changes — both windows belong to the tab, so the one chosen shows the new tab too.
     const [pane, setPane] = useState<NarrowPane>('list');
     const wide = useWideLayout();
@@ -690,7 +690,7 @@ export default function Home() {
                 onReauth={canReauth ? startReauth : null}
             />
 
-            {/* Below 900 a grid: LIST and VISU share one cell, DASH has the other (NARROW_GRID —
+            {/* Below 900 a grid: MAIN and MULTI share one cell, HUB has the other (NARROW_GRID —
                 beside it on its side, below it standing). From 900 the columns are flex siblings,
                 as they always were. The columns are minmax(0,…): an implicit `auto` track would be
                 sized by the widest thing in either window. */}
@@ -720,8 +720,8 @@ export default function Home() {
                     <Overlaid active={tab} panes={panes} kind="pane" />
                 </section>
 
-                {/* The right column from 900: VISU over DASH. Below 900 it is
-                    not a box (`contents`): VISU joins LIST's cell and DASH
+                {/* The right column from 900: MULTI over HUB. Below 900 it is
+                    not a box (`contents`): MULTI joins MAIN's cell and HUB
                     takes its own, so the grid on <main> places both.
 
                     It SCROLLS rather than clips. Below its bar it holds two
@@ -731,7 +731,7 @@ export default function Home() {
                     difference off the bottom without a word — the sub-action
                     row with it, out of reach of wheel and finger. Where the
                     floors fit, the declared split fills the column exactly and
-                    nothing scrolls. (Below 900 DASH fits in its own cell; the
+                    nothing scrolls. (Below 900 HUB fits in its own cell; the
                     footer's note has the numbers.)
 
                     The blur is the wide layout's only. Below 900 nothing sits
@@ -766,7 +766,7 @@ export default function Home() {
                         to hold it, it stops shrinking rather than scrolling the
                         hub off the bottom. */}
                     <div className="flex min-h-0 flex-1 flex-col max-[900px]:contents">
-                        {/* VISU. Below 900 it overlays LIST in the cell beside DASH, with LIST's
+                        {/* MULTI. Below 900 it overlays MAIN in the cell beside HUB, with MAIN's
                             fill, so the two read as one window the footer turns over. */}
                         <div
                             id="narrow-visu"
@@ -775,11 +775,11 @@ export default function Home() {
                             <Overlaid active={tab} panes={vizzes} kind="viz" />
                         </div>
 
-                        {/* DASH. Below 900 it is always up: its natural height under LIST
+                        {/* HUB. Below 900 it is always up: its natural height under MAIN
                             standing, the cell's whole height beside it on its side, the slack
                             going to the hub's band. */}
                         <ControlPanel
-                            className={NARROW_DASH}
+                            className={NARROW_HUB}
                             module={
                                 <ModuleRow
                                     index={ecuIndex}
@@ -867,14 +867,14 @@ export default function Home() {
                 right. The family's form, copied from TUNER rather than re-derived
                 (tsunagi-m-mobile references/mobile-chrome.md §2, §3).
                 ────────────────────────────────────────────────────────
-                DASH is not in it: below 900 DASH is always up, so the next step — CONNECT, READ,
+                HUB is not in it: below 900 HUB is always up, so the next step — CONNECT, READ,
                 OPEN — is never a tap away from the rows it acts on. The switch turns over the
-                window beside it, LIST or VISU. The tab bar is not drawn below 900 (the views are
+                window beside it, MAIN or MULTI, labelled LIST and VISU. The tab bar is not drawn below 900 (the views are
                 the M menu's), so that window has its cell's whole height:
 
-                  683x400  400 − 48 − 53 = 299   LIST|VISU 422 × 299   DASH 261 × 299
-                  851x393  393 − 48 − 53 = 292   LIST|VISU 526 × 292   DASH 325 × 292
-                  360x800  800 − 48 − 53 = 699   LIST|VISU 360 × 432   DASH 360 × 267
+                  683x400  400 − 48 − 53 = 299   MAIN|MULTI 422 × 299   HUB 261 × 299
+                  851x393  393 − 48 − 53 = 292   MAIN|MULTI 526 × 292   HUB 325 × 292
+                  360x800  800 − 48 − 53 = 699   MAIN|MULTI 360 × 432   HUB 360 × 267
 
                 52px and a rule on top; no blur, because nothing sits behind this row
                 (tsunagi-m-mobile §16.5). */}
@@ -955,8 +955,8 @@ export default function Home() {
                         enabled: true,
                     }))}
                     activeTab={tab}
-                    // Only the tab: LIST and VISU both belong to it, so whichever is up shows the
-                    // new one, and DASH is up regardless (tsunagi-m-mobile §3's second trap does not
+                    // Only the tab: MAIN and MULTI both belong to it, so whichever is up shows the
+                    // new one, and HUB is up regardless (tsunagi-m-mobile §3's second trap does not
                     // arise when no window is left showing another tab).
                     onSelectTab={changeTab}
                     module={moduleName(ecuIndex, ecuId)}

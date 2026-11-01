@@ -133,8 +133,8 @@ export function TabBar({
  *      whole: the mode is the one mark that tells a practice run from a car
  *      (tsunagi-m-ux §16).
  *
- * Below 900 on its side — the head unit, a phone held landscape — DASH stands
- * beside LIST at φ, 261px wide at 683x400, and the one line would leave the chip
+ * Below 900 on its side — the head unit, a phone held landscape — HUB stands
+ * beside MAIN at φ, 261px wide at 683x400, and the one line would leave the chip
  * 9px. There the row is two lines in every state: the module on the first, the
  * mode and DISCONNECT (or PRACTICE) at the right end of the second. Still one
  * reserved height, only a taller one; the query is page.tsx's NARROW_GRID.

@@ -39,7 +39,7 @@ import { APP_VERSION } from '@/lib/version';
  *   - VIEW is the tab row, which below 900 is not drawn anywhere else.
  *
  * Deliberately NOT in here: anything that is sent to the car, and anything that connects. CONNECT,
- * CLEAR FAULTS, the actuator controls and DISCONNECT stay on DASH, which is always up, and visible
+ * CLEAR FAULTS, the actuator controls and DISCONNECT stay on HUB, which is always up, and visible
  * together (tsunagi-m-mobile §8). Nor the assistant's switch: that is AI in the header, at every
  * width (components/AiSwitch). Changing VIEW releases an armed output first, exactly as the tab
  * row does — the shell's `changeTab` is what it calls.

@@ -60,10 +60,12 @@ export const CHROME = {
     hub_stop: 'Stop',
     hub_recording: 'Recording',
     pane_visualization: 'VISUALIZATION & CONTROLS',
-    // The three windows' names, the same in every M tool (tsunagi-m-design): LIST, VISU, DASH.
-    // Below 900px DASH is always up and the footer turns over the other two. VISU, not GRAPH: the
-    // picture is a graph on one tab, a count on another, a module's numbers on a third — and not
-    // VIEW, which is already the SESSIONS verb for opening a saved session.
+    // This app's labels for the two windows the footer turns over below 900px (DASH is always up).
+    // A label says what the window shows, and is the app's own: TUNER's are MAP and GRAPH, and the
+    // development names LIST / VISU / DASH (tsunagi-m-design §5.12) are a different thing. Here the
+    // left holds rows, so LIST. VISU, not GRAPH: the picture is a trace on one tab, a count on
+    // another, a module's numbers on a third. Not VIEW, which is already the SESSIONS verb for
+    // opening a saved session.
     pane_list: 'LIST',
     pane_visu: 'VISU',
     // The M menu below 900px (components/MobileMenu.tsx): the button's and the close's names, the

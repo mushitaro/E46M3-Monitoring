@@ -87,7 +87,7 @@ async function round(record: string, local: NotebookEntry[], out: InvestigationS
     for (let i = 0; i < entries.length; i += 100) {
         const r = await api<{ stored: number; refused: InvestigationSync['refused'] }>('/api/notebook', {
             method: 'POST',
-            body: { entries: entries.slice(i, i + 100) },
+            body: { entries: entries.slice(i, i + 100), clientNow: Date.now() },
         });
         if (!r.ok || !r.data) return;
         out.sent += r.data.stored;

@@ -27,7 +27,7 @@
  *   { check: { desc, run } }      run(page, door) inside the page context returns true or why not
  */
 import { spawn } from 'node:child_process';
-import { mkdirSync, readdirSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
@@ -183,6 +183,38 @@ for (const r of results) {
     lines.push('', `![終わりの画面](${r.endShot})`);
 }
 writeFileSync(join(reportAt, 'report.md'), lines.join('\n') + '\n');
+// One self-contained page (screenshots inline), to read on a phone.
+const h = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const img = (rel) => `<img alt="" src="data:image/png;base64,${readFileSync(join(reportAt, rel)).toString('base64')}">`;
+const passed = results.filter((r) => r.ok).length;
+const html = [
+    '<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">',
+    '<title>MONITORING デモテスト</title><style>',
+    ':root{color-scheme:dark}body{margin:0;padding:16px;background:#000;color:#cbd5e1;font:14px/1.6 system-ui,sans-serif}',
+    'h1{font-size:18px;color:#e2e8f0}h2{font-size:15px;color:#e2e8f0;margin-top:32px;border-top:1px solid #1e293b;padding-top:16px}',
+    'table{border-collapse:collapse;width:100%;font-size:12px}td,th{border-bottom:1px solid #0f172a;padding:4px 6px;text-align:left;vertical-align:top}',
+    'th{color:#64748b;font-weight:600}.ok{color:#34d399}.ng{color:#f87171;font-weight:700}code{font-size:11px;color:#94a3b8;word-break:break-all}',
+    'img{max-width:100%;border:1px solid #1e293b;margin:8px 0}p{color:#94a3b8}',
+    '</style></head><body>',
+    `<h1>MONITORING デモテスト — ${passed}/${results.length} 合格</h1><p>${h(new Date().toISOString())} · 模擬実車（PRACTICE）＋アシスタントの道具</p>`,
+    '<table><tr><th>シナリオ</th><th>結果</th></tr>',
+    ...results.map((r) => `<tr><td>${h(r.scenario.id)} ${h(r.scenario.title)}</td><td class="${r.ok ? 'ok' : 'ng'}">${r.ok ? '合格' : '不合格'}</td></tr>`),
+    '</table>',
+    ...results.flatMap((r) => [
+        `<h2>${h(r.scenario.id)} ${h(r.scenario.title)} <span class="${r.ok ? 'ok' : 'ng'}">${r.ok ? '合格' : '不合格'}</span></h2>`,
+        `<p>${h(r.scenario.story)}</p>`,
+        '<table><tr><th>#</th><th>誰</th><th>したこと</th><th>想定する反応</th><th>起きたこと</th><th></th></tr>',
+        ...r.rows.map((row, i) =>
+            row.shot
+                ? `<tr><td>${i + 1}</td><td colspan="5">${img(row.shot)}</td></tr>`
+                : `<tr><td>${i + 1}</td><td>${h(row.who)}</td><td><code>${h(row.what)}</code></td><td>${h(row.expect)}</td><td><code>${h(row.got)}</code>${row.why ? ` <span class="ng">${h(row.why)}</span>` : ''}</td><td class="${row.ok === false ? 'ng' : 'ok'}">${row.ok === null ? '' : row.ok ? '○' : '×'}</td></tr>`,
+        ),
+        '</table>',
+        img(r.endShot),
+    ]),
+    '</body></html>',
+].join('\n');
+writeFileSync(join(reportAt, 'report.html'), html);
 writeFileSync(join(reportAt, 'report.json'), JSON.stringify(results.map((r) => ({ id: r.scenario.id, title: r.scenario.title, ok: r.ok, rows: r.rows })), null, 2));
 console.log(`\n${results.filter((r) => r.ok).length}/${results.length} scenarios passed. Report: ${join(reportAt, 'report.md')}`);
 process.exit(results.every((r) => r.ok) ? 0 : 1);

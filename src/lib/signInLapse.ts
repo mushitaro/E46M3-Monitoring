@@ -121,12 +121,12 @@ const STATUS_KEY = 'sign-in:status-at';
 export const STATUS_EVERY_MS = 86_400_000;
 
 /**
- * Keep the sign-in from lapsing on a device that never opens SESSIONS.
+ * Keep the sign-in from lapsing on a device that never opens MEMORY.
  *
  * The gate extends its cookie in one place only, `/_gate/status?t` (owner-sync `gateStatus`),
  * because only there does the request say what time the device thinks it is; re-stamped under a
  * clock years out, the cookie would die the moment the clock was put right. Until now the app asked
- * there only from SESSIONS and when records were sent, and the head unit may open neither for
+ * there only from MEMORY and when records were sent, and the head unit may open neither for
  * months: its sign-in would lapse 180 days after it was given, however often the car was driven.
  *
  * So the update check hands every answer here, and this asks the gate at most once a day, under

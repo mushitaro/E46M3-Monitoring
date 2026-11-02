@@ -223,6 +223,23 @@ export const en: Localised = {
         `${b} bytes — the field layout of this response is not known yet. EdiabasLib used to decode it; shown raw rather than guessed at.`,
     faults_raw_note: (n) =>
         `How this module lays out its fault memory has not been established. The ${n} frame(s) its own FS_LESEN sends were sent, and the bytes are shown as they came back.`,
+    scan_title: 'All modules',
+    scan_note: (time) => `Read at ${time}`,
+    scan_info:
+        "Each module is sent its own SGBD's fault read, one address after another, only while the DME shows the car standing still, measured again every few addresses. Where several SGBDs use one address, only the frames all of them carry are sent. Only the engine (MSS54) can be decoded; every other answer is shown as the bytes that came back. No answer means the equipment is not fitted, is asleep, or is not on this line.",
+    scan_outcome: {
+        faults: (n) => `${n} fault${n === 1 ? '' : 's'}`,
+        clean: 'No faults',
+        undecoded: 'Undecoded',
+        silent: 'No answer',
+        rejected: 'Refused',
+        refused: 'Not sent',
+        skipped: 'Not reached',
+    },
+    scan_shared: 'Which one is fitted is chosen on MODULE, then opened.',
+    scan_progress: (d, n) => `Scanning ${d} / ${n}`,
+    awaiting_scan: 'AWAITING SCAN…',
+    viz_scanAnswered: 'modules answered',
     faults_notEstablished:
         'This module’s SGBD carries no short identity or fault-read frame, so there is nothing the app can say is safe to send. Nothing is read.',
     datalog_noDecoder:
@@ -558,7 +575,7 @@ export const en: Localised = {
         inferred: 'inferred',
     },
 
-    // --- SESSIONS (preview only) ------------------------------------------------
+    // --- MEMORY and SESSION SYNC (preview only) ------------------------------------------------
     sessions_current: 'This connection',
     assistant_consent: {
         title: 'Turn ASSISTANT on',
@@ -578,7 +595,7 @@ export const en: Localised = {
             },
             {
                 title: 'What it can do',
-                body: 'Read; start and stop a recording (stopping after you confirm); write to CO-WORK; change the screen; put a procedure on the screen; save and send when you ask; connect again to, and let go of, a cable connected on the screen before; switch to TUNER.',
+                body: 'Read, every module\'s faults included; start and stop a recording, and an observation (PROBE) of an investigation you handed over (stopping after you confirm); change the module on the screen; write to CO-WORK; change the screen; put a procedure on the screen; save and send when you ask; connect again to, and let go of, a cable connected on the screen before; switch to TUNER.',
             },
             {
                 title: 'What it cannot do',

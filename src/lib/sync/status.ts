@@ -2,14 +2,14 @@
  * What SAVE and SYNC say, in one place — TUNER's `lib/session-sync/status.ts`, for this app's
  * sessions.
  *
- * There are two of each: in the SESSIONS view from 900px and in the menu sheet's SESSION band below
+ * There are two of each: in the MEMORY view from 900px and in the menu sheet's SESSION band below
  * it. They are the same controls on two layouts, and a phone that says "Sync 2" beside a desk that
  * says "Synced" would make the owner distrust both. So the label, the sentence and whether it can be
  * pressed come from here, where they can have only one answer.
  *
  * The label is the state's own word, one or two of them: a cell in the sheet is 56px and a phone has
  * no hover, so the label is the only thing on it a finger can read (TUNER, 2026-08-24). The sentence
- * is `title`'s, for a mouse, and the line under SESSIONS says what the last press did.
+ * is `title`'s, for a mouse, and the line under MEMORY's SAVE says what the last press did.
  *
  * SYNC here saves first (`useSessions.sync`): what it would send is this connection's work, if it is
  * unsaved, and every saved session not yet sent. That is the count it carries.

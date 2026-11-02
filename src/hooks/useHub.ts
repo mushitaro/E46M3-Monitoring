@@ -44,6 +44,8 @@ export function useHub(input: {
     openProcedure?: () => void;
     /** Present while a PROBE plan runs (hooks/useProbe). */
     probe?: { progress: ProbeProgress; stop: () => void };
+    /** Present on DIAGNOSIS with ALL MODULES: the scan, and how far one in progress has got. */
+    scan?: { run: () => void; progress: { done: number; total: number } | null };
 }): { hub: HubConfig; notice: { text?: string; tone: NoticeTone } } {
     const { t } = useLang();
     const { link, datalog, selectedJob, runVerdict } = input;
@@ -83,6 +85,9 @@ export function useHub(input: {
                     input.target.faults.length > 0 ? link.readFaults() : null,
                 ),
             faultsAvailable: input.target.ident !== null || input.target.faults.length > 0,
+            scan: input.scan
+                ? { run: input.scan.run, line: input.scan.progress ? t.scan_progress(input.scan.progress.done, input.scan.progress.total) : undefined }
+                : undefined,
             datalog: {
                 decoded: input.target.decoder === 'mss54',
                 sampleCount: datalog.samples.length,

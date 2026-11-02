@@ -85,7 +85,7 @@ export interface SessionsNotice {
 }
 
 /**
- * SESSIONS — the device's saved sessions, SYNC, and the account's copies.
+ * MEMORY and SESSION SYNC — the device's saved sessions, SYNC, and the account's copies.
  *
  * Lives in the shell, like the datalog, because what it saves is the shell's: the link's read, the
  * recording, the failures. The tab only draws it.

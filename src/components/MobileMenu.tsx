@@ -33,13 +33,13 @@ import { APP_VERSION } from '@/lib/version';
  *     and LEN, which the desk shows beside the wordmark.
  *   - SESSION is this connection's work: the link and its mode, and what a SAVE would hold (the
  *     fault read and the datalog), and under it SAVE and SYNC as TUNER's cells — the one place they
- *     are below 900. The SESSIONS view draws its own pair from 900 up only, so each layout has one
+ *     are below 900. The MEMORY view draws its own pair from 900 up only, so each layout has one
  *     door to each (tsunagi-m-ux §11). Labels, sentences and tones from lib/sync/status, the same
  *     the desk reads. Production has no sessions, and no cells.
  *   - VIEW is the tab row, which below 900 is not drawn anywhere else.
  *
  * Deliberately NOT in here: anything that is sent to the car, and anything that connects. CONNECT,
- * CLEAR FAULTS, the actuator controls and DISCONNECT stay on DASH, one tap apart and visible
+ * CLEAR FAULTS, the actuator controls and DISCONNECT stay on HUB, which is always up, and visible
  * together (tsunagi-m-mobile §8). Nor the assistant's switch: that is AI in the header, at every
  * width (components/AiSwitch). Changing VIEW releases an armed output first, exactly as the tab
  * row does — the shell's `changeTab` is what it calls.

@@ -28,6 +28,10 @@ export const CHROME = {
     tab_log: 'COMMS LOG',
     // Sub-action row, under the hub. Same vocabulary as the hub itself.
     disconnect: 'Disconnect',
+    // The module select's first choice on DIAGNOSIS: every module's fault memory, one after another.
+    module_all: 'ALL MODULES',
+    // The sub-action under the scan: put the chosen module on the screen.
+    open_module: 'Open',
     practice: 'PRACTICE',
     probe: 'PROBE',
     exportCsv: 'Export CSV',
@@ -56,18 +60,22 @@ export const CHROME = {
     hub_stop: 'Stop',
     hub_recording: 'Recording',
     pane_visualization: 'VISUALIZATION & CONTROLS',
-    // The panes below 900px, one at a time, switched from the footer. DASH and GRAPH are TUNER's
-    // and SMG2's words for the same two panes. The third is LIST, not their MAP — this app has no
-    // map — and not VIEW, which is already the SESSIONS verb for opening a saved session.
+    // This app's labels for MAIN and MULTI, the two windows the footer turns over below 900px (HUB
+    // is always up). A label says what the window shows and is the app's own — TUNER's are MAP and
+    // GRAPH — not the development names MAIN / MULTI / HUB (tsunagi-m-design §5.12). Only HUB is
+    // labelled HUB in every app. Here MAIN holds rows, so LIST. VISU, not GRAPH: the picture is a trace on one tab, a count on
+    // another, a module's numbers on a third. Not VIEW, which is already MEMORY's verb for
+    // opening a saved session.
     pane_list: 'LIST',
-    pane_dash: 'DASH',
-    pane_graph: 'GRAPH',
+    pane_visu: 'VISU',
     // The M menu below 900px (components/MobileMenu.tsx): the button's and the close's names, the
     // bands' titles and the readouts' labels — TUNER's words, and IDENT / LEN as the header has them.
     menu_open: 'Menu',
     menu_close: 'Close',
     menu_vehicle: 'VEHICLE',
     menu_session: 'SESSION',
+    // The panel behind SYNC (views/sessions/SyncPanel): TUNER's title, the same words in both languages.
+    sync_panel: 'SESSION SYNC',
     menu_view: 'VIEW',
     field_ident: 'IDENT',
     field_len: 'LEN',
@@ -107,10 +115,10 @@ export const CHROME = {
     wiz_next: 'Next',
     wiz_back: 'Back',
     wiz_close: 'Close',
-    // SESSIONS (preview only). Verbs and state tokens on controls — English in both languages,
+    // MEMORY and SESSION SYNC (preview only). Verbs and state tokens on controls — English in both languages,
     // like every other control label here. What SYNC sends, and what a delete loses, is safety
     // copy and lives in ja.ts / en.ts.
-    tab_sessions: 'SESSIONS',
+    tab_memory: 'MEMORY',
     save: 'Save',
     sync: 'Sync',
     // SAVE and SYNC say their state in the label, one or two words, TUNER's

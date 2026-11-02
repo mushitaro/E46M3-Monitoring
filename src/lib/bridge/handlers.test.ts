@@ -46,6 +46,10 @@ function tab(over: Partial<TabFacade> = {}) {
         openTuner: (discard) => ({ opened: discard }),
         connect: async () => ({ connected: true }),
         disconnect: async (stop) => ({ disconnected: true, stopped: stop }),
+        scan: async () => ({ started: true }),
+        switchModule: async (id) => ({ switched: true, module: { id } }),
+        probe: async (record) => ({ started: true, record }),
+        runs: async () => [],
         ...over,
     };
     return {
@@ -222,3 +226,70 @@ describe('which record a call means', () => {
         expect(() => pickRecord([], undefined)).toThrow(/monitoring_investigate/);
     });
 });
+
+describe('the AI modes', () => {
+    const run = (n: number, mean: number): StoredRun =>
+        ({
+            id: `r${n}`,
+            sessionId: 'x',
+            n,
+            planId: 'p',
+            planV: 1,
+            startedAt: n,
+            endedAt: n + 1000,
+            end: 'stopped',
+            samples: [{ t: 0, values: { '3:tmot': mean } }],
+            exchanges: [],
+            captures: [],
+            steps: [],
+            judges: [],
+        }) as StoredRun;
+
+    it('keeps the mode and the fault codes a reactive investigation follows', async () => {
+        const t = tab();
+        const inv = (await t.h.monitoring_investigate({ words: '0x2A が出た、調べて', modules: [], days: 7, mode: 'reactive', focus: ['mss54:0x2A'] })) as { record: string };
+        const cowork = (await t.h.monitoring_cowork({})) as { records: Array<{ mandate: { mode: string; focus: string[] } }> };
+        expect(cowork.records[0].mandate).toMatchObject({ mode: 'reactive', focus: ['mss54:0x2A'] });
+        expect(inv.record).toBeTruthy();
+    });
+
+    it('carries a record on: a new mandate in the same record, so its runs stay one history', async () => {
+        const t = tab();
+        const first = (await t.h.monitoring_investigate({ words: '全部見て', modules: [], days: 30, mode: 'predictive' })) as { record: string };
+        t.tick(31 * 86_400_000);
+        const again = (await t.h.monitoring_investigate({ words: '続けて見て', modules: [], days: 30, mode: 'predictive', record: first.record })) as { record: string; continued: boolean };
+        expect(again).toMatchObject({ record: first.record, continued: true });
+        expect(t.entries().filter((e) => e.body.kind === 'mandate' && e.sessionId === first.record)).toHaveLength(2);
+    });
+
+    it('refuses to carry on a record that is not on the device', async () => {
+        const t = tab();
+        await expect(t.h.monitoring_investigate({ words: 'x', modules: [], days: 1, record: 'nope-0000' })).rejects.toThrow(/no record/);
+    });
+
+    it('starts PROBE for the record named, and says so when it is not there', async () => {
+        const probe = vi.fn(async (record: string | undefined) => ({ started: true, record }));
+        const t = tab({ probe });
+        const inv = (await t.h.monitoring_investigate({ words: 'x', modules: [], days: 1 })) as { record: string };
+        await t.h.monitoring_probe({ record: inv.record });
+        expect(probe).toHaveBeenCalledWith(inv.record);
+        await expect(t.h.monitoring_probe({ record: 'nope-0000' })).rejects.toThrow(/no record/);
+    });
+
+    it('compares the last run with the one before, and a run with another record’s baseline', async () => {
+        const runs: Record<string, StoredRun[]> = {};
+        const t = tab({ runs: async (r) => runs[r] ?? [] });
+        const a = (await t.h.monitoring_investigate({ words: 'a', modules: [], days: 1, mode: 'predictive' })) as { record: string };
+        const b = (await t.h.monitoring_investigate({ words: 'b', modules: [], days: 1, mode: 'symptom' })) as { record: string };
+        runs[a.record] = [run(1, 88), run(2, 91)];
+        runs[b.record] = [run(1, 95)];
+        const c = (await t.h.monitoring_compare({ record: a.record })) as { a: { n: number }; b: { n: number }; channels: Array<{ delta: number }> };
+        expect([c.a.n, c.b.n, c.channels[0].delta]).toEqual([1, 2, 3]);
+        const d = (await t.h.monitoring_compare({ record: b.record, baseline: { record: a.record } })) as { channels: Array<{ delta: number }> };
+        expect(d.channels[0].delta).toBe(4);
+        await expect(t.h.monitoring_compare({ record: b.record })).rejects.toThrow(/comparing needs two/);
+        const tr = (await t.h.monitoring_compare({ record: a.record, trend: true, channels: ['3:tmot'] })) as { trend: Array<{ points: unknown[] }> };
+        expect(tr.trend[0].points).toHaveLength(2);
+    });
+});
+

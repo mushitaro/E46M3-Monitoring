@@ -8,7 +8,7 @@
  *
  *   - a newer build is downloaded and waiting (hooks/useAppUpdate primes it);
  *   - the link has been down for a while, so a cable that blinks mid-drive does not count;
- *   - nothing on the screen is unsaved (SESSIONS' own test of that);
+ *   - nothing on the screen is unsaved (MEMORY's own test of that);
  *   - no update is already running.
  *
  * Production never calls this: it makes no request of its own, so it never knows a build waits

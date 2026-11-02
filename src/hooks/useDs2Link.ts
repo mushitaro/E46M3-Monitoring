@@ -64,6 +64,8 @@ import type { ReadRecord } from '@/lib/investigation/readRecord';
 import type { ModuleProtocol } from '@/lib/moduleProtocol';
 import { practiceBus } from '@/lib/practiceEcu';
 import { runProbe, type ProbeDeps, type ProbePlan, type ProbeRun } from '@/lib/probe/executor';
+import { runScan, type ScanRun, type ScanTarget } from '@/lib/probe/scan';
+import type { Ledger } from '@/lib/ledger';
 import { clearFaultsCommand, telegramBytes, type SendRequirement } from '@/lib/runGate';
 import {
     VEHICLE_STATE_MAX_AGE_MS,
@@ -356,6 +358,9 @@ export function useDs2Link(options: {
     const [adaptations, setAdaptations] = useState<AdaptationRead[] | null>(null);
     const [lastRun, setLastRun] = useState<JobRunResult | null>(null);
     const [rawFaults, setRawFaults] = useState<RawFaultRead[] | null>(null);
+    /** The last all-module scan, and how far one in progress has got. */
+    const [scan, setScan] = useState<ScanRun | null>(null);
+    const [scanProgress, setScanProgress] = useState<{ done: number; total: number } | null>(null);
     const [vehicleState, setVehicleState] = useState<VehicleState | null>(null);
     const [motion, setMotion] = useState<Motion>('unknown');
     const vehicleStateRef = useRef<VehicleState | null>(null);
@@ -583,8 +588,12 @@ export function useDs2Link(options: {
          * `permittedOnly`: open only a device this browser has already been allowed — never the
          * chooser. The assistant's reconnect (operator, 2026-10-28) goes this way: a voice cannot
          * pick a device, and must not be the one to allow a new one.
+         *
+         * `target`: the module to open for, when it was chosen in the same breath — the assistant's
+         * module switch (operator, 2026-11-01) — and the page has not rendered it yet.
          */
-        async (nextMode: LinkMode, permittedOnly = false) => {
+        async (nextMode: LinkMode, permittedOnly = false, target?: ModuleProtocol) => {
+            if (target) targetRef.current = target;
             clearError();
             setState('connecting');
             try {
@@ -646,12 +655,12 @@ export function useDs2Link(options: {
      * link is open; otherwise why not, in a sentence. The chooser is never shown: no allowed cable is
      * a refusal, and the first connection stays a person's, on the screen.
      */
-    const reconnectPermitted = useCallback(async (): Promise<string | null> => {
+    const reconnectPermitted = useCallback(async (target?: ModuleProtocol): Promise<string | null> => {
         if (linkRef.current) return 'The link is already open.';
         if (!(await hasPermittedCable())) {
             return 'No cable has been allowed on this device yet. The first connection is made on the screen (CONNECT); after that it can be made again by voice.';
         }
-        await connect('vehicle', true);
+        await connect('vehicle', true, target);
         return linkRef.current ? null : 'The allowed cable did not open. Check that it is plugged in, then try again or connect on the screen.';
     }, [connect]);
 
@@ -1068,6 +1077,78 @@ export function useDs2Link(options: {
     }, []);
 
     /**
+     * Every module's fault memory, one address at a time (lib/probe/scan): the assistant's
+     * `monitoring_scan`, the start of an AI-mode investigation.
+     *
+     * One operation, like a READ: the link is busy for its length (about a second an address, most
+     * of it waiting on modules that are not fitted). Each frame is a read record; an address with
+     * one candidate SGBD that answered on a car measured still is a ledger fact, as on DIAGNOSIS.
+     */
+    const scanAll = useCallback(
+        (targets: readonly ScanTarget[], ledger: () => Ledger) =>
+            run('Scan all modules', async (link) => {
+                append('info', `Scan: ${targets.length} address(es), each module's own fault read.`);
+                let done = 0;
+                setScanProgress({ done, total: targets.length });
+                try {
+                    const result = await runScan(targets, {
+                        ledger,
+                        measure: () => measureMotion(link),
+                        // PRACTICE answers only the DME and the module on the screen; the rest are silent there by
+                        // design, and the car's two-second wait for each would make a practice scan a minute of nothing.
+                        exchange: (address, moduleId, job, f, options) =>
+                            readFrame(link.to(address), moduleId, job, f.control, f.payload, modeRef.current === 'practice' ? { ...options, timeoutMs: 400 } : options),
+                        // The MSS54 alone: its entries are the frame whose argument is 01.
+                        decode: (t, frames) => {
+                            const i = t.frames.findIndex((f) => f.payload[0] === 0x01);
+                            return i >= 0 && frames[i] ? parseErrorMemoryEntries(frames[i], 'errorMemory') : null;
+                        },
+                        stopped: () => linkRef.current !== link,
+                        pause: yieldToEventLoop,
+                        now: () => Date.now(),
+                        onResult: (r) => {
+                            setScanProgress({ done: ++done, total: targets.length });
+                            append(r.outcome === 'answered' ? 'rx' : 'info', `${r.address} ${r.modules.join('/')}: ${r.outcome}${r.reason ? ` — ${r.reason}` : ''}`);
+                        },
+                    });
+                    if (modeRef.current === 'vehicle') {
+                        for (const r of result.results) {
+                            if (r.outcome !== 'answered' || r.modules.length !== 1) continue;
+                            for (const x of r.exchanges) {
+                                if (x.response === null) continue;
+                                try {
+                                    onObservedRef.current?.({ moduleId: r.modules[0], jobId: 'FS_LESEN', telegram: x.request, response: x.response, at: new Date().toISOString(), ecuIdent: identRef.current?.hex });
+                                } catch {
+                                    /* recording a fact must never fail the scan it is about */
+                                }
+                            }
+                        }
+                    }
+                    // The module the link is for was among them: what the scan read of it is its fault
+                    // read, the same frames DIAGNOSIS sends, so opening it shows them rather than asking again.
+                    const own = result.results.find(
+                        (r) => r.outcome === 'answered' && sessionAddressRef.current !== null && parseInt(r.address, 16) === sessionAddressRef.current && r.modules.includes(targetRef.current.moduleId),
+                    );
+                    if (own && Array.isArray(own.decoded)) {
+                        setRawFaults(null);
+                        setQuickTest(null);
+                        setFaults(own.decoded as ErrorMemoryEntry[]);
+                    } else if (own) {
+                        setFaults(null);
+                        setQuickTest(null);
+                        setRawFaults(own.exchanges.map((x) => ({ request: x.request, response: x.response ?? '', source: 'FS_LESEN (SGBD telegram)' })));
+                    }
+                    setScan(result);
+                    append('info', `Scan ended (${result.end}).`);
+                    return result;
+                } finally {
+                    setScanProgress(null);
+                }
+            }),
+        [append, measureMotion, readFrame, run],
+    );
+
+    /**
      * Run a PROBE plan on this link until it ends or `stopLog` is called.
      *
      * The same run boundary as a datalog — state `logging`, the low latency timer armed, one exit —
@@ -1243,6 +1324,9 @@ export function useDs2Link(options: {
         startLog,
         stopLog,
         startProbe,
+        scan,
+        scanProgress,
+        scanAll,
         clearLog,
         clearError,
     };

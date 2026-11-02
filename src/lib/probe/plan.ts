@@ -31,8 +31,14 @@ export type ProbeStep =
     | { n: number; do: string; kind: 'faults'; module: string; when: When; times?: number }
     /** Run one catalogue read job of a module, as mayRun allows it. */
     | { n: number; do: string; kind: 'read'; module: string; job: string; when: When; times?: number }
-    /** Keep these MSS54 live channels in every sample while the run is on. */
+    /**
+     * Keep these MSS54 live channels in every sample while the run is on. `3:*` is the whole of
+     * live block 3: a block is one round trip whichever of its values are asked for, so a health
+     * check that wants everything names the blocks.
+     */
     | { n: number; do: string; kind: 'sample'; channels: string[] }
+    /** Read the MSS54's learned values (its adaptation blocks) once, as the ADAPTATION tab does. */
+    | { n: number; do: string; kind: 'adapt'; when: When; times?: number }
     /** Read DME RAM (master windows only) every `every` samples, as raw bytes. */
     | { n: number; do: string; kind: 'ram'; address: string; bytes: number; every: 1 | 2 | 4 | 8; label?: string }
     /** Mark the stretch around each moment every clause holds: `preS` before, `postS` after. */
@@ -74,7 +80,8 @@ export const PROBE_LIMITS = {
     captureSteps: 4,
     clauses: 6,
     hypotheses: 8,
-    judges: 12,
+    /** A health check judges many values at once (operator, 2026-11-01: "set pass criteria and watch every item"). */
+    judges: 24,
     text: 2000,
     /** Seconds either side of a captured moment. */
     window: 120,
@@ -95,6 +102,8 @@ export const DME_RAM_MAX_COUNT = 0x80;
 
 const HEX6 = /^[0-9A-F]{6}$/;
 const CHANNEL = /^(\d{1,3}:[A-Za-z0-9_]{1,40}|ram:[0-9A-F]{6})$/;
+/** A live channel, or a whole live block (`3:*`). */
+const SAMPLE = /^\d{1,3}:([A-Za-z0-9_]{1,40}|\*)$/;
 const MODULE = /^[a-z0-9_]{2,32}$/;
 const JOB = /^[A-Z0-9_]{2,64}$/;
 const ID = /^[A-Za-z0-9_-]{1,32}$/;
@@ -152,9 +161,12 @@ export function stepsProblem(steps: unknown): string | null {
                 if (!Array.isArray(s.channels) || s.channels.length === 0 || s.channels.length > PROBE_LIMITS.sampleChannels) {
                     return `${at}: channels must be 1-${PROBE_LIMITS.sampleChannels} live channels`;
                 }
-                if (!s.channels.every((c) => typeof c === 'string' && /^\d{1,3}:[A-Za-z0-9_]{1,40}$/.test(c))) {
-                    return `${at}: a live channel is named selection:symbol, e.g. 19:v`;
+                if (!s.channels.every((c) => typeof c === 'string' && SAMPLE.test(c))) {
+                    return `${at}: a live channel is named selection:symbol, e.g. 19:v, or 3:* for a whole block`;
                 }
+                break;
+            case 'adapt':
+                if (when !== 'parked' && when !== 'moving' && when !== 'any') return `${at}: when must be parked, moving or any`;
                 break;
             case 'ram':
                 if (++ram > PROBE_LIMITS.ramSteps) return `a plan reads at most ${PROBE_LIMITS.ramSteps} RAM addresses`;
@@ -175,7 +187,7 @@ export function stepsProblem(steps: unknown): string | null {
                 break;
             }
             default:
-                return `${at}: kind must be faults, read, sample, ram or capture`;
+                return `${at}: kind must be faults, read, sample, adapt, ram or capture`;
         }
     }
     return null;
@@ -223,7 +235,7 @@ export function judgesProblem(j: unknown, hypotheses: readonly Hypothesis[] = []
 export function modulesOf(steps: readonly ProbeStep[]): string[] {
     const out = new Set<string>();
     for (const s of steps) if (s.kind === 'faults' || s.kind === 'read') out.add(s.module);
-    // Samples, RAM reads and captures are the DME's.
-    if (steps.some((s) => s.kind === 'sample' || s.kind === 'ram' || s.kind === 'capture')) out.add('mss54');
+    // Samples, learned values, RAM reads and captures are the DME's.
+    if (steps.some((s) => s.kind === 'sample' || s.kind === 'adapt' || s.kind === 'ram' || s.kind === 'capture')) out.add('mss54');
     return [...out].sort();
 }

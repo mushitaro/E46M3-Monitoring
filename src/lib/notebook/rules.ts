@@ -29,6 +29,20 @@
 import { hypothesesProblem, judgesProblem, modulesOf, stepsProblem, type Hypothesis, type Judge, type ProbeStep } from '../probe/plan';
 
 export type NotebookAuthor = 'driver' | 'chat' | 'desk' | 'owner';
+
+/**
+ * What an investigation the assistant runs is for (operator, 2026-11-01). The owner says it in
+ * their words; the assistant names it here so the plan, the guide topic and the desk agree.
+ *
+ *   - `reactive`   事後保全: a fault code is there. Gather the values related to it, record, narrow
+ *                  them down, put the adjustments a person runs on the screen, keep the session.
+ *   - `predictive` 予兆保全: no fault. Read every module and every value, judge each against its
+ *                  pass criteria, review the learned values, report, and compare with the last time.
+ *   - `symptom`    症状: the owner's complaint ("it feels down on power"). Pick the values that
+ *                  would show it, record, compare with a baseline, say what they show.
+ */
+export type InvestigationMode = 'reactive' | 'predictive' | 'symptom';
+export const INVESTIGATION_MODES: readonly InvestigationMode[] = ['reactive', 'predictive', 'symptom'];
 export const NOTEBOOK_AUTHORS: readonly NotebookAuthor[] = ['driver', 'chat', 'desk', 'owner'];
 
 /** Where in the data a fact or a reading rests: a run of this session, a time range in that run's
@@ -50,6 +64,10 @@ export type NotebookBody =
           modules: string[];
           /** ms since the epoch. After this, the desk asks again. */
           until: number;
+          /** What kind of investigation it is. Absent on mandates given before modes existed. */
+          mode?: InvestigationMode;
+          /** The fault codes a reactive investigation follows, `module:code` (`mss54:0x2A`). */
+          focus?: string[];
       }
     | {
           kind: 'plan';
@@ -97,6 +115,7 @@ export const NOTEBOOK_LIMITS = {
 
 const ID = /^[0-9A-Za-z-]{8,64}$/;
 const MODULE = /^[a-z0-9_]{2,32}$/;
+const FOCUS = /^[a-z0-9_]{2,32}:[0-9A-Za-z_]{1,16}$/;
 
 const isInt = (n: unknown, min: number, max = Number.MAX_SAFE_INTEGER): n is number =>
     typeof n === 'number' && Number.isInteger(n) && n >= min && n <= max;
@@ -154,6 +173,10 @@ export function entryProblem(e: unknown): string | null {
             }
             if (!isNum(b.until, 1) || b.until <= x.at! || b.until - x.at! > NOTEBOOK_LIMITS.mandateMs) {
                 return 'mandate.until must be after it was given, and within 30 days';
+            }
+            if (b.mode !== undefined && !INVESTIGATION_MODES.includes(b.mode)) return `mandate.mode must be one of ${INVESTIGATION_MODES.join(', ')}`;
+            if (b.focus !== undefined && (!Array.isArray(b.focus) || b.focus.length > 12 || !b.focus.every((f) => typeof f === 'string' && FOCUS.test(f)))) {
+                return 'mandate.focus is up to 12 fault codes, each module:code (mss54:0x2A)';
             }
             return null;
         case 'plan':
@@ -299,11 +322,12 @@ export type RunnablePlan =
  * A record's current plan, when it has exactly one head — a fork is the driver's to settle, never
  * the tab's. A plan the assistant or the desk wrote runs only while its mandate stands: an expired
  * or withdrawn mandate stops the plan as well as further writing. Of several runnable records, the
- * one whose plan was written last.
+ * one whose plan was written last — or the one `only` names, when the assistant starts a run of a
+ * particular investigation.
  */
-export function runnablePlan(entries: readonly NotebookEntry[], now: number): RunnablePlan {
+export function runnablePlan(entries: readonly NotebookEntry[], now: number, only?: string): RunnablePlan {
     const bySession = new Map<string, NotebookEntry[]>();
-    for (const e of entries) bySession.set(e.sessionId, [...(bySession.get(e.sessionId) ?? []), e]);
+    for (const e of entries) if (!only || e.sessionId === only) bySession.set(e.sessionId, [...(bySession.get(e.sessionId) ?? []), e]);
     let best: { sessionId: string; entry: PlanEntry } | null = null;
     let reason: 'none' | 'forked' | 'mandate-ended' = 'none';
     for (const [sessionId, record] of bySession) {

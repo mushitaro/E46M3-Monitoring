@@ -11,7 +11,7 @@ import { useLang } from '@/lib/i18n';
 
 /**
  * AI — the one switch for the owner's assistant, right of the WORKS badge in the header, the same
- * place in every M tool (tsunagi-m-chrome §2, operator 2026-10-28). There is no other: SESSIONS
+ * place in every M tool (tsunagi-m-chrome §2, operator 2026-10-28). There is no other: SESSION SYNC
  * shows the device's name and the state, and says where the switch is.
  *
  * A switch, not a link: `role="switch"` and `aria-checked`. Off, a press shows what turning it on

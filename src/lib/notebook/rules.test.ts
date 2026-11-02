@@ -97,6 +97,13 @@ describe('plan steps are reads, and say so in a form the tab can check', () => {
         expect(stepsProblem([{ n: 1, do: 'x', kind: 'sample', channels: ['v'] }])).toMatch(/selection:symbol/);
     });
 
+    it('takes a whole live block and the learned values, and nothing else under those names', () => {
+        expect(stepsProblem([{ n: 1, do: 'all of block 3', kind: 'sample', channels: ['3:*'] }])).toBeNull();
+        expect(stepsProblem([{ n: 1, do: 'learned values', kind: 'adapt', when: 'parked' }])).toBeNull();
+        expect(stepsProblem([{ n: 1, do: 'x', kind: 'adapt' }])).toMatch(/when must be/);
+        expect(stepsProblem([{ n: 1, do: 'x', kind: 'sample', channels: ['*:*'] }])).toMatch(/selection:symbol/);
+    });
+
     it('reads RAM only inside the DME master windows, as TUNER measured them', () => {
         expect(ramSegment('FFD1A2', 2)).toBe(0x04);
         expect(ramSegment('FF8010', 1)).toBe(0x01);
@@ -142,4 +149,28 @@ describe('the plan the tab runs', () => {
         const r = runnablePlan([b, a], T0 + 1000);
         expect(r.ok && r.sessionId).toBe('record-bbbb');
     });
+
+    it('takes the record the assistant names, when it names one', () => {
+        const a = at(plan('owner'), T0 + 10, 'record-aaaa');
+        const b = at(plan('owner'), T0 + 20, 'record-bbbb');
+        const r = runnablePlan([b, a], T0 + 1000, 'record-aaaa');
+        expect(r.ok && r.sessionId).toBe('record-aaaa');
+        expect(runnablePlan([b, a], T0 + 1000, 'record-cccc')).toEqual({ ok: false, reason: 'none' });
+    });
 });
+
+describe('a mandate names what kind of investigation it is', () => {
+    const m = (extra: object) => ({ ...mandate(), body: { ...mandate().body, ...extra } }) as NotebookEntry;
+
+    it('takes reactive, predictive or symptom, and the fault codes a reactive one follows', () => {
+        expect(entryProblem(m({ mode: 'reactive', focus: ['mss54:0x2A', 'dsc_e46:0x5D'] }))).toBeNull();
+        expect(entryProblem(m({ mode: 'predictive' }))).toBeNull();
+        expect(entryProblem(m({ mode: 'symptom' }))).toBeNull();
+    });
+
+    it('refuses a mode it does not know and a code without its module', () => {
+        expect(entryProblem(m({ mode: 'tuning' }))).toMatch(/mandate.mode/);
+        expect(entryProblem(m({ focus: ['0x2A'] }))).toMatch(/mandate.focus/);
+    });
+});
+

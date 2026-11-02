@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { Ds2Link, Ds2Status, WebSerialTransport, minPayloadLength, simulatedPort, type SimulatedEcuOptions } from '@tsunagi/ds2-core';
-import { blockBySelection } from '@tsunagi/ds2-mss54';
+import { MSS54_ADAPTATION_BLOCKS, blockBySelection } from '@tsunagi/ds2-mss54';
 import type { CatalogJob } from '../ecuCatalog';
 import { EMPTY_LEDGER, type Ledger } from '../ledger';
 import { moduleProtocol } from '../moduleProtocol';
@@ -46,6 +46,8 @@ function car(opts: { speed: () => number; dme?: 'dead'; dscRefuses?: boolean; no
             if (req.controlOrStatus === 0x0b && req.payload[0] === 3) return { payload: block(3, (b) => { b[0] = 0x03; b[1] = 0x70; }) };
             if (req.controlOrStatus === 0x06) return { payload: new Uint8Array([0x12, 0x34]) };
             if (req.controlOrStatus === 0x0b && req.payload[0] === 4) return { payload: new Uint8Array([0xaa, 0xbb]) };
+            // The learned-value blocks: long enough for every field, all zero.
+            if (req.controlOrStatus === 0x0b && MSS54_ADAPTATION_BLOCKS.some((b) => b.selection === req.payload[0])) return { payload: new Uint8Array(160) };
             return { status: Ds2Status.REJECTED };
         },
     };
@@ -199,3 +201,32 @@ describe('what it refuses, and how it says so', () => {
         expect(Array.from(ramReq.request.payload)).toEqual([0x04, 0xff, 0xd1, 0xa2, 0x02]);
     });
 });
+
+describe('a health check', () => {
+    it('reads the learned values once, parked, every block through the gate', async () => {
+        const h = await harness({ speed: () => 0 });
+        const run = await runProbe(plan([{ n: 1, do: 'learned values', kind: 'adapt', when: 'parked' }]), h.deps);
+        expect(run.end).toBe('done');
+        expect(run.steps[0].state).toBe('done');
+        const sent = run.exchanges.filter((e) => e.outcome === 'ok').map((e) => e.what);
+        expect(sent).toEqual(MSS54_ADAPTATION_BLOCKS.map((b) => `ADAPT_${b.selection}`));
+        expect(Object.keys(run.adaptations ?? {}).length).toBeGreaterThan(20);
+        expect(Object.values(run.adaptations ?? {}).every((v) => v === null || typeof v === 'number')).toBe(true);
+    });
+
+    it('waits with the learned values while the car moves', async () => {
+        const h = await harness({ speed: () => 40 }, 4);
+        const run = await runProbe(plan([{ n: 1, do: 'learned values', kind: 'adapt', when: 'parked' }, { n: 2, do: 'speed', kind: 'sample', channels: ['19:v'] }]), h.deps);
+        expect(run.exchanges.some((e) => e.what.startsWith('ADAPT_'))).toBe(false);
+        expect(run.steps[0].state).toBe('pending');
+    });
+
+    it('reads a whole block when it is named with a star', async () => {
+        const h = await harness({ speed: () => 0 }, 3);
+        const run = await runProbe(plan([{ n: 1, do: 'all of block 3', kind: 'sample', channels: ['3:*'] }]), h.deps);
+        const fields = blockBySelection(3)!.fields.length;
+        const keys = Object.keys(run.samples[0].values).filter((k) => k.startsWith('3:'));
+        expect(keys.length).toBe(fields);
+    });
+});
+

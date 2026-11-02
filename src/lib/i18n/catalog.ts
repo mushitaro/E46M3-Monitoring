@@ -195,6 +195,20 @@ export interface Localised {
     ident_note: (bytes: number) => string;
     /** Said beside a fault read from a module with no decoder: its bytes, as they came back. */
     faults_raw_note: (frames: number) => string;
+    /** DIAGNOSIS with ALL MODULES: every module's fault memory, one address after another (lib/probe/scan). */
+    scan_title: string;
+    /** When the last scan ended. */
+    scan_note: (time: string) => string;
+    /** Behind the ⓘ: how the scan asks, what it can decode, what silence means. */
+    scan_info: string;
+    /** The one or two words a row ends with. */
+    scan_outcome: { faults: (n: number) => string; clean: string; undecoded: string; silent: string; rejected: string; refused: string; skipped: string };
+    /** A shared address: which of its SGBDs is fitted is chosen on the select. */
+    scan_shared: string;
+    /** The hub's notice while it runs. */
+    scan_progress: (done: number, total: number) => string;
+    awaiting_scan: string;
+    viz_scanAnswered: string;
     /** The hub's notice where a module's own SGBD carries no short IDENT or fault-read frame. */
     faults_notEstablished: string;
     /** The hub's notice on DATALOG for a module whose live-block layout this app does not have. */
@@ -203,7 +217,7 @@ export interface Localised {
     probe_title: string;
     /** The hub's notice while a plan runs: version, one-shot steps settled of all, samples kept. */
     probe_line: (v: number, settled: number, total: number, samples: number) => string;
-    /** SESSIONS — the preview's saved sessions and SYNC (lib/features.ts `sessionSync`). */
+    /** MEMORY and SESSION SYNC — the preview's saved sessions and SYNC (lib/features.ts `sessionSync`). */
     sessions_current: string;
     /** The explanation behind this connection's ⓘ: what SAVE and SYNC each do. */
     sessions_current_info: string;
@@ -230,7 +244,7 @@ export interface Localised {
     /** The header's AI switch: what a press does, for its title. */
     ai_pressToTurnOn: string;
     ai_pressToTurnOff: string;
-    /** On SESSIONS: where the switch is now that it is not here. */
+    /** In SESSION SYNC: where the switch is now that it is not here. */
     assistant_whereSwitch: string;
     /** The name a device answers as when the owner gave it none: the head unit, a phone, a computer. */
     assistant_defaultDevice: Record<'nav' | 'phone' | 'pc', string>;

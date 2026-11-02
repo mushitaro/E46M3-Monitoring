@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, Download, Radar, RotateCcw, Square } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { AlertTriangle, ArrowRight, Download, Radar, RotateCcw, Square } from 'lucide-react';
 import { AppHeader } from '@/components/AppHeader';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { CreditsDialog } from '@/components/CreditsDialog';
@@ -27,7 +27,7 @@ import { useMonitoringFacade } from '@/hooks/useMonitoringFacade';
 import { useInstallPrompt } from '@/hooks/useInstallPrompt';
 import { useOnline } from '@/hooks/useOnline';
 import { useUnloadGuard } from '@/hooks/useUnloadGuard';
-import { useSplitGraph, useWideLayout } from '@/hooks/useWideLayout';
+import { useWideLayout } from '@/hooks/useWideLayout';
 import { useBuildId, useBuildVariant, usePreviewSurfaces } from '@/lib/build-variant';
 import { disclaimerStore } from '@/lib/disclaimer';
 import { agreeToFirstRun, firstRunDialogUp, previewNoticeStore } from '@/lib/previewNotice';
@@ -57,30 +57,41 @@ import { ActuatorView } from '@/views/actuator/ActuatorView';
 import { ActuatorViz } from '@/views/actuator/ActuatorViz';
 import { AdaptationView, AdaptationViz } from '@/views/adaptation/AdaptationView';
 import { DiagnosisView, DiagnosisViz } from '@/views/diagnosis/DiagnosisView';
+import { ScanList, ScanViz } from '@/views/diagnosis/ScanView';
+import { loadScanTargets } from '@/lib/probe/modules';
+import { ALL_MODULES } from '@/lib/probe/scan';
 import { DatalogView, DatalogViz } from '@/views/datalog/DatalogView';
 import { useDatalog } from '@/views/datalog/useDatalog';
 import { ServiceView, ServiceViz, procedureForJob } from '@/views/service/ServiceView';
 import { WizardDialog } from '@/views/service/WizardDialog';
 import { SessionsView, SessionsViz } from '@/views/sessions/SessionsView';
+import { SyncPanel } from '@/views/sessions/SyncPanel';
 import { useFailureNotes, useSessions } from '@/views/sessions/useSessions';
 
-/**
- * Only where the viewport is narrow AND short: `SPLIT` from hooks/useWideLayout.ts, spelled out
- * because Tailwind generates only the class names it can read in the source. Keep the query
- * identical in both places: the hook decides whether GRAPH can be the pane that is up, these decide
- * what DASH and GRAPH hold, and a viewport that matched one and not the other would land on a pane
- * with nothing in it. It is the one condition in which the picture and the control panel cannot
- * share DASH (the note on the footer has the budget).
- */
-const SPLIT_ONLY_HIDE = '[@media(max-width:899px)_and_(max-height:560px)]:hidden';
-const SPLIT_ONLY_SHOW = 'hidden [@media(max-width:899px)_and_(max-height:560px)]:flex';
-const SPLIT_ONLY_GROW = '[@media(max-width:899px)_and_(max-height:560px)]:flex-1';
-
-/** Below 900, the pane that is not up: still laid out, neither seen nor touched. From 900 both are up. */
+/** Below 900, the window that is not up: still laid out, neither seen nor touched. From 900 all are up. */
 const NARROW_HIDDEN = 'invisible pointer-events-none min-[900px]:visible min-[900px]:pointer-events-auto';
 
-/** The panes below 900, in the order the footer lists them. GRAPH only where SPLIT gives it one. */
-type NarrowPane = 'list' | 'dash' | 'graph';
+/**
+ * The three windows, by their development names (tsunagi-m-design §5.12; the README has what each
+ * tab puts in each): MAIN, the tab's rows, where things are chosen, labelled LIST here; MULTI, the
+ * tab's picture, labelled VISU; HUB, the status row, the notice, the hub ring and the sub-actions —
+ * the next step.
+ *
+ * From 900 all three are up: MAIN on the left, MULTI over HUB on the right. Below 900 HUB stays up,
+ * and the footer picks which of MAIN and MULTI shares the screen with it: beside it, at φ, when the
+ * screen lies on its side (the head unit, a phone held landscape), above it when the screen stands.
+ *
+ * Spelled out because Tailwind generates only the class names it can read in the source. The two
+ * orientations are written as two queries rather than a base and an override, so no rule depends
+ * on the order Tailwind emits its variants in.
+ */
+const NARROW_GRID =
+    'grid-cols-1 grid-rows-[minmax(0,1fr)_auto] [@media(max-width:899px)_and_(orientation:landscape)]:grid-cols-[minmax(0,61.8fr)_minmax(0,38.2fr)] [@media(max-width:899px)_and_(orientation:landscape)]:grid-rows-1';
+const NARROW_HUB =
+    'max-[900px]:h-auto max-[900px]:bg-slate-900/20 border-slate-900 [@media(max-width:899px)_and_(orientation:portrait)]:[grid-area:2/1] [@media(max-width:899px)_and_(orientation:portrait)]:border-t [@media(max-width:899px)_and_(orientation:landscape)]:[grid-area:1/2] [@media(max-width:899px)_and_(orientation:landscape)]:border-l';
+
+/** The window the footer puts beside HUB below 900 (ids after its labels), in the footer's order. */
+type NarrowPane = 'list' | 'visu';
 
 /**
  * The shell.
@@ -121,14 +132,13 @@ type NarrowPane = 'list' | 'dash' | 'graph';
  * every time the link state moves reads as untrustworthy on a tool that
  * commands a car.
  *
- * ## Below 900px: one pane at a time
+ * ## Below 900px: HUB always, MAIN and MULTI in turn
  *
- * The two columns do not stack on a phone. They overlay one grid cell and a
- * footer picks the one that is up — LIST, DASH, and GRAPH where the viewport is
- * also short — as in TUNER and SMG2 (tsunagi-m-mobile §3, §4, §7). Stacked, each
- * got too little to use: at 851x393 the list had 88px and the right column
- * 213.2, less than the control panel alone, so CONNECT sat below the fold. The
- * note on the footer has the budget.
+ * The two columns do not stack on a phone: at 851x393 the list had 88px and the
+ * right column 213.2, less than the control panel alone, so CONNECT sat below
+ * the fold. MAIN and MULTI overlay one grid cell and the footer picks the one
+ * that is up; HUB has a cell of its own and is always on screen (operator,
+ * 2026-11-01; tsunagi-m-mobile §3). The note on the footer has the budget.
  *
  * The footer is the family's (tsunagi-m-mobile references/mobile-chrome.md),
  * copied from TUNER: the pane switch on the left, the M button at the centre
@@ -175,22 +185,18 @@ export default function Home() {
     const [tab, setTab] = useState<Tab>('diagnosis');
     const [ecuId, setEcuId] = useState('mss54');
 
-    // Which pane is up below 900px, where only one fits; the footer switches it. DASH first: it
-    // holds the hub, and the hub is always the next step — CONNECT on a fresh start, while LIST has
-    // nothing to show until something has been read.
-    const [pane, setPane] = useState<NarrowPane>('dash');
+    // Which window shares the screen with HUB below 900; the footer switches it. MAIN first: it is
+    // the tab's own rows, and HUB beside it already holds the next step. Not reset when the tab
+    // changes — both windows belong to the tab, so the one chosen shows the new tab too.
+    const [pane, setPane] = useState<NarrowPane>('list');
+    // SESSION SYNC (views/sessions/SyncPanel), opened from MEMORY's SYNC and the menu sheet's.
+    const [syncOpen, setSyncOpen] = useState(false);
     const wide = useWideLayout();
-    const split = useSplitGraph();
-    // GRAPH exists only in SPLIT. Rotated out of it, a pane that pointed there lands on DASH —
-    // derived rather than reset, so rotating back returns to GRAPH, and no render shows a pane that
-    // is not there (tsunagi-m-mobile §4).
-    const shownPane: NarrowPane = pane === 'graph' && !split ? 'dash' : pane;
-    // Where the picture is on screen: always in the wide layout; below 900 in DASH, or in GRAPH
-    // where SPLIT gives the panel all of DASH.
-    const pictureUp = wide || shownPane === (split ? 'graph' : 'dash');
+    // Where the picture is on screen: always from 900; below it, while VISU is up.
+    const pictureUp = wide || pane === 'visu';
 
     // What this build may show. Production renders the five instrument tabs and nothing that
-    // stores or sends; the preview adds SESSIONS (lib/features.ts, and its pinned test).
+    // stores or sends; the preview adds MEMORY (lib/features.ts, and its pinned test).
     const previewSurfaces = usePreviewSurfaces();
     const tabs = useMemo(() => enabledTabs(previewSurfaces), [previewSurfaces]);
     const sessionsEnabled = featureEnabled('sessionSync', previewSurfaces);
@@ -212,7 +218,7 @@ export default function Home() {
     }, [ecuIndex, ecuId, telegrams]);
     // The verified ledger, for this page's life. Reads that answer on a car measured stationary are
     // recorded into it as facts (`observed-parked`); nothing here promotes a read further — clearing
-    // one for a moving car is the owner's press on SESSIONS (`onGrantMovingOk`). Not persisted yet:
+    // one for a moving car is the owner's press in SESSION SYNC (`onGrantMovingOk`). Not persisted yet:
     // the production build stores nothing on the device, and the WORKS build's copy goes with SYNC.
     const [observed, setObserved] = useState<Ledger>(EMPTY_LEDGER);
     const onObserved = useCallback(
@@ -227,7 +233,7 @@ export default function Home() {
             ),
         [],
     );
-    // The owner's press on SESSIONS → WHILE MOVING, after the confirmation. grantMovingOk refuses
+    // The owner's press in SESSION SYNC → WHILE MOVING, after the confirmation. grantMovingOk refuses
     // anything without enough stationary answers, so a stale screen cannot clear more than it showed.
     const onGrantMovingOk = useCallback(
         (id: string) => setObserved((l) => grantMovingOk(l, id, { who: 'owner', at: new Date().toISOString() }).ledger),
@@ -264,10 +270,10 @@ export default function Home() {
     const datalog = useDatalog(link);
 
     // SAVE, SYNC and the account's copies. Reads the session the link and the datalog hold; asks
-    // the network for nothing until the SESSIONS tab is open, and never in production.
+    // the network for nothing until the MEMORY tab is open, and never in production.
     const sessions = useSessions({
         enabled: sessionsEnabled,
-        active: tab === 'sessions',
+        active: tab === 'memory',
         link,
         ecuId,
         datalog,
@@ -362,6 +368,85 @@ export default function Home() {
     const changeTab = useCallback((next: Tab) => void releaseThen(() => setTab(next)), [releaseThen]);
 
     /**
+     * The assistant's module switch (operator, 2026-11-01: "in AI mode the AI switches modules too").
+     *
+     * The link opens for one module — its address is latched at CONNECT — so a switch under an open
+     * link is the screen's own three steps: DISCONNECT, the new module, CONNECT again through the
+     * same door (the cable already allowed on this device, or PRACTICE). Never while a read, a
+     * recording or a PROBE run is going. Null when done; otherwise why not.
+     */
+    const switchModule = useCallback(
+        async (id: string): Promise<string | null> => {
+            const entry = ecuIndex?.modules.find((m) => m.id === id);
+            if (!entry) return `There is no module ${id}. monitoring_catalog and monitoring_scan name them.`;
+            if (id === ecuId) return null;
+            if (link.state === 'busy' || link.state === 'connecting') return 'A read is in flight. Ask again in a moment.';
+            if (link.state === 'logging') return 'A recording or a PROBE run is going. Stop it first (read back, then monitoring_stop_log).';
+            const was = link.state === 'connected' ? link.mode : null;
+            const next = moduleProtocol(id, entry.address, await loadTelegrams(id));
+            await releaseThen(async () => {
+                if (was) await link.disconnect();
+                setEcuId(id);
+            });
+            if (!was) return null;
+            if (was === 'practice') {
+                await link.connect('practice', false, next);
+                return null;
+            }
+            return link.reconnectPermitted(next);
+        },
+        [ecuIndex, ecuId, link, releaseThen],
+    );
+
+    /**
+     * ALL MODULES — DIAGNOSIS's first choice on the module select (operator, 2026-11-01). READ then
+     * reads every module's fault memory, one address at a time (lib/probe/scan); the link stays
+     * open for the module it was opened for, because the scan reaches every address on the one
+     * K-line. The other tabs need one module, so they keep showing it.
+     */
+    const [allModules, setAllModules] = useState(false);
+    const scopeAll = allModules && tab === 'diagnosis';
+    const [scanOpen, setScanOpen] = useState<string | null>(null);
+    const ledgerRef = useRef(ledger);
+    useEffect(() => {
+        ledgerRef.current = ledger;
+    }, [ledger]);
+    const startScan = useCallback(async (): Promise<{ addresses: number } | string> => {
+        if (link.state !== 'connected') return `The link is ${link.state}; a scan starts from connected and idle.`;
+        if (!ecuIndex) return 'The module index has not loaded yet.';
+        const targets = await loadScanTargets(ecuIndex);
+        setAllModules(true);
+        setScanOpen(null);
+        void link.scanAll(targets, () => ledgerRef.current);
+        return { addresses: targets.length };
+    }, [ecuIndex, link]);
+    // The text of the one module the scan decodes, whichever module the link is for.
+    const [mss54Catalog, setMss54Catalog] = useState<EcuProfile | null>(null);
+    useEffect(() => {
+        if (scopeAll && !mss54Catalog) void loadEcuCatalog('mss54').then(setMss54Catalog).catch(() => {});
+    }, [scopeAll, mss54Catalog]);
+    const chooseModule = useCallback(
+        (id: string) => {
+            if (id === ALL_MODULES) return setAllModules(true);
+            setAllModules(false);
+            if (id !== ecuId) changeEcu(id);
+        },
+        [ecuId, changeEcu],
+    );
+    // OPEN under the scan: the chosen row's module on the screen. A shared address has more than one
+    // SGBD and is chosen on the select instead.
+    const scanOpenModule = scopeAll && scanOpen ? (link.scan?.results.find((x) => x.address === scanOpen)?.modules ?? []) : [];
+    const openScanned = useCallback(
+        (id: string) => {
+            setAllModules(false);
+            if (id === ecuId) return;
+            if (link.state === 'connected') void switchModule(id);
+            else changeEcu(id);
+        },
+        [ecuId, link.state, switchModule, changeEcu],
+    );
+
+    /**
      * RELOAD — the header's last link from 900 up, the M menu's strip below it.
      *
      * The app needs its own: pull-to-refresh is off (globals.css), and installed it has no browser
@@ -431,7 +516,7 @@ export default function Home() {
     );
     // The preview's notice of what it sends rides in the same dialog, and holds it up on its own
     // key (lib/previewNotice). Only in the build that carries app-variant=preview, which is the
-    // build that sends: `next dev` shows SESSIONS but sends nothing, so it has nothing to disclose
+    // build that sends: `next dev` shows MEMORY but sends nothing, so it has nothing to disclose
     // and its dialog is production's.
     const preview = useBuildVariant() === 'preview';
     // WORKS takes a newer build by itself, once nothing would be lost by the reload (lib/adoptBuild):
@@ -456,7 +541,7 @@ export default function Home() {
     // The sign-in lapsed: WORKS goes through the gate again by itself when that costs nothing — the
     // idle minute the swap above waits for, a network, a clock the server agrees with, and no trip
     // from this tab in the last ten minutes (lib/signInLapse `lapseAction`). Otherwise the header
-    // says so, with SIGN IN AGAIN while that can be pressed: no link and a network, as on SESSIONS,
+    // says so, with SIGN IN AGAIN while that can be pressed: no link and a network, as on MEMORY,
     // asking first when something unsaved would go with the page.
     const online = useOnline();
     const { reauth, unsaved } = sessions;
@@ -485,7 +570,7 @@ export default function Home() {
     // until switched on on this device). The facade is what the tools may reach — the screen's own
     // controls, never a run.
     const buildId = useBuildId();
-    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, tab, changeTab, selectJob, updateWaiting, syncInvestigations, defaultDevice: t.assistant_defaultDevice });
+    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, tab, changeTab, selectJob, switchModule, startScan, updateWaiting, syncInvestigations, defaultDevice: t.assistant_defaultDevice });
     const assistant = useAssistantBridge({
         allowed: preview && noticeAcknowledged,
         facade,
@@ -515,10 +600,15 @@ export default function Home() {
         catalogError,
         openProcedure: procedure ? () => setWizardOpen(true) : undefined,
         probe: probe.progress ? { progress: probe.progress, stop: probe.stop } : undefined,
+        scan: scopeAll ? { run: () => void startScan(), progress: link.scanProgress } : undefined,
     });
 
     const panes: Record<Tab, React.ReactNode> = {
-        diagnosis: <DiagnosisView ident={link.ident} faults={link.faults} rawFaults={link.rawFaults} catalog={catalog} />,
+        diagnosis: scopeAll ? (
+            <ScanList run={link.scan} progress={link.scanProgress} index={ecuIndex} mss54={mss54Catalog} selected={scanOpen} onSelect={setScanOpen} />
+        ) : (
+            <DiagnosisView ident={link.ident} faults={link.faults} rawFaults={link.rawFaults} catalog={catalog} />
+        ),
         datalog: <DatalogView datalog={datalog} />,
         adaptation: (
             <AdaptationView
@@ -561,11 +651,11 @@ export default function Home() {
         ),
         // Rendered only where the registry opens it: a production build never mounts it, so it
         // never opens the device store or asks the network for anything.
-        sessions: sessionsEnabled ? <SessionsView sessions={sessions} catalog={catalog} ecuId={ecuId} assistant={assistant} ledger={ledger} motion={link.motion} onGrantMovingOk={onGrantMovingOk} /> : null,
+        memory: sessionsEnabled ? <SessionsView sessions={sessions} catalog={catalog} ecuId={ecuId} onOpenSync={() => setSyncOpen(true)} /> : null,
     };
 
     const vizzes: Record<Tab, React.ReactNode> = {
-        diagnosis: <DiagnosisViz faults={link.faults} />,
+        diagnosis: scopeAll ? <ScanViz run={link.scan} progress={link.scanProgress} /> : <DiagnosisViz faults={link.faults} />,
         datalog: <DatalogViz datalog={datalog} active={tab === 'datalog' && pictureUp} />,
         adaptation: <AdaptationViz blocks={link.adaptations} />,
         service: (
@@ -585,7 +675,7 @@ export default function Home() {
         // module. Same component SERVICE falls back to, because it is the same
         // question and the numbers are about the module, not the tab.
         actuator: <ActuatorViz profile={catalog} arming={arming} />,
-        sessions: sessionsEnabled ? <SessionsViz count={sessions.local?.length ?? 0} /> : null,
+        memory: sessionsEnabled ? <SessionsViz count={sessions.local?.length ?? 0} /> : null,
     };
 
     return (
@@ -603,10 +693,11 @@ export default function Home() {
                 onReauth={canReauth ? startReauth : null}
             />
 
-            {/* Below 900 one grid cell holds both panes; from 900 they are flex siblings, as
-                they always were. `grid-cols-1` is minmax(0,1fr): an implicit column is `auto`,
-                and the widest thing in either pane would size it. */}
-            <main className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden min-[900px]:flex min-[900px]:flex-row">
+            {/* Below 900 a grid: MAIN and MULTI share one cell, HUB has the other (NARROW_GRID —
+                beside it on its side, below it standing). From 900 the columns are flex siblings,
+                as they always were. The columns are minmax(0,…): an implicit `auto` track would be
+                sized by the widest thing in either window. */}
+            <main className={`grid min-h-0 flex-1 overflow-hidden ${NARROW_GRID} min-[900px]:flex min-[900px]:flex-row`}>
                 {/* Both columns carry a faint fill. Left at /40, right at /20 over
                     the true-black base: without them the split is a single
                     #0A0A0D hairline on #000000, which measures as a rule and
@@ -620,7 +711,7 @@ export default function Home() {
                     to dismiss the log fired the hub instead, dropping the link. */}
                 <section
                     id="narrow-list"
-                    className={`relative flex min-h-0 flex-col border-slate-900 bg-slate-950/40 [grid-area:1/1] min-[900px]:h-full min-[900px]:w-[61.8%] min-[900px]:border-r min-[900px]:[grid-area:auto] ${shownPane === 'list' ? '' : NARROW_HIDDEN}`}
+                    className={`relative flex min-h-0 flex-col border-slate-900 bg-slate-950/40 [grid-area:1/1] min-[900px]:h-full min-[900px]:w-[61.8%] min-[900px]:border-r min-[900px]:[grid-area:auto] ${pane === 'list' ? '' : NARROW_HIDDEN}`}
                 >
                     <TabBar tab={tab} enabled={tabs} onChange={changeTab}>
                         <LogPopover
@@ -632,7 +723,9 @@ export default function Home() {
                     <Overlaid active={tab} panes={panes} kind="pane" />
                 </section>
 
-                {/* DASH below 900, the right column from 900.
+                {/* The right column from 900: MULTI over HUB. Below 900 it is
+                    not a box (`contents`): MULTI joins MAIN's cell and HUB
+                    takes its own, so the grid on <main> places both.
 
                     It SCROLLS rather than clips. Below its bar it holds two
                     floors, the picture's 140 and the panel's 220, and a short
@@ -641,19 +734,16 @@ export default function Home() {
                     difference off the bottom without a word — the sub-action
                     row with it, out of reach of wheel and finger. Where the
                     floors fit, the declared split fills the column exactly and
-                    nothing scrolls. (Below 900 DASH has the screen to itself
-                    and fits; the footer's note has the numbers.)
+                    nothing scrolls. (Below 900 HUB fits in its own cell; the
+                    footer's note has the numbers.)
 
-                    The blur is the wide layout's only. Below 900 this pane is
-                    the whole screen over a black nothing, which is where a
+                    The blur is the wide layout's only. Below 900 nothing sits
+                    behind these windows but black, which is where a
                     backdrop-filter costs the most and shows the least
                     (tsunagi-m-mobile §16.5). */}
-                <aside
-                    id="narrow-dash"
-                    className={`relative z-20 flex min-h-0 flex-col overflow-y-auto overflow-x-hidden bg-slate-900/20 [grid-area:1/1] min-[900px]:w-[38.2%] min-[900px]:flex-none min-[900px]:backdrop-blur-sm min-[900px]:[grid-area:auto] ${shownPane === 'list' ? NARROW_HIDDEN : ''}`}
-                >
+                <aside className="relative z-20 flex min-h-0 flex-col overflow-y-auto overflow-x-hidden bg-slate-900/20 min-[900px]:w-[38.2%] min-[900px]:flex-none min-[900px]:backdrop-blur-sm max-[900px]:contents">
                     {/* Wide only. It lines up with the tab bar across the split, and below 900
-                        there is no split to line up across — the footer already names the pane. */}
+                        there is no split to line up across — the footer already names the window. */}
                     <div className={`${BAR} max-[900px]:hidden`}>
                         <span className={`truncate ${LABEL} text-slate-500`}>
                             {t.pane_visualization}
@@ -678,17 +768,21 @@ export default function Home() {
                         in it is reserved), so on a viewport too short for 38.2%
                         to hold it, it stops shrinking rather than scrolling the
                         hub off the bottom. */}
-                    <div className="flex min-h-0 flex-1 flex-col">
-                        {/* In SPLIT the two cannot share DASH, so they take a pane
-                            each: the picture is GRAPH, and the panel grows into all
-                            of DASH, its slack going to the hub's band. Everywhere
-                            else they stack, as they always have. */}
-                        <div className={`relative min-h-[140px] flex-1 overflow-hidden bg-gradient-to-b from-slate-900/10 to-transparent p-4 ${shownPane === 'graph' ? '' : SPLIT_ONLY_HIDE}`}>
+                    <div className="flex min-h-0 flex-1 flex-col max-[900px]:contents">
+                        {/* MULTI. Below 900 it overlays MAIN in the cell beside HUB, with MAIN's
+                            fill, so the two read as one window the footer turns over. */}
+                        <div
+                            id="narrow-visu"
+                            className={`relative min-h-[140px] flex-1 overflow-hidden bg-gradient-to-b from-slate-900/10 to-transparent p-4 max-[900px]:min-h-0 max-[900px]:bg-slate-950/40 max-[900px]:[grid-area:1/1] ${pane === 'visu' ? '' : NARROW_HIDDEN}`}
+                        >
                             <Overlaid active={tab} panes={vizzes} kind="viz" />
                         </div>
 
+                        {/* HUB. Below 900 it is always up: its natural height under MAIN
+                            standing, the cell's whole height beside it on its side, the slack
+                            going to the hub's band. */}
                         <ControlPanel
-                            className={shownPane === 'graph' ? SPLIT_ONLY_HIDE : SPLIT_ONLY_GROW}
+                            className={NARROW_HUB}
                             module={
                                 <ModuleRow
                                     index={ecuIndex}
@@ -699,7 +793,9 @@ export default function Home() {
                                     practiceArmed={practiceArmed}
                                     onPractice={setPracticeArmed}
                                     onDisconnect={disconnect}
-                                    onChangeEcu={changeEcu}
+                                    onChangeEcu={chooseModule}
+                                    allowAll={tab === 'diagnosis'}
+                                    all={allModules}
                                 />
                             }
                             notice={notice}
@@ -719,6 +815,11 @@ export default function Home() {
                                         {t.retry}
                                     </TextButton>
                                 )
+                            )}
+                            {scanOpenModule.length === 1 && link.state !== 'busy' && (
+                                <TextButton onClick={() => openScanned(scanOpenModule[0])} Icon={ArrowRight}>
+                                    {t.open_module}
+                                </TextButton>
                             )}
                             {/* DISCONNECT was here. It is now on the MODULE row —
                                 see the note in Chrome.tsx. */}
@@ -764,62 +865,46 @@ export default function Home() {
                 </aside>
             </main>
 
-            {/* The footer, below 900 (tsunagi-m-mobile §3, §4, §7, §8): the pane switch on the
-                left, the M button at the centre, the triggers of this app's panels on the right.
-                The family's form, copied from TUNER rather than re-derived (tsunagi-m-mobile
-                references/mobile-chrome.md §2, §3).
+            {/* The footer, below 900 (tsunagi-m-mobile §3, §4, §7, §8): the window switch on
+                the left, the M button at the centre, the triggers of this app's panels on the
+                right. The family's form, copied from TUNER rather than re-derived
+                (tsunagi-m-mobile references/mobile-chrome.md §2, §3).
                 ────────────────────────────────────────────────────────
-                Stacked, the two columns were each too small to use: at
-                851x393 the list had 88px and the right column 213.2, less
-                than the control panel alone, and CONNECT was below the fold.
-                So the panes overlay one cell and this row picks the one that
-                is up. LIST is the tab's own view, DASH the hub, the panel and
-                the picture; GRAPH exists only in SPLIT, where the picture's
-                140 cannot sit on the panel's 220. Below 900 the tab bar is
-                not drawn (the views are the M menu's), so LIST has the pane's
-                whole height:
+                HUB is not in it: below 900 HUB is always up, so the next step — CONNECT, READ,
+                OPEN — is never a tap away from the rows it acts on. The switch turns over the
+                window beside it, MAIN or MULTI, labelled LIST and VISU. The tab bar is not drawn below 900 (the views are
+                the M menu's), so that window has its cell's whole height:
 
-                  851x393  393 − 48 − 53 = 292   LIST 292   DASH panel 292   GRAPH 292
-                  683x400  400 − 48 − 53 = 299   LIST 299   DASH panel 299   GRAPH 299
-                  360x800  800 − 48 − 53 = 699   LIST 699   DASH picture 432 + panel 267
+                  683x400  400 − 48 − 53 = 299   MAIN|MULTI 422 × 299   HUB 261 × 299
+                  851x393  393 − 48 − 53 = 292   MAIN|MULTI 526 × 292   HUB 325 × 292
+                  360x800  800 − 48 − 53 = 699   MAIN|MULTI 360 × 432   HUB 360 × 267
 
-                Outside both panes, because each pane hides the other. 52px and
-                a rule on top; no blur, because nothing sits behind this row
+                52px and a rule on top; no blur, because nothing sits behind this row
                 (tsunagi-m-mobile §16.5). */}
             <div className="z-30 flex-none border-t border-slate-900 bg-slate-950/80 min-[900px]:hidden">
                 <div className="relative flex h-[52px] items-center px-4">
                     {/* Dressed as the tab row — same label, same 2px indicator — with the
                         indicator on TOP, on the button itself: the bottom edge is the screen's.
-                        Every pane here always has something to show, so none is ever disabled
-                        today; the slate-700 is the family's, for the pane that one day does not.
 
                         The `after:` box is the hit area. With the indicator on the button, the
-                        button is as wide as its word — LIST 26px, DASH 32 — so it is widened by an
-                        invisible box 12px either side rather than by padding, which would widen
-                        the indicator too. 12 is half the 24px gap, so neighbours meet and do not
-                        overlap. Hit-tested along the row: LIST 49.5, DASH 56, GRAPH 65.5 wide, as
-                        the row had before the indicator moved. */}
+                        button is as wide as its word, so it is widened by an invisible box 12px
+                        either side rather than by padding, which would widen the indicator too.
+                        12 is half the 24px gap, so neighbours meet and do not overlap. */}
                     <div className="flex h-full shrink-0 space-x-6">
                         {(
                             [
-                                ['list', t.pane_list, true, ''],
-                                ['dash', t.pane_dash, true, ''],
-                                ['graph', t.pane_graph, true, SPLIT_ONLY_SHOW],
+                                ['list', t.pane_list, 'narrow-list'],
+                                ['visu', t.pane_visu, 'narrow-visu'],
                             ] as const
-                        ).map(([id, label, enabled, only]) => (
+                        ).map(([id, label, controls]) => (
                             <button
                                 key={id}
                                 type="button"
-                                disabled={!enabled}
-                                aria-pressed={shownPane === id}
-                                aria-controls={id === 'list' ? 'narrow-list' : 'narrow-dash'}
+                                aria-pressed={pane === id}
+                                aria-controls={controls}
                                 onClick={() => setPane(id)}
-                                className={`relative h-full ${only || 'flex'} shrink-0 items-center whitespace-nowrap border-t-2 after:absolute after:-inset-x-3 after:inset-y-0 ${LABEL} transition-colors ${
-                                    shownPane === id
-                                        ? 'border-blue-400 text-blue-400'
-                                        : enabled
-                                          ? 'border-transparent text-slate-500 hover:text-slate-300'
-                                          : 'cursor-default border-transparent text-slate-700'
+                                className={`relative flex h-full shrink-0 items-center whitespace-nowrap border-t-2 after:absolute after:-inset-x-3 after:inset-y-0 ${LABEL} transition-colors ${
+                                    pane === id ? 'border-blue-400 text-blue-400' : 'border-transparent text-slate-500 hover:text-slate-300'
                                 }`}
                             >
                                 {label}
@@ -873,12 +958,10 @@ export default function Home() {
                         enabled: true,
                     }))}
                     activeTab={tab}
-                    // Picking a view is also asking to look at it: change the tab AND bring LIST
-                    // up, or the tab changes behind whichever pane was showing (tsunagi-m-mobile §3).
-                    onSelectTab={(id) => {
-                        changeTab(id);
-                        setPane('list');
-                    }}
+                    // Only the tab: MAIN and MULTI both belong to it, so whichever is up shows the
+                    // new one, and HUB is up regardless (tsunagi-m-mobile §3's second trap does not
+                    // arise when no window is left showing another tab).
+                    onSelectTab={changeTab}
                     module={moduleName(ecuIndex, ecuId)}
                     ident={link.ident}
                     mode={link.mode}
@@ -895,10 +978,28 @@ export default function Home() {
                     installState={install.state}
                     onInstall={() => void install.promptInstall()}
                     save={sessionsEnabled ? sessions.saveLook : null}
-                    sync={sessionsEnabled ? sessions.syncLook : null}
+                    // SYNC opens SESSION SYNC here too, where the send is the first control (TUNER's
+                    // menu cell), so it is never greyed out the way the send itself can be.
+                    sync={sessionsEnabled && sessions.syncLook ? { ...sessions.syncLook, disabled: false } : null}
                     sessionsBusy={sessions.busy !== null}
                     onSave={() => void sessions.save()}
-                    onSync={() => void sessions.sync()}
+                    onSync={() => {
+                        setSyncOpen(true);
+                        setMenuOpen(false);
+                    }}
+                />
+            )}
+
+            {syncOpen && sessionsEnabled && (
+                <SyncPanel
+                    sessions={sessions}
+                    assistant={assistant}
+                    ledger={ledger}
+                    motion={link.motion}
+                    catalog={catalog}
+                    ecuId={ecuId}
+                    onGrantMovingOk={onGrantMovingOk}
+                    onClose={() => setSyncOpen(false)}
                 />
             )}
 
@@ -933,7 +1034,7 @@ export default function Home() {
                 />
             )}
 
-            {/* The header's SIGN IN AGAIN, with something unsaved: SESSIONS' own words for what the
+            {/* The header's SIGN IN AGAIN, with something unsaved: MEMORY's own words for what the
                 page load takes with it. Checked again on the press, since a link could have been
                 opened by voice while the dialog stood. */}
             {reauthOpen && (

@@ -22,6 +22,7 @@ TSUNAGI ///M の計器系サブブランド。DS2 通信は
 | `packages/ds2-core`（共有 DS2 リンク層・4層構造） | ✅ |
 | `packages/ds2-mss54`（213ライブ値・故障メモリ・テレグラム） | ✅ |
 | UI（診断 / データログ / 通信ログ）＋ PRACTICE モード | ✅ |
+| 全モジュールの故障読取（DIAGNOSIS の ALL MODULES。解読は MSS54 だけ、ほかはバイトのまま） | ✅ |
 | Cloudflare 配信一式（PWA / CSP / CI） | ✅ |
 | **実車読取の検証** | ⏳ **車が必要** |
 | SMG II / DSC のライブ値ブロック配置 | ⏳ 車 or ベンチECU が必要 |
@@ -50,7 +51,7 @@ TSUNAGI ///M の計器系サブブランド。DS2 通信は
 - **ゲートの内側にある**: すべてのパスが `functions/_middleware.ts`（tsunagi-m3 の
   `tools/owner-gate` の複写。`npm run gate:verify` が正本との一致を確かめる）を通る。
   権利の無い人・サインインしていない人には、ECU テーブルを含めて何も出さない。
-- **本番との違い**: SESSIONS タブがある。読み取り結果・データログ・失敗前後の通信ログを
+- **本番との違い**: MEMORY タブ（最後）と SESSION SYNC がある。読み取り結果・データログ・失敗前後の通信ログを
   端末に保存し、SYNC で本人のアカウントへ送り、別の端末へ復元できる。操作が失敗したときは
   エラー記録を自動で送る。ヘッダの AI で ASSISTANT をオンにすると、本人の AI アシスタントが TSUNAGI///Matrix
   の中継を通してこのタブに問い合わせられる（`src/lib/bridge/`）。任された調査の計画は、ハブの下の PROBE で
@@ -132,6 +133,31 @@ Pages Functions がある。どちらも車には触れない。）前身の `Ol
 
 ---
 
+## 画面 — 三つの窓
+
+三つの窓でできている。開発での呼び名は M のツール共通の MAIN・MULTI・HUB（`tsunagi-m-design` §5.12）。
+この画面の名札は、MAIN が LIST、MULTI が VISU。
+
+- **MAIN（LIST）** — タブの中身。読んで、選ぶ。
+- **MULTI（VISU）** — 選んだもの、今の状態の絵。見る。
+- **HUB** — 状態行・通知・ハブのリング・サブアクション。次の一手を押す。
+
+広い画面では三つとも出る（左に MAIN、右に MULTI と HUB）。900px 未満では HUB が常に出て、残りの場所を
+MAIN と MULTI がフッタで交代する。ナビ（683×400）と横持ちの電話では HUB は右、縦持ちでは下。
+
+| タブ | MAIN（LIST） | MULTI（VISU） | HUB のリング |
+|---|---|---|---|
+| DIAGNOSIS | IDENT と故障コード。ALL MODULES ではアドレスごとの答え | 故障の数。ALL MODULES では答えたモジュールの数 | READ（サブに CLEAR FAULTS・OPEN） |
+| DATALOG | 記録する値・周期・ファイルの中身 | 記録のトレース | RECORD / STOP（サブに CSV） |
+| ADAPTATION | 学習値のブロック | 読めたブロックの数 | READ |
+| SERVICE | 手順の一覧 | 選んだ手順と最後の結果 | RUN / START（選んだ手順） |
+| ACTUATOR | 作動テスト（操作は各行に） | このモジュールで何が試せるか | なし |
+| MEMORY | この接続の記録と SAVE、端末の記録。SYNC で SESSION SYNC（アカウントの記録・エラー記録・ASSISTANT・走行中の読取の許可）を開く | 記録の数 | なし |
+
+接続する前のハブは、どのタブでも CONNECT。
+
+---
+
 ## 開発
 
 ```bash
@@ -145,7 +171,7 @@ npm run typecheck
 **Web Serial はデスクトップ Chromium 系のみ**（Chrome / Edge）。iOS・Android・Safari・Firefox は非対応。
 セキュアコンテキストが必須なので `localhost` か HTTPS で開くこと。
 
-`npm run dev`（`next dev`）はワークス版の画面（SESSIONS タブ）を出し、セッションを端末
+`npm run dev`（`next dev`）はワークス版の画面（MEMORY タブ）を出し、セッションを端末
 （IndexedDB `e46m3-monitoring`）に保存するが、何も送らない — 送るかどうかは配信物の
 `app-variant` タグで決まり、`next dev` はそれを持たないから。本番のビルドはセッションの保存も送信もしない。
 ゲートと SYNC まで含めて手元で動かすときは、ワークス版をビルドして `wrangler pages dev` で開く:

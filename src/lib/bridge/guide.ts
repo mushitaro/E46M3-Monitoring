@@ -18,6 +18,9 @@ export const GUIDE_TOPICS = [
     'session',
     'trouble',
     'autonomy',
+    'reactive',
+    'predictive',
+    'symptom',
 ] as const;
 
 export interface HelloGuide {

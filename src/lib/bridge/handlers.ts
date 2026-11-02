@@ -11,18 +11,23 @@
  * the owner's words as the driver's — a mandate, a note, an answer, withdrawing a mandate — and
  * writes its own work as `chat` — a plan, a fact, a reading, a question, a step mark.
  *
- * NOT connect, run a test or an adjustment, clear faults, write or flash. There is no tool for
- * those, and the facade has no method that could reach them.
+ * NOT run a test or an adjustment, clear faults, write or flash, or allow a new device. There is no
+ * tool for those, and the facade has no method that could reach them. What the assistant does
+ * reach adds no new kind of frame: a scan is each module's own fault read, a module switch is the
+ * screen's DISCONNECT and CONNECT, and a PROBE run sends reads through runGate.
  */
+import { compareRuns, trend } from '../probe/compare';
 import type { ProbeLive, StoredRun } from '../probe/runStore';
 import type { Tab } from '../tabs';
 import {
+    INVESTIGATION_MODES,
     currentPlan,
     liveMandate,
     nextPlanVersion,
     notebookLine,
     openAsks,
     statusOf,
+    type InvestigationMode,
     type NotebookAuthor,
     type NotebookBody,
     type NotebookEntry,
@@ -36,6 +41,7 @@ export interface TabFacade {
     newId(): string;
     /** The tab now, without the CO-WORK line (added here). */
     status(): Record<string, unknown>;
+    /** The module in session, or — with no module named and a scan kept — every module. */
     faults(module: string | undefined): unknown;
     /** Read the module in session again, through the gate. A sentence when it did not. */
     refreshFaults(): Promise<string | null>;
@@ -62,10 +68,18 @@ export interface TabFacade {
     connect(): Promise<unknown>;
     /** Let the cable go, or say why not (a recording to stop first). */
     disconnect(stopRecording: boolean): Promise<unknown>;
+    /** Start reading every module's fault memory; the answer says it began, or why not. */
+    scan(): Promise<unknown>;
+    /** Put another module on the screen, opening the link again for it if it was open. */
+    switchModule(id: string): Promise<unknown>;
+    /** Start a PROBE run of a record's plan (the newest runnable one when none is named). */
+    probe(record: string | undefined): Promise<unknown>;
+    /** The PROBE runs kept for a record, oldest first. */
+    runs(record: string): Promise<StoredRun[]>;
 }
 
 const DAY_MS = 86_400_000;
-const TABS: readonly Tab[] = ['diagnosis', 'datalog', 'adaptation', 'service', 'actuator', 'sessions'];
+const TABS: readonly Tab[] = ['diagnosis', 'datalog', 'adaptation', 'service', 'actuator', 'memory'];
 /** Samples a moment returns at most; thinned evenly beyond this. */
 const MOMENT_SAMPLES = 120;
 
@@ -115,6 +129,8 @@ function summary(id: string, r: readonly NotebookEntry[], now: number) {
             ? {
                   id: m.id,
                   words: m.body.words,
+                  mode: m.body.mode ?? null,
+                  focus: m.body.focus ?? [],
                   modules: m.body.modules,
                   until: new Date(m.body.until).toISOString(),
                   standing: liveMandate(r, m.id, now) !== null,
@@ -164,9 +180,9 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
             const moduleId = optText(args.module);
             if (args.refresh === true) {
                 const refused = await f.refreshFaults();
-                if (refused) return { refreshed: false, reason: refused, faults: f.faults(moduleId) };
+                if (refused) return { refreshed: false, reason: refused, faults: await f.faults(moduleId) };
             }
-            return { refreshed: args.refresh === true, faults: f.faults(moduleId) };
+            return { refreshed: args.refresh === true, faults: await f.faults(moduleId) };
         },
 
         monitoring_catalog: async (args) =>
@@ -267,12 +283,23 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
             const words = text(args.words, 'words');
             const modules = Array.isArray(args.modules) ? args.modules.filter((m): m is string => typeof m === 'string') : [];
             const days = clamp(args.days, 1, 30, 7);
-            const record = f.newId();
+            const mode = INVESTIGATION_MODES.includes(args.mode as InvestigationMode) ? (args.mode as InvestigationMode) : undefined;
+            const focus = Array.isArray(args.focus) ? args.focus.filter((x): x is string => typeof x === 'string') : [];
+            // Named: the same record carries on — a periodic observation, or a mandate run out —
+            // so its plans and runs stay one history. Otherwise a new one.
+            const named = optText(args.record);
+            const record = named ? pickRecord(await f.entries(), named).id : f.newId();
             const at = f.now();
             // The owner's words handing it over: written as theirs, which is what lets it stand.
-            const mandate: NotebookEntry = { id: f.newId(), sessionId: record, at, by: 'driver', body: { kind: 'mandate', words, modules, until: at + days * DAY_MS } };
+            const mandate: NotebookEntry = {
+                id: f.newId(),
+                sessionId: record,
+                at,
+                by: 'driver',
+                body: { kind: 'mandate', words, modules, until: at + days * DAY_MS, ...(mode ? { mode } : {}), ...(focus.length ? { focus } : {}) },
+            };
             await f.add([mandate]);
-            return { record, mandate: mandate.id, modules, until: new Date(at + days * DAY_MS).toISOString() };
+            return { record, mandate: mandate.id, mode: mode ?? null, focus, modules, until: new Date(at + days * DAY_MS).toISOString(), continued: !!named };
         },
 
         monitoring_plan: async (args) => {
@@ -388,6 +415,47 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
         monitoring_open_tuner: async (args) => {
             if (args.confirmed !== true) throw new Error('Open TUNER when the owner asks for it, with confirmed: true.');
             return f.openTuner(args.discard_unsaved === true);
+        },
+
+        monitoring_scan: async () => f.scan(),
+
+        monitoring_module: async (args) => f.switchModule(text(args.module, 'module')),
+
+        monitoring_probe: async (args) => {
+            const named = optText(args.record);
+            // Resolve a named record here, so a typo is said as such rather than as "no plan".
+            const record = named ? pickRecord(await f.entries(), named).id : undefined;
+            return f.probe(record);
+        },
+
+        monitoring_compare: async (args) => {
+            const r = pickRecord(await f.entries(), args.record);
+            const runs = await f.runs(r.id);
+            const channels = Array.isArray(args.channels) ? args.channels.filter((c): c is string => typeof c === 'string').slice(0, 40) : [];
+            if (args.trend === true) {
+                if (channels.length === 0) throw new Error('trend needs channels: the values to follow across the runs.');
+                return { record: r.id, runs: runs.length, trend: trend(runs, channels) };
+            }
+            const byN = (list: StoredRun[], n: unknown, from: string) => {
+                const run = typeof n === 'number' ? list.find((x) => x.n === n) : list[list.length - 1];
+                if (!run) throw new Error(typeof n === 'number' ? `There is no run ${n} in ${from}.` : `${from} has no PROBE run yet.`);
+                return run;
+            };
+            const base = args.baseline as { record?: unknown; run?: unknown } | undefined;
+            let a: StoredRun;
+            let b: StoredRun;
+            if (base && typeof base === 'object') {
+                const other = pickRecord(await f.entries(), base.record).id;
+                a = byN(await f.runs(other), base.run, `record ${other}`);
+                b = byN(runs, args.run, `record ${r.id}`);
+            } else {
+                if (runs.length < 2 && typeof args.run !== 'number') throw new Error(`Record ${r.id} has ${runs.length} run(s); comparing needs two, or a baseline from another record.`);
+                b = byN(runs, args.run, `record ${r.id}`);
+                const before = runs.filter((x) => x.n < b.n);
+                a = typeof args.against === 'number' ? byN(runs, args.against, `record ${r.id}`) : before[before.length - 1];
+                if (!a) throw new Error(`Run ${b.n} is the first of record ${r.id}; name a baseline.`);
+            }
+            return compareRuns(a, b, { channels, limit: Math.round(clamp(args.limit, 1, 80, 30)) });
         },
     };
 }

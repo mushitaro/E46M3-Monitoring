@@ -13,6 +13,8 @@ description: 'The desk side of E46M3 /// MONITORING (DS2 diagnosis of a BMW E46 
 |---|---|
 | CO-WORK の規則（委任・計画・所見） | `src/lib/notebook/rules.ts` |
 | 計画の手順の形、RAM の窓 | `src/lib/probe/plan.ts` |
+| 全モジュールの故障の読み取り | `src/lib/probe/scan.ts` |
+| ランどうしの比較、一つの値の推移 | `src/lib/probe/compare.ts` |
 | タブの実行器、判定 | `src/lib/probe/executor.ts`、`criteria.ts` |
 | 送ってよいかの判断 | `src/lib/runGate.ts`（`mayRun`、`mayRunProtocolRead`） |
 | モジュールごとの送れるフレーム | `src/lib/moduleProtocol.ts` |
@@ -28,12 +30,24 @@ description: 'The desk side of E46M3 /// MONITORING (DS2 diagnosis of a BMW E46 
 2. **ドライバーの言葉と問いを読む。** 待っている問いに答えが来ていれば、それを前提にする。ドライバーがしたことをデータから決めない — 問いにする（tsunagi-m-research の「走行を読む前に」と同じ）。
 3. **前の読みを読む。** 違う結論なら `re` で並べる。上書きしない。
 
+## モードで一周の形が変わる
+
+委任の `mode` が調査の種類を言う（`rules.ts` の `InvestigationMode`）。車の側の手順は guide の同名のトピックで、机は同じ形で続ける。`mode` の無い古い委任は、言葉から決めて `read` に書く。
+
+| mode | 机がすること |
+|---|---|
+| `reactive`（事後保全） | `focus` のコードについて、フリーズフレームと関係する値から仮説を立て、計画の版を重ねて値を絞る。対策が画面の手順なら手順を書いて問いにし、対策のあとは同じ計画で再観測を待つ。定点観測では前のランと比べ、再発・回復を書く |
+| `predictive`（予兆保全） | 全ブロック（`3:*`）と学習値（`adapt`）、合格基準（`judge`、出所つき、24 まで）の計画。毎回の観測を前回と比べ（`compareRuns`）、3 回目からは推移（`trend`）で評価する。外れた値ごとに「様子見・点検・調整」と根拠を書く。基準を実測から決め直すなら出所は `observed` |
+| `symptom`（症状） | 言葉から値を見繕い（guide `symptom` の表が出発点）、症状の起きる条件で取る計画。前の `predictive` の記録があれば、そのランを基準に比べる |
+
+**観測の系譜**：定点観測は同じ記録の続き（委任を足して続ける）。ランの番号がそのまま系譜で、`compareRuns` と `trend` は同じ記録のランを並べる。別の記録のランと比べるとき（症状を健康診断の基準と）は、条件（計画の版、暖機、アイドル）が揃っているかを先に書く。
+
 ## 一周
 
 1. **症状を一文に**：ドライバーの言葉のまま。
 2. **仮説を複数**：各々に、それを**否定する観察**を書く（`plan.ts` の `refutedBy` が必須なのはこのため）。
 3. **証拠は安い順**：故障とフリーズフレーム → 停車中の状態 → 停車中のライブ値 → 走行中の捕捉（条件で取る。運転は指示しない） → DME の RAM（master の窓、`tuner_ram`） → 画面での手順（作動テスト・システムチェック。人が実行）。
-4. **計画を書く**：委任の範囲の読み取りだけ。手順は 12 まで、判定（`judge`）には基準値の**出所**（sgbd・inpa・authored・observed）。出所の無い値は `authored` と書き、そう言う。書く前に catalog と runGate で**送れるか**を確かめる。送れないものを計画に入れても、タブが断るだけ。
+4. **計画を書く**：委任の範囲の読み取りだけ。手順は 12 まで（`faults`・`read`・`sample`（`3:*` でブロックごと）・`adapt`・`ram`・`capture`）、判定（`judge`、24 まで）には基準値の**出所**（sgbd・inpa・authored・observed）。出所の無い値は `authored` と書き、そう言う。書く前に catalog と runGate で**送れるか**を確かめる。送れないものを計画に入れても、タブが断るだけ。
 5. **読む**：タブの判定をそのまま使う。計算し直さない。`fact` は区間と値と読み方つき、`read` は確かさつき。
    書くのは `npm run desk -- write <record> <file>`（`[{ "body": … }]`）。`desk` として、サーバーの時刻で書き足される。全部通るか一つも書かないかで、拒否はどの項目がどの規則に当たったかを言う — その文のまま直す。
 6. **次の一手**：

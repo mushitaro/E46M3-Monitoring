@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, ArrowRight, Download, Radar, RotateCcw, Square } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Download, Plus, Radar, RotateCcw, SkipForward, Square } from 'lucide-react';
 import { AppHeader } from '@/components/AppHeader';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { CreditsDialog } from '@/components/CreditsDialog';
@@ -12,6 +12,7 @@ import { MarkIcon } from '@/components/MarkIcon';
 import { MobileMenu } from '@/components/MobileMenu';
 import { BAR, ModuleRow, TabBar, useTabLabels } from '@/components/shell/Chrome';
 import { ControlPanel } from '@/components/shell/ControlPanel';
+import { ModeCorner } from '@/components/shell/ModeCorner';
 import { Overlaid } from '@/components/shell/Overlaid';
 import { LABEL, TextButton } from '@/components/ui';
 import { useActuatorArming } from '@/hooks/useActuatorArming';
@@ -49,7 +50,9 @@ import { enabledTabs, featureEnabled } from '@/lib/features';
 import { EMPTY_LEDGER, applyKillList, fetchKillList, grantMovingOk, recordParkedObservation, type KillList, type Ledger } from '@/lib/ledger';
 import { mayRun, type RunVerdict } from '@/lib/runGate';
 import { loadSmg2Workflows, type Smg2Workflows } from '@/lib/smg2Workflows';
-import { TAB_ORDER, type Tab } from '@/lib/tabs';
+import { MODE_HOME, TAB_MODE, TAB_ORDER, type Mode, type Tab } from '@/lib/tabs';
+import { addEntries } from '@/lib/notebook/store';
+import type { NotebookEntry } from '@/lib/notebook/rules';
 import { bestTelegram, loadTelegrams, type TelegramTable } from '@/lib/telegrams';
 import { moduleProtocol, noProtocol } from '@/lib/moduleProtocol';
 import { recordRead } from '@/lib/sync/readRecords';
@@ -64,6 +67,9 @@ import { DatalogView, DatalogViz } from '@/views/datalog/DatalogView';
 import { useDatalog } from '@/views/datalog/useDatalog';
 import { ServiceView, ServiceViz, procedureForJob } from '@/views/service/ServiceView';
 import { WizardDialog } from '@/views/service/WizardDialog';
+import { BoardView, BoardViz } from '@/views/probe/BoardView';
+import { StartupView, StartupViz } from '@/views/probe/StartupView';
+import { useProbeSessions } from '@/views/probe/useProbeSessions';
 import { SessionsView, SessionsViz } from '@/views/sessions/SessionsView';
 import { SyncPanel } from '@/views/sessions/SyncPanel';
 import { useJournal } from '@/views/sessions/useJournal';
@@ -185,6 +191,13 @@ type NarrowPane = 'list' | 'visu';
 export default function Home() {
     const { lang, t } = useLang();
     const [tab, setTab] = useState<Tab>('diagnosis');
+    // MANUAL or PROBE (lib/tabs `Mode`): which of the two sets of tabs the bar shows. Switched from
+    // HUB's corner at any time; the tab each mode was last on is where it opens again.
+    const [mode, setMode] = useState<Mode>('manual');
+    const lastTab = useRef<Record<Mode, Tab>>({ ...MODE_HOME });
+    // A sentence the screen owes the owner for a press that did nothing (PROBE locked, NEXT refused),
+    // shown in the notice line until the next tab or mode change.
+    const [screenNotice, setScreenNotice] = useState<string | null>(null);
     const [ecuId, setEcuId] = useState('mss54');
 
     // Which window shares the screen with HUB below 900; the footer switches it. MAIN first: it is
@@ -201,7 +214,10 @@ export default function Home() {
     // stores or sends; the preview adds MEMORY (lib/features.ts, and its pinned test).
     const previewSurfaces = usePreviewSurfaces();
     const tabs = useMemo(() => enabledTabs(previewSurfaces), [previewSurfaces]);
+    // The bar shows the mode's tabs only; a production build has the one mode and its five tabs.
+    const modeTabs = useMemo(() => new Set([...tabs].filter((id) => TAB_MODE[id] === mode)), [tabs, mode]);
     const sessionsEnabled = featureEnabled('sessionSync', previewSurfaces);
+    const probeEnabled = featureEnabled('probe', previewSurfaces);
 
     // Before the link, because it IS the link's failure handler: each failure is kept for SAVE and
     // sent as an error record. In production it keeps and sends nothing.
@@ -259,9 +275,20 @@ export default function Home() {
     }, []);
     const ledger: Ledger = useMemo(() => (killList ? applyKillList(observed, killList) : observed), [observed, killList]);
     // PROBE: the plan of an investigation the owner handed over, run on this link (WORKS only).
-    const probe = useProbe({ enabled: featureEnabled('probe', previewSurfaces), link, index: ecuIndex, ledger });
+    const probe = useProbe({ enabled: probeEnabled, link, index: ecuIndex, ledger });
     // A delegated investigation kept level with the owner's account, both ways (lib/sync/investigations).
     const syncInvestigations = useInvestigationSync({ enabled: sessionsEnabled, onPulled: probe.refresh, lastRun: probe.lastRun });
+    // PROBE's sessions and boards (STARTUP, PROBE). What the screen writes — NEXT — goes through the
+    // same store and rules as the assistant's entries, and to the account the same way.
+    const writeEntries = useCallback(
+        async (es: NotebookEntry[]) => {
+            await addEntries(es);
+            await probe.refresh();
+            syncInvestigations();
+        },
+        [probe, syncInvestigations],
+    );
+    const probeSessions = useProbeSessions({ enabled: probeEnabled, write: writeEntries });
 
     const [loaded, setLoaded] = useState<{ id: string; catalog: EcuProfile } | null>(null);
     const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -371,7 +398,17 @@ export default function Home() {
     // The three doors out of "this ECU, right now". Each one releases first.
     const disconnect = useCallback(() => void releaseThen(link.disconnect), [releaseThen, link.disconnect]);
     const changeEcu = useCallback((id: string) => void releaseThen(() => setEcuId(id)), [releaseThen]);
-    const changeTab = useCallback((next: Tab) => void releaseThen(() => setTab(next)), [releaseThen]);
+    const changeTab = useCallback(
+        (next: Tab) =>
+            void releaseThen(() => {
+                // A tab of the other mode switches the mode with it (the assistant's monitoring_display).
+                lastTab.current[TAB_MODE[next]] = next;
+                setMode(TAB_MODE[next]);
+                setTab(next);
+                setScreenNotice(null);
+            }),
+        [releaseThen],
+    );
 
     /**
      * The assistant's module switch (operator, 2026-11-01: "in AI mode the AI switches modules too").
@@ -576,7 +613,7 @@ export default function Home() {
     // until switched on on this device). The facade is what the tools may reach — the screen's own
     // controls, never a run.
     const buildId = useBuildId();
-    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, tab, changeTab, selectJob, switchModule, startScan, updateWaiting, syncInvestigations, defaultDevice: t.assistant_defaultDevice });
+    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, probeSessions, mode, tab, changeTab, selectJob, switchModule, startScan, updateWaiting, syncInvestigations, defaultDevice: t.assistant_defaultDevice });
     // The end-to-end scenarios' door to the same tools (lib/e2e): a test build only.
     useE2EDoor(facade);
     const assistant = useAssistantBridge({
@@ -585,6 +622,22 @@ export default function Home() {
         hello: { build: buildId || null, variant: preview ? 'preview' : null },
         defaultDevice: t.assistant_defaultDevice,
     });
+
+    /**
+     * MODE, pressed in HUB's corner. PROBE is the assistant's mode: from the screen it is chosen with
+     * AI on, and otherwise the notice line says so. Each mode opens on the tab it was last on.
+     */
+    const switchMode = useCallback(
+        (next: Mode) => {
+            if (next === mode) return;
+            if (next === 'probe' && !assistant.on) {
+                setScreenNotice(t.mode_probeLocked);
+                return;
+            }
+            changeTab(lastTab.current[next]);
+        },
+        [mode, assistant.on, t, changeTab],
+    );
 
     // One verdict, computed once, used by the hub AND by the panel. They used to
     // reason about runnability separately, which is how a control that says it
@@ -609,7 +662,12 @@ export default function Home() {
         openProcedure: procedure ? () => setWizardOpen(true) : undefined,
         probe: probe.progress ? { progress: probe.progress, stop: probe.stop } : undefined,
         scan: scopeAll ? { run: () => void startScan(), progress: link.scanProgress } : undefined,
+        probeRun:
+            tab === 'probe' && probeSessions.current
+                ? { runnable: probeSessions.runnable, run: () => void probe.start(probeSessions.current ?? undefined) }
+                : undefined,
     });
+    const shownNotice = screenNotice ? { text: screenNotice, tone: 'warn' as const } : notice;
 
     const panes: Record<Tab, React.ReactNode> = {
         diagnosis: scopeAll ? (
@@ -660,6 +718,22 @@ export default function Home() {
         // Rendered only where the registry opens it: a production build never mounts it, so it
         // never opens the device store or asks the network for anything.
         memory: sessionsEnabled ? <SessionsView sessions={sessions} catalog={catalog} ecuId={ecuId} onOpenSync={() => setSyncOpen(true)} /> : null,
+        // PROBE's two, WORKS only like the rest of PROBE.
+        startup: probeEnabled ? <StartupView s={probeSessions} /> : null,
+        probe: probeEnabled ? (
+            <BoardView
+                s={probeSessions}
+                data={{
+                    ecuId,
+                    moduleName: (id) => moduleName(ecuIndex, id) ?? id,
+                    faults: link.faults,
+                    rawFaults: link.rawFaults,
+                    catalog,
+                    scan: link.scan,
+                    progress: probe.progress,
+                }}
+            />
+        ) : null,
     };
 
     const vizzes: Record<Tab, React.ReactNode> = {
@@ -684,6 +758,8 @@ export default function Home() {
         // question and the numbers are about the module, not the tab.
         actuator: <ActuatorViz profile={catalog} arming={arming} />,
         memory: sessionsEnabled ? <SessionsViz count={sessions.local?.length ?? 0} /> : null,
+        startup: probeEnabled ? <StartupViz s={probeSessions} /> : null,
+        probe: probeEnabled ? <BoardViz s={probeSessions} /> : null,
     };
 
     return (
@@ -721,7 +797,7 @@ export default function Home() {
                     id="narrow-list"
                     className={`relative flex min-h-0 flex-col border-slate-900 bg-slate-950/40 [grid-area:1/1] min-[900px]:h-full min-[900px]:w-[61.8%] min-[900px]:border-r min-[900px]:[grid-area:auto] ${pane === 'list' ? '' : NARROW_HIDDEN}`}
                 >
-                    <TabBar tab={tab} enabled={tabs} onChange={changeTab}>
+                    <TabBar tab={tab} enabled={modeTabs} onChange={changeTab}>
                         <LogPopover
                             log={link.log}
                             onClear={link.clearLog}
@@ -806,8 +882,9 @@ export default function Home() {
                                     all={allModules}
                                 />
                             }
-                            notice={notice}
+                            notice={shownNotice}
                             hub={hub}
+                            corner={probeEnabled ? <ModeCorner mode={mode} onChange={switchMode} probeLocked={!assistant.on} /> : undefined}
                         >
                             {/* The two failure kinds need OPPOSITE advice, so only
                                 one of these can ever appear: retry is the one
@@ -839,10 +916,31 @@ export default function Home() {
                             {/* PROBE is started by a person, before driving, and only
                                 when the record holds a plan that may run. It is
                                 stopped from the hub, like a recording. */}
-                            {probe.available && link.state === 'connected' && (
+                            {mode === 'manual' && probe.available && link.state === 'connected' && (
                                 <TextButton onClick={() => void probe.start()} Icon={Radar} title={t.probe_title}>
                                     {t.probe}
                                 </TextButton>
+                            )}
+                            {/* STARTUP's two (TUNER's NEW SESSION; NEXT carries the session on). NEXT
+                                is drawn disabled before it can go, and says why when pressed. */}
+                            {tab === 'startup' && (
+                                <>
+                                    <TextButton onClick={() => probeSessions.newSession()} Icon={Plus} title={t.startup_new_title}>
+                                        {t.new_session}
+                                    </TextButton>
+                                    <TextButton
+                                        onClick={() =>
+                                            probeSessions.nextBlocked
+                                                ? setScreenNotice(t.next_why[probeSessions.nextBlocked])
+                                                : void probeSessions.next().then((why) => why && setScreenNotice(t.next_why[why]))
+                                        }
+                                        tone={probeSessions.nextBlocked ? 'neutral' : 'primary'}
+                                        Icon={SkipForward}
+                                        title={probeSessions.nextBlocked ? t.next_why[probeSessions.nextBlocked] : t.startup_next_title}
+                                    >
+                                        {t.next_session}
+                                    </TextButton>
+                                </>
                             )}
                             {/* READ ADAPTATIONS was here. It is the ADAPTATION
                                 tab's hub now — a tab's whole purpose does not
@@ -960,7 +1058,7 @@ export default function Home() {
                     onClose={() => setMenuOpen(false)}
                     dragFrom={menuDrag}
                     onDragEnd={clearMenuDrag}
-                    tabs={TAB_ORDER.filter((id) => tabs.has(id)).map((id) => ({
+                    tabs={TAB_ORDER.filter((id) => modeTabs.has(id)).map((id) => ({
                         id,
                         label: tabLabels[id],
                         enabled: true,

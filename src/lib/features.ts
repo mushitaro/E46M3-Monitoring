@@ -48,8 +48,9 @@ export const FEATURES: Record<FeatureName, { stage: FeatureStage; tabs: readonly
     sessionSync: { stage: 'preview-only', tabs: ['memory'] },
     // PROBE runs a plan an assistant or the desk wrote, under a mandate the owner gave, from the
     // CO-WORK record on the device (docs/AUTONOMY.md). Never promoted: production keeps no record
-    // and takes no plan from anyone. Owns no tab — it is a line on the hub.
-    probe: { stage: 'preview-only', tabs: [] },
+    // and takes no plan from anyone. Owns the PROBE mode's two tabs (lib/tabs `TAB_MODE`), so a
+    // production build has no MODE corner either: with one mode there is nothing to switch.
+    probe: { stage: 'preview-only', tabs: ['startup', 'probe'] },
 };
 
 /**

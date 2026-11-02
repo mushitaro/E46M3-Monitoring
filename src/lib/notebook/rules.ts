@@ -68,6 +68,11 @@ export type NotebookBody =
           mode?: InvestigationMode;
           /** The fault codes a reactive investigation follows, `module:code` (`mss54:0x2A`). */
           focus?: string[];
+          /**
+           * The PROBE session this one carries on (NEXT, operator 2026-11-02): its record id. The
+           * sessions a NEXT chain links are one series — what is compared across, run after run.
+           */
+          follows?: string;
       }
     | {
           kind: 'plan';
@@ -177,6 +182,9 @@ export function entryProblem(e: unknown): string | null {
             if (b.mode !== undefined && !INVESTIGATION_MODES.includes(b.mode)) return `mandate.mode must be one of ${INVESTIGATION_MODES.join(', ')}`;
             if (b.focus !== undefined && (!Array.isArray(b.focus) || b.focus.length > 12 || !b.focus.every((f) => typeof f === 'string' && FOCUS.test(f)))) {
                 return 'mandate.focus is up to 12 fault codes, each module:code (mss54:0x2A)';
+            }
+            if (b.follows !== undefined && (typeof b.follows !== 'string' || !ID.test(b.follows) || b.follows === x.sessionId)) {
+                return 'mandate.follows must be the id of the session it carries on, not its own';
             }
             return null;
         case 'plan':

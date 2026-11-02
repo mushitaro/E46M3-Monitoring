@@ -14,6 +14,7 @@
  * Pure: the bridge's compare and the desk read the same numbers.
  */
 import type { ProbeRun } from './executor';
+import { diffForms, judgeKey, measures, type Form, type ItemDiff } from './items';
 
 export interface RunRef {
     record: string;
@@ -48,10 +49,20 @@ export interface Comparison {
     channels: ChannelChange[];
     adaptations: Array<{ key: string; a: number | null; b: number | null; delta: number | null }>;
     faults: Array<{ module: string; what: string; a: string | null; b: string | null; same: boolean }>;
-    /** Each judgement in each run: pass, fail, or null when there were no samples to judge. */
+    /**
+     * Each judgement in each run: pass, fail, or null when there were no samples to judge. With the
+     * runs' forms known, only the judgements both measured — the same channel, statistic and
+     * condition — and the rest are in `items`.
+     */
     judges: Array<{ id: string; a: { value: number | null; pass: boolean | null } | null; b: { value: number | null; pass: boolean | null } | null }>;
     /** Channels in one run only. */
     onlyIn: { a: string[]; b: string[] };
+    /**
+     * How the two runs' forms differ, when both are known: the items both measured, those the later
+     * form added (their series starts there) and those it removed (their history stays in the runs
+     * that had them). Null when a form is not on this device.
+     */
+    items: ItemDiff | null;
 }
 
 type Run = ProbeRun & { sessionId: string; n: number; mock?: boolean };
@@ -98,13 +109,19 @@ function lastAnswers(r: ProbeRun): Map<string, string | null> {
     return out;
 }
 
-export function compareRuns(a: Run, b: Run, opts: { channels?: readonly string[]; limit?: number } = {}): Comparison {
+export function compareRuns(a: Run, b: Run, opts: { channels?: readonly string[]; limit?: number; forms?: { a: Form | null; b: Form | null } } = {}): Comparison {
     const sa = channelStats(a);
     const sb = channelStats(b);
+    const formA = opts.forms?.a ?? null;
+    const formB = opts.forms?.b ?? null;
     const wanted = opts.channels?.length ? new Set(opts.channels) : null;
     const keys = [...new Set([...sa.keys(), ...sb.keys()])].filter((k) => !wanted || wanted.has(k));
+    // With both forms known, a value is compared only when both forms name it: one read on the
+    // way (a whole block for one of its values) was not measured, and one form's item alone is
+    // in `items` as added or removed.
+    const common = (k: string) => sa.has(k) && sb.has(k) && (!formA || !formB || (measures(formA, k) && measures(formB, k)));
     const channels: ChannelChange[] = keys
-        .filter((k) => sa.has(k) && sb.has(k))
+        .filter(common)
         .map((k) => {
             const x = sa.get(k)!;
             const y = sb.get(k)!;
@@ -135,9 +152,8 @@ export function compareRuns(a: Run, b: Run, opts: { channels?: readonly string[]
         return { module, what, a: x, b: y, same: x === y };
     });
 
-    const ja = new Map(a.judges.map((j) => [j.id, { value: j.value, pass: j.pass }]));
-    const jb = new Map(b.judges.map((j) => [j.id, { value: j.value, pass: j.pass }]));
-    const judges = [...new Set([...ja.keys(), ...jb.keys()])].map((id) => ({ id, a: ja.get(id) ?? null, b: jb.get(id) ?? null }));
+    const items = formA && formB ? diffForms(formA, formB) : null;
+    const judges = items ? judgesByItem(a, b, formA!, formB!) : judgesById(a, b);
 
     return {
         a: runRef(a),
@@ -150,7 +166,37 @@ export function compareRuns(a: Run, b: Run, opts: { channels?: readonly string[]
             a: keys.filter((k) => sa.has(k) && !sb.has(k)),
             b: keys.filter((k) => sb.has(k) && !sa.has(k)),
         },
+        items,
     };
+}
+
+type JudgeRow = Comparison['judges'][number];
+
+/** Without the forms: by the judgement's id, as the runs named them. */
+function judgesById(a: Run, b: Run): JudgeRow[] {
+    const ja = new Map(a.judges.map((j) => [j.id, { value: j.value, pass: j.pass }]));
+    const jb = new Map(b.judges.map((j) => [j.id, { value: j.value, pass: j.pass }]));
+    return [...new Set([...ja.keys(), ...jb.keys()])].map((id) => ({ id, a: ja.get(id) ?? null, b: jb.get(id) ?? null }));
+}
+
+/**
+ * With the forms: a judgement is matched by what it measured and under which condition, so one
+ * whose condition changed is not set beside its old self. Only those both runs measured.
+ */
+function judgesByItem(a: Run, b: Run, fa: Form, fb: Form): JudgeRow[] {
+    const keyed = (r: Run, f: Form) => {
+        const defs = new Map((f.judge ?? []).map((j) => [j.id, judgeKey(j)]));
+        return new Map(r.judges.flatMap((j) => (defs.has(j.id) ? [[defs.get(j.id)!, j] as const] : [])));
+    };
+    const ka = keyed(a, fa);
+    const kb = keyed(b, fb);
+    return [...kb.keys()]
+        .filter((k) => ka.has(k))
+        .map((k) => {
+            const x = ka.get(k)!;
+            const y = kb.get(k)!;
+            return { id: y.id, a: { value: x.value, pass: x.pass }, b: { value: y.value, pass: y.pass } };
+        });
 }
 
 /** One value across many runs, oldest first: the history a periodic observation is judged on. */

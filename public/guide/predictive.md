@@ -8,7 +8,7 @@
 4. **観測する**：`monitoring_probe`（停車中に 30 秒〜1 分）。
 5. **総合して伝える**：`monitoring_run_overview` の判定。**外れたものを先に**、合格は数でまとめる。学習値は大きく寄っていないかを見る。結論を一文目に。
 6. **残す**：総評は `monitoring_finding`（`kind: read`、確かさつき）、`monitoring_save`。
-7. **定期観測**：同じ記録を続けて（`record`）、同じ計画で `monitoring_probe` → `monitoring_compare`（前回と）。何が変わったか、次の一手（様子見・点検・調整）を言う。
+7. **定期観測**：前のセッションを NEXT で引き継ぎ（`monitoring_session` の `next`、topic board）、同じ形で `monitoring_probe` → `monitoring_compare`（引き継ぐ前の最後の回と比べる）。何が変わったか、次の一手（様子見・点検・調整）を言う。結果は `monitoring_show` で画面にも置く。
 8. **推移で判断する**：観測が 3 回以上あれば `monitoring_compare`（`trend: true`、気になる値）。一回の値ではなく推移で言う。整備の記録（オーナーが言ったこと）があれば合わせる。
 
 **例**

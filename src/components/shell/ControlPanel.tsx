@@ -20,6 +20,7 @@ export function ControlPanel({
     module,
     notice,
     hub,
+    corner,
     className = '',
     children,
 }: {
@@ -31,6 +32,11 @@ export function ControlPanel({
     className?: string;
     /** The sub-actions — things that act on the current run or the workspace. */
     children?: React.ReactNode;
+    /**
+     * The panel's bottom corner, below the sub-actions: MODE on the left (TUNER's place for it).
+     * Absent in a build with one mode, where the row is not drawn at all.
+     */
+    corner?: React.ReactNode;
 }) {
     return (
         // px-5 pt-4 pb-5 is the control-panel padding from the spacing scale.
@@ -58,6 +64,10 @@ export function ControlPanel({
             </div>
 
             <SubActions>{children}</SubActions>
+
+            {/* Below the sub-actions, on its own row, so it is not read as one of the hub's
+                controls and the reserved 46px row above keeps its budget (TUNER's corner row). */}
+            {corner && <div className="flex flex-none items-center justify-between gap-4">{corner}</div>}
         </div>
     );
 }

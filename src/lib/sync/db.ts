@@ -8,14 +8,19 @@
  *   - `notebook` — CO-WORK entries, keyed by entry id, indexed by the record they belong to
  *     (notebook/store.ts). Version 2.
  *   - `runs` — PROBE runs, numbered per record, indexed by it (probe/runStore.ts). Version 2.
+ *   - `journal` — MEMORY's journal: every MANUAL read as it happened, indexed by time
+ *     (journalStore.ts). Version 3.
+ *   - `journalMeta` — which episodes were joined and which were kept as which session. Version 3.
  *
  * WORKS-only, like everything under lib/sync (lib/features.ts): a production build never opens it.
  */
 export const DB = 'e46m3-monitoring';
-export const VERSION = 2;
+export const VERSION = 3;
 export const SESSIONS = 'sessions';
 export const NOTEBOOK = 'notebook';
 export const RUNS = 'runs';
+export const JOURNAL = 'journal';
+export const JOURNAL_META = 'journalMeta';
 
 export function openDb(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
@@ -27,6 +32,8 @@ export function openDb(): Promise<IDBDatabase> {
                 db.createObjectStore(NOTEBOOK, { keyPath: 'id' }).createIndex('sessionId', 'sessionId');
             }
             if (!db.objectStoreNames.contains(RUNS)) db.createObjectStore(RUNS, { keyPath: 'id' }).createIndex('sessionId', 'sessionId');
+            if (!db.objectStoreNames.contains(JOURNAL)) db.createObjectStore(JOURNAL, { keyPath: 'seq', autoIncrement: true }).createIndex('t', 't');
+            if (!db.objectStoreNames.contains(JOURNAL_META)) db.createObjectStore(JOURNAL_META, { keyPath: 'key' });
         };
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);

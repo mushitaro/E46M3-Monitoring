@@ -63,6 +63,7 @@ import { whyNotSendable } from '@/lib/actuationGate';
 import type { ReadRecord } from '@/lib/investigation/readRecord';
 import type { ModuleProtocol } from '@/lib/moduleProtocol';
 import { practiceBus } from '@/lib/practiceEcu';
+import { practiceCar } from '@/lib/practiceCar';
 import { runProbe, type ProbeDeps, type ProbePlan, type ProbeRun } from '@/lib/probe/executor';
 import { runScan, type ScanRun, type ScanTarget } from '@/lib/probe/scan';
 import type { Ledger } from '@/lib/ledger';
@@ -384,9 +385,13 @@ export function useDs2Link(options: {
     }, []);
 
     /** One helper sets both. */
+    // The last failure's sentence, readable at once by a caller that awaited the operation — the
+    // assistant's facade, which must say why a read was not sent rather than that it was.
+    const lastErrorRef = useRef<string | null>(null);
     const failWith = useCallback(
         (e: unknown) => {
             const message = e instanceof Error ? e.message : String(e);
+            lastErrorRef.current = message;
             setError(message);
             setErrorKind(isDs2Error(e) ? e.kind : 'unclassified');
             append('error', message);
@@ -396,6 +401,7 @@ export function useDs2Link(options: {
 
     /** One helper clears both. */
     const clearError = useCallback(() => {
+        lastErrorRef.current = null;
         setError(null);
         setErrorKind(null);
     }, []);
@@ -606,7 +612,9 @@ export function useDs2Link(options: {
                         ? {
                               kind: 'web-serial' as const,
                               transport: new WebSerialTransport({
-                                  requestPort: simulatedPort(practiceBus([address])).requestPort,
+                                  // The practice car: the DME, the module asked for, and every module such a
+                                  // car carries (lib/practiceCar), so a scan finds what a car would.
+                                  requestPort: simulatedPort(practiceBus([address, ...practiceCar.fitted])).requestPort,
                               }),
                           }
                         : permittedOnly
@@ -747,7 +755,7 @@ export function useDs2Link(options: {
                     setFaults(null);
                     setQuickTest(null);
                     setRawFaults(out);
-                    return null;
+                    return out;
                 }
                 append('tx', 'FS quicktest (control 0x04, arg 0x00)');
                 const q = await readFrame(to, target.moduleId, 'FS_QUICKTEST', ERROR_MEMORY_QUICKTEST.control, ERROR_MEMORY_QUICKTEST.payload);
@@ -1307,6 +1315,8 @@ export function useDs2Link(options: {
         faults,
         quickTest,
         rawFaults,
+        /** Why the last operation failed, or null: read straight after awaiting it. */
+        lastError: () => lastErrorRef.current,
         vehicleState,
         motion,
         readVehicleState,

@@ -1,9 +1,9 @@
 'use client';
 
 import { formatErrorCode, type ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
-import type { useDs2Link } from '@/hooks/useDs2Link';
+import type { RawFaultRead, useDs2Link } from '@/hooks/useDs2Link';
 import type { useProbe } from '@/hooks/useProbe';
-import type { TabFacade } from '@/lib/bridge/handlers';
+import type { FreshFaults, TabFacade } from '@/lib/bridge/handlers';
 import { jobRiskOf, loadEcuCatalog, text as resolveText, type EcuIndex, type EcuProfile, type JobClass } from '@/lib/ecuCatalog';
 import { normCode } from '@/lib/faultCode';
 import { en } from '@/lib/i18n/en';
@@ -16,7 +16,8 @@ import { scanCounts, type ScanRun } from '@/lib/probe/scan';
 import type { RunBlockKey } from '@/lib/runGate';
 import { mayRun, mayRunProtocolRead } from '@/lib/runGate';
 import { canSync } from '@/lib/sync/cloud';
-import { needsSync, summarise } from '@/lib/sync/session';
+import { needsSync, sessionLabel, summarise } from '@/lib/sync/session';
+import { expiresAt } from '@/lib/journal';
 import { listLocal } from '@/lib/sync/sessionStore';
 import type { Tab } from '@/lib/tabs';
 import { bestTelegram, loadTelegrams } from '@/lib/telegrams';
@@ -93,13 +94,15 @@ export function useMonitoringFacade(input: {
     const running = probe.progress !== null;
 
     /** The module on the screen, as far as it has been read. */
-    const inSession = (moduleId?: string) => {
+    const inSession = (moduleId?: string, fresh?: FreshFaults) => {
         if (moduleId && moduleId !== ecuId) {
             return { module: moduleId, read: false, reason: `Not read in this session: the screen is on ${moduleName(ecuId)}. monitoring_module puts another module on it; monitoring_scan reads every module's faults.` };
         }
-        if (link.faults !== null) return { module: ecuId, read: true, decoded: true, faults: describeEntries(link.faults, catalog) };
-        if (link.rawFaults !== null) {
-            return { module: ecuId, read: true, decoded: false, note: 'No decoder for this module: the answer is kept as bytes.', raw: link.rawFaults };
+        const decoded = (fresh?.faults as ErrorMemoryEntry[] | null | undefined) ?? (fresh ? null : link.faults);
+        const raw = fresh?.raw ?? (fresh ? null : link.rawFaults);
+        if (decoded !== null) return { module: ecuId, read: true, decoded: true, faults: describeEntries(decoded, catalog) };
+        if (raw !== null) {
+            return { module: ecuId, read: true, decoded: false, note: 'No decoder for this module: the answer is kept as bytes.', raw };
         }
         return { module: ecuId, read: false, reason: 'Not read yet in this session.' };
     };
@@ -151,9 +154,9 @@ export function useMonitoringFacade(input: {
             newBuildWaiting: input.updateWaiting,
         }),
 
-        faults: async (moduleId) => {
-            if (!moduleId && link.scan) return { inSession: inSession(), scan: await describeScan(link.scan) };
-            return inSession(moduleId);
+        faults: async (moduleId, fresh) => {
+            if (!moduleId && link.scan) return { inSession: inSession(undefined, fresh), scan: await describeScan(link.scan) };
+            return inSession(moduleId, fresh);
         },
 
         refreshFaults: async () => {
@@ -165,12 +168,20 @@ export function useMonitoringFacade(input: {
             const fs = mayRunProtocolRead(`${ecuId}:FS_LESEN`, 'module', ledger, link.motion);
             if (!fs.allowed) return en.runBlock[fs.reason];
             try {
-                if (target.ident && ident.allowed) await link.readIdent(ident.requires);
-                if (target.faults.length > 0) await link.readFaults(fs.requires);
+                // The link reports a refused or failed read as null and keeps its sentence: a read the
+                // preflight stopped (the car moving) must reach the assistant as not sent, and why.
+                if (target.ident && ident.allowed && (await link.readIdent(ident.requires)) === null) {
+                    return link.lastError() ?? 'The identity read did not complete.';
+                }
+                if (target.faults.length > 0) {
+                    const read = await link.readFaults(fs.requires);
+                    if (read === null) return link.lastError() ?? 'The fault read did not complete.';
+                    return target.decoder === 'mss54' ? { fresh: { faults: read, raw: null } } : { fresh: { faults: null, raw: read as RawFaultRead[] } };
+                }
             } catch (e) {
                 return e instanceof Error ? e.message : String(e);
             }
-            return null;
+            return { fresh: null };
         },
 
         catalog: async ({ module, query, kind, limit }) => {
@@ -225,15 +236,32 @@ export function useMonitoringFacade(input: {
 
         sessions: async (limit) => {
             const all = await listLocal().catch(() => []);
-            return all.slice(0, limit).map((s) => ({
-                id: s.id,
-                label: s.label,
-                createdAt: new Date(s.createdAt).toISOString(),
-                module: s.ecu,
-                practice: s.mock,
-                ...summarise(s),
-                sent: !needsSync(s),
-            }));
+            return {
+                saved: all.slice(0, limit).map((s) => ({
+                    id: s.id,
+                    label: s.label,
+                    createdAt: new Date(s.createdAt).toISOString(),
+                    module: s.ecu,
+                    practice: s.mock,
+                    ...summarise(s),
+                    sent: !needsSync(s),
+                })),
+                // MEMORY's journal: what was recorded and not kept. The start is the id monitoring_save
+                // takes; the counts, not the contents, so nothing identifying leaves (policy §10).
+                notKept: sessions.unkept.slice(0, limit).map((ep) => ({
+                    episode: ep.start,
+                    label: sessionLabel(ep.start, ep.ecu ?? ecuId, ep.mock),
+                    from: new Date(ep.start).toISOString(),
+                    to: new Date(ep.end).toISOString(),
+                    practice: ep.mock,
+                    faultReads: ep.counts.faultReads,
+                    samples: ep.counts.samples,
+                    learnedValueReads: ep.counts.adaptations,
+                    procedures: ep.counts.runs,
+                    failures: ep.counts.failures,
+                    daysLeft: Math.max(0, Math.ceil((expiresAt(ep) - Date.now()) / 86_400_000)),
+                })),
+            };
         },
 
         display: (next) => input.changeTab(next),
@@ -276,9 +304,16 @@ export function useMonitoringFacade(input: {
             return null;
         },
 
-        save: async () => {
-            await sessions.save();
-            const s = (await listLocal().catch(() => []))[0];
+        save: async (episode) => {
+            if (episode !== undefined) {
+                if (!sessions.unkept.some((ep) => ep.start === episode)) {
+                    return { saved: false, reason: 'No episode waiting to be kept starts there. Read monitoring_sessions again.' };
+                }
+                await sessions.keep(episode);
+            } else {
+                await sessions.save();
+            }
+            const s = (await listLocal().catch(() => [])).sort((a, b) => b.updatedAt - a.updatedAt)[0];
             return s ? { saved: true, label: s.label, ...summarise(s) } : { saved: false, reason: 'Nothing was written to this device.' };
         },
 
@@ -333,7 +368,7 @@ export function useMonitoringFacade(input: {
                 addresses: r.addresses,
                 takes: 'up to about 2 s for each address that does not answer, less for those that do',
                 then: 'monitoring_status shows how far it has got; monitoring_faults without module gives every module once it ends. The screen shows it on DIAGNOSIS under ALL MODULES.',
-                ...(link.mode === 'practice' ? { practice: 'PRACTICE: only the DME and the module on the screen answer; the rest are silent.' } : {}),
+                ...(link.mode === 'practice' ? { practice: 'PRACTICE: the practice car — a late E46 M3 with SMG II, DSC and navigation — answers at the addresses such a car has; the rest are silent. Its values are simulated.' } : {}),
             };
         },
 

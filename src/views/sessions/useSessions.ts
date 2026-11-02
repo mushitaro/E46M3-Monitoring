@@ -31,6 +31,8 @@ import {
 import { deleteLocal, listLocal, putLocal } from '@/lib/sync/sessionStore';
 import { describeSave, describeSync, savePhase, syncPhase, toSend } from '@/lib/sync/status';
 import type { Datalog } from '@/views/datalog/useDatalog';
+import { toSession, type Episode } from '@/lib/journal';
+import type { Journal } from './useJournal';
 
 /**
  * The failures of this page's session: kept for SAVE, and each one sent as an error record the
@@ -117,9 +119,11 @@ export function useSessions(input: {
     ecuId: string;
     datalog: Pick<Datalog, 'capture' | 'samples'>;
     failures: FailureNotes;
+    /** MEMORY's journal (useJournal): SAVE keeps the episode in progress, or one from the list. */
+    journal: Journal;
 }) {
     const { t } = useLang();
-    const { enabled, active, link, ecuId, datalog, failures } = input;
+    const { enabled, active, link, ecuId, datalog, failures, journal } = input;
     // `canSync()` reads the acknowledgement when it is asked; the store is what re-renders this with
     // the new answer the moment AGREE is pressed.
     const noticeAcknowledged = useSyncExternalStore(
@@ -160,7 +164,15 @@ export function useSessions(input: {
         samples: datalog.samples.length,
         failures: failures.notes.length,
     });
-    const unsaved = enabled && content && contentKey !== savedKey;
+    // With the journal, "unsaved" is the episode in progress not kept yet, or grown since it was.
+    // What SAVE keeps: the episode in progress, or else the newest one not kept — "save what I just
+    // did" after the cable is already out. Named apart: a `.current` read inside a callback reads to
+    // the compiler as a ref's.
+    const episodeNow = journal.current ?? journal.unkept[0] ?? null;
+    const keptNow = episodeNow ? journal.keptAs(episodeNow) : null;
+    const unsaved = episodeNow
+        ? enabled && (keptNow === null || episodeNow.end > keptNow.at)
+        : enabled && content && contentKey !== savedKey;
 
     // A new connection after a saved one starts a new session.
     const clearFailures = failures.clear;
@@ -204,7 +216,32 @@ export function useSessions(input: {
     }, [active, online, refreshLocal, refreshCloud]);
 
     /** The session as it stands, written to this device. Returns it, or null if nothing was written. */
+    /** An episode written to this device as a saved session, and marked kept in the journal. */
+    const keepEpisode = useCallback(
+        async (ep: Episode): Promise<SavedSession | null> => {
+            const was = journal.keptAs(ep);
+            const existing = was ? (local ?? []).find((s) => s.id === was.id) : undefined;
+            const session = toSession(
+                ep,
+                { id: was?.id ?? crypto.randomUUID(), createdAt: existing?.createdAt, syncedAt: existing?.syncedAt ?? null },
+                Date.now(),
+                ecuId,
+                document.querySelector('meta[name="build-id"]')?.getAttribute('content') ?? null,
+            );
+            try {
+                await putLocal(session);
+            } catch {
+                setNotice({ text: t.sessions_saveFailed, tone: 'error' });
+                return null;
+            }
+            await journal.markKept(ep, session.id);
+            return session;
+        },
+        [journal, local, ecuId, t],
+    );
+
     const saveNow = useCallback(async (): Promise<SavedSession | null> => {
+        if (episodeNow) return keepEpisode(episodeNow);
         const now = Date.now();
         const head = current ?? { id: crypto.randomUUID(), createdAt: now, label: sessionLabel(now, ecuId, link.mode === 'practice') };
         const existing = (local ?? []).find((s) => s.id === head.id);
@@ -232,7 +269,21 @@ export function useSessions(input: {
         setCurrent(head);
         setSavedKey(contentKey);
         return session;
-    }, [current, ecuId, link.mode, link.ident, link.faults, local, datalog, failures.notes, contentKey, t]);
+    }, [episodeNow, keepEpisode, current, ecuId, link.mode, link.ident, link.faults, local, datalog, failures.notes, contentKey, t]);
+
+    /** SAVE on an episode from the list: kept whole, as it was recorded. */
+    const keep = useCallback(
+        async (start: number) => {
+            const ep = journal.episodes.find((e) => e.start === start);
+            if (!ep) return;
+            setBusy(`keep:${start}`);
+            const s = await keepEpisode(ep);
+            if (s) setNotice({ text: t.sessions_saved, tone: 'ok' });
+            await refreshLocal();
+            setBusy(null);
+        },
+        [journal.episodes, keepEpisode, refreshLocal, t],
+    );
 
     const save = useCallback(async () => {
         setBusy('save');
@@ -392,6 +443,12 @@ export function useSessions(input: {
         saveLook,
         syncLook,
         save,
+        keep,
+        /** Joins an episode from the list to the one before it. */
+        join: journal.join,
+        /** Episodes recorded but not kept, newest first; each goes seven days after it ended. */
+        unkept: journal.unkept,
+        now: journal.now,
         sync,
         restore,
         removeLocal,

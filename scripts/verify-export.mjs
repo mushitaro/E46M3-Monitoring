@@ -221,6 +221,19 @@ if (variants.size > 0) {
         labelled.join(', ') || `${documents.length} documents`);
 }
 
+// ---- the end-to-end door ----------------------------------------------------------------------
+// lib/e2e.ts lets the scenario runner call the assistant's tools and set the practice car. Only a
+// test build (NEXT_PUBLIC_MONITORING_E2E=1, `npm run build:e2e`) may carry it; any other build
+// that does must not be deployed.
+{
+    const e2eBuild = process.env.NEXT_PUBLIC_MONITORING_E2E === '1';
+    const scripts = files.filter((p) => p.endsWith('.js'));
+    const carrying = scripts.filter((p) => readFileSync(p, 'utf8').includes('__monitoringE2E'));
+    check(e2eBuild ? 'the test build carries the end-to-end door' : 'no end-to-end door in a build that may be deployed',
+        e2eBuild ? carrying.length > 0 : carrying.length === 0,
+        carrying.map((p) => relative(OUT, p)).join(', ') || `${scripts.length} scripts`);
+}
+
 // ---- report ---------------------------------------------------------------------------------
 const width = Math.max(...rows.map((r) => r.name.length));
 for (const r of rows) console.log(`${r.ok ? 'ok  ' : 'FAIL'}  ${r.name.padEnd(width)}  ${r.detail}`);

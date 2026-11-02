@@ -583,7 +583,7 @@ export const en: Localised = {
         items: [
             {
                 title: 'What is sent',
-                body: 'Only when the assistant asks: the state, each module’s faults, part of the records, the jobs that can be read and tried, the verification ledger, CO-WORK. No VIN is sent.',
+                body: 'Only when the assistant asks: the state, each module’s faults, part of the records, the list of episodes not kept yet (names, times, counts), the jobs that can be read and tried, the verification ledger, CO-WORK. No VIN is sent.',
             },
             {
                 title: 'The route',
@@ -595,7 +595,7 @@ export const en: Localised = {
             },
             {
                 title: 'What it can do',
-                body: 'Read, every module\'s faults included; start and stop a recording, and an observation (PROBE) of an investigation you handed over (stopping after you confirm); change the module on the screen; write to CO-WORK; change the screen; put a procedure on the screen; save and send when you ask; connect again to, and let go of, a cable connected on the screen before; switch to TUNER.',
+                body: 'Read, every module\'s faults included; start and stop a recording, and an observation (PROBE) of an investigation you handed over (stopping after you confirm); change the module on the screen; write to CO-WORK; change the screen; put a procedure on the screen; save (choosing an episode not kept yet, too) and send when you ask; connect again to, and let go of, a cable connected on the screen before; switch to TUNER.',
             },
             {
                 title: 'What it cannot do',
@@ -653,6 +653,11 @@ export const en: Localised = {
     },
     sessions_nothing: 'Nothing to save yet.',
     sessions_onDevice: 'On this device',
+    sessions_unkept: 'Not kept yet',
+    sessions_unkept_info:
+        'Every read is recorded on this device as it happens and listed in episodes, such as from connecting to disconnecting. Only what SAVE keeps is sent by SYNC. An episode not kept leaves this device after 7 days. JOIN joins one to the episode before it.',
+    sessions_emptyUnkept: 'No episodes waiting to be kept.',
+    sessions_expiresIn: (days) => (days <= 0 ? 'Going soon' : `${days} days left`),
     sessions_inAccount: 'In your account',
     sessions_errors: 'Error records',
     sessions_errors_info:

@@ -1,14 +1,15 @@
 'use client';
 
 import { memo, useState } from 'react';
-import { ArrowLeft, CloudUpload, Database, Eye, Trash2 } from 'lucide-react';
+import { ArrowLeft, CloudUpload, Database, Eye, Link2, Trash2 } from 'lucide-react';
 import { formatErrorCode } from '@tsunagi/ds2-mss54';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { DataList, DataRow, Field, Pane, Pill, Section, TextButton, Well, humanName } from '@/components/ui';
 import { normCode } from '@/lib/faultCode';
 import { useLang } from '@/lib/i18n';
 import { text as resolveText, type EcuProfile } from '@/lib/ecuCatalog';
-import { needsSync, parseCsv, summarise, type SavedSession } from '@/lib/sync/session';
+import { expiresAt, type Episode } from '@/lib/journal';
+import { needsSync, parseCsv, sessionLabel, summarise, type SavedSession } from '@/lib/sync/session';
 import { SAVE_TONE, SYNC_TONE } from '@/lib/sync/status';
 import { CountReadout } from '@/views/shared/CountReadout';
 import { StatusButton } from './StatusButton';
@@ -114,6 +115,44 @@ export const SessionsView = memo(function SessionsView({
                 </div>
             </Section>
 
+            {/* What the journal recorded and SAVE has not kept (lib/journal): newest first, each
+                with its days left. SAVE keeps one whole; JOIN joins it to the one before it. */}
+            <Section title={t.sessions_unkept} count={s.unkept.length} info={t.sessions_unkept_info}>
+                {s.unkept.length === 0 ? (
+                    <p className="py-2 text-xs text-slate-500">{t.sessions_emptyUnkept}</p>
+                ) : (
+                    <DataList>
+                        {s.unkept.map((ep, i) => (
+                            <DataRow
+                                key={ep.start}
+                                name={humanName(sessionLabel(ep.start, ep.ecu ?? ecuId, ep.mock))}
+                                trailing={
+                                    <span className="flex shrink-0 items-baseline gap-3">
+                                        {ep.mock && <Pill tone="secondary">{t.practice}</Pill>}
+                                        <TextButton onClick={() => void s.keep(ep.start)} disabled={busy} Icon={Database}>
+                                            {t.save}
+                                        </TextButton>
+                                        {i < s.unkept.length - 1 && (
+                                            <TextButton onClick={() => void s.join(ep)} disabled={busy} Icon={Link2}>
+                                                {t.join}
+                                            </TextButton>
+                                        )}
+                                    </span>
+                                }
+                                detail={
+                                    <p className="font-mono text-[11px] text-slate-500">
+                                        {t.sessions_counts(lastFaultCount(ep), ep.counts.samples, ep.counts.failures)} ·{' '}
+                                        {/* From the later of the episode's end and the minute clock: the clock may still read the
+                                            minute before an episode that has just ended. */}
+                                        {t.sessions_expiresIn(Math.ceil((expiresAt(ep) - Math.max(s.now, ep.end)) / 86_400_000))}
+                                    </p>
+                                }
+                            />
+                        ))}
+                    </DataList>
+                )}
+            </Section>
+
             <Section title={t.sessions_onDevice} count={s.local?.length}>
                 {s.local !== null && s.local.length === 0 ? (
                     <p className="py-2 text-xs text-slate-500">{t.sessions_emptyLocal}</p>
@@ -163,6 +202,15 @@ export const SessionsView = memo(function SessionsView({
         </Pane>
     );
 });
+
+/** The newest fault read in an episode, counted as a saved session counts it; null when none was read. */
+function lastFaultCount(ep: Episode): number | null {
+    for (let i = ep.events.length - 1; i >= 0; i--) {
+        const e = ep.events[i];
+        if (e.kind === 'faults') return e.faults.length;
+    }
+    return null;
+}
 
 function CurrentCounts({ s }: { s: Sessions }) {
     const { t } = useLang();

@@ -266,6 +266,11 @@ export interface Localised {
     movingOk_consequence: (name: string, what: string, n: number) => string;
     sessions_nothing: string;
     sessions_onDevice: string;
+    /** MEMORY: episodes the journal recorded and SAVE has not kept (lib/journal). */
+    sessions_unkept: string;
+    sessions_unkept_info: string;
+    sessions_emptyUnkept: string;
+    sessions_expiresIn: (days: number) => string;
     sessions_inAccount: string;
     sessions_errors: string;
     sessions_errors_info: string;

@@ -23,14 +23,16 @@ import {
     type LiveValueBlock,
 } from '@tsunagi/ds2-mss54';
 import type { SimulatedEcuOptions } from '@tsunagi/ds2-core';
+import { CLEAN, practiceCar } from './practiceCar';
 
 const START = Date.now();
 
-/** A plausible warming, idling S54. */
+/** A plausible warming S54: idling when parked, pulling a gear's worth of rpm when the practice car moves. */
 function engine() {
     const t = (Date.now() - START) / 1000;
+    const v = practiceCar.speedKmh;
     return {
-        rpm: Math.round(820 + 15 * Math.sin(t * 1.3)),
+        rpm: Math.round((v > 0 ? 1200 + v * 35 : 820) + 15 * Math.sin(t * 1.3)),
         coolantC: Math.min(92, 22 + 70 * (1 - Math.exp(-t / 90))),
         oilC: Math.min(98, 22 + 76 * (1 - Math.exp(-t / 130))),
         battV: 13.9 + 0.12 * Math.sin(t / 2.5),
@@ -59,9 +61,10 @@ function blockPayload(block: LiveValueBlock): Uint8Array {
         else if (f.unit === 'V') target = f.symbol.startsWith('UUB') ? e.battV : 2.5;
         else if (f.unit === '°C') target = e.oilC;
         else if (f.unit === 'rpm') target = e.rpm;
-        // Standing still. The speed preflight reads block 19 before every read it lets go, so a
-        // simulator that drifted along at 1 km/h would refuse everything PRACTICE exists to run.
-        else if (f.unit === 'km/h') target = 0;
+        // The practice car's speed: 0 unless a scenario drives it. The speed preflight reads block 19
+        // before every read it lets go, so a simulator that drifted along at 1 km/h would refuse
+        // everything PRACTICE exists to run.
+        else if (f.unit === 'km/h') target = practiceCar.speedKmh;
         else if (f.unit === '%') target = 14;
         else if (f.unit === '°KW') target = 12;
         else target = 1;
@@ -101,7 +104,8 @@ function writeRaw(buf: Uint8Array, offset: number, format: string, raw: number):
     }
 }
 
-/** Two stored faults, so the fault view and its freeze frames have something real to render. */
+/** The practice car's stored faults — two by default, so the fault view and its freeze frames have
+ *  something real to render. */
 function faultPayload(): Uint8Array {
     const record = (code: number, type: number, freq: number) => {
         const r = new Array(ERROR_MEMORY_RECORD_LENGTH).fill(0);
@@ -121,7 +125,8 @@ function faultPayload(): Uint8Array {
         }
         return r;
     };
-    return new Uint8Array([0x02, ...record(0x2a, 0x08, 3), ...record(0xd1, 0x02, 1)]);
+    const faults = practiceCar.dmeFaults;
+    return new Uint8Array([faults.length, ...faults.flatMap((f) => record(f.code, f.type, f.frequency))]);
 }
 
 /**
@@ -138,15 +143,31 @@ const SIM_TESTPRG_POLLS = 6;
  * PRACTICE as a K-line: the simulated ECU at the DME's address, and one at each other address
  * the session will talk to — and nobody anywhere else.
  *
- * Every module here runs the same synthetic responder, at its own address. That is a shortcut
- * about the PAYLOADS, which are invented whichever module answers; it is not a shortcut about the
+ * Every module other than the DME answers its identity and its fault read from the practice car
+ * (practiceCar.ts) and everything else with the DME's synthetic responder. That is a shortcut about
+ * the PAYLOADS, which are invented whichever module answers; it is not a shortcut about the
  * ADDRESSES. A frame for a module that is not on this bus gets the echo and then silence, as it
  * would on a car, so a request sent to the wrong module fails in PRACTICE too instead of being
  * answered by the DME.
  */
 export function practiceBus(addresses: readonly number[]): SimulatedEcuOptions[] {
     const unique = [...new Set([0x12, ...addresses])];
-    return unique.map((address) => ({ ...practiceEcu(), address }));
+    return unique.map((address) => (address === 0x12 ? practiceEcu() : practiceModule(address)));
+}
+
+/** A module other than the DME: its fault memory from the practice car, the rest the DME's responder. */
+function practiceModule(address: number): SimulatedEcuOptions {
+    const dme = practiceEcu();
+    return {
+        address,
+        respond: (request) => {
+            if (request.controlOrStatus === 0x00) return { payload: new Uint8Array([address, 0x46, 0x30, 0x01]) };
+            if (request.controlOrStatus === Ds2Control.READ_ERROR_MEMORY) {
+                return { payload: new Uint8Array(practiceCar.moduleFaults[address] ?? CLEAN) };
+            }
+            return dme.respond!(request);
+        },
+    };
 }
 
 export function practiceEcu(): SimulatedEcuOptions {

@@ -21,6 +21,7 @@ export const GUIDE_TOPICS = [
     'reactive',
     'predictive',
     'symptom',
+    'request',
 ] as const;
 
 export interface HelloGuide {

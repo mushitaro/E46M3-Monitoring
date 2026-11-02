@@ -120,6 +120,8 @@ export const CHROME = {
     // copy and lives in ja.ts / en.ts.
     tab_memory: 'MEMORY',
     save: 'Save',
+    // MEMORY: an episode joined to the one before it (lib/journal `joins`).
+    join: 'Join',
     sync: 'Sync',
     // SAVE and SYNC say their state in the label, one or two words, TUNER's
     // (lib/sync/status.ts): a phone has no hover, so the cell's word is all a

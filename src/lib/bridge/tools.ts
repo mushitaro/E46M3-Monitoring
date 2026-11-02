@@ -104,7 +104,8 @@ export const MONITORING_TOOLS = {
     },
     monitoring_sessions: {
         scope: 'read',
-        description: 'Sessions saved on this device: label, date, module, practice or vehicle, what each holds (faults, samples, failures), and whether it has been sent. No VIN.',
+        description:
+            'Sessions saved on this device: label, date, module, practice or vehicle, what each holds (faults, samples, failures), and whether it has been sent. Also the episodes recorded but not kept yet (MEMORY), newest first: their start (the id to save one by), label, what each holds and the days left before it leaves the device. No VIN.',
         inputSchema: obj({ limit: num('At most this many, newest first (default 10).') }),
     },
     monitoring_investigate: {
@@ -235,8 +236,9 @@ export const MONITORING_TOOLS = {
     },
     monitoring_save: {
         scope: 'control',
-        description: "Save the session on this device (the screen's SAVE): identity, faults, recording and failures. Returns what was kept.",
-        inputSchema: obj({ confirmed: CONFIRMED }, ['confirmed']),
+        description:
+            "Save on this device (the screen's SAVE): the episode in progress — identity, faults, recordings, learned values, procedures and failures — or, with episode, one from the not-kept list (monitoring_sessions). For \"save the one just now\", read the list, say which episode you mean (its time and what it holds), then save it. Returns what was kept.",
+        inputSchema: obj({ confirmed: CONFIRMED, episode: num('The start of a not-kept episode, from monitoring_sessions. Omit for the one in progress.') }, ['confirmed']),
     },
     monitoring_sync_upload: {
         scope: 'control',

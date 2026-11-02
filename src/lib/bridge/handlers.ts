@@ -60,7 +60,8 @@ export interface TabFacade {
     startLog(): string | null;
     /** What was stopped, or null when nothing was running. */
     stopLog(): 'recording' | 'probe' | null;
-    save(): Promise<unknown>;
+    /** The episode in progress, or the not-kept one starting at `episode`. */
+    save(episode?: number): Promise<unknown>;
     sync(): Promise<unknown>;
     /** Leave for TUNER WORKS, or say why not (running, unsaved). */
     openTuner(discardUnsaved: boolean): unknown;
@@ -394,7 +395,7 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
 
         monitoring_save: async (args) => {
             if (args.confirmed !== true) throw new Error('Save when the owner asks for it, with confirmed: true.');
-            return f.save();
+            return f.save(typeof args.episode === 'number' ? args.episode : undefined);
         },
 
         monitoring_sync_upload: async (args) => {

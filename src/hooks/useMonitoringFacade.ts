@@ -16,7 +16,8 @@ import { scanCounts, type ScanRun } from '@/lib/probe/scan';
 import type { RunBlockKey } from '@/lib/runGate';
 import { mayRun, mayRunProtocolRead } from '@/lib/runGate';
 import { canSync } from '@/lib/sync/cloud';
-import { needsSync, summarise } from '@/lib/sync/session';
+import { needsSync, sessionLabel, summarise } from '@/lib/sync/session';
+import { expiresAt } from '@/lib/journal';
 import { listLocal } from '@/lib/sync/sessionStore';
 import type { Tab } from '@/lib/tabs';
 import { bestTelegram, loadTelegrams } from '@/lib/telegrams';
@@ -225,15 +226,32 @@ export function useMonitoringFacade(input: {
 
         sessions: async (limit) => {
             const all = await listLocal().catch(() => []);
-            return all.slice(0, limit).map((s) => ({
-                id: s.id,
-                label: s.label,
-                createdAt: new Date(s.createdAt).toISOString(),
-                module: s.ecu,
-                practice: s.mock,
-                ...summarise(s),
-                sent: !needsSync(s),
-            }));
+            return {
+                saved: all.slice(0, limit).map((s) => ({
+                    id: s.id,
+                    label: s.label,
+                    createdAt: new Date(s.createdAt).toISOString(),
+                    module: s.ecu,
+                    practice: s.mock,
+                    ...summarise(s),
+                    sent: !needsSync(s),
+                })),
+                // MEMORY's journal: what was recorded and not kept. The start is the id monitoring_save
+                // takes; the counts, not the contents, so nothing identifying leaves (policy §10).
+                notKept: sessions.unkept.slice(0, limit).map((ep) => ({
+                    episode: ep.start,
+                    label: sessionLabel(ep.start, ep.ecu ?? ecuId, ep.mock),
+                    from: new Date(ep.start).toISOString(),
+                    to: new Date(ep.end).toISOString(),
+                    practice: ep.mock,
+                    faultReads: ep.counts.faultReads,
+                    samples: ep.counts.samples,
+                    learnedValueReads: ep.counts.adaptations,
+                    procedures: ep.counts.runs,
+                    failures: ep.counts.failures,
+                    daysLeft: Math.max(0, Math.ceil((expiresAt(ep) - Date.now()) / 86_400_000)),
+                })),
+            };
         },
 
         display: (next) => input.changeTab(next),
@@ -276,9 +294,16 @@ export function useMonitoringFacade(input: {
             return null;
         },
 
-        save: async () => {
-            await sessions.save();
-            const s = (await listLocal().catch(() => []))[0];
+        save: async (episode) => {
+            if (episode !== undefined) {
+                if (!sessions.unkept.some((ep) => ep.start === episode)) {
+                    return { saved: false, reason: 'No episode waiting to be kept starts there. Read monitoring_sessions again.' };
+                }
+                await sessions.keep(episode);
+            } else {
+                await sessions.save();
+            }
+            const s = (await listLocal().catch(() => [])).sort((a, b) => b.updatedAt - a.updatedAt)[0];
             return s ? { saved: true, label: s.label, ...summarise(s) } : { saved: false, reason: 'Nothing was written to this device.' };
         },
 

@@ -66,6 +66,7 @@ import { ServiceView, ServiceViz, procedureForJob } from '@/views/service/Servic
 import { WizardDialog } from '@/views/service/WizardDialog';
 import { SessionsView, SessionsViz } from '@/views/sessions/SessionsView';
 import { SyncPanel } from '@/views/sessions/SyncPanel';
+import { useJournal } from '@/views/sessions/useJournal';
 import { useFailureNotes, useSessions } from '@/views/sessions/useSessions';
 
 /** Below 900, the window that is not up: still laid out, neither seen nor touched. From 900 all are up. */
@@ -271,6 +272,9 @@ export default function Home() {
 
     // SAVE, SYNC and the account's copies. Reads the session the link and the datalog hold; asks
     // the network for nothing until the MEMORY tab is open, and never in production.
+    // MEMORY's journal: every MANUAL read as it happens, cut into episodes SAVE keeps afterwards
+    // (lib/journal). Quiet while PROBE runs: an investigation keeps its own record.
+    const journal = useJournal({ enabled: sessionsEnabled, paused: probe.progress !== null, link, ecuId, datalog, failures: failures.notes });
     const sessions = useSessions({
         enabled: sessionsEnabled,
         active: tab === 'memory',
@@ -278,6 +282,7 @@ export default function Home() {
         ecuId,
         datalog,
         failures,
+        journal,
     });
 
     // Which outputs are energised. Held here, not in the ACTUATOR view, because

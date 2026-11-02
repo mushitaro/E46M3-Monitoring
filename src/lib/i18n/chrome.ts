@@ -150,6 +150,29 @@ export const CHROME = {
     reauth: 'Sign in again',
     pill_synced: 'Synced',
     pill_local: 'Local',
+    // The two modes (lib/tabs `Mode`) and the corner that switches them, bottom-left of HUB — TUNER's
+    // MODE corner. PROBE's two tabs: STARTUP (its sessions) and PROBE (the board).
+    mode_corner: 'MODE',
+    mode_manual: 'MANUAL',
+    mode_probe: 'PROBE',
+    tab_startup: 'STARTUP',
+    tab_probe: 'PROBE',
+    new_session: 'New session',
+    next_session: 'Next',
+    // The board's parts (lib/probe/board), named as instrument tokens like the tabs.
+    part_message: 'AI',
+    part_faults: 'FAULTS',
+    part_scan: 'ALL MODULES',
+    part_plan: 'FORM',
+    part_judges: 'JUDGEMENTS',
+    part_compare: 'COMPARE',
+    part_values: 'VALUES',
+    item_added: 'ADDED',
+    item_removed: 'REMOVED',
+    series: 'SERIES',
+    run_tag: 'RUN',
+    pass: 'PASS',
+    fail: 'FAIL',
 } as const;
 
 export type Chrome = typeof CHROME;

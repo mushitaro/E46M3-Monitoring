@@ -9,7 +9,7 @@
 5. **絞る**：`monitoring_run_overview` と `monitoring_moment` で読み、手がかりにならなかった値を外し、足りない値を足した次の版を書く（`re` に前の版）。試した順は版として残る。別のモジュールを見るときは `monitoring_module`、理由を一言。
 6. **対策**：学習のリセット・ゼロ点・作動テストが答えなら、`monitoring_stage` で画面に置く。押すのは停車中に人（topic service）。答えがマップなら topic tuning。
 7. **確かめて、残す**：対策のあと同じ計画でもう一度 `monitoring_probe`、`monitoring_compare` で前のランと比べる。故障の消去は画面で人。消す前に保存するかを聞く（topic session）。
-8. **定点観測**：日をおいて同じ記録を続ける。`monitoring_investigate`（`record` に同じ記録、`mode: reactive`）→ `monitoring_probe` → `monitoring_compare`。再発したか、値が戻ったかを言う。
+8. **定点観測**：日をおいて、そのセッションを NEXT で引き継ぐ（`monitoring_session` の `next`、topic board）→ `monitoring_probe` → `monitoring_compare`。再発したか、値が戻ったかを言う。
 
 **例**
 

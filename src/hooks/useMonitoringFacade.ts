@@ -11,6 +11,7 @@ import { TUNER_WORKS } from '@/lib/links';
 import type { Ledger } from '@/lib/ledger';
 import type { ModuleProtocol } from '@/lib/moduleProtocol';
 import { addEntries, listAllEntries } from '@/lib/notebook/store';
+import { getBoard, putBoard } from '@/lib/probe/boardStore';
 import { listRuns } from '@/lib/probe/runStore';
 import { scanCounts, type ScanRun } from '@/lib/probe/scan';
 import type { RunBlockKey } from '@/lib/runGate';
@@ -19,7 +20,8 @@ import { canSync } from '@/lib/sync/cloud';
 import { needsSync, sessionLabel, summarise } from '@/lib/sync/session';
 import { expiresAt } from '@/lib/journal';
 import { listLocal } from '@/lib/sync/sessionStore';
-import type { Tab } from '@/lib/tabs';
+import type { Mode, Tab } from '@/lib/tabs';
+import type { ProbeSessions } from '@/views/probe/useProbeSessions';
 import { bestTelegram, loadTelegrams } from '@/lib/telegrams';
 import { LAUNCHER_QUERY, deviceLabel, isHeadUnit, type DeviceKind } from '@/hooks/useAssistantBridge';
 import type { Datalog } from '@/views/datalog/useDatalog';
@@ -75,6 +77,9 @@ export function useMonitoringFacade(input: {
     datalog: Datalog;
     sessions: Sessions;
     probe: ReturnType<typeof useProbe>;
+    /** PROBE's sessions and boards (views/probe/useProbeSessions). */
+    probeSessions: ProbeSessions;
+    mode: Mode;
     tab: Tab;
     changeTab: (tab: Tab) => void;
     selectJob: (job: EcuProfile['jobs'][number]) => void;
@@ -392,6 +397,13 @@ export function useMonitoringFacade(input: {
         },
 
         runs: (record) => listRuns(record).catch(() => []),
+
+        mode: () => input.mode,
+        session: () => input.probeSessions.opened(),
+        openSession: (id) => input.probeSessions.open(id),
+        newSession: () => input.probeSessions.newSession(),
+        board: (record) => getBoard(record),
+        putBoard: (b) => putBoard(b),
 
         sync: async () => {
             if (!canSync()) return { sent: 0, reason: 'This build does not send: it is not the WORKS build, or its notice is not confirmed.' };

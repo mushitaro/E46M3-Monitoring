@@ -19,6 +19,8 @@
  *   { ui: 'click', text | role }  a press on the screen (visible elements only)
  *   { ui: 'practice' }            ticks PRACTICE
  *   { ui: 'tab', name }           a tab
+ *   { ui: 'click', role, nth? }   the nth button (from 0) whose accessible name is exactly `role`
+ *   { ui: 'click', selector }     the first element a CSS selector finds
  *   { car }                       sets the practice car (lib/practiceCar)
  *   { wait } / { until: text }    time, or a text appearing
  *   { screen: { has, hasNot } }   what the screen must and must not say
@@ -117,10 +119,11 @@ for (const file of files) {
                 record({ who: 'AI', what: `${step.ai}(${short(step.args ?? {})})`, expect: step.means ?? '', got: result.error ? `error: ${result.error}` : short(result.r), ok: verdict === true, why: verdict === true ? '' : verdict });
                 if (step.keep) step.keep(result.r, scenario.state ??= {});
             } else if (step.ui) {
-                const what = step.ui === 'practice' ? 'PRACTICE' : step.ui === 'tab' ? `タブ ${step.name}` : `押す ${step.text ?? step.role}`;
+                const what = step.ui === 'practice' ? 'PRACTICE' : step.ui === 'tab' ? `タブ ${step.name}` : `押す ${step.text ?? step.role ?? step.selector}`;
                 if (step.ui === 'practice') await page.locator('label:has-text("PRACTICE")').first().click();
                 else if (step.ui === 'tab') await page.locator(`[role=tab]:has-text("${step.name}")`).first().click();
-                else if (step.role) await page.getByRole('button', { name: step.role, exact: true }).first().click();
+                else if (step.selector) await page.locator(step.selector).first().click();
+                else if (step.role) await page.getByRole('button', { name: step.role, exact: true }).nth(step.nth ?? 0).click();
                 else await page.locator(`button:visible:has-text("${step.text}")`).last().click();
                 if (step.settle !== 0) await page.waitForTimeout(step.settle ?? 600);
                 record({ who: '画面', what, expect: step.means ?? '', got: '', ok: null });

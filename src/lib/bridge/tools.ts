@@ -55,7 +55,7 @@ export const MONITORING_TOOLS = {
     monitoring_status: {
         scope: 'read',
         description:
-            'The tab now: the device name, the link (module, practice or vehicle, connected, recording), the speed the DME last reported and whether the car is measured stationary, PROBE (running, plan version, progress), and the CO-WORK line (plan version, open questions). No VIN.',
+            'The tab now: the device name, the link (module, practice or vehicle, connected, recording), the speed the DME last reported and whether the car is measured stationary, PROBE (running, plan version, progress), the mode (manual or probe), the session on the screen and its CO-WORK line (plan version, open questions), and its PROBE board as the owner left it (part ids, kinds, titles, open or closed, in their order). No VIN.',
         inputSchema: obj({}),
     },
     monitoring_faults: {
@@ -132,7 +132,7 @@ export const MONITORING_TOOLS = {
             {
                 record: RECORD,
                 mandate: str('The mandate entry id it acts under.'),
-                re: str('The plan entry this one rewrites.'),
+                re: str('The plan entry this one rewrites (default: the current plan, as a new version of it).'),
                 purpose: str('One line.'),
                 hypotheses: { type: 'array', items: { type: 'object' }, description: '{id, text, refutedBy}' },
                 criteria: str('The pass criteria, in words.'),
@@ -215,8 +215,41 @@ export const MONITORING_TOOLS = {
     },
     monitoring_display: {
         scope: 'control',
-        description: 'Change what the screen shows: one of the tabs (diagnosis, datalog, adaptation, service, actuator, sessions). Showing only; nothing is sent to the car.',
-        inputSchema: obj({ show: str('The tab to show.', { enum: ['diagnosis', 'datalog', 'adaptation', 'service', 'actuator', 'memory'] }) }, ['show']),
+        description:
+            'Change what the screen shows: one of the tabs. MANUAL: diagnosis, datalog, adaptation, service, actuator, memory. PROBE: startup (the sessions), probe (the board). Showing a tab of the other mode switches the mode. Showing only; nothing is sent to the car.',
+        inputSchema: obj(
+            { show: str('The tab to show.', { enum: ['diagnosis', 'datalog', 'adaptation', 'service', 'actuator', 'memory', 'startup', 'probe'] }) },
+            ['show'],
+        ),
+    },
+    monitoring_session: {
+        scope: 'control',
+        description:
+            "PROBE sessions on STARTUP — the screen's NEW SESSION and NEXT. new: open an empty session on the screen; monitoring_investigate then starts it with the owner's words. next: carry a session that has taken data (record, default the one on the screen) into a new one — its mandate (the owner's words, modules, mode and focus, standing for as long as before) and its current form (the plan, same version) — linked to it, so the new session's runs are compared with the series before. The form a run took data under never changes: an item added or removed is a new plan version (monitoring_plan), counted from the next run. open: put a session on STARTUP and the board. Each puts PROBE's STARTUP on the screen. new and next need confirmed: true (the owner asked).",
+        inputSchema: obj(
+            {
+                action: str('new, next or open', { enum: ['new', 'next', 'open'] }),
+                record: str('The session (CO-WORK record) id: to open, or to carry on (default: the one on the screen).'),
+                confirmed: CONFIRMED,
+            },
+            ['action'],
+        ),
+    },
+    monitoring_show: {
+        scope: 'control',
+        description:
+            "Place parts on a session's PROBE board (default: the session on the screen) and put the board on the screen. A part names what to show; the tab draws it from its own data, so no number reaches the screen from the assistant except inside a message. Kinds: message {text: one or two sentences, the assistant's own words}; faults {module: the module in session's fault read}; scan {every module's faults from the last monitoring_scan}; plan {the session's current form: purpose, hypotheses, steps, and the run in progress}; judges {run: a run's judgements with their provenance, default the last}; compare {run, against: {record, run}: two runs, default the run before or else the last run of the session this one follows — the items both measured, and those added or removed between their forms}; values {run, channels: a run's values — count, mean, min, max}. Each may have a title (up to 60 characters). Parts go after those on the board; replace: true clears it first; remove takes part ids. Up to 12. The owner opens, closes and reorders them; monitoring_status reads the board back. Kept on this device only.",
+        inputSchema: obj({
+            record: RECORD,
+            parts: {
+                type: 'array',
+                maxItems: 12,
+                items: { type: 'object' },
+                description: '{kind, title?, text?, module?, run?, against?: {record?, run?}, channels?}',
+            },
+            replace: bool('Clear the board first.'),
+            remove: { type: 'array', items: { type: 'string' }, description: 'Part ids to take off (p1, p2 …).' },
+        }),
     },
     monitoring_stage: {
         scope: 'control',

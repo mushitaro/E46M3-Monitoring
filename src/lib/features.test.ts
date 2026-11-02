@@ -16,7 +16,7 @@ describe('feature registry', () => {
         );
     });
 
-    it('the preview adds MEMORY and nothing else', () => {
+    it('the preview adds MEMORY and the PROBE mode\'s STARTUP and PROBE, and nothing else', () => {
         expect([...enabledTabs(true)].sort()).toEqual([...TAB_ORDER].sort());
     });
 

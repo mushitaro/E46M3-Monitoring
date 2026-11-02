@@ -11,6 +11,7 @@ const ICONS = {
     idle: icon('IDLE'),
     run: icon('RUN'),
     start: icon('START'),
+    probe: icon('PROBE'),
 };
 
 const T = {
@@ -25,6 +26,8 @@ const T = {
     adaptations_noDecoder: 'no decoder ported',
     faults_notEstablished: 'no frame for this module',
     datalog_noDecoder: 'no live-block layout',
+    probe: 'PROBE',
+    probe_notRunnable: 'no plan may run',
     runBlock: (r: string) => `blocked: ${r}`,
 };
 
@@ -230,5 +233,21 @@ describe('a module is offered only what its own SGBD lets the app send it', () =
         expect(cfg).toMatchObject({ disabled: true, notice: 'no live-block layout' });
         cfg?.onClick?.();
         expect(start).not.toHaveBeenCalled();
+    });
+});
+
+describe('PROBE', () => {
+    it('runs the session on the screen from the board, and says why not when it may not', () => {
+        const run = vi.fn();
+        const ok = viewHubFor(state({ tab: 'probe', probeRun: { runnable: true, run } }));
+        expect(ok).toMatchObject({ label: 'PROBE', tone: 'ready' });
+        ok?.onClick?.();
+        expect(run).toHaveBeenCalled();
+        const no = viewHubFor(state({ tab: 'probe', probeRun: { runnable: false, run } }));
+        expect(no).toMatchObject({ disabled: true, notice: 'no plan may run' });
+    });
+
+    it('leaves STARTUP to its sub-actions', () => {
+        expect(viewHubFor(state({ tab: 'startup' }))).toBeNull();
     });
 });

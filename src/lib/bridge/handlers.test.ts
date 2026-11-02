@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { addProblem, mergeEntries, runnablePlan, type NotebookEntry } from '../notebook/rules';
+import { emptyBoard, type Board } from '../probe/board';
 import type { ProbeLive, StoredRun } from '../probe/runStore';
+import type { Mode } from '../tabs';
 import { bridgeHandlers, pickRecord, type TabFacade } from './handlers';
 import { MONITORING_TOOLS } from './tools';
 
@@ -17,6 +19,9 @@ function tab(over: Partial<TabFacade> = {}) {
     let seq = 0;
     let entries: NotebookEntry[] = [];
     let live: ProbeLive | null = null;
+    let open: string | null = null;
+    let mode: Mode = 'manual';
+    const boards = new Map<string, Board>();
     const f: TabFacade = {
         now: () => now,
         newId: () => `id-${String(++seq).padStart(6, '0')}`,
@@ -26,18 +31,22 @@ function tab(over: Partial<TabFacade> = {}) {
         catalog: async () => [],
         entries: async () => entries,
         add: async (es) => {
+            // As the store does: each entry against the record with the ones before it in this call.
+            let next = entries;
             for (const e of es) {
-                const record = entries.filter((x) => x.sessionId === e.sessionId);
-                const problem = addProblem(e, record);
+                const problem = addProblem(e, next.filter((x) => x.sessionId === e.sessionId));
                 if (problem) throw new Error(problem);
+                next = mergeEntries(next, [e]);
             }
-            entries = mergeEntries(entries, es);
+            entries = next;
         },
         live: () => live,
         lastRun: () => null,
         ledger: () => [],
         sessions: async () => [],
-        display: vi.fn(),
+        display: vi.fn((t) => {
+            mode = t === 'startup' || t === 'probe' ? 'probe' : 'manual';
+        }),
         stage: async () => ({}),
         startLog: () => null,
         stopLog: () => 'recording',
@@ -50,6 +59,19 @@ function tab(over: Partial<TabFacade> = {}) {
         switchModule: async (id) => ({ switched: true, module: { id } }),
         probe: async (record) => ({ started: true, record }),
         runs: async () => [],
+        mode: () => mode,
+        session: () => open,
+        openSession: (id) => {
+            open = id;
+        },
+        newSession: () => {
+            open = `id-${String(++seq).padStart(6, '0')}`;
+            return open;
+        },
+        board: async (record) => boards.get(record) ?? emptyBoard(record),
+        putBoard: async (b) => {
+            boards.set(b.record, b);
+        },
         ...over,
     };
     return {
@@ -58,6 +80,7 @@ function tab(over: Partial<TabFacade> = {}) {
         tick: (ms: number) => (now += ms),
         setLive: (l: ProbeLive | null) => (live = l),
         entries: () => entries,
+        open: () => open,
     };
 }
 
@@ -287,9 +310,99 @@ describe('the AI modes', () => {
         expect([c.a.n, c.b.n, c.channels[0].delta]).toEqual([1, 2, 3]);
         const d = (await t.h.monitoring_compare({ record: b.record, baseline: { record: a.record } })) as { channels: Array<{ delta: number }> };
         expect(d.channels[0].delta).toBe(4);
-        await expect(t.h.monitoring_compare({ record: b.record })).rejects.toThrow(/comparing needs two/);
+        await expect(t.h.monitoring_compare({ record: b.record })).rejects.toThrow(/first of record .* follows no session; name a baseline/);
         const tr = (await t.h.monitoring_compare({ record: a.record, trend: true, channels: ['3:tmot'] })) as { trend: Array<{ points: unknown[] }> };
         expect(tr.trend[0].points).toHaveLength(2);
     });
 });
 
+
+/** A run as the store keeps it, for the session and version given. */
+const kept = (sessionId: string, n: number, planV: number, values: Array<Record<string, number>>, judges: StoredRun['judges'] = []): StoredRun => ({
+    id: `${sessionId}-run-${n}`,
+    sessionId,
+    n,
+    planId: 'p',
+    planV,
+    startedAt: T0 + n * 1000,
+    endedAt: T0 + n * 1000 + values.length * 250,
+    end: 'stopped',
+    samples: values.map((v, i) => ({ t: i / 4, values: v })),
+    exchanges: [],
+    captures: [],
+    steps: [],
+    judges,
+});
+
+const SAMPLE = (channels: string[]) => [{ n: 1, do: 'sample', kind: 'sample', channels }];
+
+describe('PROBE sessions: NEW SESSION, the owner’s words, NEXT', () => {
+    it('opens an empty session, which the owner’s words then start', async () => {
+        const { h, open } = tab();
+        await expect(h.monitoring_session({ action: 'new' })).rejects.toThrow(/confirmed/);
+        const started = (await h.monitoring_session({ action: 'new', confirmed: true })) as { record: string };
+        expect(open()).toBe(started.record);
+        // A plan has nowhere to go yet: the session is empty.
+        await expect(h.monitoring_plan({ mandate: 'x'.repeat(8), purpose: 'p', steps: STEPS })).rejects.toThrow(/new and empty/);
+        const m = (await h.monitoring_investigate({ words: 'アイドルが揺れる', modules: [], days: 7, mode: 'symptom' })) as { record: string };
+        expect(m.record).toBe(started.record);
+    });
+
+    it('carries a session that has taken data into the next, linked, with its form', async () => {
+        const runs = new Map<string, StoredRun[]>();
+        const { h, entries, open } = tab({ runs: async (r) => runs.get(r) ?? [] });
+        const m = (await h.monitoring_investigate({ words: '毎週の点検', modules: ['mss54'], days: 7, mode: 'predictive' })) as { record: string; mandate: string };
+        await h.monitoring_plan({ mandate: m.mandate, purpose: '定点', steps: SAMPLE(['3:n', '3:tmot']) });
+        await expect(h.monitoring_session({ action: 'next', confirmed: true })).rejects.toThrow(/no data|taken no data/);
+        runs.set(m.record, [kept(m.record, 1, 1, [{ '3:n': 800, '3:tmot': 90 }])]);
+        const next = (await h.monitoring_session({ action: 'next', confirmed: true })) as { record: string; follows: string; plan: { v: number } };
+        expect(next.follows).toBe(m.record);
+        expect(next.plan.v).toBe(1);
+        expect(open()).toBe(next.record);
+        const mandate = entries().find((e) => e.sessionId === next.record && e.body.kind === 'mandate');
+        expect(mandate?.by).toBe('driver');
+        expect(mandate?.body).toMatchObject({ words: '毎週の点検', modules: ['mss54'], mode: 'predictive', follows: m.record });
+
+        // The new session's first run is compared with the last run of the one it follows; an
+        // item added in between is said, not set beside nothing.
+        const mandate2 = mandate!.id;
+        await h.monitoring_plan({ mandate: mandate2, purpose: '定点 + 油温', steps: SAMPLE(['3:n', '3:tmot', '3:toel']) });
+        runs.set(next.record, [kept(next.record, 1, 2, [{ '3:n': 810, '3:tmot': 92, '3:toel': 95 }])]);
+        const c = (await h.monitoring_compare({})) as { a: { record: string }; b: { record: string }; items: { added: Array<{ label: string }>; removed: unknown[] } };
+        expect(c.a.record).toBe(m.record);
+        expect(c.b.record).toBe(next.record);
+        expect(c.items.added.map((i) => i.label)).toEqual(['3:toel']);
+        expect(c.items.removed).toEqual([]);
+    });
+
+    it('says a new version counts from the next run once the session has data', async () => {
+        const runs = new Map<string, StoredRun[]>();
+        const { h } = tab({ runs: async (r) => runs.get(r) ?? [] });
+        const m = (await h.monitoring_investigate({ words: 'w', modules: [], days: 7 })) as { record: string; mandate: string };
+        await h.monitoring_plan({ mandate: m.mandate, purpose: 'p', steps: SAMPLE(['3:n']) });
+        runs.set(m.record, [kept(m.record, 1, 1, [{ '3:n': 1 }])]);
+        const v2 = (await h.monitoring_plan({ mandate: m.mandate, purpose: 'p2', steps: SAMPLE(['3:n', '19:v']) })) as { v: number; form?: string };
+        expect(v2.v).toBe(2);
+        expect(v2.form).toMatch(/run 2/);
+    });
+});
+
+describe('the PROBE board', () => {
+    it('places parts, puts the board on the screen, and reads it back in monitoring_status', async () => {
+        const { f, h } = tab();
+        const m = (await h.monitoring_investigate({ words: 'w', modules: [], days: 7 })) as { record: string };
+        const r = (await h.monitoring_show({ parts: [{ kind: 'message', text: '油温が先週より 5℃ 高いです。' }, { kind: 'compare' }] })) as { placed: string[]; screen: string };
+        expect(r.placed).toEqual(['p1', 'p2']);
+        expect(f.display).toHaveBeenLastCalledWith('probe');
+        const s = (await h.monitoring_status({})) as { mode: string; session: string; board: Array<{ id: string; kind: string }> };
+        expect(s).toMatchObject({ mode: 'probe', session: m.record });
+        expect(s.board.map((p) => p.kind)).toEqual(['message', 'compare']);
+    });
+
+    it('refuses a number written into a part the tab draws itself, and a part it does not have', async () => {
+        const { h } = tab();
+        await h.monitoring_investigate({ words: 'w', modules: [], days: 7 });
+        await expect(h.monitoring_show({ parts: [{ kind: 'values', text: 'rpm 800' }] })).rejects.toThrow(/only a message part/);
+        await expect(h.monitoring_show({ parts: [{ kind: 'gauge' }] })).rejects.toThrow(/part.kind/);
+    });
+});

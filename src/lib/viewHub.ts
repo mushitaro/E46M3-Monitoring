@@ -43,6 +43,8 @@ export interface ViewHubStrings {
     adaptations_noDecoder: string;
     faults_notEstablished: string;
     datalog_noDecoder: string;
+    probe: string;
+    probe_notRunnable: string;
     /** The refusal, already resolved to a sentence — `t.runBlock[reason]`. */
     runBlock: (reason: Extract<RunVerdict, { allowed: false }>['reason']) => string;
 }
@@ -54,6 +56,7 @@ export interface ViewHubIcons {
     idle: LucideIcon;
     run: LucideIcon;
     start: LucideIcon;
+    probe: LucideIcon;
 }
 
 export interface ViewHubState {
@@ -72,6 +75,11 @@ export interface ViewHubState {
     scan?: { run: () => void; line?: string };
     /** A PROBE plan is running on the link. Its STOP and its line, while it does. */
     probe?: { line: string; stop: () => void };
+    /**
+     * The PROBE tab: run the plan of the session on the screen. `runnable` is false when the
+     * session has no plan that may run now (none, a fork, its mandate ended).
+     */
+    probeRun?: { runnable: boolean; run: () => void };
     datalog: {
         /** This module's live-block layout is ported. Only the MSS54's is. */
         decoded: boolean;
@@ -214,6 +222,18 @@ export function viewHubFor(s: ViewHubState): HubConfig | null {
         // unplugged — which is when an owner sits down to look back at a session. They live in
         // the pane, beside the thing they save.
         case 'memory':
+            return null;
+
+        // PROBE's board: the one thing to do here is run the session's form. Present only with the
+        // link up (the link tier answers CONNECT before this), and said plainly when it may not.
+        case 'probe':
+            if (!s.probeRun) return null;
+            return s.probeRun.runnable
+                ? { label: s.t.probe, Icon: s.icons.probe, tone: 'ready', onClick: s.probeRun.run }
+                : { label: s.t.probe, Icon: s.icons.probe, tone: 'idle', disabled: true, notice: s.t.probe_notRunnable };
+
+        // STARTUP's actions are on the sessions, in the sub-action row (NEW SESSION, NEXT).
+        case 'startup':
             return null;
     }
 }

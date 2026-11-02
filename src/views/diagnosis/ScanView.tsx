@@ -31,7 +31,7 @@ export interface ScanShown {
  * owner has to do something about. A module with no decoder that answered is "undecoded", not
  * "no faults" — its bytes may hold one, and a green word over them would be a reading of fiction.
  */
-function standing(r: ScanResult, t: ReturnType<typeof useLang>['t']): { word: string; tone: string; rank: number; entries: ErrorMemoryEntry[] | null } {
+export function standing(r: ScanResult, t: ReturnType<typeof useLang>['t']): { word: string; tone: string; rank: number; entries: ErrorMemoryEntry[] | null } {
     const entries = Array.isArray(r.decoded) ? (r.decoded as ErrorMemoryEntry[]) : null;
     switch (r.outcome) {
         case 'answered':

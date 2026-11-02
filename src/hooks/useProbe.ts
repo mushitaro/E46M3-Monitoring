@@ -8,6 +8,7 @@ import { runnablePlan, type NotebookEntry, type RunnablePlan } from '@/lib/noteb
 
 type RunnablePlanRefusal = Extract<RunnablePlan, { ok: false }>['reason'];
 import { listAllEntries } from '@/lib/notebook/store';
+import { probeChanged } from '@/lib/probe/boardStore';
 import { loadProbeModules } from '@/lib/probe/modules';
 import { listRuns, putRun, type ProbeLive, type StoredRun } from '@/lib/probe/runStore';
 
@@ -50,8 +51,15 @@ export function useProbe(input: {
         [enabled],
     );
 
-    /** Read the record again: what the bridge calls after it writes a plan. */
-    const refresh = useCallback(() => read().then((entries) => setRunnable(runnablePlan(entries, Date.now()))), [read]);
+    /** Read the record again: what the bridge calls after it writes a plan. STARTUP and the board read again too. */
+    const refresh = useCallback(
+        () =>
+            read().then((entries) => {
+                setRunnable(runnablePlan(entries, Date.now()));
+                probeChanged();
+            }),
+        [read],
+    );
 
     // Re-read whenever no run is holding a plan — on connect, on disconnect, and when a run ends.
     useEffect(() => {
@@ -110,6 +118,7 @@ export function useProbe(input: {
                         setLastRun(stored);
                         // Kept for the desk and the next conversation; a failed write loses the copy, not the run.
                         await putRun(stored).catch(() => {});
+                        probeChanged();
                     }
                 } finally {
                     liveRef.current = null;

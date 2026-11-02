@@ -1,6 +1,6 @@
 'use client';
 
-import { CircleDot, Loader2, Play, PlayCircle, PlugZap, Radio, Square, Zap } from 'lucide-react';
+import { CircleDot, Loader2, Play, PlayCircle, PlugZap, Radar, Radio, Square, Zap } from 'lucide-react';
 import type { HubConfig, NoticeTone } from '@/components/Hub';
 import type { useDs2Link } from '@/hooks/useDs2Link';
 import type { ProbeProgress } from '@/hooks/useProbe';
@@ -46,6 +46,8 @@ export function useHub(input: {
     probe?: { progress: ProbeProgress; stop: () => void };
     /** Present on DIAGNOSIS with ALL MODULES: the scan, and how far one in progress has got. */
     scan?: { run: () => void; progress: { done: number; total: number } | null };
+    /** PROBE's board: run the session on the screen (views/probe). */
+    probeRun?: { runnable: boolean; run: () => void };
 }): { hub: HubConfig; notice: { text?: string; tone: NoticeTone } } {
     const { t } = useLang();
     const { link, datalog, selectedJob, runVerdict } = input;
@@ -69,9 +71,12 @@ export function useHub(input: {
                 adaptations_noDecoder: t.adaptations_noDecoder,
                 faults_notEstablished: t.faults_notEstablished,
                 datalog_noDecoder: t.datalog_noDecoder,
+                probe: t.probe,
+                probe_notRunnable: t.probe_notRunnable,
                 runBlock: (reason) => t.runBlock[reason],
             },
-            icons: { read: Zap, record: Radio, stop: Square, idle: CircleDot, run: Play, start: PlayCircle },
+            icons: { read: Zap, record: Radio, stop: Square, idle: CircleDot, run: Play, start: PlayCircle, probe: Radar },
+            probeRun: input.probeRun,
             probe: input.probe
                 ? {
                       line: t.probe_line(input.probe.progress.v, input.probe.progress.settled, input.probe.progress.total, input.probe.progress.samples),

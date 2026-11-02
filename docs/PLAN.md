@@ -578,3 +578,12 @@ ADAPTATION のリセット文は known / unknown / none の三値。
   接続・切断・10 分の無操作で「まとまり」に切る。SAVE がまとまりを丸ごと残し、残さないものは 7 日で消える。
   送るのは残したものだけ（ポリシー §10、tsunagi-m3 #37）。PROBE の間は記録しない（調査の記録が別にある）。
   記録のタブは MEMORY（最後）、SYNC は SESSION SYNC。
+- **MODE は MANUAL と PROBE、PROBE はセッションとボード（運営者、2026-11-02）。** MODE は HUB の左下（TUNER と同じ）で、
+  いつでも切り替える。PROBE のタブは STARTUP（セッション）と PROBE（ボード）。PROBE は AI のモードで、画面から選べるのは
+  AI がオンのときだけ。セッションは CO-WORK の記録一つで、NEW SESSION で開き、委任で始まる。NEXT はデータを取った
+  セッションを、委任（言葉・範囲・モード・焦点、同じ長さで）と今の形を持って新しい記録に引き継ぎ、委任の `follows` で
+  つなぐ。項目の足し外しは AI だけが行い、計画の新しい版になる（`re` を省くと今の形を書き換える）。データを取った形は
+  変わらず、比較は両方の形が測った項目だけ（`lib/probe/items.ts`）。条件の変わった判定は別の項目。ボードの部品は決まった
+  目録から AI が選び（`monitoring_show`）、値はタブが自分のデータから描く。AI の言葉は `message` の部品だけ。ボードは
+  `journalMeta` に端末だけで残し、送らない（ポリシーの改訂は要らない：画面に出す内容の切り替えで、端末の記録）。
+  足した道具：`monitoring_session`（new・next・open）、`monitoring_show`。

@@ -16,6 +16,7 @@ export const GUIDE_TOPICS = [
     'service',
     'tuning',
     'session',
+    'board',
     'trouble',
     'autonomy',
     'reactive',

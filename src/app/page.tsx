@@ -67,6 +67,7 @@ import { WizardDialog } from '@/views/service/WizardDialog';
 import { SessionsView, SessionsViz } from '@/views/sessions/SessionsView';
 import { SyncPanel } from '@/views/sessions/SyncPanel';
 import { useJournal } from '@/views/sessions/useJournal';
+import { useE2EDoor } from '@/lib/e2e';
 import { useFailureNotes, useSessions } from '@/views/sessions/useSessions';
 
 /** Below 900, the window that is not up: still laid out, neither seen nor touched. From 900 all are up. */
@@ -576,6 +577,8 @@ export default function Home() {
     // controls, never a run.
     const buildId = useBuildId();
     const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, tab, changeTab, selectJob, switchModule, startScan, updateWaiting, syncInvestigations, defaultDevice: t.assistant_defaultDevice });
+    // The end-to-end scenarios' door to the same tools (lib/e2e): a test build only.
+    useE2EDoor(facade);
     const assistant = useAssistantBridge({
         allowed: preview && noticeAcknowledged,
         facade,

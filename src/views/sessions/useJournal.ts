@@ -83,6 +83,7 @@ export function useJournal(input: {
         error: string | null;
         ident: { hex: string; length: number } | null;
         faults: ErrorMemoryEntry[] | null;
+        rawFaults: Array<{ request: string; response: string; source: string }> | null;
         adaptations: unknown;
         lastRun: unknown;
     };
@@ -136,21 +137,35 @@ export function useJournal(input: {
         if (was !== 'disconnected' && was !== 'connecting' && link.state === 'disconnected') append({ t: t + 1, kind: 'disconnect', lost: link.error !== null });
     }, [link.state, link.mode, link.error, ecuId, datalog, append]);
 
+    // A module switch under an open link (monitoring_module, the screen's OPEN) disconnects and
+    // connects again faster than a render: the states in between never reach this hook. The module
+    // changing is the boundary that survives, so it is recorded as one.
+    const prevEcu = useRef(ecuId);
+    useEffect(() => {
+        const was = prevEcu.current;
+        prevEcu.current = ecuId;
+        if (was === ecuId || link.state === 'disconnected') return;
+        const t = Date.now();
+        append({ t, kind: 'disconnect', lost: false });
+        append({ t: t + 1, kind: 'connect', ecu: ecuId, mock: link.mode === 'practice' });
+    }, [ecuId, link.state, link.mode, append]);
+
     // Each new read the screen shows. By reference: the link hands over a new object per read, and
     // the same object again on every render in between.
-    const seen = useRef({ ident: link.ident, faults: link.faults, adaptations: link.adaptations, lastRun: link.lastRun });
+    const seen = useRef({ ident: link.ident, faults: link.faults, rawFaults: link.rawFaults, adaptations: link.adaptations, lastRun: link.lastRun });
     useEffect(() => {
         const s = seen.current;
         const t = Date.now();
         if (link.ident && link.ident !== s.ident) append({ t, kind: 'ident', ident: link.ident });
         if (link.faults && link.faults !== s.faults) append({ t, kind: 'faults', faults: link.faults });
+        if (link.rawFaults && link.rawFaults !== s.rawFaults) append({ t, kind: 'rawFaults', reads: link.rawFaults });
         if (link.adaptations && link.adaptations !== s.adaptations) append({ t, kind: 'adaptation', blocks: link.adaptations });
         if (link.lastRun && link.lastRun !== s.lastRun) {
             const job = (link.lastRun as { job?: { id?: string } | string }).job;
             append({ t, kind: 'run', job: typeof job === 'string' ? job : (job?.id ?? ''), result: link.lastRun });
         }
-        seen.current = { ident: link.ident, faults: link.faults, adaptations: link.adaptations, lastRun: link.lastRun };
-    }, [link.ident, link.faults, link.adaptations, link.lastRun, append]);
+        seen.current = { ident: link.ident, faults: link.faults, rawFaults: link.rawFaults, adaptations: link.adaptations, lastRun: link.lastRun };
+    }, [link.ident, link.faults, link.rawFaults, link.adaptations, link.lastRun, append]);
 
     // Failures, one event per new note.
     const seenFailures = useRef(failures.length);

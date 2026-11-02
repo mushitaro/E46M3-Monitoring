@@ -89,6 +89,19 @@ describe('toSession', () => {
         expect(s.updatedAt).toBe(99);
     });
 
+    it('keeps the bytes of a module it cannot decode, and counts the read', () => {
+        const reads = [{ request: '32 04 04 32', response: '00', source: 'FS_LESEN' }];
+        const [ep] = episodes([
+            { t: 0, kind: 'connect', ecu: 'smg2', mock: true },
+            { t: 1, kind: 'rawFaults', reads },
+        ]);
+        expect(ep.counts.faultReads).toBe(1);
+        const s = toSession(ep, { id: 'x', syncedAt: null }, 2, 'mss54', null);
+        expect(s.rawFaults).toEqual(reads);
+        expect(s.ecu).toBe('smg2');
+        expect(s.label).toContain('SMG2');
+    });
+
     it('says the faults were not read rather than that there were none', () => {
         const [ep] = episodes([{ t: 0, kind: 'ident', ident }]);
         expect(toSession(ep, { id: 'x', syncedAt: null }, 1, 'dsc', null).faults).toBeNull();

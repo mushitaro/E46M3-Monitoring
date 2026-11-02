@@ -166,7 +166,11 @@ npm run dev      # http://localhost:5046
 npm run build    # → out/ (静的エクスポート)
 npm run lint
 npm run typecheck
+npm run build:e2e && npm run e2e   # デモテスト：模擬実車と AI の道具でシナリオを流す（e2e-report/）
 ```
+
+PRACTICE は一台の模擬実車（後期 E46 M3、SMG II、DSC、ナビ）として答える。DME は故障 2 件とライブ値、
+ほかのモジュールは自分の住所で識別と故障の読み取りに答え、付いていないモジュールは答えない。
 
 **Web Serial はデスクトップ Chromium 系のみ**（Chrome / Edge）。iOS・Android・Safari・Firefox は非対応。
 セキュアコンテキストが必須なので `localhost` か HTTPS で開くこと。

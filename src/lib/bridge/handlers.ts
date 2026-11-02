@@ -36,15 +36,22 @@ import type { MonitoringToolName } from './tools';
 
 export type Handler = (args: Record<string, unknown>) => Promise<unknown>;
 
+/** A fault read as it came back: decoded entries for the MSS54, the frames and bytes for the rest. */
+export interface FreshFaults {
+    faults: unknown[] | null;
+    raw: Array<{ request: string; response: string; source: string }> | null;
+}
+
 export interface TabFacade {
     now(): number;
     newId(): string;
     /** The tab now, without the CO-WORK line (added here). */
     status(): Record<string, unknown>;
-    /** The module in session, or — with no module named and a scan kept — every module. */
-    faults(module: string | undefined): unknown;
-    /** Read the module in session again, through the gate. A sentence when it did not. */
-    refreshFaults(): Promise<string | null>;
+    /** The module in session, or — with no module named and a scan kept — every module. `fresh` is
+     *  what a refresh just read, which the screen's state may not hold yet. */
+    faults(module: string | undefined, fresh?: FreshFaults): unknown;
+    /** Read the module in session again, through the gate: why it was not sent (a sentence), or what it read. */
+    refreshFaults(): Promise<string | { fresh: FreshFaults | null }>;
     catalog(q: { module: string; query?: string; kind?: string; limit: number }): Promise<unknown>;
     entries(): Promise<NotebookEntry[]>;
     /** Throws the CO-WORK rule's sentence when an entry is refused. */
@@ -180,8 +187,11 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
         monitoring_faults: async (args) => {
             const moduleId = optText(args.module);
             if (args.refresh === true) {
-                const refused = await f.refreshFaults();
-                if (refused) return { refreshed: false, reason: refused, faults: await f.faults(moduleId) };
+                const r = await f.refreshFaults();
+                if (typeof r === 'string') return { refreshed: false, reason: r, faults: await f.faults(moduleId) };
+                // What was just read, not what the screen held when this call began: its state
+                // reaches the next render, after this answer has gone.
+                return { refreshed: true, faults: await f.faults(moduleId, r.fresh ?? undefined) };
             }
             return { refreshed: args.refresh === true, faults: await f.faults(moduleId) };
         },

@@ -60,7 +60,14 @@ python tools/check_term_scope.py
 python tools/jobtext/gen_jobtext.py --check
 python tools/verify_ecu_data.py
 python tools/verify_translation_quality.py
+npm run build:e2e && npm run e2e          # デモテスト（下）
 ```
+
+**デモテスト**（`tools/e2e/run.mjs`、`scenarios/e2e/*.mjs`）は、本物のアプリを PRACTICE の模擬実車
+（`src/lib/practiceCar.ts`：後期 E46 M3 SMG II、DSC、ナビ。故障と車速をシナリオが変える）で動かし、
+アシスタントの道具（`src/lib/e2e.ts` の口、テスト用のビルドだけが持つ）で操作して、各段階の想定する反応を
+確かめる。報告は `e2e-report/`。WORKS 版への配信の前に毎回回り、一つでも落ちたら配信しない。
+画面や道具を変えたら、シナリオを足すか直す。
 
 `check_references.py` は開発機（`C:\EDIABAS` ほか）の参照物を検査するので、クラウドでは落ちる。
 クラウドのセッションは `.claude/hooks/session-start.sh` が隣の `E46M3-Monitoring-data` から

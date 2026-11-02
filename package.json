@@ -11,6 +11,7 @@
     "dev": "next dev -p 5046",
     "build": "next build && node scripts/build-id.mjs && node scripts/inject-supporters.mjs && node scripts/gen-sw.mjs && node scripts/verify-export.mjs",
     "build:preview": "next build && node scripts/build-id.mjs && node scripts/brand-preview.mjs out preview && node scripts/inject-supporters.mjs && node scripts/gen-sw.mjs && node scripts/verify-export.mjs",
+    "build:e2e": "NEXT_PUBLIC_MONITORING_E2E=1 npm run build:preview",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
@@ -23,7 +24,8 @@
     "desk": "node scripts/desk.mjs",
     "desk:token": "node scripts/desk-token.mjs",
     "desk:deploy": "cd workers/desk && wrangler pages deploy pages --project-name monitoring-desk --branch main",
-    "verify:deploy": "node scripts/verify-deploy.mjs"
+    "verify:deploy": "node scripts/verify-deploy.mjs",
+    "e2e": "node tools/e2e/run.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.562.0",

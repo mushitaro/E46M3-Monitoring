@@ -80,6 +80,19 @@ jobs:
           git clone --depth 1 --filter=blob:none --sparse "https://x-access-token:${TOKEN}@github.com/mushitaro/tsunagi-m3.git" ../tsunagi-m3
           git -C ../tsunagi-m3 sparse-checkout set tools/owner-gate
 
+      # The demo tests (tools/e2e, scenarios/e2e): the real app on the practice car, operated by the
+      # assistant's own tools, every scenario, against a test build. Nothing is deployed if one
+      # fails. The report stays on the runner: its pages carry SGBD-derived text, which this repo
+      # serves only behind the owner gate. `npm run deploy` then builds afresh without the test door
+      # (verify-export fails a deploy build that carries it).
+      - name: Demo tests
+        if: env.HAVE_DEPLOY == 'true' && steps.done.outputs.cache-hit != 'true'
+        run: |
+          npm i --no-save playwright@1.63.0
+          npx playwright install --with-deps chromium
+          npm run build:e2e
+          npm run e2e
+
       - name: Deploy
         if: env.HAVE_DEPLOY == 'true' && steps.done.outputs.cache-hit != 'true'
         env:

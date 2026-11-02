@@ -37,13 +37,15 @@ export type JournalEvent =
     | { t: number; kind: 'disconnect'; lost: boolean }
     | { t: number; kind: 'ident'; ident: { hex: string; length: number } }
     | { t: number; kind: 'faults'; faults: ErrorMemoryEntry[] }
+    /** A module with no decoder: the frames its own SGBD sends and the bytes that came back. */
+    | { t: number; kind: 'rawFaults'; reads: Array<{ request: string; response: string; source: string }> }
     | { t: number; kind: 'datalog'; datalog: Datalog }
     | { t: number; kind: 'adaptation'; blocks: unknown }
     | { t: number; kind: 'run'; job: string; result: unknown }
     | { t: number; kind: 'failure'; note: FailureNote };
 
 /** The kinds that are something read or done, rather than the link coming and going. */
-const CONTENT: ReadonlySet<JournalEvent['kind']> = new Set(['ident', 'faults', 'datalog', 'adaptation', 'run', 'failure']);
+const CONTENT: ReadonlySet<JournalEvent['kind']> = new Set(['ident', 'faults', 'rawFaults', 'datalog', 'adaptation', 'run', 'failure']);
 
 export interface Episode {
     /** Its first event's time, which also names it: stable while it grows, and unique on one device. */
@@ -77,7 +79,7 @@ function toEpisode(events: JournalEvent[]): Episode {
     const connect = events.find((e): e is Extract<JournalEvent, { kind: 'connect' }> => e.kind === 'connect');
     const counts = { faultReads: 0, samples: 0, adaptations: 0, runs: 0, failures: 0 };
     for (const e of events) {
-        if (e.kind === 'faults') counts.faultReads++;
+        if (e.kind === 'faults' || e.kind === 'rawFaults') counts.faultReads++;
         else if (e.kind === 'datalog') counts.samples += e.datalog.samples;
         else if (e.kind === 'adaptation') counts.adaptations++;
         else if (e.kind === 'run') counts.runs++;
@@ -117,7 +119,12 @@ export function toSession(
     now: number,
     fallbackEcu: string,
     appBuild: string | null,
-): SavedSession & { datalogs: Datalog[]; adaptations: unknown[]; runs: Array<{ job: string; result: unknown }> } {
+): SavedSession & {
+    datalogs: Datalog[];
+    rawFaults: Array<{ request: string; response: string; source: string }> | null;
+    adaptations: unknown[];
+    runs: Array<{ job: string; result: unknown }>;
+} {
     const last = <K extends JournalEvent['kind']>(kind: K) =>
         [...ep.events].reverse().find((e): e is Extract<JournalEvent, { kind: K }> => e.kind === kind);
     const ecu = ep.ecu ?? fallbackEcu;
@@ -137,6 +144,7 @@ export function toSession(
         datalog: datalogs.length > 0 ? datalogs[datalogs.length - 1] : null,
         failures: ep.events.filter((e): e is Extract<JournalEvent, { kind: 'failure' }> => e.kind === 'failure').map((e) => e.note),
         datalogs,
+        rawFaults: last('rawFaults')?.reads ?? null,
         adaptations: ep.events.filter((e): e is Extract<JournalEvent, { kind: 'adaptation' }> => e.kind === 'adaptation').map((e) => e.blocks),
         runs: ep.events.filter((e): e is Extract<JournalEvent, { kind: 'run' }> => e.kind === 'run').map((e) => ({ job: e.job, result: e.result })),
     };

@@ -18,6 +18,11 @@ const nextConfig: NextConfig = {
     root: path.resolve(__dirname),
   },
   output: 'export',
+  // Always a literal, so the end-to-end door (src/lib/e2e.ts) folds away in every build but
+  // `npm run build:e2e`'s, and verify-export can prove it did.
+  env: {
+    NEXT_PUBLIC_MONITORING_E2E: process.env.NEXT_PUBLIC_MONITORING_E2E === '1' ? '1' : '0',
+  },
   images: {
     unoptimized: true,
   },

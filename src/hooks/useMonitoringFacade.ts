@@ -1,9 +1,9 @@
 'use client';
 
 import { formatErrorCode, type ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
-import type { useDs2Link } from '@/hooks/useDs2Link';
+import type { RawFaultRead, useDs2Link } from '@/hooks/useDs2Link';
 import type { useProbe } from '@/hooks/useProbe';
-import type { TabFacade } from '@/lib/bridge/handlers';
+import type { FreshFaults, TabFacade } from '@/lib/bridge/handlers';
 import { jobRiskOf, loadEcuCatalog, text as resolveText, type EcuIndex, type EcuProfile, type JobClass } from '@/lib/ecuCatalog';
 import { normCode } from '@/lib/faultCode';
 import { en } from '@/lib/i18n/en';
@@ -94,13 +94,15 @@ export function useMonitoringFacade(input: {
     const running = probe.progress !== null;
 
     /** The module on the screen, as far as it has been read. */
-    const inSession = (moduleId?: string) => {
+    const inSession = (moduleId?: string, fresh?: FreshFaults) => {
         if (moduleId && moduleId !== ecuId) {
             return { module: moduleId, read: false, reason: `Not read in this session: the screen is on ${moduleName(ecuId)}. monitoring_module puts another module on it; monitoring_scan reads every module's faults.` };
         }
-        if (link.faults !== null) return { module: ecuId, read: true, decoded: true, faults: describeEntries(link.faults, catalog) };
-        if (link.rawFaults !== null) {
-            return { module: ecuId, read: true, decoded: false, note: 'No decoder for this module: the answer is kept as bytes.', raw: link.rawFaults };
+        const decoded = (fresh?.faults as ErrorMemoryEntry[] | null | undefined) ?? (fresh ? null : link.faults);
+        const raw = fresh?.raw ?? (fresh ? null : link.rawFaults);
+        if (decoded !== null) return { module: ecuId, read: true, decoded: true, faults: describeEntries(decoded, catalog) };
+        if (raw !== null) {
+            return { module: ecuId, read: true, decoded: false, note: 'No decoder for this module: the answer is kept as bytes.', raw };
         }
         return { module: ecuId, read: false, reason: 'Not read yet in this session.' };
     };
@@ -152,9 +154,9 @@ export function useMonitoringFacade(input: {
             newBuildWaiting: input.updateWaiting,
         }),
 
-        faults: async (moduleId) => {
-            if (!moduleId && link.scan) return { inSession: inSession(), scan: await describeScan(link.scan) };
-            return inSession(moduleId);
+        faults: async (moduleId, fresh) => {
+            if (!moduleId && link.scan) return { inSession: inSession(undefined, fresh), scan: await describeScan(link.scan) };
+            return inSession(moduleId, fresh);
         },
 
         refreshFaults: async () => {
@@ -166,12 +168,20 @@ export function useMonitoringFacade(input: {
             const fs = mayRunProtocolRead(`${ecuId}:FS_LESEN`, 'module', ledger, link.motion);
             if (!fs.allowed) return en.runBlock[fs.reason];
             try {
-                if (target.ident && ident.allowed) await link.readIdent(ident.requires);
-                if (target.faults.length > 0) await link.readFaults(fs.requires);
+                // The link reports a refused or failed read as null and keeps its sentence: a read the
+                // preflight stopped (the car moving) must reach the assistant as not sent, and why.
+                if (target.ident && ident.allowed && (await link.readIdent(ident.requires)) === null) {
+                    return link.lastError() ?? 'The identity read did not complete.';
+                }
+                if (target.faults.length > 0) {
+                    const read = await link.readFaults(fs.requires);
+                    if (read === null) return link.lastError() ?? 'The fault read did not complete.';
+                    return target.decoder === 'mss54' ? { fresh: { faults: read, raw: null } } : { fresh: { faults: null, raw: read as RawFaultRead[] } };
+                }
             } catch (e) {
                 return e instanceof Error ? e.message : String(e);
             }
-            return null;
+            return { fresh: null };
         },
 
         catalog: async ({ module, query, kind, limit }) => {
@@ -358,7 +368,7 @@ export function useMonitoringFacade(input: {
                 addresses: r.addresses,
                 takes: 'up to about 2 s for each address that does not answer, less for those that do',
                 then: 'monitoring_status shows how far it has got; monitoring_faults without module gives every module once it ends. The screen shows it on DIAGNOSIS under ALL MODULES.',
-                ...(link.mode === 'practice' ? { practice: 'PRACTICE: only the DME and the module on the screen answer; the rest are silent.' } : {}),
+                ...(link.mode === 'practice' ? { practice: 'PRACTICE: the practice car — a late E46 M3 with SMG II, DSC and navigation — answers at the addresses such a car has; the rest are silent. Its values are simulated.' } : {}),
             };
         },
 

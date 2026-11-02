@@ -81,3 +81,6 @@ trace/
 # What the desk pulled (scripts/desk.mjs): an owner's investigation, without the VIN but still
 # theirs. Read where it was pulled, never committed.
 desk-work/
+
+# End-to-end demo test reports (npm run e2e)
+/e2e-report/

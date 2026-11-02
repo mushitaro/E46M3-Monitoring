@@ -16,7 +16,7 @@ describe('feature registry', () => {
         );
     });
 
-    it('the preview adds STARTUP and nothing else', () => {
+    it('the preview adds MEMORY and nothing else', () => {
         expect([...enabledTabs(true)].sort()).toEqual([...TAB_ORDER].sort());
     });
 

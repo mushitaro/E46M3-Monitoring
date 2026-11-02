@@ -29,10 +29,11 @@ type Confirm = { id: string; label: string; synced: boolean };
 const when = (ms: number) => new Date(ms).toLocaleString();
 
 /**
- * STARTUP — what this connection holds and SAVE, the records on this device, and the door to
- * SESSION SYNC (SyncPanel). A read-only viewer opens a saved record in place of the list. TUNER's
- * arrangement (operator, 2026-11-02): the records in the first tab; the account, its copies, the
- * error records, ASSISTANT and the reads cleared for a moving car behind SYNC.
+ * MEMORY — MANUAL's records: what this connection holds and SAVE, the records on this device, and
+ * the door to SESSION SYNC (SyncPanel). A read-only viewer opens a saved record in place of the
+ * list. The last tab (operator, 2026-11-02): MANUAL is tried first and kept afterwards. Behind
+ * SYNC, as TUNER has it: the account, its copies, the error records, ASSISTANT and the reads
+ * cleared for a moving car.
  *
  * Preview only (lib/features.ts `sessionSync`).
  */
@@ -310,7 +311,7 @@ function SessionViewer({
     );
 }
 
-/** The right column on STARTUP: how many sessions this device holds. */
+/** The right column on MEMORY: how many sessions this device holds. */
 export function SessionsViz({ count }: { count: number }) {
     const { t } = useLang();
     return <CountReadout value={count} tone="text-slate-200" caption={t.viz_sessions} />;

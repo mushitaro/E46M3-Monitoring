@@ -575,7 +575,7 @@ export const en: Localised = {
         inferred: 'inferred',
     },
 
-    // --- STARTUP and SESSION SYNC (preview only) ------------------------------------------------
+    // --- MEMORY and SESSION SYNC (preview only) ------------------------------------------------
     sessions_current: 'This connection',
     assistant_consent: {
         title: 'Turn ASSISTANT on',

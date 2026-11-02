@@ -189,14 +189,14 @@ export default function Home() {
     // the tab's own rows, and HUB beside it already holds the next step. Not reset when the tab
     // changes — both windows belong to the tab, so the one chosen shows the new tab too.
     const [pane, setPane] = useState<NarrowPane>('list');
-    // SESSION SYNC (views/sessions/SyncPanel), opened from STARTUP's SYNC and the menu sheet's.
+    // SESSION SYNC (views/sessions/SyncPanel), opened from MEMORY's SYNC and the menu sheet's.
     const [syncOpen, setSyncOpen] = useState(false);
     const wide = useWideLayout();
     // Where the picture is on screen: always from 900; below it, while VISU is up.
     const pictureUp = wide || pane === 'visu';
 
     // What this build may show. Production renders the five instrument tabs and nothing that
-    // stores or sends; the preview adds STARTUP (lib/features.ts, and its pinned test).
+    // stores or sends; the preview adds MEMORY (lib/features.ts, and its pinned test).
     const previewSurfaces = usePreviewSurfaces();
     const tabs = useMemo(() => enabledTabs(previewSurfaces), [previewSurfaces]);
     const sessionsEnabled = featureEnabled('sessionSync', previewSurfaces);
@@ -270,10 +270,10 @@ export default function Home() {
     const datalog = useDatalog(link);
 
     // SAVE, SYNC and the account's copies. Reads the session the link and the datalog hold; asks
-    // the network for nothing until the STARTUP tab is open, and never in production.
+    // the network for nothing until the MEMORY tab is open, and never in production.
     const sessions = useSessions({
         enabled: sessionsEnabled,
-        active: tab === 'startup',
+        active: tab === 'memory',
         link,
         ecuId,
         datalog,
@@ -516,7 +516,7 @@ export default function Home() {
     );
     // The preview's notice of what it sends rides in the same dialog, and holds it up on its own
     // key (lib/previewNotice). Only in the build that carries app-variant=preview, which is the
-    // build that sends: `next dev` shows STARTUP but sends nothing, so it has nothing to disclose
+    // build that sends: `next dev` shows MEMORY but sends nothing, so it has nothing to disclose
     // and its dialog is production's.
     const preview = useBuildVariant() === 'preview';
     // WORKS takes a newer build by itself, once nothing would be lost by the reload (lib/adoptBuild):
@@ -541,7 +541,7 @@ export default function Home() {
     // The sign-in lapsed: WORKS goes through the gate again by itself when that costs nothing — the
     // idle minute the swap above waits for, a network, a clock the server agrees with, and no trip
     // from this tab in the last ten minutes (lib/signInLapse `lapseAction`). Otherwise the header
-    // says so, with SIGN IN AGAIN while that can be pressed: no link and a network, as on STARTUP,
+    // says so, with SIGN IN AGAIN while that can be pressed: no link and a network, as on MEMORY,
     // asking first when something unsaved would go with the page.
     const online = useOnline();
     const { reauth, unsaved } = sessions;
@@ -651,7 +651,7 @@ export default function Home() {
         ),
         // Rendered only where the registry opens it: a production build never mounts it, so it
         // never opens the device store or asks the network for anything.
-        startup: sessionsEnabled ? <SessionsView sessions={sessions} catalog={catalog} ecuId={ecuId} onOpenSync={() => setSyncOpen(true)} /> : null,
+        memory: sessionsEnabled ? <SessionsView sessions={sessions} catalog={catalog} ecuId={ecuId} onOpenSync={() => setSyncOpen(true)} /> : null,
     };
 
     const vizzes: Record<Tab, React.ReactNode> = {
@@ -675,7 +675,7 @@ export default function Home() {
         // module. Same component SERVICE falls back to, because it is the same
         // question and the numbers are about the module, not the tab.
         actuator: <ActuatorViz profile={catalog} arming={arming} />,
-        startup: sessionsEnabled ? <SessionsViz count={sessions.local?.length ?? 0} /> : null,
+        memory: sessionsEnabled ? <SessionsViz count={sessions.local?.length ?? 0} /> : null,
     };
 
     return (
@@ -1034,7 +1034,7 @@ export default function Home() {
                 />
             )}
 
-            {/* The header's SIGN IN AGAIN, with something unsaved: STARTUP's own words for what the
+            {/* The header's SIGN IN AGAIN, with something unsaved: MEMORY's own words for what the
                 page load takes with it. Checked again on the press, since a link could have been
                 opened by voice while the dialog stood. */}
             {reauthOpen && (

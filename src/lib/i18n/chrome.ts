@@ -64,7 +64,7 @@ export const CHROME = {
     // is always up). A label says what the window shows and is the app's own — TUNER's are MAP and
     // GRAPH — not the development names MAIN / MULTI / HUB (tsunagi-m-design §5.12). Only HUB is
     // labelled HUB in every app. Here MAIN holds rows, so LIST. VISU, not GRAPH: the picture is a trace on one tab, a count on
-    // another, a module's numbers on a third. Not VIEW, which is already STARTUP's verb for
+    // another, a module's numbers on a third. Not VIEW, which is already MEMORY's verb for
     // opening a saved session.
     pane_list: 'LIST',
     pane_visu: 'VISU',
@@ -115,10 +115,10 @@ export const CHROME = {
     wiz_next: 'Next',
     wiz_back: 'Back',
     wiz_close: 'Close',
-    // STARTUP and SESSION SYNC (preview only). Verbs and state tokens on controls — English in both languages,
+    // MEMORY and SESSION SYNC (preview only). Verbs and state tokens on controls — English in both languages,
     // like every other control label here. What SYNC sends, and what a delete loses, is safety
     // copy and lives in ja.ts / en.ts.
-    tab_startup: 'STARTUP',
+    tab_memory: 'MEMORY',
     save: 'Save',
     sync: 'Sync',
     // SAVE and SYNC say their state in the label, one or two words, TUNER's

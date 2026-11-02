@@ -124,7 +124,7 @@ describe('one trip per tab in ten minutes', () => {
     });
 });
 
-describe('the daily extension, without STARTUP', () => {
+describe('the daily extension, without MEMORY', () => {
     /** The document's one tag this reads: which build this is. */
     const documentOf = (variant: string | null) => ({
         querySelector: (sel: string) =>

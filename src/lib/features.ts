@@ -27,8 +27,8 @@
  * production sentence false, which is why `features.test.ts` asserts the stage directly and not
  * merely through the tab set.
  *
- * The whole STARTUP surface is under it, the on-device store included: a production build has no
- * STARTUP tab, writes nothing to IndexedDB and makes no request of its own.
+ * The whole MEMORY surface is under it, the on-device store included: a production build has no
+ * MEMORY tab, writes nothing to IndexedDB and makes no request of its own.
  */
 import type { Tab } from '@/lib/tabs';
 
@@ -43,9 +43,9 @@ export type FeatureName = 'instrument' | 'sessionSync' | 'probe';
 export const FEATURES: Record<FeatureName, { stage: FeatureStage; tabs: readonly Tab[] }> = {
     // The instrument itself: what production has always been.
     instrument: { stage: 'stable', tabs: ['diagnosis', 'datalog', 'adaptation', 'service', 'actuator'] },
-    // Never promoted — see the header. Owns the STARTUP tab, and every SYNC surface and the
+    // Never promoted — see the header. Owns the MEMORY tab, and every SYNC surface and the
     // automatic error records are gated on the same bit where they render or fire.
-    sessionSync: { stage: 'preview-only', tabs: ['startup'] },
+    sessionSync: { stage: 'preview-only', tabs: ['memory'] },
     // PROBE runs a plan an assistant or the desk wrote, under a mandate the owner gave, from the
     // CO-WORK record on the device (docs/AUTONOMY.md). Never promoted: production keeps no record
     // and takes no plan from anyone. Owns no tab — it is a line on the hub.
@@ -54,7 +54,7 @@ export const FEATURES: Record<FeatureName, { stage: FeatureStage; tabs: readonly
 
 /**
  * The dev server counts as preview. The meta tag is injected after the build, so `next dev` never
- * carries it, and a dev session without STARTUP would be a dev session on the wrong app. Only the
+ * carries it, and a dev session without MEMORY would be a dev session on the wrong app. Only the
  * SURFACES open in dev: the cloud half asks `isPreviewBuild()` (the meta tag itself), so `next dev`
  * still sends nothing. NODE_ENV is inlined by Next: 'production' in every exported build.
  */

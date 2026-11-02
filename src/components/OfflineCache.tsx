@@ -24,7 +24,7 @@ import { useEffect } from 'react';
  *
  * Behind the preview's owner gate the check can meet an expired session. The
  * worker then refuses the update (`isGenuine` in scripts/sw.template.js) and
- * the installed version keeps working; the STARTUP tab offers to sign in again
+ * the installed version keeps working; the MEMORY tab offers to sign in again
  * once no link is open.
  */
 export function OfflineCache() {

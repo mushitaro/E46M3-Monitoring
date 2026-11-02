@@ -40,8 +40,8 @@ const kb = (bytes: number) =>
   `${(bytes / 1024).toFixed(bytes < 10_240 ? 1 : 0)} KB`;
 
 /**
- * SESSION SYNC — TUNER's panel behind SYNC (operator, 2026-11-02: STARTUP and its doors as TUNER
- * has them). One place for everything this WORKS build does with the owner's account and on the
+ * SESSION SYNC — TUNER's panel behind SYNC (operator, 2026-11-02: SYNC, the error records and
+ * ASSISTANT where TUNER has them, and the reads cleared for a moving car with them). One place for everything this WORKS build does with the owner's account and on the
  * owner's say-so, rather than a tab that mixed the records with the settings:
  *
  *   - the send itself, first, with where it goes and what is waiting;
@@ -50,7 +50,7 @@ const kb = (bytes: number) =>
  *   - ASSISTANT: whether the assistant can hear this tab, and this device's name;
  *   - the reads the owner cleared for a moving car (the ledger's WHILE MOVING).
  *
- * Opened from STARTUP's SYNC from 900px and from the menu sheet's SYNC below it, one panel for both
+ * Opened from MEMORY's SYNC from 900px and from the menu sheet's SYNC below it, one panel for both
  * (the shell owns it). Every account surface is gated on `cloudEnabled`, false on the dev server:
  * there the panel says it has nowhere to send instead of offering a button that cannot work.
  */

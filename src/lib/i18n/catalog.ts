@@ -217,7 +217,7 @@ export interface Localised {
     probe_title: string;
     /** The hub's notice while a plan runs: version, one-shot steps settled of all, samples kept. */
     probe_line: (v: number, settled: number, total: number, samples: number) => string;
-    /** STARTUP and SESSION SYNC — the preview's saved sessions and SYNC (lib/features.ts `sessionSync`). */
+    /** MEMORY and SESSION SYNC — the preview's saved sessions and SYNC (lib/features.ts `sessionSync`). */
     sessions_current: string;
     /** The explanation behind this connection's ⓘ: what SAVE and SYNC each do. */
     sessions_current_info: string;

@@ -215,7 +215,7 @@ export const MONITORING_TOOLS = {
     monitoring_display: {
         scope: 'control',
         description: 'Change what the screen shows: one of the tabs (diagnosis, datalog, adaptation, service, actuator, sessions). Showing only; nothing is sent to the car.',
-        inputSchema: obj({ show: str('The tab to show.', { enum: ['startup', 'diagnosis', 'datalog', 'adaptation', 'service', 'actuator'] }) }, ['show']),
+        inputSchema: obj({ show: str('The tab to show.', { enum: ['diagnosis', 'datalog', 'adaptation', 'service', 'actuator', 'memory'] }) }, ['show']),
     },
     monitoring_stage: {
         scope: 'control',

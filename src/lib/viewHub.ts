@@ -213,7 +213,7 @@ export function viewHubFor(s: ViewHubState): HubConfig | null {
         // (CONNECT while disconnected). Put there, SAVE would vanish exactly when the cable is
         // unplugged — which is when an owner sits down to look back at a session. They live in
         // the pane, beside the thing they save.
-        case 'startup':
+        case 'memory':
             return null;
     }
 }

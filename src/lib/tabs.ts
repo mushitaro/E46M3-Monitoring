@@ -13,15 +13,16 @@
  * given build is not decided here — that is `lib/features.ts`, and the bar
  * filters this order through it.
  */
-export type Tab = 'startup' | 'diagnosis' | 'datalog' | 'adaptation' | 'service' | 'actuator';
+export type Tab = 'diagnosis' | 'datalog' | 'adaptation' | 'service' | 'actuator' | 'memory';
 
 export const TAB_ORDER = Object.keys({
-    // First, as TUNER's: the records the other five produced, and the door to SYNC (operator,
-    // 2026-11-02). Not the tab the app opens on — MANUAL starts with nothing to set up.
-    startup: true,
     diagnosis: true,
     datalog: true,
     adaptation: true,
     service: true,
     actuator: true,
+    // Last (operator, 2026-11-02): MANUAL is tried first and kept afterwards, so what it keeps
+    // comes at the end of the row. It is the records the other five produced and the door to SYNC.
+    // PROBE, which is started on purpose, will open on a STARTUP of its own instead.
+    memory: true,
 } satisfies Record<Tab, true>) as readonly Tab[];

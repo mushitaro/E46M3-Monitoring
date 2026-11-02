@@ -31,15 +31,26 @@ export interface VehicleState {
 export const VEHICLE_STATE_MAX_AGE_MS = 5000;
 
 /**
+ * The CAN speed (`v_asc`) is a 1/16 km/h count, and a car standing still has been recorded
+ * reading 9 counts (0.5625 km/h) on it while the direct input `v` read 0. One km/h is the floor
+ * below which the CAN figure is not taken as motion — and only when `v` itself answered 0; with
+ * no direct speed the CAN figure alone must be exactly zero, as before.
+ */
+export const CAN_SPEED_FLOOR_KMH = 1;
+
+/**
  * Parked means BOTH speed sources that answered say zero, and at least one answered.
  *
- * Either one above zero is moving: on a car whose wheel-speed input and CAN speed disagree, the
+ * Either one above zero is moving (CAN below `CAN_SPEED_FLOOR_KMH` excepted, see there): on a car whose wheel-speed input and CAN speed disagree, the
  * disagreement is itself a fault worth finding, and the safe reading of it is the moving one.
  */
 export function motionOf(s: VehicleState | null, now: number): Motion {
     if (!s || now - s.at > VEHICLE_STATE_MAX_AGE_MS || now < s.at) return 'unknown';
     const speeds = [s.speedKmh, s.speedCanKmh].filter((v): v is number => v !== null && Number.isFinite(v));
     if (speeds.length === 0) return 'unknown';
+    if (s.speedKmh === 0 && s.speedCanKmh !== null && Number.isFinite(s.speedCanKmh)) {
+        return s.speedCanKmh < CAN_SPEED_FLOOR_KMH ? 'parked' : 'moving';
+    }
     return speeds.every((v) => v === 0) ? 'parked' : 'moving';
 }
 

@@ -561,7 +561,7 @@ export const ja: Localised = {
         inferred: '推定',
     },
 
-    // --- SESSIONS (preview only) ------------------------------------------------
+    // --- STARTUP and SESSION SYNC (preview only) ------------------------------------------------
     sessions_current: 'この接続',
     assistant_consent: {
         title: 'ASSISTANT をオンにする',

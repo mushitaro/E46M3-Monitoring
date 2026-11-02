@@ -36,7 +36,7 @@ export function useTabLabels(): Record<Tab, string> {
         adaptation: t.tab_adaptation,
         service: t.tab_service,
         actuator: t.tab_actuator,
-        sessions: t.tab_sessions,
+        startup: t.tab_startup,
     };
 }
 

@@ -197,7 +197,7 @@ export function AppHeader({
  *
  * The sentence from 600px up (the head unit is 683) and the action at every width: below 600 a phone
  * has the wordmark, the badge and AI to keep, and the action's own words carry the notice. SIGN IN
- * AGAIN only while it costs nothing but a page load, no link and a network, as on SESSIONS. While it
+ * AGAIN only while it costs nothing but a page load, no link and a network, as on STARTUP. While it
  * cannot be pressed SIGNED OUT stands in the same cell, so the sentence does not move when the link
  * comes and goes. With the clock out there is nothing to press: the next check finds the clock right
  * and decides again.

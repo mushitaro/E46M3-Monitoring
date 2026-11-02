@@ -64,7 +64,7 @@ export const CHROME = {
     // is always up). A label says what the window shows and is the app's own — TUNER's are MAP and
     // GRAPH — not the development names MAIN / MULTI / HUB (tsunagi-m-design §5.12). Only HUB is
     // labelled HUB in every app. Here MAIN holds rows, so LIST. VISU, not GRAPH: the picture is a trace on one tab, a count on
-    // another, a module's numbers on a third. Not VIEW, which is already the SESSIONS verb for
+    // another, a module's numbers on a third. Not VIEW, which is already STARTUP's verb for
     // opening a saved session.
     pane_list: 'LIST',
     pane_visu: 'VISU',
@@ -74,6 +74,8 @@ export const CHROME = {
     menu_close: 'Close',
     menu_vehicle: 'VEHICLE',
     menu_session: 'SESSION',
+    // The panel behind SYNC (views/sessions/SyncPanel): TUNER's title, the same words in both languages.
+    sync_panel: 'SESSION SYNC',
     menu_view: 'VIEW',
     field_ident: 'IDENT',
     field_len: 'LEN',
@@ -113,10 +115,10 @@ export const CHROME = {
     wiz_next: 'Next',
     wiz_back: 'Back',
     wiz_close: 'Close',
-    // SESSIONS (preview only). Verbs and state tokens on controls — English in both languages,
+    // STARTUP and SESSION SYNC (preview only). Verbs and state tokens on controls — English in both languages,
     // like every other control label here. What SYNC sends, and what a delete loses, is safety
     // copy and lives in ja.ts / en.ts.
-    tab_sessions: 'SESSIONS',
+    tab_startup: 'STARTUP',
     save: 'Save',
     sync: 'Sync',
     // SAVE and SYNC say their state in the label, one or two words, TUNER's

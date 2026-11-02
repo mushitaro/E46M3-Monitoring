@@ -79,7 +79,7 @@ export interface TabFacade {
 }
 
 const DAY_MS = 86_400_000;
-const TABS: readonly Tab[] = ['diagnosis', 'datalog', 'adaptation', 'service', 'actuator', 'sessions'];
+const TABS: readonly Tab[] = ['startup', 'diagnosis', 'datalog', 'adaptation', 'service', 'actuator'];
 /** Samples a moment returns at most; thinned evenly beyond this. */
 const MOMENT_SAMPLES = 120;
 

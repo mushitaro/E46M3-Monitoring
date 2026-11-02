@@ -105,7 +105,7 @@ guide が名乗るツールは `src/lib/bridge/tools.ts` の一覧だけ（`guid
 | 送るかを決めるのは `runGate.ts`（カタログの読取は `mayRun`、アプリが組む読取は `mayRunProtocolRead`）。ツールは K ラインに直接何も足さない | `src/lib/runGate.ts`、`src/lib/probe/executor.ts` | 済。実行器は全フレームでゲートに訊く（2026-10-27） |
 | モジュールには、そのモジュール自身の SGBD が送るものだけ | `src/lib/moduleProtocol.ts`、`link.to(address)` | 済（2026-10-27） |
 | 読取は、送る直前に DME の車速が 0 と読めたときだけ。読めなければ出さない | `useDs2Link` の事前読取、`lib/vehicleState.ts` | 済（2026-10-27） |
-| 走行中に送ってよい読取はオーナーが決める。アプリもアシスタントも格上げしない | `lib/ledger.ts` の `grantMovingOk`。画面は SESSIONS の WHILE MOVING（`views/sessions/MovingOkSection.tsx`、確認のあと、走行中は押せない）。`monitoring_ledger` は読むだけ | 済（画面は #9、2026-10-28）。認めた分はページを開いている間だけ |
+| 走行中に送ってよい読取はオーナーが決める。アプリもアシスタントも格上げしない | `lib/ledger.ts` の `grantMovingOk`。画面は SESSION SYNC の WHILE MOVING（`views/sessions/MovingOkSection.tsx`、確認のあと、走行中は押せない）。`monitoring_ledger` は読むだけ | 済（画面は #9、2026-10-28）。認めた分はページを開いている間だけ |
 | 意味的失敗（0xB0 など）は再送しない。再送は transport の失敗だけ | `packages/ds2-core/src/link.ts` | 済（以前から） |
 | 読取以外は画面に置くだけ。実行は停車中に画面で人。DSC 油圧系は出さない | `mayRun`（非読取は拒否）、`monitoring_stage` | 拒否は済。stage は段 3 |
 | キルリストで任意のジョブを即時に止める | `public/kill-list.json`、`lib/ledger.ts`、SW は precache しない | 取得と適用は済。D1 からの配信は段 2 |
@@ -121,7 +121,7 @@ guide が名乗るツールは `src/lib/bridge/tools.ts` の一覧だけ（`guid
 | 0 | 宛先の修正、実測の車両状態、台帳の段階、キルリスト、試験とクラウドの足場 | 人 |
 | 1 | タブの実行器（`src/lib/probe/`）と CO-WORK（TUNER の `notebook/rules.ts` の形）。実行器・判定・委任の規則、端末の保存（`notebook/store.ts`）、PROBE（副操作で開始、ハブで STOP と一行）は済 | 人 |
 | 2 | ポリシーの改訂（成功した読取の送信・中継の catalog）→ D1 → 机の CLI。ポリシーは済（tsunagi-m3 #29）。お知らせ v2、D1（`0002`）、端末の送信（読み取りの記録・調査の記録）、机の Worker と `npm run desk` は作成済み（§8） | 人 |
-| 3 | Matrix MONITORING：ticket・同一オリジンのソケット・hello・19 のツール・SESSIONS の ASSISTANT。タブ側は済（代わりの中継で確認）。中継 0.11.0 は作成済み、未配備 | 人 |
+| 3 | Matrix MONITORING：ticket・同一オリジンのソケット・hello・19 のツール・SESSION SYNC の ASSISTANT。タブ側は済（代わりの中継で確認）。中継 0.11.0 は作成済み、未配備 | 人 |
 | 4 | guide の全トピック、机と自律の Skill、例題と能力の表、自動マージの分類（`.github/autonomy.json`・`scripts/autonomy-class.mjs`・CODEOWNERS・`autonomy.yml`）、配信（`deploy-works.yml`）は済。定期実行は PR #1 が main に入ってから | 分類による |
 | 5 | テレグラムを SGBD の実行トレースで得る（`.prg` をデータ repo へ） | 人 |
 | 6 | 例題 1（DSC 低速カーブ）を一周 | — |
@@ -156,7 +156,7 @@ GitHub のラベル・自動マージ・ブランチ保護は `autonomy.yml` と
 
 1. この変更（起こす口・すぐの配信・机の分け方）のレビュー（人の承認クラス）。
 2. ヘッドユニットで MONITORING WORKS を開き直し（新しいビルド）、お知らせ v2 に同意、ヘッダの AI で ASSISTANT を
-   オン、SESSIONS で端末に名前を付ける。走る前に CONNECT、計画があれば PROBE。
+   オン、SESSION SYNC で端末に名前を付ける。走る前に CONNECT、計画があれば PROBE。
 3. 頼まれた瞬間に起こす口（`functions/_lib/wake.ts`）。この順に。トークンは会話には貼らない：
    1. PC で `npx wrangler d1 migrations apply tsunagi-m-preview-runs --remote`（`0003`、起こした記録の表）。
    2. claude.ai/code/routines → 「MONITORING 自律ループ」→ Edit → Trigger の「+」→ API → Generate token。

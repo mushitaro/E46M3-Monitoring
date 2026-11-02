@@ -20,7 +20,7 @@ const STATE_TONE = {
  * ASSISTANT — the switch that lets the owner's assistant reach this tab (hooks/useAssistantBridge),
  * the name this device answers as, and how the link to the relay is going.
  *
- * On SESSIONS, beside SYNC: both send to the owner's own services and both are WORKS only. The
+ * In SESSION SYNC, beside the send: both send to the owner's own services and both are WORKS only. The
  * switch is not here: it is AI in the header, the one place in every M tool (components/AiSwitch,
  * 2026-10-28), which shows the notice the privacy policy promises before it turns it on (m3
  * #preview, アシスタント連携). Here are the state, "switch here", and this device's name.

@@ -217,7 +217,7 @@ export interface Localised {
     probe_title: string;
     /** The hub's notice while a plan runs: version, one-shot steps settled of all, samples kept. */
     probe_line: (v: number, settled: number, total: number, samples: number) => string;
-    /** SESSIONS — the preview's saved sessions and SYNC (lib/features.ts `sessionSync`). */
+    /** STARTUP and SESSION SYNC — the preview's saved sessions and SYNC (lib/features.ts `sessionSync`). */
     sessions_current: string;
     /** The explanation behind this connection's ⓘ: what SAVE and SYNC each do. */
     sessions_current_info: string;
@@ -244,7 +244,7 @@ export interface Localised {
     /** The header's AI switch: what a press does, for its title. */
     ai_pressToTurnOn: string;
     ai_pressToTurnOff: string;
-    /** On SESSIONS: where the switch is now that it is not here. */
+    /** In SESSION SYNC: where the switch is now that it is not here. */
     assistant_whereSwitch: string;
     /** The name a device answers as when the owner gave it none: the head unit, a phone, a computer. */
     assistant_defaultDevice: Record<'nav' | 'phone' | 'pc', string>;

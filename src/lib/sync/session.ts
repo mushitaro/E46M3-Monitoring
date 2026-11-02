@@ -1,5 +1,5 @@
 /**
- * What a saved session IS — the record the SESSIONS tab keeps on the device and SYNC sends.
+ * What a saved session IS — the record the STARTUP tab keeps on the device and SYNC sends.
  *
  * Pure: no IndexedDB, no fetch. The store (`sessionStore.ts`) and the cloud client (`cloud.ts`)
  * both move this shape around unchanged, so a session restored on another device is byte for byte

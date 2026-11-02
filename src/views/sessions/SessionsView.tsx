@@ -1,21 +1,17 @@
 'use client';
 
 import { memo, useState } from 'react';
-import { ArrowLeft, CloudDownload, CloudUpload, Database, Eye, Trash2, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, CloudUpload, Database, Eye, Trash2 } from 'lucide-react';
 import { formatErrorCode } from '@tsunagi/ds2-mss54';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { DataList, DataRow, Field, LABEL, Pane, Pill, Section, TextButton, Well, humanName } from '@/components/ui';
+import { DataList, DataRow, Field, Pane, Pill, Section, TextButton, Well, humanName } from '@/components/ui';
 import { normCode } from '@/lib/faultCode';
 import { useLang } from '@/lib/i18n';
 import { text as resolveText, type EcuProfile } from '@/lib/ecuCatalog';
 import { needsSync, parseCsv, summarise, type SavedSession } from '@/lib/sync/session';
-import { SAVE_TONE, SYNC_TONE, type StatusLook, type StatusTone } from '@/lib/sync/status';
+import { SAVE_TONE, SYNC_TONE } from '@/lib/sync/status';
 import { CountReadout } from '@/views/shared/CountReadout';
-import type { AssistantBridge } from '@/hooks/useAssistantBridge';
-import type { Ledger } from '@/lib/ledger';
-import type { Motion } from '@/lib/vehicleState';
-import { AssistantSection } from './AssistantSection';
-import { MovingOkSection } from './MovingOkSection';
+import { StatusButton } from './StatusButton';
 import type { Sessions } from './useSessions';
 
 /** Rows of a saved datalog the viewer draws. The CSV keeps every row; the screen does not need to. */
@@ -28,39 +24,27 @@ const NOTICE_TONE = {
     error: 'text-red-400',
 } as const;
 
-type Confirm =
-    | { kind: 'local'; id: string; label: string; synced: boolean }
-    | { kind: 'cloud'; id: string; label: string }
-    | { kind: 'diag'; id: string };
+type Confirm = { id: string; label: string; synced: boolean };
 
 const when = (ms: number) => new Date(ms).toLocaleString();
-const kb = (bytes: number) => `${(bytes / 1024).toFixed(bytes < 10_240 ? 1 : 0)} KB`;
 
 /**
- * SESSIONS — this connection's SAVE and SYNC, the sessions on this device, the account's copies,
- * and the error records the preview sent by itself. A read-only viewer opens a saved session in
- * place of the lists.
+ * STARTUP — what this connection holds and SAVE, the records on this device, and the door to
+ * SESSION SYNC (SyncPanel). A read-only viewer opens a saved record in place of the list. TUNER's
+ * arrangement (operator, 2026-11-02): the records in the first tab; the account, its copies, the
+ * error records, ASSISTANT and the reads cleared for a moving car behind SYNC.
  *
- * Preview only (lib/features.ts `sessionSync`). Every account surface is also gated on
- * `cloudEnabled`, which is false on the dev server: there the tab says it has nowhere to send, in
- * the place SYNC would be, instead of offering a button that cannot work.
+ * Preview only (lib/features.ts `sessionSync`).
  */
 export const SessionsView = memo(function SessionsView({
     sessions: s,
     catalog,
     ecuId,
-    assistant,
-    ledger,
-    motion,
-    onGrantMovingOk,
+    onOpenSync,
 }: {
     sessions: Sessions;
-    /** The verified ledger, and the owner's press that clears a read for a moving car (MovingOkSection). */
-    ledger: Ledger;
-    motion: Motion;
-    onGrantMovingOk: (id: string) => void;
-    /** The assistant bridge's switch and state (hooks/useAssistantBridge). */
-    assistant: AssistantBridge;
+    /** Opens SESSION SYNC (SyncPanel), which the shell owns so the menu sheet opens the same one. */
+    onOpenSync: () => void;
     /** The loaded module's catalogue, used to name a saved fault when the session is for the same module. */
     catalog: EcuProfile | null;
     ecuId: string;
@@ -71,40 +55,16 @@ export const SessionsView = memo(function SessionsView({
     const viewed = viewing ? (s.local ?? []).find((x) => x.id === viewing) : undefined;
     const busy = s.busy !== null;
 
-    const account =
-        !s.cloudEnabled || s.gate === null
-            ? null
-            : s.gate.state === 'active'
-              ? t.sessions_account(s.gate.label || '—')
-              : s.gate.state === 'expired'
-                ? t.sessions_account_expired
-                : t.sessions_account_unknown;
-
     const dialog = confirm && (
         <ConfirmDialog
-            title={
-                confirm.kind === 'local'
-                    ? t.sessions_deleteLocal_title
-                    : confirm.kind === 'cloud'
-                      ? t.sessions_deleteCloud_title
-                      : t.sessions_deleteError_title
-            }
-            consequence={
-                confirm.kind === 'local'
-                    ? t.sessions_deleteLocal_consequence(confirm.label, confirm.synced)
-                    : confirm.kind === 'cloud'
-                      ? t.sessions_deleteCloud_consequence(confirm.label)
-                      : t.sessions_deleteError_consequence
-            }
+            title={t.sessions_deleteLocal_title}
+            consequence={t.sessions_deleteLocal_consequence(confirm.label, confirm.synced)}
             confirmLabel={t.sessions_delete_confirm}
             onCancel={() => setConfirm(null)}
             onConfirm={() => {
                 setConfirm(null);
-                if (confirm.kind === 'local') {
-                    if (viewing === confirm.id) setViewing(null);
-                    void s.removeLocal(confirm.id);
-                } else if (confirm.kind === 'cloud') void s.removeCloud(confirm.id);
-                else void s.removeDiagnostic(confirm.id);
+                if (viewing === confirm.id) setViewing(null);
+                void s.removeLocal(confirm.id);
             }}
         />
     );
@@ -130,12 +90,13 @@ export const SessionsView = memo(function SessionsView({
                 actions={
                     // From 900px only. Below it SAVE and SYNC are the menu sheet's SESSION cells,
                     // where TUNER keeps them — two doors on a phone would be two to one job
-                    // (tsunagi-m-ux §11). Labels, sentences and tones from lib/sync/status, so the
-                    // two places cannot disagree.
+                    // (tsunagi-m-ux §11). SYNC opens SESSION SYNC, whose first control sends —
+                    // TUNER's door beside NEW SESSION. Labels, sentences and tones from
+                    // lib/sync/status, so the two places cannot disagree.
                     <span className="hidden items-baseline gap-4 min-[900px]:flex">
                         <StatusButton look={s.saveLook} tones={SAVE_TONE} Icon={Database} busy={busy} onClick={() => void s.save()} />
                         {s.syncLook && (
-                            <StatusButton look={s.syncLook} tones={SYNC_TONE} Icon={CloudUpload} busy={busy} onClick={() => void s.sync()} />
+                            <StatusButton look={{ ...s.syncLook, disabled: false }} tones={SYNC_TONE} Icon={CloudUpload} busy={false} onClick={onOpenSync} />
                         )}
                     </span>
                 }
@@ -149,20 +110,8 @@ export const SessionsView = memo(function SessionsView({
                     <p className={`min-h-[18px] text-[11px] ${s.notice ? NOTICE_TONE[s.notice.tone] : ''}`}>
                         {s.notice?.text}
                     </p>
-                    {/* Where SYNC sends. Said beside SYNC, because it is the one fact about the
-                        button the button cannot say. An expired sign-in is said here as that fact;
-                        the way back is the header's SIGN IN AGAIN, the one door at every width
-                        (AppHeader `SignInNotice`), which asks first when something is unsaved. */}
-                    <div className="flex min-h-[18px] flex-wrap items-baseline gap-x-4 gap-y-1 text-[11px] text-slate-500">
-                        <span>{s.cloudEnabled ? (account ?? '…') : t.sessions_noCloud}</span>
-                        {s.waiting > 0 && <span className="text-amber-400">{t.sessions_outbox(s.waiting)}</span>}
-                    </div>
                 </div>
             </Section>
-
-            <AssistantSection assistant={assistant} />
-
-            <MovingOkSection ledger={ledger} motion={motion} catalog={catalog} ecuId={ecuId} onGrant={onGrantMovingOk} />
 
             <Section title={t.sessions_onDevice} count={s.local?.length}>
                 {s.local !== null && s.local.length === 0 ? (
@@ -188,7 +137,7 @@ export const SessionsView = memo(function SessionsView({
                                                 {t.view}
                                             </TextButton>
                                             <TextButton
-                                                onClick={() => setConfirm({ kind: 'local', id: x.id, label: x.label, synced: !pending })}
+                                                onClick={() => setConfirm({ id: x.id, label: x.label, synced: !pending })}
                                                 disabled={busy}
                                                 tone="danger"
                                                 Icon={Trash2}
@@ -209,127 +158,10 @@ export const SessionsView = memo(function SessionsView({
                 )}
             </Section>
 
-            {s.cloudEnabled && (
-                <Section title={t.sessions_inAccount} count={s.cloud?.length}>
-                    {s.cloud !== null && s.cloud.length === 0 ? (
-                        <p className="py-2 text-xs text-slate-500">{t.sessions_emptyCloud}</p>
-                    ) : (
-                        <DataList>
-                            {(s.cloud ?? []).map((x) => (
-                                <DataRow
-                                    key={x.id}
-                                    name={humanName(x.label)}
-                                    trailing={
-                                        <span className="flex shrink-0 items-baseline gap-3">
-                                            {x.mock === 1 && <Pill tone="secondary">{t.practice}</Pill>}
-                                            <TextButton
-                                                onClick={() => void s.restore(x.id)}
-                                                disabled={busy}
-                                                Icon={CloudDownload}
-                                            >
-                                                {t.restore}
-                                            </TextButton>
-                                            <TextButton
-                                                onClick={() => setConfirm({ kind: 'cloud', id: x.id, label: x.label })}
-                                                disabled={busy}
-                                                tone="danger"
-                                                Icon={Trash2}
-                                            >
-                                                {t.remove}
-                                            </TextButton>
-                                        </span>
-                                    }
-                                    detail={
-                                        <p className="font-mono text-[11px] text-slate-500">
-                                            {t.sessions_counts(x.fault_count, x.sample_count, x.failure_count)} · {kb(x.session_bytes)} ·{' '}
-                                            {when(x.synced_at)}
-                                        </p>
-                                    }
-                                />
-                            ))}
-                        </DataList>
-                    )}
-                </Section>
-            )}
-
-            {s.cloudEnabled && (
-                <Section title={t.sessions_errors} count={s.diagnostics?.length} info={t.sessions_errors_info}>
-                    {s.diagnostics !== null && s.diagnostics.length === 0 ? (
-                        <p className="py-2 text-xs text-slate-500">{t.sessions_emptyErrors}</p>
-                    ) : (
-                        <DataList>
-                            {(s.diagnostics ?? []).map((d) => (
-                                <DataRow
-                                    key={d.id}
-                                    name={humanName(d.job)}
-                                    ident={d.ecu ?? undefined}
-                                    trailing={
-                                        <span className="flex shrink-0 items-baseline gap-3">
-                                            {d.mock === 1 && <Pill tone="secondary">{t.practice}</Pill>}
-                                            <TextButton
-                                                onClick={() => setConfirm({ kind: 'diag', id: d.id })}
-                                                disabled={busy}
-                                                tone="danger"
-                                                Icon={Trash2}
-                                            >
-                                                {t.remove}
-                                            </TextButton>
-                                        </span>
-                                    }
-                                    detail={
-                                        <>
-                                            {d.error && <p className="break-all font-mono text-[11px] text-red-400">{d.error}</p>}
-                                            <p className="font-mono text-[11px] text-slate-500">
-                                                {when(d.created_at)}
-                                                {d.error_kind ? ` · ${d.error_kind}` : ''}
-                                                {d.transport ? ` · ${d.transport}` : ''}
-                                                {d.app_build ? ` · ${d.app_build}` : ''}
-                                            </p>
-                                        </>
-                                    }
-                                />
-                            ))}
-                        </DataList>
-                    )}
-                </Section>
-            )}
-
             {dialog}
         </Pane>
     );
 });
-
-/**
- * SAVE or SYNC on the desk: TUNER's session-bar control — a glyph and the state's word, in the
- * state's colour, `title` carrying the sentence. Unpressable while anything else is in flight too.
- */
-function StatusButton({
-    look,
-    tones,
-    Icon,
-    busy,
-    onClick,
-}: {
-    look: StatusLook;
-    tones: Record<StatusTone, string>;
-    Icon: LucideIcon;
-    busy: boolean;
-    onClick: () => void;
-}) {
-    const disabled = look.disabled || busy;
-    return (
-        <button
-            type="button"
-            onClick={disabled ? undefined : onClick}
-            disabled={disabled}
-            title={look.title}
-            className={`inline-flex items-center gap-1.5 whitespace-nowrap ${LABEL} transition-colors ${tones[look.tone]}`}
-        >
-            <Icon className="size-3 shrink-0" />
-            {look.label}
-        </button>
-    );
-}
 
 function CurrentCounts({ s }: { s: Sessions }) {
     const { t } = useLang();
@@ -478,7 +310,7 @@ function SessionViewer({
     );
 }
 
-/** The right column on SESSIONS: how many sessions this device holds. */
+/** The right column on STARTUP: how many sessions this device holds. */
 export function SessionsViz({ count }: { count: number }) {
     const { t } = useLang();
     return <CountReadout value={count} tone="text-slate-200" caption={t.viz_sessions} />;

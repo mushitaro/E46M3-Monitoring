@@ -293,6 +293,9 @@ export function useMonitoringFacade(input: {
         startLog: () => {
             if (link.state !== 'connected') return `The link is ${link.state}; a recording starts from connected and idle.`;
             if (target.decoder !== 'mss54') return en.datalog_noDecoder;
+            if (datalog.selected.length === 0) {
+                return 'No DATALOG channel is selected on the screen, so nothing would be recorded. Pick channels on the DATALOG tab first.';
+            }
             datalog.start();
             return null;
         },

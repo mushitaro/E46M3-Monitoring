@@ -271,6 +271,7 @@ export interface Localised {
     sessions_unkept_info: string;
     sessions_emptyUnkept: string;
     sessions_expiresIn: (days: number) => string;
+    sessions_undated: (days: number | null) => string;
     sessions_inAccount: string;
     sessions_errors: string;
     sessions_errors_info: string;

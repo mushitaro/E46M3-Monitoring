@@ -270,7 +270,14 @@ export function useMonitoringFacade(input: {
                     learnedValueReads: ep.counts.adaptations,
                     procedures: ep.counts.runs,
                     failures: ep.counts.failures,
-                    daysLeft: Math.max(0, Math.ceil((expiresAt(ep) - appNow()) / 86_400_000)),
+                    // Undated: timed by a clock that had not been set, and kept until the owner decides.
+                    daysLeft: ep.undated
+                        ? (() => {
+                              const at = sessions.undatedExpiry(ep);
+                              return at === null ? null : Math.max(0, Math.ceil((at - appNow()) / 86_400_000));
+                          })()
+                        : Math.max(0, Math.ceil((expiresAt(ep) - appNow()) / 86_400_000)),
+                    ...(ep.undated ? { undated: 'Its time was taken before the device clock was set: its seven days count from when the tab, with the right time, found it.' } : {}),
                 })),
             };
         },

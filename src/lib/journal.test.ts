@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { IDLE_MS, KEEP_MS, episodes, expiresAt, prunable, toSession, type JournalEvent } from './journal';
+import { IDLE_MS, KEEP_MS, episodes, expired, expiresAt, rebaseMeta, toSession, unfound, type JournalEvent } from './journal';
 
 const MIN = 60_000;
+/** 2026-11-04 09:00 UTC: a time the WORKS build can have recorded. */
+const T0 = Date.UTC(2026, 10, 4, 9);
 const ident = { hex: '77 83', length: 2 };
 const fault = (code: number) => ({ number: 1, errorCode: code, frequencyCounter: 1 }) as never;
 const log = (samples: number) => ({ channels: ['rpm'], samples, csv: 'rpm\n1' });
@@ -18,6 +20,8 @@ const day: JournalEvent[] = [
     { t: 30 * MIN, kind: 'connect', ecu: 'smg2', mock: false },
     { t: 31 * MIN, kind: 'faults', faults: [fault(0x10)] },
 ];
+/** The same morning, timed by a clock that was right. */
+const dated = day.map((e) => ({ ...e, t: T0 + e.t })) as JournalEvent[];
 
 describe('episodes', () => {
     it('breaks at a connect, after a disconnect, and after ten idle minutes', () => {
@@ -66,11 +70,38 @@ describe('seven days', () => {
         expect(expiresAt(first)).toBe(3 * MIN + KEEP_MS);
     });
 
-    it('prunes up to the oldest episode still inside its week, never half of one', () => {
-        // On day 7 + 10 minutes the first episode (ended at 3 min) has expired; the second (23 min) has not.
-        expect(prunable(day, KEEP_MS + 10 * MIN)).toBe(23 * MIN);
-        // A month later everything may go.
-        expect(prunable(day, 30 * 24 * 60 * MIN)).toBe(30 * 24 * 60 * MIN);
+    it('deletes whole stretches a week after they ended, never half of one', () => {
+        // On day 7 + 10 minutes the first episode (ended at 3 min) has gone; the one from 23 min has not.
+        const gone = expired(dated, T0 + KEEP_MS + 10 * MIN);
+        expect(gone.map((e) => e.t - T0)).toEqual([0, 1 * MIN, 2 * MIN, 3 * MIN]);
+        expect(expired(dated, T0 + 30 * 24 * 60 * MIN)).toHaveLength(dated.length);
+    });
+
+    it('never deletes what it cannot date: a loose time, or one before the WORKS build existed', () => {
+        // The head unit's clock at boot: 2006. A month on, nothing of it goes.
+        expect(expired(day, T0 + 30 * 24 * 60 * MIN)).toEqual([]);
+        expect(episodes(day)[0].undated).toBe(true);
+        const loose = dated.map((e, i) => (i === 2 ? { ...e, loose: true as const } : e));
+        expect(expired(loose, T0 + 30 * 24 * 60 * MIN).map((e) => e.t - T0)).toEqual([23 * MIN, 24 * MIN, 30 * MIN, 31 * MIN]);
+    });
+
+    it('counts an undated stretch’s week from when a page with the right time found it', () => {
+        const starts = unfound(day, new Set(), {});
+        expect(starts).toEqual([0, 23 * MIN, 30 * MIN]);
+        const found = Object.fromEntries(starts.map((t) => [String(t), T0]));
+        expect(unfound(day, new Set(), found)).toEqual([]);
+        expect(expired(day, T0 + KEEP_MS - 1, new Set(), found)).toEqual([]);
+        expect(expired(day, T0 + KEEP_MS, new Set(), found)).toHaveLength(day.length);
+    });
+});
+
+describe('the clock put right', () => {
+    it('moves the owner’s joins and keeps with the episodes they name', () => {
+        const moved = new Map([[100, 100 + 5_000], [200, 200 + 5_000]]);
+        expect(rebaseMeta({ joins: [200, 300], kept: { '100': 'abc@200', '300': 'def@300' } }, moved)).toEqual({
+            joins: [5_200, 300],
+            kept: { '5100': 'abc@5200', '300': 'def@300' },
+        });
     });
 });
 

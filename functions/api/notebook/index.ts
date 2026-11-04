@@ -1,6 +1,6 @@
 import { json, ownerOf, unauthorized } from '../../_owner-gate/owner';
 import { insertEntries, recordEntries } from '../../_lib/investigation';
-import { clockShift, shiftEntry } from '../../_lib/deviceClock';
+import { clockShift, settleUndated, shiftEntry } from '../../_lib/deviceClock';
 import { wakeDesk, wakeWorthy } from '../../_lib/wake';
 import { type SyncContext, isRowId } from '../../_lib/sync';
 import { addProblem, entryProblem, mergeEntries, type NotebookEntry } from '../../../src/lib/notebook/rules';
@@ -52,7 +52,7 @@ export const onRequestPost = async (ctx: SyncContext): Promise<Response> => {
     const shift = clockShift(body.clientNow, now);
     const refused: { id: unknown; reason: string }[] = [];
     const byRecord = new Map<string, NotebookEntry[]>();
-    for (const e of (body.entries as NotebookEntry[]).map((x) => shiftEntry(x, shift))) {
+    for (const e of settleUndated((body.entries as NotebookEntry[]).map((x) => shiftEntry(x, shift)), now)) {
         const record = (e as Partial<NotebookEntry>)?.sessionId;
         if (typeof record !== 'string' || !isRowId(record)) {
             refused.push({ id: (e as Partial<NotebookEntry>)?.id, reason: 'sessionId must be a record id' });

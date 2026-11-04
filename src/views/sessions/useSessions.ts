@@ -450,6 +450,7 @@ export function useSessions(input: {
         /** Episodes recorded but not kept, newest first; each goes seven days after it ended. */
         unkept: journal.unkept,
         now: journal.now,
+        undatedExpiry: journal.undatedExpiry,
         sync,
         restore,
         removeLocal,

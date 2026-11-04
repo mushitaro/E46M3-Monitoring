@@ -22,6 +22,7 @@
  * 2026-11-02). Pure: the store is lib/sync/journalStore.ts and the recording is the shell's.
  */
 import type { ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
+import { PLAUSIBLE_FROM } from './clock';
 import { sessionLabel, type FailureNote, type SavedSession } from './sync/session';
 
 /** Nothing recorded for this long ends an episode. */
@@ -31,8 +32,19 @@ export const KEEP_MS = 7 * 24 * 60 * 60_000;
 
 type Datalog = NonNullable<SavedSession['datalog']>;
 
-/** One thing that happened. `t` is the device's clock when it was recorded. */
-export type JournalEvent =
+/**
+ * How an event was timed. `t` is `appNow()` (lib/clock) when it was recorded. `loose` is set when
+ * the page had not yet heard the server's time: `t` is then the device's clock as it stood when the
+ * page opened, and the page puts it right when it does hear it (useJournal). `seq` is the store's
+ * key, present on events read back from it.
+ */
+export interface JournalStamp {
+    loose?: true;
+    seq?: number;
+}
+
+/** One thing that happened. */
+export type JournalEvent = (
     | { t: number; kind: 'connect'; ecu: string; mock: boolean }
     | { t: number; kind: 'disconnect'; lost: boolean }
     | { t: number; kind: 'ident'; ident: { hex: string; length: number } }
@@ -42,7 +54,16 @@ export type JournalEvent =
     | { t: number; kind: 'datalog'; datalog: Datalog }
     | { t: number; kind: 'adaptation'; blocks: unknown }
     | { t: number; kind: 'run'; job: string; result: unknown }
-    | { t: number; kind: 'failure'; note: FailureNote };
+    | { t: number; kind: 'failure'; note: FailureNote }
+) &
+    JournalStamp;
+
+/**
+ * An event whose date cannot be trusted: timed before the page heard the server and never put
+ * right (the page closed first), or timed before the WORKS build existed. Kept until the owner
+ * decides: nothing undated is deleted by its age, because its age is not known.
+ */
+export const undated = (e: JournalEvent): boolean => e.loose === true || e.t < PLAUSIBLE_FROM;
 
 /** The kinds that are something read or done, rather than the link coming and going. */
 const CONTENT: ReadonlySet<JournalEvent['kind']> = new Set(['ident', 'faults', 'rawFaults', 'datalog', 'adaptation', 'run', 'failure']);
@@ -55,6 +76,8 @@ export interface Episode {
     mock: boolean;
     events: JournalEvent[];
     counts: { faultReads: number; samples: number; adaptations: number; runs: number; failures: number };
+    /** Some of its times cannot be trusted (`undated`): it is not deleted after seven days. */
+    undated: boolean;
 }
 
 /**
@@ -63,16 +86,23 @@ export interface Episode {
  * episodes the owner joined to the one before.
  */
 export function episodes(events: readonly JournalEvent[], joins: ReadonlySet<number> = new Set()): Episode[] {
+    return groups(events, joins)
+        .filter((g) => g.some((e) => CONTENT.has(e.kind)))
+        .map(toEpisode);
+}
+
+/** Every stretch of the stream, with or without anything read in it. */
+function groups(events: readonly JournalEvent[], joins: ReadonlySet<number>): JournalEvent[][] {
     const sorted = [...events].sort((a, b) => a.t - b.t);
-    const groups: JournalEvent[][] = [];
+    const out: JournalEvent[][] = [];
     let prev: JournalEvent | null = null;
     for (const e of sorted) {
         const breaks = prev === null || e.kind === 'connect' || prev.kind === 'disconnect' || e.t - prev.t > IDLE_MS;
-        if (breaks && !(prev !== null && joins.has(e.t))) groups.push([e]);
-        else groups[groups.length - 1].push(e);
+        if (breaks && !(prev !== null && joins.has(e.t))) out.push([e]);
+        else out[out.length - 1].push(e);
         prev = e;
     }
-    return groups.filter((g) => g.some((e) => CONTENT.has(e.kind))).map(toEpisode);
+    return out;
 }
 
 function toEpisode(events: JournalEvent[]): Episode {
@@ -92,6 +122,7 @@ function toEpisode(events: JournalEvent[]): Episode {
         mock: connect?.mock ?? false,
         events,
         counts,
+        undated: events.some(undated),
     };
 }
 
@@ -100,12 +131,46 @@ export function expiresAt(ep: Pick<Episode, 'end'>): number {
     return ep.end + KEEP_MS;
 }
 
-/** The events older than every episode that may still be kept: what the store can delete now. */
-export function prunable(events: readonly JournalEvent[], now: number, joins: ReadonlySet<number> = new Set()): number {
-    // Cut at the start of the oldest episode still inside its seven days, so no episode is ever
-    // half deleted; with none inside, everything up to now may go.
-    const live = episodes(events, joins).filter((ep) => expiresAt(ep) > now);
-    return live.length > 0 ? live[0].start : now;
+/**
+ * The events the store may delete now: whole stretches that ended more than seven days ago, so no
+ * episode is ever half deleted. A stretch with an undated event is not timed by its own clock — a
+ * clock put right later would make it look decades old the moment it was written — but by when a
+ * page with the right time first found it (`found`, by its first event's time): seven days from then.
+ */
+export function expired(
+    events: readonly JournalEvent[],
+    now: number,
+    joins: ReadonlySet<number> = new Set(),
+    found: Readonly<Record<string, number>> = {},
+): JournalEvent[] {
+    return groups(events, joins)
+        .filter((g) => {
+            if (!g.some(undated)) return expiresAt({ end: g[g.length - 1].t }) <= now;
+            const at = found[String(g[0].t)];
+            return at !== undefined && at + KEEP_MS <= now;
+        })
+        .flat();
+}
+
+/** The undated episodes not yet marked found: what a page with the right time marks now. */
+export function unfound(events: readonly JournalEvent[], joins: ReadonlySet<number>, found: Readonly<Record<string, number>>): number[] {
+    return groups(events, joins)
+        .filter((g) => g.some(undated) && found[String(g[0].t)] === undefined)
+        .map((g) => g[0].t);
+}
+
+/**
+ * What putting the clock right moved: an event's old time to its new one. The owner's joins and
+ * keeps are named by an episode's first time, so they move with it.
+ */
+export function rebaseMeta<M extends { joins: number[]; kept: Record<string, string> }>(meta: M, moved: ReadonlyMap<number, number>): M {
+    const at = (t: number) => moved.get(t) ?? t;
+    const kept: Record<string, string> = {};
+    for (const [start, v] of Object.entries(meta.kept)) {
+        const i = v.lastIndexOf('@');
+        kept[String(at(Number(start)))] = i < 0 ? v : `${v.slice(0, i)}@${at(Number(v.slice(i + 1)))}`;
+    }
+    return { ...meta, joins: meta.joins.map(at), kept };
 }
 
 /**

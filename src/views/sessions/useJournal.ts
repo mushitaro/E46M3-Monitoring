@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
 import type { LinkMode, LinkState } from '@/hooks/useDs2Link';
-import { episodes, prunable, type Episode, type JournalEvent } from '@/lib/journal';
+import { KEEP_MS, episodes, expired, rebaseMeta, unfound, type Episode, type JournalEvent } from '@/lib/journal';
 import type { FailureNote, SavedSession } from '@/lib/sync/session';
-import { appendEvent, getMeta, listEvents, pruneBefore, putMeta, type JournalMeta } from '@/lib/sync/journalStore';
-import { appNow } from '@/lib/clock';
+import { appendEvent, deleteEvents, getMeta, listEvents, putMeta, rebaseEvents, type JournalMeta } from '@/lib/sync/journalStore';
+import { appNow, isAnchored, onAnchor } from '@/lib/clock';
 
 /**
  * What the page holds of the journal: the events and the owner's joins and keeps, outside React so
@@ -36,6 +36,10 @@ function createJournalCache() {
         },
     };
 }
+
+/** Store keys of the events this page recorded before it heard the server's time, and the step it took then. */
+const pageLoose: number[] = [];
+const anchorStep: { value: number | null } = { value: null };
 
 /** The clock MEMORY reads, a minute at a time: enough to move an episode out of "in progress" and
  *  to count its days down, without reading the clock during render. */
@@ -101,10 +105,19 @@ export function useJournal(input: {
     const refresh = useCallback(async () => {
         if (!enabled) return;
         try {
-            const [all, m] = await Promise.all([listEvents(), getMeta()]);
-            const cut = prunable(all, appNow(), new Set(m.joins));
-            if (all.length > 0 && cut > all[0].t) await pruneBefore(cut);
-            cache.replace({ events: all.filter((e) => e.t >= cut), meta: m });
+            const [all, fetched] = await Promise.all([listEvents(), getMeta()]);
+            let m = fetched;
+            // Undated episodes are counted from when a page that knows the time first finds them.
+            const fresh = isAnchored() ? unfound(all, new Set(m.joins), m.found ?? {}) : [];
+            if (fresh.length > 0) {
+                m = { ...m, found: { ...(m.found ?? {}), ...Object.fromEntries(fresh.map((t) => [String(t), appNow()])) } };
+                await putMeta(m);
+            }
+            const gone = expired(all, appNow(), new Set(m.joins), m.found ?? {});
+            const seqs = gone.flatMap((e) => (typeof e.seq === 'number' ? [e.seq] : []));
+            if (seqs.length > 0) await deleteEvents(seqs);
+            const goneSet = new Set(gone);
+            cache.replace({ events: all.filter((e) => !goneSet.has(e)), meta: m });
         } catch {
             // The lists stay as they were; MEMORY says nothing it cannot read.
         }
@@ -117,11 +130,38 @@ export function useJournal(input: {
     const append = useCallback(
         (e: JournalEvent) => {
             if (!record) return;
-            cache.add(e);
-            void appendEvent(e);
+            // Before the page has heard the server's time, the time is the device's and may be years
+            // off (lib/clock): marked, and put right when the server answers.
+            const stamped: JournalEvent = isAnchored() ? e : { ...e, loose: true };
+            cache.add(stamped);
+            void appendEvent(stamped).then((seq) => {
+                if (seq === null || !stamped.loose) return;
+                // Written after the server answered (the write was slower than the answer): put right now.
+                if (isAnchored() && anchorStep.value !== null) void rebaseEvents([seq], anchorStep.value).then(() => refresh());
+                else pageLoose.push(seq);
+            });
         },
-        [record, cache],
+        [record, cache, refresh],
     );
+
+    // The server's time, first heard: this page's loose events move by the step, and the owner's
+    // joins and keeps (named by an episode's first time) move with them.
+    useEffect(() => {
+        if (!enabled) return;
+        return onAnchor((step) => {
+            anchorStep.value = step;
+            const seqs = pageLoose.splice(0);
+            void (async () => {
+                try {
+                    const moved = await rebaseEvents(seqs, step);
+                    if (moved.size > 0 && step !== 0) await putMeta(rebaseMeta(await getMeta(), moved));
+                } catch {
+                    // Left loose: undated, so kept rather than deleted (lib/journal `undated`).
+                }
+                await refresh();
+            })();
+        });
+    }, [enabled, refresh]);
 
     // The link coming and going, and a recording ending.
     const prevState = useRef(link.state);
@@ -205,7 +245,13 @@ export function useJournal(input: {
     /** Joins an episode to the one before it. */
     const join = useCallback((ep: Episode) => saveMeta({ ...meta, joins: [...meta.joins, ep.start] }), [meta, saveMeta]);
 
-    return { episodes: all, current, unkept, keptAs, markKept, join, refresh, now };
+    /** When an undated episode is deleted: seven days after a page with the right time found it; null until one has. */
+    const undatedExpiry = useCallback((ep: Episode) => {
+        const at = meta.found?.[String(ep.start)];
+        return at === undefined ? null : at + KEEP_MS;
+    }, [meta.found]);
+
+    return { episodes: all, current, unkept, keptAs, markKept, join, refresh, now, undatedExpiry };
 }
 
 export type Journal = ReturnType<typeof useJournal>;

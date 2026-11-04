@@ -6,6 +6,7 @@ import type { LinkMode, LinkState } from '@/hooks/useDs2Link';
 import { episodes, prunable, type Episode, type JournalEvent } from '@/lib/journal';
 import type { FailureNote, SavedSession } from '@/lib/sync/session';
 import { appendEvent, getMeta, listEvents, pruneBefore, putMeta, type JournalMeta } from '@/lib/sync/journalStore';
+import { appNow } from '@/lib/clock';
 
 /**
  * What the page holds of the journal: the events and the owner's joins and keeps, outside React so
@@ -47,9 +48,9 @@ const minuteClock = (() => {
         subscribe: (l: () => void) => {
             listeners.add(l);
             if (!timer) {
-                now = Date.now();
+                now = appNow();
                 timer = setInterval(() => {
-                    now = Date.now();
+                    now = appNow();
                     listeners.forEach((x) => x());
                 }, 60_000);
             }
@@ -101,7 +102,7 @@ export function useJournal(input: {
         if (!enabled) return;
         try {
             const [all, m] = await Promise.all([listEvents(), getMeta()]);
-            const cut = prunable(all, Date.now(), new Set(m.joins));
+            const cut = prunable(all, appNow(), new Set(m.joins));
             if (all.length > 0 && cut > all[0].t) await pruneBefore(cut);
             cache.replace({ events: all.filter((e) => e.t >= cut), meta: m });
         } catch {
@@ -128,7 +129,7 @@ export function useJournal(input: {
         const was = prevState.current;
         prevState.current = link.state;
         if (was === link.state) return;
-        const t = Date.now();
+        const t = appNow();
         if (was === 'connecting' && link.state === 'connected') append({ t, kind: 'connect', ecu: ecuId, mock: link.mode === 'practice' });
         if (was === 'logging' && link.state !== 'logging' && datalog.samples.length > 0) {
             const captured = datalog.capture();
@@ -145,7 +146,7 @@ export function useJournal(input: {
         const was = prevEcu.current;
         prevEcu.current = ecuId;
         if (was === ecuId || link.state === 'disconnected') return;
-        const t = Date.now();
+        const t = appNow();
         append({ t, kind: 'disconnect', lost: false });
         append({ t: t + 1, kind: 'connect', ecu: ecuId, mock: link.mode === 'practice' });
     }, [ecuId, link.state, link.mode, append]);
@@ -155,7 +156,7 @@ export function useJournal(input: {
     const seen = useRef({ ident: link.ident, faults: link.faults, rawFaults: link.rawFaults, adaptations: link.adaptations, lastRun: link.lastRun });
     useEffect(() => {
         const s = seen.current;
-        const t = Date.now();
+        const t = appNow();
         if (link.ident && link.ident !== s.ident) append({ t, kind: 'ident', ident: link.ident });
         if (link.faults && link.faults !== s.faults) append({ t, kind: 'faults', faults: link.faults });
         if (link.rawFaults && link.rawFaults !== s.rawFaults) append({ t, kind: 'rawFaults', reads: link.rawFaults });

@@ -226,10 +226,14 @@ export function mayRun(
  *     both on this car while it drives, every sample, and has for months (its VE profile reads
  *     block 3 every sample and block 19 every eighth; `ramMap.ts` there records why 0x06 in those
  *     windows is a byte copy with a weaker command mask than 0x0B). That is a measurement.
- *   - `module`: anything else — a module's own fault read, IDENT. Read on a moving car only once
- *     the owner has cleared it in the ledger, exactly like a catalogue read.
+ *   - `fault-read`: a module's own identity and fault-memory read (IDENT, FS_QUICKTEST, FS_LESEN),
+ *     the frames its own SGBD sends for them (lib/moduleProtocol). Sent while the car moves too
+ *     (operator, 2026-11-04: "read the fault codes while driving"). Clearing the fault memory is
+ *     not a read and stays parked, on the screen, behind its confirmation.
+ *   - `module`: anything else built from the protocol — the MSS54's learned values. Read on a
+ *     moving car only once the owner has cleared it in the ledger, exactly like a catalogue read.
  */
-export type ProtocolReadEvidence = 'dme-measured' | 'module';
+export type ProtocolReadEvidence = 'dme-measured' | 'fault-read' | 'module';
 
 /**
  * The gate for a read the app builds from the protocol rather than takes from the catalogue: the
@@ -246,7 +250,7 @@ export function mayRunProtocolRead(
     motion: Motion,
 ): { allowed: true; requires: SendRequirement } | { allowed: false; reason: RunBlockKey } {
     if (withdrawn(ledger, id)) return { allowed: false, reason: 'run_block_revoked' };
-    if (evidence === 'dme-measured' || mayReadWhileMoving(ledger, id)) return { allowed: true, requires: 'none' };
+    if (evidence === 'dme-measured' || evidence === 'fault-read' || mayReadWhileMoving(ledger, id)) return { allowed: true, requires: 'none' };
     if (motion === 'moving') return { allowed: false, reason: 'run_block_moving' };
     return { allowed: true, requires: 'parked' };
 }

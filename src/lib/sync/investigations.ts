@@ -21,6 +21,7 @@ import { sendableEntry, sendableRun } from '@/lib/investigation/share';
 import { listRuns, type StoredRun } from '@/lib/probe/runStore';
 import { canSync } from './cloud';
 import { api, gzipB64 } from './owner-sync';
+import { appNow } from '../clock';
 
 export interface InvestigationSync {
     /** Entries the desk wrote that reached this device. */
@@ -87,7 +88,7 @@ async function round(record: string, local: NotebookEntry[], out: InvestigationS
     for (let i = 0; i < entries.length; i += 100) {
         const r = await api<{ stored: number; refused: InvestigationSync['refused'] }>('/api/notebook', {
             method: 'POST',
-            body: { entries: entries.slice(i, i + 100), clientNow: Date.now() },
+            body: { entries: entries.slice(i, i + 100), clientNow: appNow() },
         });
         if (!r.ok || !r.data) return;
         out.sent += r.data.stored;
@@ -128,7 +129,7 @@ export function syncInvestigations(): Promise<InvestigationSync> {
         const out: InvestigationSync = { pulled: 0, sent: 0, refused: [] };
         try {
             const all = await listAllEntries();
-            for (const record of delegatedRecords(all, Date.now())) {
+            for (const record of delegatedRecords(all, appNow())) {
                 await round(record, all.filter((e) => e.sessionId === record), out);
             }
         } catch {

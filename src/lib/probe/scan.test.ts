@@ -4,7 +4,7 @@ import { EMPTY_LEDGER, type Ledger } from '../ledger';
 import { moduleProtocol } from '../moduleProtocol';
 import type { TelegramTable } from '../telegrams';
 import type { Motion } from '../vehicleState';
-import { runScan, scanCounts, scanTargets, SCAN_REMEASURE_EVERY, type ScanDeps } from './scan';
+import { runScan, scanTargets, type ScanDeps } from './scan';
 
 /**
  * The all-module scan: which frames each address may be sent, and what it does when the car moves,
@@ -84,24 +84,11 @@ describe('scan run', () => {
         expect(run.results[1].exchanges[0].response).toBe('01 02');
     });
 
-    it('sends nothing unless the car is measured stationary', async () => {
-        const { d, sent } = deps({ motions: ['unknown'] });
+    it('reads every module while the car moves too (operator, 2026-11-04)', async () => {
+        const { d, sent } = deps({ motions: ['moving', 'unknown'] });
         const run = await runScan(scanTargets([P.mss54, P.kombi]), d);
-        expect(sent).toEqual([]);
-        expect(run.end).toBe('not-parked');
-        expect(run.results.every((r) => r.outcome === 'skipped')).toBe(true);
-    });
-
-    it('measures again every few addresses, and stops where the car moved', async () => {
-        const protocols = Array.from({ length: SCAN_REMEASURE_EVERY + 2 }, (_, i) =>
-            moduleProtocol(`m${i}`, 0x60 + i, table(`m${i}`, 0x60 + i, [`${(0x60 + i).toString(16)} 05 04 01 ${(0x60 + i).toString(16)}`])),
-        );
-        const { d, sent, measuredCount } = deps({ motions: ['parked', 'moving'] });
-        const run = await runScan(scanTargets(protocols), d);
-        expect(measuredCount()).toBe(2);
-        expect(sent).toHaveLength(SCAN_REMEASURE_EVERY);
-        expect(run.end).toBe('not-parked');
-        expect(scanCounts(run.results)).toMatchObject({ answered: SCAN_REMEASURE_EVERY, skipped: 2 });
+        expect(sent).toEqual(['12 05 04 00 13', '12 05 04 01 12', '80 05 04 01 80']);
+        expect(run.end).toBe('done');
     });
 
     it('records silence and refusal as the modules’ answers, without asking again', async () => {

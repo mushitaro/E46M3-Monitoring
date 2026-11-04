@@ -59,6 +59,7 @@ import {
     type ErrorMemoryEntry,
     type ErrorMemoryQuickTest,
 } from '@tsunagi/ds2-mss54';
+import { appNow } from '@/lib/clock';
 import { whyNotSendable } from '@/lib/actuationGate';
 import type { ReadRecord } from '@/lib/investigation/readRecord';
 import type { ModuleProtocol } from '@/lib/moduleProtocol';
@@ -377,7 +378,7 @@ export function useDs2Link(options: {
     const finishedRef = useRef(true);
 
     const append = useCallback((kind: CommsLogLine['kind'], text: string) => {
-        const line = { t: Date.now(), kind, text };
+        const line = { t: appNow(), kind, text };
         const next = logRef.current.concat(line);
         if (next.length > LOG_CAPACITY) next.splice(0, next.length - LOG_CAPACITY);
         logRef.current = next;
@@ -456,12 +457,12 @@ export function useDs2Link(options: {
         try {
             const state = vehicleStateRef.current;
             const base = {
-                at: Date.now(),
+                at: appNow(),
                 module: moduleId,
                 job,
                 request: toHex(buildDs2Frame(to.address, control, payload)),
                 speedKmh: state?.speedKmh ?? null,
-                motion: motionOf(state, Date.now()),
+                motion: motionOf(state, appNow()),
             };
             if ('frame' in result) {
                 const ok = isPositiveResponse(result.frame);
@@ -503,7 +504,7 @@ export function useDs2Link(options: {
      */
     const motionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const noteVehicle = useCallback((values: LiveValues) => {
-        const next = vehicleStateFrom(values, Date.now(), vehicleStateRef.current);
+        const next = vehicleStateFrom(values, appNow(), vehicleStateRef.current);
         if (!next) return null;
         vehicleStateRef.current = next;
         setVehicleState(next);
@@ -535,7 +536,7 @@ export function useDs2Link(options: {
                 const values: LiveValues = {};
                 for (const v of decodeLiveBlock(block, frame)) values[channelId(SPEED_BLOCK, v.symbol)] = v.value;
                 const state = noteVehicle(values);
-                const motion = motionOf(state, Date.now());
+                const motion = motionOf(state, appNow());
                 // The evidence the read below was sent on, kept with it.
                 append('rx', `speed ${state?.speedKmh ?? '—'} km/h, CAN ${state?.speedCanKmh ?? '—'} km/h → ${motion}`);
                 return motion;
@@ -716,8 +717,10 @@ export function useDs2Link(options: {
         [append, clearError, failWith, notifyFailure],
     );
 
+    // The identity and the fault memory are read while the car moves too (operator, 2026-11-04;
+    // lib/runGate `fault-read`). A caller that holds a ledger verdict passes its `requires`.
     const readIdent = useCallback(
-        (requires: SendRequirement = 'parked') =>
+        (requires: SendRequirement = 'none') =>
             run('Read identity', async (link) => {
                 const { target, to } = session(link);
                 const ident = target.ident ?? refuse(`${target.moduleId}: its SGBD carries no short IDENT frame; nothing is sent.`);
@@ -735,7 +738,7 @@ export function useDs2Link(options: {
     );
 
     const readFaults = useCallback(
-        (requires: SendRequirement = 'parked') =>
+        (requires: SendRequirement = 'none') =>
             run('Read fault memory', async (link) => {
                 const { target, to } = session(link);
                 if (target.decoder !== 'mss54' && target.faults.length === 0) {
@@ -899,7 +902,7 @@ export function useDs2Link(options: {
                     request: hex,
                     response: toHex(frame.payload),
                     payloadLength: frame.payload.length,
-                    at: Date.now(),
+                    at: appNow(),
                     error: null,
                 };
                 append('rx', `${frame.payload.length} bytes`);
@@ -1113,7 +1116,7 @@ export function useDs2Link(options: {
                         },
                         stopped: () => linkRef.current !== link,
                         pause: yieldToEventLoop,
-                        now: () => Date.now(),
+                        now: () => appNow(),
                         onResult: (r) => {
                             setScanProgress({ done: ++done, total: targets.length });
                             append(r.outcome === 'answered' ? 'rx' : 'info', `${r.address} ${r.modules.join('/')}: ${r.outcome}${r.reason ? ` — ${r.reason}` : ''}`);
@@ -1187,7 +1190,7 @@ export function useDs2Link(options: {
                         if (x.outcome === 'refused' || modeRef.current !== 'vehicle') return;
                         try {
                             onReadRef.current?.({
-                                at: Date.now(),
+                                at: appNow(),
                                 module: x.module,
                                 job: x.what,
                                 request: x.request,
@@ -1202,7 +1205,7 @@ export function useDs2Link(options: {
                         }
                     },
                     link,
-                    now: () => Date.now(),
+                    now: () => appNow(),
                     pause: yieldToEventLoop,
                     stopped: () => !pollingRef.current || linkRef.current !== link,
                     onObserved: (o) => {

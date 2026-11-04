@@ -11,6 +11,7 @@ import { listAllEntries } from '@/lib/notebook/store';
 import { probeChanged } from '@/lib/probe/boardStore';
 import { loadProbeModules } from '@/lib/probe/modules';
 import { listRuns, putRun, type ProbeLive, type StoredRun } from '@/lib/probe/runStore';
+import { appNow } from '@/lib/clock';
 
 export interface ProbeProgress {
     v: number;
@@ -55,7 +56,7 @@ export function useProbe(input: {
     const refresh = useCallback(
         () =>
             read().then((entries) => {
-                setRunnable(runnablePlan(entries, Date.now()));
+                setRunnable(runnablePlan(entries, appNow()));
                 probeChanged();
             }),
         [read],
@@ -66,7 +67,7 @@ export function useProbe(input: {
         if (progress !== null) return;
         let live = true;
         void read().then((entries) => {
-            if (live) setRunnable(runnablePlan(entries, Date.now()));
+            if (live) setRunnable(runnablePlan(entries, appNow()));
         });
         return () => {
             live = false;
@@ -84,12 +85,12 @@ export function useProbe(input: {
             if (!enabled || !index) return { started: false, reason: 'off' };
             if (liveRef.current) return { started: false, reason: 'running' };
             // Taken now, from the record as it stands: the plan this run holds until it ends.
-            const r = runnablePlan(await read(), Date.now(), record);
+            const r = runnablePlan(await read(), appNow(), record);
             if (!r.ok) return { started: false, reason: r.reason };
             const { body, id } = r.entry;
             const modules = await loadProbeModules(body.steps, index);
             const n = (await listRuns(r.sessionId).catch(() => [])).length + 1;
-            const live: ProbeLive = { sessionId: r.sessionId, n, startedAt: Date.now(), planV: body.v, samples: [] };
+            const live: ProbeLive = { sessionId: r.sessionId, n, startedAt: appNow(), planV: body.v, samples: [] };
             liveRef.current = live;
             const total = body.steps.filter((s) => s.kind === 'faults' || s.kind === 'read' || s.kind === 'adapt').length;
             const settled = new Set<number>();

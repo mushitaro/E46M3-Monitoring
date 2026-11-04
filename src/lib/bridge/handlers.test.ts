@@ -49,6 +49,8 @@ function tab(over: Partial<TabFacade> = {}) {
         }),
         stage: async () => ({}),
         startLog: () => null,
+        datalog: () => ({ selected: ['3:n'], samples: 0 }),
+        logChannels: (q) => ({ query: q.query ?? null }),
         stopLog: () => 'recording',
         save: async () => ({ saved: true }),
         sync: async () => ({ sent: 0 }),

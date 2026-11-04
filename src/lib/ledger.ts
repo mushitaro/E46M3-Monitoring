@@ -15,6 +15,7 @@
  * already a lookup by the time there is something to ask it about — retrofitting
  * a gate around code that already runs is how gates end up with holes.
  */
+import { appNow, learnServerTime } from './clock';
 
 export type VerificationStatus =
     /** Never confirmed against a vehicle. The default, and where everything is now. */
@@ -217,7 +218,10 @@ export function mayRunOnVehicle(ledger: Ledger, id: string): { allowed: boolean;
  */
 export async function fetchKillList(url: string, signal?: AbortSignal): Promise<KillList | null> {
     try {
+        const sentAt = appNow();
         const res = await fetch(url, { cache: 'no-store', signal });
+        // The origin's Date header is the one clock on hand that the head unit cannot get wrong.
+        learnServerTime(res.headers.get('date'), sentAt, appNow());
         if (!res.ok) return null;
         const body = (await res.json()) as KillList;
         if (typeof body?.version !== 'number' || !Array.isArray(body?.revoked)) return null;

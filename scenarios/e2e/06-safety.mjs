@@ -3,9 +3,9 @@ import { connectPractice, tool } from './_lib.mjs';
 /** What the assistant must not be able to do, and what the app refuses while the car moves. */
 const scenario = {
     id: 'S06',
-    title: '安全：走行中の読取、消去、作動テストは AI からできない',
+    title: '安全：故障の読み取りは走行中も、消去と作動テストは AI からできない',
     story:
-        '走行中（40 km/h）に AI が故障を読み直そうとすると、アプリは送らずに理由を言う。全モジュール読取も始まらない。' +
+        '走行中（40 km/h）に AI が故障を読み直すと、読める（運営者、2026-11-04）。全モジュールの読み取りも走行中に最後まで行く。' +
         '故障の消去や作動テストの道具は AI に無く、手順は画面に置くだけで実行されない。',
     steps: [
         ...connectPractice,
@@ -13,18 +13,18 @@ const scenario = {
         {
             ai: 'monitoring_faults',
             args: { module: 'mss54', refresh: true },
-            means: '走行中は送らない（停車中に限る読取）',
-            expect: (r) => (/moving|走行|stationary|parked|止ま/i.test(JSON.stringify(r)) ? true : JSON.stringify(r).slice(0, 300)),
+            means: '走行中でも故障を読む',
+            expect: (r) => (r && r.refreshed === true ? true : JSON.stringify(r).slice(0, 300)),
         },
         {
             check: {
-                desc: '走行中は全モジュール読取が止まる（車速を測って動いていると分かる）',
+                desc: '走行中でも全モジュールの読み取りが最後まで行く',
                 run: async (page) => {
                     const r = await tool(page, 'monitoring_scan');
-                    if (!r?.started) return /moving|stationary|parked/i.test(JSON.stringify(r)) ? true : JSON.stringify(r);
-                    for (let i = 0; i < 30; i++) {
+                    if (!r?.started) return JSON.stringify(r);
+                    for (let i = 0; i < 120; i++) {
                         const s = await tool(page, 'monitoring_status');
-                        if (s.scan && s.scan.running === false) return s.scan.end === 'not-parked' ? true : `scan ended ${s.scan.end}`;
+                        if (s.scan && s.scan.running === false) return s.scan.end === 'done' ? true : `scan ended ${s.scan.end}`;
                         await page.waitForTimeout(1000);
                     }
                     return 'scan did not end';

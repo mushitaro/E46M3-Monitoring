@@ -33,6 +33,7 @@ import { describeSave, describeSync, savePhase, syncPhase, toSend } from '@/lib/
 import type { Datalog } from '@/views/datalog/useDatalog';
 import { toSession, type Episode } from '@/lib/journal';
 import type { Journal } from './useJournal';
+import { appNow } from '@/lib/clock';
 
 /**
  * The failures of this page's session: kept for SAVE, and each one sent as an error record the
@@ -58,7 +59,7 @@ export function useFailureNotes(enabled: boolean, ecuId: string) {
             // Bounded: a cable that fails every exchange for an hour must not grow a session past
             // what SYNC can send. The error records carry every one of them anyway.
             setNotes((prev) =>
-                [...prev, { at: Date.now(), job: f.job, error: f.error, errorKind: f.errorKind, excerpt: lines }].slice(-50),
+                [...prev, { at: appNow(), job: f.job, error: f.error, errorKind: f.errorKind, excerpt: lines }].slice(-50),
             );
             reportFailure({
                 ecu: ecuRef.current,
@@ -224,7 +225,7 @@ export function useSessions(input: {
             const session = toSession(
                 ep,
                 { id: was?.id ?? crypto.randomUUID(), createdAt: existing?.createdAt, syncedAt: existing?.syncedAt ?? null },
-                Date.now(),
+                appNow(),
                 ecuId,
                 document.querySelector('meta[name="build-id"]')?.getAttribute('content') ?? null,
             );
@@ -242,7 +243,7 @@ export function useSessions(input: {
 
     const saveNow = useCallback(async (): Promise<SavedSession | null> => {
         if (episodeNow) return keepEpisode(episodeNow);
-        const now = Date.now();
+        const now = appNow();
         const head = current ?? { id: crypto.randomUUID(), createdAt: now, label: sessionLabel(now, ecuId, link.mode === 'practice') };
         const existing = (local ?? []).find((s) => s.id === head.id);
         const session: SavedSession = {

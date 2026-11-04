@@ -67,6 +67,10 @@ export interface TabFacade {
     stage(module: string, job: string): Promise<unknown>;
     /** Null when it started; otherwise why not. */
     startLog(): string | null;
+    /** DATALOG: what is selected and recording now, and the run summed up (lib/datalogQuery). */
+    datalog(opts: { channels?: string[]; seconds?: number; max?: number }): unknown;
+    /** DATALOG's channels: find them by words, or choose them (refused while recording). */
+    logChannels(q: { query?: string; channels?: string[] }): unknown;
     /** What was stopped, or null when nothing was running. */
     stopLog(): 'recording' | 'probe' | null;
     /** The episode in progress, or the not-kept one starting at `episode`. */
@@ -447,8 +451,21 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
         monitoring_start_log: async () => {
             const refused = f.startLog();
             if (refused) throw new Error(refused);
-            return { started: true };
+            return { started: true, ...(f.datalog({ max: 0 }) as Record<string, unknown>) };
         },
+
+        monitoring_datalog: async (args) =>
+            f.datalog({
+                channels: Array.isArray(args.channels) ? args.channels.filter((c): c is string => typeof c === 'string') : undefined,
+                seconds: typeof args.seconds === 'number' && args.seconds > 0 ? args.seconds : undefined,
+                max: Math.round(clamp(args.max, 0, 240, 60)),
+            }),
+
+        monitoring_log_channels: async (args) =>
+            f.logChannels({
+                query: optText(args.query),
+                channels: Array.isArray(args.channels) ? args.channels.filter((c): c is string => typeof c === 'string') : undefined,
+            }),
 
         monitoring_stop_log: async (args) => {
             if (args.confirmed !== true) {

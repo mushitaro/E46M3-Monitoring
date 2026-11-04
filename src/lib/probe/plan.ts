@@ -143,7 +143,7 @@ export function stepsProblem(steps: unknown): string | null {
     for (const [i, s] of (steps as ProbeStep[]).entries()) {
         const at = `step ${i + 1}`;
         if (!s || s.n !== i + 1) return 'steps must be numbered 1, 2, 3 … in order';
-        if (!text(s.do, PROBE_LIMITS.stepText)) return `${at} must say what it is for (up to ${PROBE_LIMITS.stepText} characters)`;
+        if (!text(s.do, PROBE_LIMITS.stepText)) return `${at} must say what it is for in "do" (up to ${PROBE_LIMITS.stepText} characters). A step is {n, do, kind, …}: see monitoring_plan's steps`;
         const when = (s as { when?: unknown }).when;
         const times = (s as { times?: unknown }).times;
         if (times !== undefined && !int(times, 1, 99)) return `${at}: times must be a count`;

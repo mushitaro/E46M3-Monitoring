@@ -17,9 +17,9 @@
  *
  * ## What it never does
  *
- *   - Send anything while the car is not measured stationary. The speed is read from the DME
- *     before the first module and again every few, and a scan that cannot show the car still stops
- *     where it is.
+ *   - Wait for the car to stop. A fault read is a read, and it goes while the car moves too
+ *     (operator, 2026-11-04). The DME's speed is still read when the line goes quiet, to tell a
+ *     lost line from modules that are not fitted.
  *   - Retry. A module that does not answer is `silent` — likely not fitted, which is a fact about
  *     the car worth stating — and a refusal (`rejected`) is the module's answer, recorded as said.
  *   - Read meaning into bytes. Only the MSS54 has a decoder; every other answer is kept as bytes.
@@ -67,13 +67,14 @@ export interface ScanResult {
 export interface ScanRun {
     startedAt: number;
     endedAt: number;
+    /** `not-parked` is on scans kept before fault reads went while moving (2026-11-04). */
     end: 'done' | 'not-parked' | 'stopped' | 'link-lost';
     results: ScanResult[];
 }
 
 export interface ScanDeps {
     ledger(): Ledger;
-    /** The DME's speed, read now. Only `parked` lets a frame go. */
+    /** The DME's speed, read now: whether the DME still answers when the line goes quiet. */
     measure(): Promise<Motion>;
     /** One exchange, told to the read record; the hook's readFrame. */
     exchange(address: number, moduleId: string, job: string, f: ProtocolFrame, options: RetryOptions): Promise<Ds2Frame>;
@@ -87,8 +88,6 @@ export interface ScanDeps {
 /** The module select's value for every module at once: DIAGNOSIS's scan (components/shell/Chrome). */
 export const ALL_MODULES = 'all';
 
-/** Re-measure the speed after this many addresses: a scan takes a minute, and cars move. */
-export const SCAN_REMEASURE_EVERY = 6;
 /** Transport failures in a row that mean the line, not the modules, is gone. */
 const LINE_LOST_AFTER = 8;
 
@@ -130,14 +129,6 @@ export async function runScan(targets: readonly ScanTarget[], deps: ScanDeps): P
             skipRest(i, 'the scan was stopped');
             break;
         }
-        if (i % SCAN_REMEASURE_EVERY === 0) {
-            const motion = await deps.measure();
-            if (motion !== 'parked') {
-                run.end = 'not-parked';
-                skipRest(i, `not sent — the car could not be shown to be stationary (${motion})`);
-                break;
-            }
-        }
         const base = { address: hex2(t.address), modules: t.modules };
         if (t.frames.length === 0) {
             push({
@@ -151,7 +142,7 @@ export async function runScan(targets: readonly ScanTarget[], deps: ScanDeps): P
             });
             continue;
         }
-        const blocked = t.modules.map((m) => mayRunProtocolRead(`${m}:FS_LESEN`, 'module', deps.ledger(), 'parked')).find((g) => !g.allowed) as
+        const blocked = t.modules.map((m) => mayRunProtocolRead(`${m}:FS_LESEN`, 'fault-read', deps.ledger(), 'unknown')).find((g) => !g.allowed) as
             | { allowed: false; reason: RunBlockKey }
             | undefined;
         if (blocked) {

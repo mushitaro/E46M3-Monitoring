@@ -25,7 +25,16 @@ export function useDatalog(link: Link) {
     // Engine speed and coolant temperature, both from block 3 — one round trip.
     // Written as channel ids, not symbols: `n` alone does not say which block,
     // and block 35 carries an `n` too.
-    const [selected, setSelected] = useState<ChannelId[]>([channelId(3, 'n'), channelId(3, 'tmot')]);
+    const [selected, setSelectedState] = useState<ChannelId[]>([channelId(3, 'n'), channelId(3, 'tmot')]);
+    // The selection as of now, not as of the last render: the assistant chooses channels and starts
+    // the recording in two calls that can both land before the page renders between them, and the
+    // recording must take the channels just chosen (S10).
+    const selectedRef = useRef(selected);
+    const setSelected = useCallback((next: ChannelId[] | ((prev: ChannelId[]) => ChannelId[])) => {
+        const value = typeof next === 'function' ? next(selectedRef.current) : next;
+        selectedRef.current = value;
+        setSelectedState(value);
+    }, []);
     const [samples, setSamples] = useState<LiveSample[]>([]);
     const [latest, setLatest] = useState<Partial<Record<ChannelId, number | null>>>({});
     const samplesRef = useRef<LiveSample[]>([]);
@@ -74,16 +83,26 @@ export function useDatalog(link: Link) {
         // Stale readings from a previous run must not survive into this one's
         // readout while the first sample is still in flight.
         setLatest({});
-        recordedRef.current = [...selected];
-        setRecorded([...selected]);
+        const chosen = selectedRef.current;
+        recordedRef.current = [...chosen];
+        setRecorded([...chosen]);
         // Both endings land in the same place: the stop button and a link
         // failure. A run that dies must not leave the view looking live.
-        link.startLog(selected, onSample, () => setSamples(samplesRef.current.slice()));
-    }, [link, onSample, selected]);
+        link.startLog(chosen, onSample, () => setSamples(samplesRef.current.slice()));
+    }, [link, onSample]);
 
-    const toggle = useCallback((id: ChannelId, on: boolean) => {
-        setSelected((prev) => (on ? [...prev, id] : prev.filter((s) => s !== id)));
-    }, []);
+    const toggle = useCallback(
+        (id: ChannelId, on: boolean) => setSelected((prev) => (on ? [...prev, id] : prev.filter((s) => s !== id))),
+        [setSelected],
+    );
+
+    /** The whole selection at once: the assistant's monitoring_log_channels. */
+    const select = useCallback((ids: readonly ChannelId[]) => setSelected([...new Set(ids)]), [setSelected]);
+    /** The selection as of now (see selectedRef). */
+    const current = useCallback(() => selectedRef.current, []);
+
+    /** The run as it stands — the frozen channels and every sample so far, not the last flush. */
+    const snapshot = useCallback(() => ({ recorded: recordedRef.current, samples: samplesRef.current }), []);
 
     // The column rule lives with the CSV writer in lib/download — see datalogCsv.
     const exportCsv = useCallback(() => {
@@ -124,6 +143,9 @@ export function useDatalog(link: Link) {
         start,
         stop: link.stopLog,
         toggle,
+        select,
+        current,
+        snapshot,
         exportCsv,
         capture,
         // The cost model, stated: one round trip per BLOCK, not per channel.

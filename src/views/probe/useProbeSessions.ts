@@ -7,6 +7,7 @@ import { emptyBoard, move, toggle, type Board } from '@/lib/probe/board';
 import { getBoard, probeChanges, putBoard } from '@/lib/probe/boardStore';
 import { listRuns, type StoredRun } from '@/lib/probe/runStore';
 import { lineage, nextSession, probeSessions, type NextRefusal } from '@/lib/probe/sessions';
+import { appNow } from '@/lib/clock';
 
 /**
  * PROBE's two tabs, as the page holds them: the sessions on the device (STARTUP), the one opened on
@@ -40,7 +41,7 @@ export function useProbeSessions(input: { enabled: boolean; write: (entries: Not
             const runs = new Map(await Promise.all(ids.map(async (id) => [id, await listRuns(id).catch(() => [] as StoredRun[])] as const)));
             if (!live) return;
             setData({ entries, runs });
-            setNow(Date.now());
+            setNow(appNow());
         })();
         return () => {
             live = false;
@@ -48,7 +49,7 @@ export function useProbeSessions(input: { enabled: boolean; write: (entries: Not
     }, [enabled, version]);
 
     const setOpen = useCallback((id: string) => {
-        const next = { id, at: Date.now() };
+        const next = { id, at: appNow() };
         openRef.current = next;
         setOpenState(next);
     }, []);
@@ -99,7 +100,7 @@ export function useProbeSessions(input: { enabled: boolean; write: (entries: Not
     /** NEXT, pressed on the screen: the owner carries the session on. Null when done; else why not. */
     const next = useCallback(async (): Promise<NextRefusal | null> => {
         if (!current) return 'no-mandate';
-        const n = nextSession(data.entries, current, data.runs.get(current)?.length ?? 0, { now: Date.now(), newId: () => crypto.randomUUID(), by: 'owner' });
+        const n = nextSession(data.entries, current, data.runs.get(current)?.length ?? 0, { now: appNow(), newId: () => crypto.randomUUID(), by: 'owner' });
         if (!n.ok) return n.reason;
         await write(n.entries);
         setOpen(n.record);

@@ -392,7 +392,7 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
                 record({ step: s.n, module: s.module, what, request: null, response: null, outcome: 'refused', reason: st.reason, motion });
                 return;
             }
-            const gate = mayRunProtocolRead(`${s.module}:FS_LESEN`, 'module', deps.ledger(), motion);
+            const gate = mayRunProtocolRead(`${s.module}:FS_LESEN`, 'fault-read', deps.ledger(), motion);
             if (!gate.allowed) return refuse(gate.reason);
             frames = mod.protocol.faults;
             requires = gate.requires;

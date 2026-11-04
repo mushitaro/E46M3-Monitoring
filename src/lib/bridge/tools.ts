@@ -61,8 +61,8 @@ export const MONITORING_TOOLS = {
     monitoring_faults: {
         scope: 'read',
         description:
-            "Fault memories the tab has read: the module in session, and — without module, once monitoring_scan has run — every module the scan reached (answered, silent, refused, with the reason). For the MSS54 the decoded codes with their text from the module's own SGBD, present or past, frequency; for other modules the raw answer bytes, since the tab has no decoder for them. refresh: true asks the tab to read the module in session again — parked only, through its gate. No VIN.",
-        inputSchema: obj({ module: MODULE, refresh: bool('Read the module in session again (parked, gated).') }),
+            "Fault memories the tab has read: the module in session, and — without module, once monitoring_scan has run — every module the scan reached (answered, silent, refused, with the reason). For the MSS54 the decoded codes with their text from the module's own SGBD, present or past, frequency; for other modules the raw answer bytes, since the tab has no decoder for them. refresh: true asks the tab to read the module in session again, through its gate — while the car moves too (operator, 2026-11-04). No VIN.",
+        inputSchema: obj({ module: MODULE, refresh: bool('Read the module in session again (gated; moving or parked).') }),
     },
     monitoring_catalog: {
         scope: 'read',
@@ -141,7 +141,7 @@ export const MONITORING_TOOLS = {
                     type: 'array',
                     items: { type: 'object' },
                     description:
-                        'Steps numbered n from 1: faults (a module\'s fault memory), read (a catalogue read job), sample (MSS54 live channels like 19:v, or a whole block like 3:*), adapt (the MSS54\'s learned values), ram, capture. One-shot steps take when: parked, moving or any.',
+                        'Steps, each {n, do, kind, …}: n numbers them from 1; do says what the step is for, in a line (required). kind and its fields — faults {module, when}: a module\'s fault memory; read {module, job, when}: a catalogue read job; sample {channels}: MSS54 live channels like 35:evan1_ist, or a whole block like 3:*; adapt {when}: the MSS54\'s learned values; ram {address, bytes, every}; capture {condition: [{channel, op, value}], preS, postS}. when is parked, moving or any. Example: {"n":1,"do":"intake VANOS actual vs target","kind":"sample","channels":["35:evan1_ist","35:evan1_soll"]}.',
                 },
             },
             ['mandate', 'purpose', 'steps'],
@@ -178,7 +178,7 @@ export const MONITORING_TOOLS = {
     monitoring_scan: {
         scope: 'control',
         description:
-            "Read every module's fault memory, one address at a time, without choosing a module: each module's own fault read (its SGBD's FS_LESEN frames) at its own address, through the tab's gate, only while the DME measures the car stationary (re-measured every few modules). Where several SGBDs share an address, only frames all of them carry are sent. Starts and answers at once; it takes about a second an address. monitoring_status shows progress, monitoring_faults (no module) the result. Only the MSS54 is decoded.",
+            "Read every module's fault memory, one address at a time, without choosing a module: each module's own fault read (its SGBD's FS_LESEN frames) at its own address, through the tab's gate, while the car moves too (operator, 2026-11-04). Where several SGBDs share an address, only frames all of them carry are sent. Starts and answers at once; it takes about a second an address. monitoring_status shows progress, monitoring_faults (no module) the result. Only the MSS54 is decoded.",
         inputSchema: obj({}),
     },
     monitoring_module: {
@@ -259,8 +259,28 @@ export const MONITORING_TOOLS = {
     },
     monitoring_start_log: {
         scope: 'control',
-        description: 'Start recording the DATALOG channels selected on the screen. Only on the MSS54, connected, with nothing else running on the link; refused with the reason otherwise.',
+        description:
+            'Start recording the DATALOG channels selected (monitoring_log_channels chooses them; the answer names them). Only on the MSS54, connected, with nothing else running on the link; refused with the reason otherwise, and when no channel is selected. The recording runs while the car moves.',
         inputSchema: obj({}),
+    },
+    monitoring_log_channels: {
+        scope: 'control',
+        description:
+            "DATALOG's channels: the MSS54's live values, named block:symbol (3:n engine speed, 3:toel oil temperature, 3:ub battery voltage, 35:evan1_ist / 35:evan1_soll intake VANOS actual and target, 35:avan1_ist / 35:avan1_soll exhaust VANOS). query: find channels by words in any language the catalogue carries (vanos, oil, 油温), with name, unit and block. channels: choose them — the whole selection, replacing the last; refused while recording. A block is one round trip whichever of its values are chosen, so values of one block cost nothing extra. Use these, not catalogue read jobs, for values to watch over time.",
+        inputSchema: obj({
+            query: str('Words to find channels by.'),
+            channels: { type: 'array', items: { type: 'string' }, maxItems: 24, description: 'The channels to record, block:symbol (3:toel).' },
+        }),
+    },
+    monitoring_datalog: {
+        scope: 'read',
+        description:
+            'The DATALOG recording, in progress or the last one: the channels selected and the channels it recorded, whether it is running, how many samples over how many seconds, and per channel the count, mean, min and max with name and unit; and the samples thinned evenly (at most max, default 60). seconds takes only the last so many seconds; channels only those. Absent values were not read, not zero.',
+        inputSchema: obj({
+            channels: { type: 'array', items: { type: 'string' }, maxItems: 24, description: 'Only these recorded channels.' },
+            seconds: num('Only the last so many seconds.'),
+            max: num('At most this many samples in the trace (0-240, default 60).'),
+        }),
     },
     monitoring_stop_log: {
         scope: 'control',

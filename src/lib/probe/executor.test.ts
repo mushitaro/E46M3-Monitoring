@@ -160,11 +160,11 @@ describe('an unknown speed is not a stopped car', () => {
         expect(run.samples.length).toBeGreaterThan(0);
     });
 
-    it('keeps even an any-time step waiting, when the read it sends has to go to a stationary car', async () => {
+    it('sends a fault read with the speed unknown: it goes while the car moves too (operator, 2026-11-04)', async () => {
         const h = await harness({ speed: () => 0, noSpeed: true }, 8);
         const run = await runProbe(plan([{ ...FAULTS_PARKED, when: 'any' }]), h.deps);
-        expect(h.bus.at(0x56)!.trace).toHaveLength(0);
-        expect(run.steps[0].state).toBe('pending');
+        expect(h.bus.at(0x56)!.trace.length).toBeGreaterThan(0);
+        expect(run.steps[0].state).not.toBe('pending');
     });
 });
 

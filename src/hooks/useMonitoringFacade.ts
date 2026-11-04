@@ -19,6 +19,8 @@ import { mayRun, mayRunProtocolRead } from '@/lib/runGate';
 import { canSync } from '@/lib/sync/cloud';
 import { needsSync, sessionLabel, summarise } from '@/lib/sync/session';
 import { expiresAt } from '@/lib/journal';
+import { channelsForJob, datalogSummary, findChannels, selectionCost, unknownChannels } from '@/lib/datalogQuery';
+import type { ChannelId } from '@tsunagi/ds2-mss54';
 import { listLocal } from '@/lib/sync/sessionStore';
 import type { Mode, Tab } from '@/lib/tabs';
 import type { ProbeSessions } from '@/views/probe/useProbeSessions';
@@ -26,6 +28,7 @@ import { bestTelegram, loadTelegrams } from '@/lib/telegrams';
 import { LAUNCHER_QUERY, deviceLabel, isHeadUnit, type DeviceKind } from '@/hooks/useAssistantBridge';
 import type { Datalog } from '@/views/datalog/useDatalog';
 import type { Sessions } from '@/views/sessions/useSessions';
+import { appNow } from '@/lib/clock';
 
 /**
  * The page, as the assistant bridge sees it (lib/bridge/handlers `TabFacade`).
@@ -132,7 +135,7 @@ export function useMonitoringFacade(input: {
     };
 
     return {
-        now: () => Date.now(),
+        now: () => appNow(),
         newId: () => crypto.randomUUID(),
 
         status: () => ({
@@ -141,10 +144,13 @@ export function useMonitoringFacade(input: {
             link: link.state,
             module: { id: ecuId, name: moduleName(ecuId) },
             speedKmh: link.vehicleState?.speedKmh ?? null,
+            // DSC's speed over CAN. Above 1 km/h it alone makes the car moving (lib/vehicleState).
+            speedCanKmh: link.vehicleState?.speedCanKmh ?? null,
             speedReadAt: link.vehicleState ? new Date(link.vehicleState.at).toISOString() : null,
             // The speed preflight's verdict: parked, moving or unknown (not read, or too old).
             car: link.motion,
             recording: link.state === 'logging' && !running,
+            datalog: { selected: datalog.current(), samples: datalog.snapshot().samples.length },
             probe: running
                 ? { running: true, ...probe.progress }
                 : { running: false, planReady: probe.available ? { v: probe.available.v, purpose: probe.available.purpose } : null },
@@ -169,8 +175,8 @@ export function useMonitoringFacade(input: {
             if (!target.ident && target.faults.length === 0) return en.faults_notEstablished;
             // The gate's answer for each read (a withdrawn read, a car measured moving), then the
             // link's own preflight measures the speed again just before the bytes go.
-            const ident = mayRunProtocolRead(`${ecuId}:IDENT`, 'module', ledger, link.motion);
-            const fs = mayRunProtocolRead(`${ecuId}:FS_LESEN`, 'module', ledger, link.motion);
+            const ident = mayRunProtocolRead(`${ecuId}:IDENT`, 'fault-read', ledger, link.motion);
+            const fs = mayRunProtocolRead(`${ecuId}:FS_LESEN`, 'fault-read', ledger, link.motion);
             if (!fs.allowed) return en.runBlock[fs.reason];
             try {
                 // The link reports a refused or failed read as null and keeps its sentence: a read the
@@ -264,7 +270,7 @@ export function useMonitoringFacade(input: {
                     learnedValueReads: ep.counts.adaptations,
                     procedures: ep.counts.runs,
                     failures: ep.counts.failures,
-                    daysLeft: Math.max(0, Math.ceil((expiresAt(ep) - Date.now()) / 86_400_000)),
+                    daysLeft: Math.max(0, Math.ceil((expiresAt(ep) - appNow()) / 86_400_000)),
                 })),
             };
         },
@@ -293,8 +299,35 @@ export function useMonitoringFacade(input: {
         startLog: () => {
             if (link.state !== 'connected') return `The link is ${link.state}; a recording starts from connected and idle.`;
             if (target.decoder !== 'mss54') return en.datalog_noDecoder;
+            if (datalog.current().length === 0) return 'No DATALOG channel is selected: choose them first (monitoring_log_channels).';
             datalog.start();
             return null;
+        },
+
+        datalog: (opts) => {
+            const snap = datalog.snapshot();
+            return {
+                selected: datalog.current(),
+                cost: selectionCost(datalog.current()),
+                running: link.state === 'logging' && !running,
+                recorded: snap.recorded,
+                ...datalogSummary(snap.recorded, snap.samples, opts),
+                ...(snap.samples.length === 0 ? { note: 'Nothing recorded yet on this page: choose channels (monitoring_log_channels), then monitoring_start_log.' } : {}),
+            };
+        },
+
+        logChannels: ({ query, channels }) => {
+            if (channels) {
+                if (link.state === 'logging') return { selected: datalog.current(), changed: false, reason: 'A recording is going; channels change once it is stopped.' };
+                const unknown = unknownChannels(channels);
+                if (unknown.length) {
+                    return { changed: false, reason: `Not a live channel of the MSS54: ${unknown.join(', ')}.`, suggestions: unknown.flatMap((u) => { const byJob = channelsForJob(u); return byJob.length ? byJob : findChannels(u.split(':').pop() ?? u, 5); }) };
+                }
+                if (channels.length === 0) return { changed: false, reason: 'Choose at least one channel.' };
+                datalog.select(channels as ChannelId[]);
+                return { changed: true, selected: channels, cost: selectionCost(channels as ChannelId[]), then: 'monitoring_start_log records them.' };
+            }
+            return { selected: datalog.current(), found: query ? findChannels(query) : [] };
         },
 
         stopLog: () => {

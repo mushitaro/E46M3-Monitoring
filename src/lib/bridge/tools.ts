@@ -141,7 +141,7 @@ export const MONITORING_TOOLS = {
                     type: 'array',
                     items: { type: 'object' },
                     description:
-                        'Steps numbered n from 1: faults (a module\'s fault memory), read (a catalogue read job), sample (MSS54 live channels like 19:v, or a whole block like 3:*), adapt (the MSS54\'s learned values), ram, capture. One-shot steps take when: parked, moving or any.',
+                        'Each step is {n, kind, do, …}: n counts from 1, do is one line saying what the step is for (required on every step), kind is one of — faults {module, when} (a module\'s fault memory), read {module, job, when} (a catalogue read job), sample {channels} (MSS54 live channels like 19:v, or a whole block like 3:*), adapt {when} (the MSS54\'s learned values), ram {address, bytes, every}, capture {condition, preS, postS}. One-shot steps take when: parked, moving or any.',
                 },
             },
             ['mandate', 'purpose', 'steps'],

@@ -95,6 +95,8 @@ describe('plan steps are reads, and say so in a form the tab can check', () => {
         expect(stepsProblem(STEPS)).toBeNull();
         expect(stepsProblem([{ n: 1, do: 'x', kind: 'actuate', module: 'dsc_e46' }])).toMatch(/kind must be/);
         expect(stepsProblem([{ n: 1, do: 'x', kind: 'sample', channels: ['v'] }])).toMatch(/selection:symbol/);
+        // A step without its purpose is told which field carries it.
+        expect(stepsProblem([{ n: 1, kind: 'faults', module: 'dsc_e46', when: 'parked' } as unknown as ProbeStep])).toMatch(/field "do"/);
     });
 
     it('takes a whole live block and the learned values, and nothing else under those names', () => {

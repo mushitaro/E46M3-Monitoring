@@ -64,6 +64,8 @@ export interface TabFacade {
     ledger(module: string | undefined): unknown;
     sessions(limit: number): Promise<unknown>;
     display(tab: Tab): void;
+    /** LIST or VISU, the window that shares the screen with HUB below 900. */
+    pane(pane: 'list' | 'visu'): void;
     stage(module: string, job: string): Promise<unknown>;
     /** Null when it started; otherwise why not. */
     startLog(): string | null;
@@ -440,10 +442,21 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
         },
 
         monitoring_display: async (args) => {
-            const tab = args.show as Tab;
-            if (!TABS.includes(tab)) throw new Error(`show must be one of ${TABS.join(', ')}`);
-            f.display(tab);
-            return { shown: tab };
+            const pane = args.pane;
+            if (pane !== undefined && pane !== 'list' && pane !== 'visu') throw new Error('pane must be list or visu');
+            if (args.show === undefined && pane === undefined) throw new Error(`say show (${TABS.join(', ')}), pane (list, visu), or both`);
+            const out: { shown?: Tab; pane?: 'list' | 'visu' } = {};
+            if (args.show !== undefined) {
+                const tab = args.show as Tab;
+                if (!TABS.includes(tab)) throw new Error(`show must be one of ${TABS.join(', ')}`);
+                f.display(tab);
+                out.shown = tab;
+            }
+            if (pane !== undefined) {
+                f.pane(pane);
+                out.pane = pane;
+            }
+            return out;
         },
 
         monitoring_stage: async (args) => f.stage(text(args.module, 'module'), text(args.job, 'job')),

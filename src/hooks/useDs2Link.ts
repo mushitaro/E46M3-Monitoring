@@ -684,6 +684,11 @@ export function useDs2Link(options: {
         // link is gone would greet the next connection with the wrong answer if
         // anything ever read it before connect() writes it.
         modeRef.current = 'vehicle';
+        // What was read belongs to the module that was on the line. Another module opened next must
+        // not show it as its own (a DSC read that timed out answered with the DME's codes).
+        setFaults(null);
+        setRawFaults(null);
+        setQuickTest(null);
         setState('disconnected');
         if (link) {
             try {

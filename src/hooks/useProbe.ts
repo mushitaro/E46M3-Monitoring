@@ -11,7 +11,8 @@ import { listAllEntries } from '@/lib/notebook/store';
 import { probeChanged } from '@/lib/probe/boardStore';
 import { loadProbeModules } from '@/lib/probe/modules';
 import { listRuns, putRun, type ProbeLive, type StoredRun } from '@/lib/probe/runStore';
-import { appNow } from '@/lib/clock';
+import { RecordingWriter } from '@/lib/sync/recordingStore';
+import { appNow, anchoredTime } from '@/lib/clock';
 
 export interface ProbeProgress {
     v: number;
@@ -92,6 +93,10 @@ export function useProbe(input: {
             const n = (await listRuns(r.sessionId).catch(() => [])).length + 1;
             const live: ProbeLive = { sessionId: r.sessionId, n, startedAt: appNow(), planV: body.v, samples: [] };
             liveRef.current = live;
+            const checkpointId = `${r.sessionId}-run-${n}-${live.startedAt}`;
+            const initial: StoredRun = { id: checkpointId, sessionId: r.sessionId, n, mock: link.mode === 'practice', planId: id, planV: body.v,
+                startedAt: live.startedAt, endedAt: live.startedAt, end: 'interrupted', samples: [], exchanges: [], captures: [], steps: [], judges: [] };
+            const checkpoint = new RecordingWriter<StoredRun['samples'][number]>({ id: checkpointId, kind: 'probe', data: initial, count: 0, complete: false }, () => { link.stopLog(); });
             const total = body.steps.filter((s) => s.kind === 'faults' || s.kind === 'read' || s.kind === 'adapt').length;
             const settled = new Set<number>();
             let samples = 0;
@@ -106,6 +111,7 @@ export function useProbe(input: {
                             onSample: (s) => {
                                 samples++;
                                 live.samples.push(s);
+                                checkpoint.sample(s);
                                 setProgress({ v: body.v, settled: settled.size, total, samples });
                             },
                             onStep: (n, state) => {
@@ -115,12 +121,16 @@ export function useProbe(input: {
                         },
                     );
                     if (run) {
-                        const stored: StoredRun = { ...run, id: `${r.sessionId}-run-${n}-${run.startedAt}`, sessionId: r.sessionId, n, mock: link.mode === 'practice' };
+                        const stored: StoredRun = { ...run, startedAt: anchoredTime(run.startedAt), id: checkpointId, sessionId: r.sessionId, n, mock: link.mode === 'practice' };
+                        await checkpoint.flush({ ...stored, samples: [] }, true);
                         setLastRun(stored);
                         // Kept for the desk and the next conversation; a failed write loses the copy, not the run.
                         await putRun(stored).catch(() => {});
                         probeChanged();
                     }
+                } catch {
+                    // No success is announced: the committed checkpoint remains recoverable.
+                    link.stopLog();
                 } finally {
                     liveRef.current = null;
                     setProgress(null);
@@ -131,7 +141,10 @@ export function useProbe(input: {
         [enabled, index, link, read],
     );
 
-    const live = useCallback(() => liveRef.current, []);
+    const live = useCallback(() => {
+        if (liveRef.current) liveRef.current.startedAt = anchoredTime(liveRef.current.startedAt);
+        return liveRef.current;
+    }, []);
 
     return {
         /** A plan may run: the record's current plan, its mandate standing. */

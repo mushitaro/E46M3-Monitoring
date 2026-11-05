@@ -222,13 +222,16 @@ export function useSessions(input: {
         async (ep: Episode): Promise<SavedSession | null> => {
             const was = journal.keptAs(ep);
             const existing = was ? (local ?? []).find((s) => s.id === was.id) : undefined;
+            const liveCapture = datalog.capture();
+            const captured = ep === episodeNow && liveCapture && (liveCapture.startedAt ?? Infinity) >= ep.start ? liveCapture : null;
             const session = toSession(
                 ep,
-                { id: was?.id ?? crypto.randomUUID(), createdAt: existing?.createdAt, syncedAt: existing?.syncedAt ?? null },
+                { id: captured?.id ?? was?.id ?? crypto.randomUUID(), createdAt: existing?.createdAt, syncedAt: existing?.syncedAt ?? null },
                 appNow(),
                 ecuId,
                 document.querySelector('meta[name="build-id"]')?.getAttribute('content') ?? null,
             );
+            if (captured) session.datalog = captured;
             try {
                 await putLocal(session);
             } catch {
@@ -238,13 +241,16 @@ export function useSessions(input: {
             await journal.markKept(ep, session.id);
             return session;
         },
-        [journal, local, ecuId, t],
+        [journal, local, ecuId, t, datalog, episodeNow],
     );
 
     const saveNow = useCallback(async (): Promise<SavedSession | null> => {
         if (episodeNow) return keepEpisode(episodeNow);
         const now = appNow();
-        const head = current ?? { id: crypto.randomUUID(), createdAt: now, label: sessionLabel(now, ecuId, link.mode === 'practice') };
+        const recording = datalog.capture();
+        const head = recording?.id && current?.id !== recording.id
+            ? { id: recording.id, createdAt: recording.startedAt ?? now, label: sessionLabel(recording.startedAt ?? now, ecuId, link.mode === 'practice') }
+            : current ?? { id: crypto.randomUUID(), createdAt: now, label: sessionLabel(now, ecuId, link.mode === 'practice') };
         const existing = (local ?? []).find((s) => s.id === head.id);
         const session: SavedSession = {
             v: 1,
@@ -258,7 +264,7 @@ export function useSessions(input: {
             mock: link.mode === 'practice',
             ident: link.ident,
             faults: link.faults,
-            datalog: datalog.capture(),
+            datalog: recording,
             failures: failures.notes,
         };
         try {
@@ -276,12 +282,13 @@ export function useSessions(input: {
     const keep = useCallback(
         async (start: number) => {
             const ep = journal.episodes.find((e) => e.start === start);
-            if (!ep) return;
+            if (!ep) return null;
             setBusy(`keep:${start}`);
             const s = await keepEpisode(ep);
             if (s) setNotice({ text: t.sessions_saved, tone: 'ok' });
             await refreshLocal();
             setBusy(null);
+            return s;
         },
         [journal.episodes, keepEpisode, refreshLocal, t],
     );
@@ -292,6 +299,7 @@ export function useSessions(input: {
         if (s) setNotice({ text: t.sessions_saved, tone: 'ok' });
         await refreshLocal();
         setBusy(null);
+        return s;
     }, [saveNow, refreshLocal, t]);
 
     /**
@@ -450,6 +458,7 @@ export function useSessions(input: {
         /** Episodes recorded but not kept, newest first; each goes seven days after it ended. */
         unkept: journal.unkept,
         now: journal.now,
+        undatedExpiry: journal.undatedExpiry,
         sync,
         restore,
         removeLocal,

@@ -50,7 +50,7 @@ export interface SavedSession {
     ident: { hex: string; length: number } | null;
     /** Null = not read in this session, which is not the same as zero faults. */
     faults: ErrorMemoryEntry[] | null;
-    datalog: { channels: string[]; samples: number; csv: string } | null;
+    datalog: { id?: string; startedAt?: number; channels: string[]; samples: number; csv: string } | null;
     failures: FailureNote[];
 }
 

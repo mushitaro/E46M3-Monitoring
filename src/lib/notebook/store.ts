@@ -13,22 +13,29 @@
  * WORKS-only, like lib/sync.
  */
 import { inTransaction, NOTEBOOK } from '../sync/db';
+import { onAnchor, clockSessionId } from '../clock';
+import { anchorEntry } from './clock';
 import { addProblem, mergeEntries, type NotebookEntry } from './rules';
 
 /** The entries of one record, in the order written. */
 export function listEntries(sessionId: string): Promise<NotebookEntry[]> {
-    return inTransaction<NotebookEntry[]>(NOTEBOOK, 'readonly', (s, done) => {
-        const req = s.index('sessionId').getAll(sessionId);
-        req.onsuccess = () => done(mergeEntries(req.result as NotebookEntry[]));
-    });
+    return readEntries(sessionId);
 }
 
-/** Every entry on the device, in the order written. */
-export function listAllEntries(): Promise<NotebookEntry[]> {
-    return inTransaction<NotebookEntry[]>(NOTEBOOK, 'readonly', (s, done) => {
-        const req = s.getAll();
-        req.onsuccess = () => done(mergeEntries(req.result as NotebookEntry[]));
+export function listAllEntries(): Promise<NotebookEntry[]> { return readEntries(); }
+
+async function readEntries(sessionId?: string): Promise<NotebookEntry[]> {
+    const raw = await inTransaction<NotebookEntry[]>(NOTEBOOK, 'readonly', (s, done) => {
+        const req = sessionId ? s.index('sessionId').getAll(sessionId) : s.getAll();
+        req.onsuccess = () => done(req.result as NotebookEntry[]);
     });
+    const next = raw.map(e => e.clockSessionId ? anchorEntry(e) : { ...e, clockSessionId: 'legacy' });
+    const changed = next.filter((e, i) => e !== raw[i]);
+    if (changed.length) await inTransaction<void>(NOTEBOOK, 'readwrite', (s, done) => {
+        changed.forEach(e => s.put(e));
+        done(undefined);
+    });
+    return mergeEntries(next);
 }
 
 /**
@@ -37,6 +44,7 @@ export function listAllEntries(): Promise<NotebookEntry[]> {
  * rule's sentence, which the caller relays to the writer unchanged.
  */
 export function addEntries(entries: readonly NotebookEntry[]): Promise<void> {
+    entries = entries.map(e => anchorEntry({ ...e, clockSessionId: e.clockSessionId ?? clockSessionId }));
     const sessions = [...new Set(entries.map((e) => e.sessionId))];
     return inTransaction<void>(NOTEBOOK, 'readwrite', (s, done, fail) => {
         const records = new Map<string, NotebookEntry[]>();
@@ -57,9 +65,12 @@ export function addEntries(entries: readonly NotebookEntry[]): Promise<void> {
         for (const id of sessions) {
             const req = s.index('sessionId').getAll(id);
             req.onsuccess = () => {
-                records.set(id, mergeEntries(req.result as NotebookEntry[]));
+                records.set(id, mergeEntries((req.result as NotebookEntry[]).map(e => e.clockSessionId ? anchorEntry(e) : e)));
                 if (--pending === 0) write();
             };
         }
     });
 }
+
+// Persist this page's correction before the next reload; never re-date old pages.
+onAnchor(() => { if (typeof indexedDB !== 'undefined') void listAllEntries().catch(() => {}); });

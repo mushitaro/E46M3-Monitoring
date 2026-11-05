@@ -99,6 +99,9 @@ export type NotebookBody =
 export type NotebookKind = NotebookBody['kind'];
 
 export interface NotebookEntry {
+    /** Original device timestamp when this page first anchored its clock. */
+    sourceAt?: number;
+    clockSessionId?: string;
     id: string;
     sessionId: string;
     /** When it was written, ms since the epoch, on the writer's clock. */

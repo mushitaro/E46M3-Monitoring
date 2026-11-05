@@ -43,7 +43,7 @@ interface RunBody {
     runGz?: unknown;
 }
 
-const ENDS = new Set(['done', 'stopped', 'link-lost', 'limit']);
+const ENDS = new Set(['done', 'stopped', 'link-lost', 'limit', 'interrupted']);
 
 /** POST /api/runs — one finished run. */
 export const onRequestPost = async (ctx: SyncContext): Promise<Response> => {

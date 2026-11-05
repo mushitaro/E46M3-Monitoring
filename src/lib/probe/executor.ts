@@ -69,6 +69,8 @@ export interface ProbeDeps {
     /** Read each time: a kill list that arrives mid-run applies to the next frame. */
     ledger(): Ledger;
     now(): number;
+    /** Monotonic clock for run-relative durations, independent of UTC anchoring. */
+    elapsedNow?(): number;
     /** Hands the event loop back once per cycle (see useDs2Link's yieldToEventLoop). */
     pause(): Promise<void>;
     stopped(): boolean;
@@ -106,7 +108,7 @@ export interface ProbeRun {
     planV: number;
     startedAt: number;
     endedAt: number;
-    end: 'done' | 'stopped' | 'link-lost' | 'limit';
+    end: 'done' | 'stopped' | 'link-lost' | 'limit' | 'interrupted';
     samples: ProbeSample[];
     exchanges: ProbeExchange[];
     captures: Array<{ step: number; at: number; from: number; to: number }>;
@@ -167,7 +169,9 @@ function oneShotDue(s: ProbeStep, motion: Motion): boolean {
 
 export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeRun> {
     const startedAt = deps.now();
-    const secs = () => (deps.now() - startedAt) / 1000;
+    const elapsedNow = deps.elapsedNow ?? deps.now;
+    const began = elapsedNow();
+    const secs = () => (elapsedNow() - began) / 1000;
     const judges = plan.judge ?? [];
     const run: ProbeRun = {
         planId: plan.id,

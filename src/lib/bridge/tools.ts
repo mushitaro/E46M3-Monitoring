@@ -136,7 +136,13 @@ export const MONITORING_TOOLS = {
                 purpose: str('One line.'),
                 hypotheses: { type: 'array', items: { type: 'object' }, description: '{id, text, refutedBy}' },
                 criteria: str('The pass criteria, in words.'),
-                judge: { type: 'array', items: { type: 'object' }, description: '{hypothesis, when, expect, provenance}' },
+                judge: { type: 'array', maxItems: 24, items: { type: 'object', additionalProperties: false,
+                    required: ['id', 'channel', 'stat', 'op', 'value', 'provenance'],
+                    properties: { id: { type: 'string' }, hypothesis: { type: 'string' }, channel: { type: 'string' },
+                        stat: { enum: ['max', 'min', 'mean', 'spread', 'count'] }, op: { enum: ['<', '<=', '>', '>=', '==', '!='] },
+                        value: { type: 'number' }, provenance: { enum: ['sgbd', 'inpa', 'authored', 'observed'] },
+                        where: { type: 'array', items: { type: 'object' } }, unit: { type: 'string' }, note: { type: 'string' } }
+                }, description: '{id, hypothesis?, channel, stat, where?, op, value, provenance, unit?, note?}' },
                 steps: {
                     type: 'array',
                     items: { type: 'object' },

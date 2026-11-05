@@ -145,7 +145,7 @@ export abstract class BufferedByteTransport {
      * wait, not in the timing.
      */
     async readExact(length: number, timeoutMs: number): Promise<Uint8Array> {
-        const deadline = Date.now() + timeoutMs;
+        const deadline = now() + timeoutMs;
         while (this.buffer.length < length) {
             // Name the error class: a BreakError/FramingError (recoverable, the signature of a
             // disturbed K-line) and a NetworkError (device gone) otherwise read identically. Both
@@ -161,7 +161,7 @@ export abstract class BufferedByteTransport {
                     },
                 );
             }
-            const remaining = deadline - Date.now();
+            const remaining = deadline - now();
             if (remaining <= 0) {
                 throw new Ds2Error(
                     'READ_TIMEOUT',

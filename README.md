@@ -290,3 +290,21 @@ DSC のブレーキ油圧系は SGBD 自身が「ポンプは自動停止しな�
 
 `packages/ds2-core` のコメントは**仕様書です**。測定値・訂正・棄却した仮説・
 各ガードを生んだ事故が記録されています。剥がさないでください。
+
+
+## Recording recovery (WORKS)
+
+DATALOG and PROBE save incremental local checkpoints during recording (normally once per second,
+plus a final flush). On the next page open, committed samples are recovered on this device;
+an unfinished DATALOG is labelled `[INTERRUPTED]`, and an unfinished PROBE has `end: interrupted`.
+Only committed chunks can be recovered. Physical power-loss durability must be verified on the head unit.
+The local database upgrades from version 3 to 4 while preserving existing records. Browser Web Locks
+prevent recovery from consuming another open tab's active recording. A recovered DATALOG is a local
+saved record; it leaves the device through the existing session SYNC action. PROBE retains its existing
+mandate-based investigation sync. Checkpoint recovery does not grant new vehicle commands.
+
+SAVE returns the exact committed session id and sample count, including when recording is still active.
+Local save and cloud sync remain distinct. See `docs/recording-reliability-fixes-20261105.md` for validation.
+
+日本語：記録中は端末へ小分けに保存し、ページ終了後は保存済み部分を回収する。未完了のDATALOGは
+`[INTERRUPTED]`、PROBEは`interrupted`と明示する。未保存部分の回復や実機の電源断耐性を保証するものではない。

@@ -1,5 +1,5 @@
 /**
- * The one IndexedDB database the WORKS build keeps on the device, and its stores.
+ * The main IndexedDB database the WORKS build keeps on the device, and its stores.
  *
  * One `open`, so every store is created by the same upgrade: a second module opening the database
  * at an older version would fail with VersionError the moment this one had upgraded it.
@@ -11,11 +11,12 @@
  *   - `journal` — MEMORY's journal: every MANUAL read as it happened, indexed by time
  *     (journalStore.ts). Version 3.
  *   - `journalMeta` — which episodes were joined and which were kept as which session. Version 3.
+ *   - `recordingHeaders` / `recordingChunks` — incremental DATALOG/PROBE checkpoints. Version 4.
  *
  * WORKS-only, like everything under lib/sync (lib/features.ts): a production build never opens it.
  */
 export const DB = 'e46m3-monitoring';
-export const VERSION = 3;
+export const VERSION = 4;
 export const SESSIONS = 'sessions';
 export const NOTEBOOK = 'notebook';
 export const RUNS = 'runs';
@@ -27,6 +28,8 @@ export function openDb(): Promise<IDBDatabase> {
         const req = indexedDB.open(DB, VERSION);
         req.onupgradeneeded = () => {
             const db = req.result;
+            if (!db.objectStoreNames.contains('recordingHeaders')) db.createObjectStore('recordingHeaders', { keyPath: 'id' });
+            if (!db.objectStoreNames.contains('recordingChunks')) db.createObjectStore('recordingChunks', { keyPath: ['id', 'index'] });
             if (!db.objectStoreNames.contains(SESSIONS)) db.createObjectStore(SESSIONS, { keyPath: 'id' });
             if (!db.objectStoreNames.contains(NOTEBOOK)) {
                 db.createObjectStore(NOTEBOOK, { keyPath: 'id' }).createIndex('sessionId', 'sessionId');

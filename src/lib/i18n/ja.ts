@@ -643,6 +643,7 @@ export const ja: Localised = {
     sessions_unkept_info:
         '読み取りは操作のたびに端末に記録され、接続から切断までなどのまとまりで並びます。SAVE で残したものだけが SYNC で送られます。残さないまとまりは 7 日で端末から消えます。JOIN で一つ前のまとまりとつなげます。',
     sessions_emptyUnkept: '残していないまとまりはありません。',
+    sessions_undated: (days) => (days === null ? '日付が確かでない（まだ消しません）' : `日付が確かでない・あと ${Math.max(0, days)} 日`),
     sessions_expiresIn: (days) => (days <= 0 ? 'まもなく消えます' : `あと ${days} 日`),
     sessions_inAccount: 'アカウント',
     sessions_errors: 'エラー記録',

@@ -657,6 +657,7 @@ export const en: Localised = {
     sessions_unkept_info:
         'Every read is recorded on this device as it happens and listed in episodes, such as from connecting to disconnecting. Only what SAVE keeps is sent by SYNC. An episode not kept leaves this device after 7 days. JOIN joins one to the episode before it.',
     sessions_emptyUnkept: 'No episodes waiting to be kept.',
+    sessions_undated: (days) => (days === null ? 'Date uncertain (not deleted yet)' : `Date uncertain · ${Math.max(0, days)} days left`),
     sessions_expiresIn: (days) => (days <= 0 ? 'Going soon' : `${days} days left`),
     sessions_inAccount: 'In your account',
     sessions_errors: 'Error records',

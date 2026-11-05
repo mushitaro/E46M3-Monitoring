@@ -1206,6 +1206,7 @@ export function useDs2Link(options: {
                     },
                     link,
                     now: () => appNow(),
+                    elapsedNow: () => performance.now(),
                     pause: yieldToEventLoop,
                     stopped: () => !pollingRef.current || linkRef.current !== link,
                     onObserved: (o) => {

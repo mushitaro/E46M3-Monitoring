@@ -8,7 +8,7 @@ import { DataList, DataRow, Field, Pane, Pill, Section, TextButton, Well, humanN
 import { normCode } from '@/lib/faultCode';
 import { useLang } from '@/lib/i18n';
 import { text as resolveText, type EcuProfile } from '@/lib/ecuCatalog';
-import { expiresAt, type Episode } from '@/lib/journal';
+import { KEEP_MS, expiresAt, type Episode } from '@/lib/journal';
 import { needsSync, parseCsv, sessionLabel, summarise, type SavedSession } from '@/lib/sync/session';
 import { SAVE_TONE, SYNC_TONE } from '@/lib/sync/status';
 import { CountReadout } from '@/views/shared/CountReadout';
@@ -144,7 +144,9 @@ export const SessionsView = memo(function SessionsView({
                                         {t.sessions_counts(lastFaultCount(ep), ep.counts.samples, ep.counts.failures)} ·{' '}
                                         {/* From the later of the episode's end and the minute clock: the clock may still read the
                                             minute before an episode that has just ended. */}
-                                        {t.sessions_expiresIn(Math.ceil((expiresAt(ep) - Math.max(s.now, ep.end)) / 86_400_000))}
+                                        {ep.undated
+                                            ? t.sessions_undated(undatedDays(s.undatedExpiry(ep), s.now))
+                                            : t.sessions_expiresIn(Math.ceil((expiresAt(ep) - Math.max(s.now, ep.end)) / 86_400_000))}
                                     </p>
                                 }
                             />
@@ -202,6 +204,15 @@ export const SessionsView = memo(function SessionsView({
         </Pane>
     );
 });
+
+/**
+ * Days left for an undated episode: from when it was found, counted on the minute clock — which can
+ * still read 0 in the minute after the page opened, so never more than the full week.
+ */
+function undatedDays(expiry: number | null, now: number): number | null {
+    if (expiry === null) return null;
+    return Math.ceil((expiry - Math.max(now, expiry - KEEP_MS)) / 86_400_000);
+}
 
 /** The newest fault read in an episode, counted as a saved session counts it; null when none was read. */
 function lastFaultCount(ep: Episode): number | null {

@@ -84,3 +84,12 @@ desk-work/
 
 # End-to-end demo test reports (npm run e2e)
 /e2e-report/
+
+# Local review evidence (may include private fixture names).
+/review-*.txt
+/review-*.json
+/review-*.mjs
+/review-e2e-report/
+/review-e2e-final/
+/review-e2e-smoke/
+/review-e2e-clock/

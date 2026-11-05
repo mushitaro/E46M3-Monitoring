@@ -270,7 +270,14 @@ export function useMonitoringFacade(input: {
                     learnedValueReads: ep.counts.adaptations,
                     procedures: ep.counts.runs,
                     failures: ep.counts.failures,
-                    daysLeft: Math.max(0, Math.ceil((expiresAt(ep) - appNow()) / 86_400_000)),
+                    // Undated: timed by a clock that had not been set, and kept until the owner decides.
+                    daysLeft: ep.undated
+                        ? (() => {
+                              const at = sessions.undatedExpiry(ep);
+                              return at === null ? null : Math.max(0, Math.ceil((at - appNow()) / 86_400_000));
+                          })()
+                        : Math.max(0, Math.ceil((expiresAt(ep) - appNow()) / 86_400_000)),
+                    ...(ep.undated ? { undated: 'Its time was taken before the device clock was set: its seven days count from when the tab, with the right time, found it.' } : {}),
                 })),
             };
         },
@@ -343,16 +350,11 @@ export function useMonitoringFacade(input: {
         },
 
         save: async (episode) => {
-            if (episode !== undefined) {
-                if (!sessions.unkept.some((ep) => ep.start === episode)) {
-                    return { saved: false, reason: 'No episode waiting to be kept starts there. Read monitoring_sessions again.' };
-                }
-                await sessions.keep(episode);
-            } else {
-                await sessions.save();
+            if (episode !== undefined && !sessions.unkept.some((ep) => ep.start === episode)) {
+                return { saved: false, reason: 'No episode waiting to be kept starts there. Read monitoring_sessions again.' };
             }
-            const s = (await listLocal().catch(() => [])).sort((a, b) => b.updatedAt - a.updatedAt)[0];
-            return s ? { saved: true, label: s.label, ...summarise(s) } : { saved: false, reason: 'Nothing was written to this device.' };
+            const s = episode !== undefined ? await sessions.keep(episode) : await sessions.save();
+            return s ? { saved: true, id: s.id, label: s.label, ...summarise(s) } : { saved: false, reason: 'Nothing was written to this device.' };
         },
 
         connect: async () => {

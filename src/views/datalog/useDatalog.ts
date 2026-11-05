@@ -1,10 +1,14 @@
 'use client';
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { channelId, planBlockReads, type ChannelId } from '@tsunagi/ds2-mss54';
 import type { LiveSample, useDs2Link } from '@/hooks/useDs2Link';
 import { datalogCsv, download, stamp } from '@/lib/download';
 import { useLang } from '@/lib/i18n';
+
+import { RecordingWriter, recoverRecordings } from '@/lib/sync/recordingStore';
+import { appNow, anchoredTime } from '@/lib/clock';
+import { sessionLabel, type SavedSession } from '@/lib/sync/session';
 
 type Link = ReturnType<typeof useDs2Link>;
 
@@ -20,8 +24,15 @@ const FLUSH_INTERVAL_MS = 500;
  * trace, the hub keeps offering STOP (`lib/viewHub`), and a tab change must not
  * be the thing that ends a recording.
  */
-export function useDatalog(link: Link) {
+export function useDatalog(link: Link, persist = false, ecu = 'mss54') {
     const { t } = useLang();
+    const writer = useRef<RecordingWriter<LiveSample> | null>(null);
+    const runId = useRef<string | undefined>(undefined);
+    const startedAt = useRef(0);
+    const [persistenceError, setPersistenceError] = useState(false);
+    useEffect(() => {
+        if (persist) void recoverRecordings().catch(() => setPersistenceError(true));
+    }, [persist]);
     // Engine speed and coolant temperature, both from block 3 — one round trip.
     // Written as channel ids, not symbols: `n` alone does not say which block,
     // and block 35 carries an `n` too.
@@ -68,6 +79,7 @@ export function useDatalog(link: Link) {
         // got fast.
         const buf = samplesRef.current;
         buf.push(sample);
+        writer.current?.sample(sample);
         if (buf.length > MAX_SAMPLES) buf.splice(0, buf.length - MAX_SAMPLES);
         const now = performance.now();
         if (now - flushAtRef.current < FLUSH_INTERVAL_MS) return;
@@ -77,7 +89,21 @@ export function useDatalog(link: Link) {
     }, []);
 
     const start = useCallback(() => {
+        // Finish any preceding checkpoint before assigning this recording its own identity.
         samplesRef.current.length = 0;
+        setPersistenceError(false);
+        startedAt.current = appNow();
+        runId.current = undefined;
+        writer.current = null;
+        if (persist) {
+            const id = crypto.randomUUID(), at = appNow();
+            runId.current = id;
+            const data: SavedSession = { v: 1, id, label: sessionLabel(at, ecu, link.mode === 'practice'), createdAt: at, updatedAt: at, syncedAt: null,
+                appBuild: document.querySelector('meta[name="build-id"]')?.getAttribute('content') ?? null,
+                ecu, mock: link.mode === 'practice', ident: link.ident, faults: link.faults, failures: [],
+                datalog: { id, channels: [...selectedRef.current], samples: 0, csv: '' } };
+            writer.current = new RecordingWriter({ id, kind: 'datalog', data, count: 0, complete: false }, () => setPersistenceError(true));
+        }
         flushAtRef.current = 0;
         setSamples([]);
         // Stale readings from a previous run must not survive into this one's
@@ -88,8 +114,8 @@ export function useDatalog(link: Link) {
         setRecorded([...chosen]);
         // Both endings land in the same place: the stop button and a link
         // failure. A run that dies must not leave the view looking live.
-        link.startLog(chosen, onSample, () => setSamples(samplesRef.current.slice()));
-    }, [link, onSample]);
+        link.startLog(chosen, onSample, () => { setSamples(samplesRef.current.slice()); void writer.current?.flush(undefined, true).catch(() => setPersistenceError(true)); });
+    }, [link, onSample, persist, ecu]);
 
     const toggle = useCallback(
         (id: ChannelId, on: boolean) => setSelected((prev) => (on ? [...prev, id] : prev.filter((s) => s !== id))),
@@ -115,10 +141,12 @@ export function useDatalog(link: Link) {
      * The last run as a saved session keeps it: the same CSV the export writes, read from the refs
      * so it is the whole run and not the last flush. Null when nothing was recorded.
      */
-    const capture = useCallback((): { channels: string[]; samples: number; csv: string } | null => {
+    const capture = useCallback((): { id?: string; startedAt?: number; channels: string[]; samples: number; csv: string } | null => {
         const samples = samplesRef.current;
         if (samples.length === 0) return null;
         return {
+            id: runId.current,
+            startedAt: anchoredTime(startedAt.current),
             channels: [...recordedRef.current],
             samples: samples.length,
             csv: datalogCsv(recordedRef.current, samples),
@@ -149,7 +177,7 @@ export function useDatalog(link: Link) {
         exportCsv,
         capture,
         // The cost model, stated: one round trip per BLOCK, not per channel.
-        costNotice: t.channels_selected(selected.length, plan.blocks.length),
+        costNotice: persistenceError ? t.sessions_saveFailed : t.channels_selected(selected.length, plan.blocks.length),
     };
 }
 

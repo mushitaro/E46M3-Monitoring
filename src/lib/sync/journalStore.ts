@@ -17,44 +17,63 @@ export interface JournalMeta {
     joins: number[];
     /** Episode start → the saved session it was kept as. */
     kept: Record<string, string>;
+    /** Undated episode start → when a page with the right time first found it (lib/journal `expired`). */
+    found?: Record<string, number>;
 }
 
 const META_KEY = 'meta';
 
-export async function appendEvent(e: JournalEvent): Promise<void> {
+/** Appends an event; its key in the store (`seq`), or null when it could not be written. */
+export async function appendEvent(e: JournalEvent): Promise<number | null> {
     try {
-        await inTransaction<void>(JOURNAL, 'readwrite', (s, done) => {
-            s.add(e).onsuccess = () => done(undefined);
+        return await inTransaction<number | null>(JOURNAL, 'readwrite', (s, done) => {
+            const req = s.add(e);
+            req.onsuccess = () => done(typeof req.result === 'number' ? req.result : null);
         });
     } catch {
         // Quiet: the read it records has already happened, and saying so is the screen's job.
+        return null;
     }
 }
 
+/** Every event, with its key in the store (`seq`). */
 export function listEvents(): Promise<JournalEvent[]> {
     return inTransaction<JournalEvent[]>(JOURNAL, 'readonly', (s, done) => {
         const req = s.index('t').getAll();
-        // `seq` is the store's own key, not part of the event.
-        req.onsuccess = () =>
-            done(
-                (req.result as Array<JournalEvent & { seq?: number }>).map((e) => {
-                    const copy = { ...e };
-                    delete copy.seq;
-                    return copy as JournalEvent;
-                }),
-            );
+        req.onsuccess = () => done(req.result as JournalEvent[]);
     });
 }
 
-/** Deletes every event before `t`. */
-export function pruneBefore(t: number): Promise<void> {
+/** Deletes these events (by `seq`). */
+export function deleteEvents(seqs: readonly number[]): Promise<void> {
     return inTransaction<void>(JOURNAL, 'readwrite', (s, done) => {
-        s.index('t').openCursor(IDBKeyRange.upperBound(t, true)).onsuccess = function () {
-            const cur = this.result;
-            if (!cur) return done(undefined);
-            cur.delete();
-            cur.continue();
-        };
+        for (const seq of seqs) s.delete(seq);
+        done(undefined);
+    });
+}
+
+/**
+ * Puts the clock right on events this page timed before it heard the server's time: each moves by
+ * `step` and is no longer loose. Returns each one's old time and new.
+ */
+export function rebaseEvents(seqs: readonly number[], step: number): Promise<Map<number, number>> {
+    return inTransaction<Map<number, number>>(JOURNAL, 'readwrite', (s, done) => {
+        const moved = new Map<number, number>();
+        let pending = seqs.length;
+        if (pending === 0) return done(moved);
+        for (const seq of seqs) {
+            const req = s.get(seq);
+            req.onsuccess = () => {
+                const e = req.result as JournalEvent | undefined;
+                if (e) {
+                    const next = { ...e, t: e.t + step };
+                    delete next.loose;
+                    moved.set(e.t, next.t);
+                    s.put(next);
+                }
+                if (--pending === 0) done(moved);
+            };
+        }
     });
 }
 
@@ -63,7 +82,7 @@ export function getMeta(): Promise<JournalMeta> {
         const req = s.get(META_KEY);
         req.onsuccess = () => {
             const m = req.result as (JournalMeta & { key: string }) | undefined;
-            done({ joins: m?.joins ?? [], kept: m?.kept ?? {} });
+            done({ joins: m?.joins ?? [], kept: m?.kept ?? {}, found: m?.found ?? {} });
         };
     });
 }

@@ -296,7 +296,7 @@ export default function Home() {
 
     // Datalog state lives here so the right column can visualise a run while
     // the datalog tab is not the one on the left.
-    const datalog = useDatalog(link);
+    const datalog = useDatalog(link, sessionsEnabled, ecuId);
 
     // SAVE, SYNC and the account's copies. Reads the session the link and the datalog hold; asks
     // the network for nothing until the MEMORY tab is open, and never in production.

@@ -22,6 +22,7 @@ import { listRuns, type StoredRun } from '@/lib/probe/runStore';
 import { canSync } from './cloud';
 import { api, gzipB64 } from './owner-sync';
 import { appNow } from '../clock';
+import { anchorEntry } from '../notebook/clock';
 
 export interface InvestigationSync {
     /** Entries the desk wrote that reached this device. */
@@ -43,7 +44,7 @@ export const TAIL_MS = 7 * 24 * 60 * 60 * 1000;
  */
 export function delegatedRecords(entries: readonly NotebookEntry[], now: number): string[] {
     return [
-        ...new Set(entries.flatMap((e) => (e.body.kind === 'mandate' && e.at <= now && e.body.until + TAIL_MS > now ? [e.sessionId] : []))),
+        ...new Set(entries.map(anchorEntry).flatMap((e) => (e.body.kind === 'mandate' && e.at <= now && e.body.until + TAIL_MS > now ? [e.sessionId] : []))),
     ];
 }
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { bridgeHandlers, type TabFacade } from './bridge/handlers';
+import { appNow, learnServerTime, resetClock } from './clock';
 import { practiceCar, resetPracticeCar, type PracticeCar } from './practiceCar';
 
 /**
@@ -24,6 +25,13 @@ export interface E2EDoor {
         get(): PracticeCar;
         set(patch: Partial<PracticeCar>): PracticeCar;
         reset(): void;
+    };
+    /** The page's clock (lib/clock): as if it had not heard the server yet, then as if it just had. */
+    clock: {
+        forget(): void;
+        /** Hear the server say it is `iso`; returns the step taken. */
+        hear(iso: string): number;
+        now(): number;
     };
 }
 
@@ -51,6 +59,14 @@ export function useE2EDoor(facade: TabFacade): void {
                 get: () => structuredClone(practiceCar),
                 set: (patch) => structuredClone(Object.assign(practiceCar, patch)),
                 reset: resetPracticeCar,
+            },
+            clock: {
+                forget: resetClock,
+                hear: (iso) => {
+                    const now = appNow();
+                    return learnServerTime(new Date(iso).toUTCString(), now, now);
+                },
+                now: appNow,
             },
         };
         return () => {

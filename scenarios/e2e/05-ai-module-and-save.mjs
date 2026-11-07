@@ -20,6 +20,12 @@ const scenario = {
         { screen: { desc: '状態行のモジュールが SMG II', has: ['SMG II'] } },
         {
             ai: 'monitoring_faults',
+            args: { module: 'smg2' },
+            means: '切り替えた直後、まだ読んでいない SMG II に、前のモジュールの故障が残って見えない',
+            expect: (r) => (r?.faults?.read === false ? true : JSON.stringify(r).slice(0, 300)),
+        },
+        {
+            ai: 'monitoring_faults',
             args: { module: 'smg2', refresh: true },
             means: 'SMG II の故障をその SGBD のフレームで読む。解読器が無いので、バイトのまま',
             expect: (r) => (r && !JSON.stringify(r).includes('"error"') ? true : JSON.stringify(r)),

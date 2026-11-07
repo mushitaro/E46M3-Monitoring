@@ -10,6 +10,12 @@ const scenario = {
     steps: [
         ...connectPractice,
         {
+            ai: 'monitoring_faults',
+            args: { refresh: true },
+            means: 'まず DME の故障を読む（切り替えのあとに残らないことの前提）',
+            expect: (r) => (r && !JSON.stringify(r).includes('"error"') ? true : JSON.stringify(r)),
+        },
+        {
             ai: 'monitoring_module',
             args: { module: 'smg2' },
             means: '切断して、同じ口で SMG II につなぎ直す',
@@ -18,6 +24,12 @@ const scenario = {
         { wait: 2500 },
         { ai: 'monitoring_status', means: '画面のモジュールが SMG II', expect: (r) => (r?.module?.id === 'smg2' && r.link === 'connected' ? true : JSON.stringify(r).slice(0, 200)) },
         { screen: { desc: '状態行のモジュールが SMG II', has: ['SMG II'] } },
+        {
+            ai: 'monitoring_faults',
+            args: { module: 'smg2' },
+            means: '切り替え直後、SMG II はまだ読んでいない。DME の故障を SMG II のものとして返さない',
+            expect: (r) => ((r?.faults ?? r)?.read === false ? true : JSON.stringify(r).slice(0, 300)),
+        },
         {
             ai: 'monitoring_faults',
             args: { module: 'smg2', refresh: true },

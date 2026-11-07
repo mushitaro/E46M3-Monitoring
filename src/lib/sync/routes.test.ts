@@ -53,6 +53,21 @@ describe('/api/notebook', () => {
         expect(got.entries.find((e) => e.id === plan.id)!.at - m.at).toBe(1000);
     });
 
+    it('puts right entries a page timed in 2006 and a later page sent with the clock right', async () => {
+        const { d1 } = sqliteD1();
+        const OFF = Date.UTC(2006, 0, 1) - Date.now();
+        const old = (e: NotebookEntry): NotebookEntry =>
+            e.body.kind === 'mandate' ? { ...e, at: e.at + OFF, body: { ...e.body, until: e.body.until + OFF } } : { ...e, at: e.at + OFF };
+        // clientNow is right (the sending page heard the server): the batch is not shifted, the 2006 entries are.
+        const r = await notebook.onRequestPost(call(d1, ME, 'POST', '/api/notebook', { entries: [old(mandate), old(plan)], clientNow: Date.now() }));
+        expect(await r.json()).toEqual({ stored: 2, refused: [] });
+        const got = (await (await notebook.onRequestGet(call(d1, ME, 'GET', `/api/notebook?record=${REC}`))).json()) as { entries: NotebookEntry[] };
+        const m = got.entries.find((e) => e.id === mandate.id)!;
+        expect(m.at).toBeGreaterThan(Date.UTC(2026, 0, 1));
+        expect(m.body.kind === 'mandate' && m.body.until - m.at).toBe(7 * 86_400_000);
+        expect(got.entries.find((e) => e.id === plan.id)!.at - m.at).toBe(1000);
+    });
+
     it('moves nothing when the device clock is within a day, or was not sent', async () => {
         const { d1 } = sqliteD1();
         await notebook.onRequestPost(call(d1, ME, 'POST', '/api/notebook', { entries: [mandate], clientNow: Date.now() - 3_600_000 }));

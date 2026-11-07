@@ -18,7 +18,32 @@
 /** A difference under this is not corrected: the step would reorder more than it fixes. */
 const STEP_MS = 60_000;
 
+/**
+ * No time before this can be true: the WORKS build did not exist. A time earlier than it was made
+ * by a clock that had not been set (the head unit's 2006 boot, its 2007 GPS rollover).
+ */
+export const PLAUSIBLE_FROM = Date.UTC(2026, 0, 1);
+
 let offset = 0;
+let anchored = false;
+const anchorListeners = new Set<(step: number) => void>();
+
+/** The server's time has been learnt in this page: what `appNow()` says is the real time. */
+export function isAnchored(): boolean {
+    return anchored;
+}
+
+/**
+ * Called once, when the server's time is first learnt, with the step taken (0 when the device's
+ * clock was right). What was timed before then, on this page, is `step` off — and only then is it
+ * known by how much (lib/journal: the journal puts its events right).
+ */
+export function onAnchor(listener: (step: number) => void): () => void {
+    anchorListeners.add(listener);
+    return () => {
+        anchorListeners.delete(listener);
+    };
+}
 
 const mono = (): number =>
     typeof performance !== 'undefined' && typeof performance.now === 'function' && Number.isFinite(performance.timeOrigin)
@@ -39,13 +64,18 @@ export function learnServerTime(dateHeader: string | null, sentAt: number, recei
     const server = Date.parse(dateHeader);
     if (!Number.isFinite(server)) return 0;
     // The header has whole seconds: the server's moment is somewhere in [server, server + 1 s).
-    const step = server + 500 - (sentAt + receivedAt) / 2;
-    if (Math.abs(step) < STEP_MS) return 0;
+    const raw = server + 500 - (sentAt + receivedAt) / 2;
+    const step = Math.abs(raw) < STEP_MS ? 0 : Math.round(raw);
     offset += step;
+    if (!anchored) {
+        anchored = true;
+        anchorListeners.forEach((l) => l(step));
+    }
     return step;
 }
 
-/** For tests: forget what was learnt. */
+/** For tests (and the e2e door): back to a page that has not heard from the server. */
 export function resetClock(): void {
     offset = 0;
+    anchored = false;
 }

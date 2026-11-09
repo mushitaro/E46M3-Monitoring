@@ -731,6 +731,7 @@ export default function Home() {
                     catalog,
                     scan: link.scan,
                     progress: probe.progress,
+                    live: probe.live(),
                 }}
             />
         ) : null,

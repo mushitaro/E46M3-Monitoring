@@ -1,7 +1,7 @@
 'use client';
 
 import { ChevronDown, ChevronUp, ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
-import { formatErrorCode, type ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
+import { MSS54_CHANNELS, formatErrorCode, type ChannelId, type ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
 import type { RawFaultRead } from '@/hooks/useDs2Link';
 import type { ProbeProgress } from '@/hooks/useProbe';
 import { DataList, DataRow, Field, Pane, Pill, Provenance, Section, TextButton, humanName } from '@/components/ui';
@@ -9,8 +9,9 @@ import { text as resolveText, type EcuProfile } from '@/lib/ecuCatalog';
 import { normCode } from '@/lib/faultCode';
 import { useLang } from '@/lib/i18n';
 import { currentPlan } from '@/lib/notebook/rules';
-import type { Part, PartKind } from '@/lib/probe/board';
+import { BOARD_LIMITS, type Part, type PartKind } from '@/lib/probe/board';
 import { channelStats, compareRuns, type Comparison } from '@/lib/probe/compare';
+import { graphOf, type GraphTone } from '@/lib/probe/graph';
 import type { ProbeLive, StoredRun } from '@/lib/probe/runStore';
 import type { ScanRun } from '@/lib/probe/scan';
 import { formOf } from '@/lib/probe/sessions';
@@ -41,6 +42,7 @@ const KIND_LABEL: Record<PartKind, (t: T) => string> = {
     judges: (t) => t.part_judges,
     compare: (t) => t.part_compare,
     values: (t) => t.part_values,
+    graph: (t) => t.part_graph,
 };
 
 const num = (v: number | null | undefined) => (v === null || v === undefined ? '—' : String(Math.round(v * 100) / 100));
@@ -334,8 +336,7 @@ function PartBody({ part: p, s, data }: { part: Part; s: ProbeSessions; data: Bo
         case 'values': {
             // While a run is going and the part does not name another run, the values are the live
             // ones: the latest sample of each channel, with the spread so far. Otherwise the stored run.
-            const live = data.live && data.live.sessionId === s.current && (p.run === undefined || p.run === data.live.n) ? data.live : null;
-            const run = live ? null : runOf(s, p.run);
+            const { live, run } = sourceOf(s, p, data.live);
             if (!live && !run) return <Empty>{p.run ? t.board_noRunN(p.run) : t.board_noRun}</Empty>;
             const source = live ?? run!;
             const stats = [...channelStats(source)].filter(([k]) => !p.channels || p.channels.includes(k));
@@ -368,7 +369,101 @@ function PartBody({ part: p, s, data }: { part: Part; s: ProbeSessions; data: Bo
                 </div>
             );
         }
+
+        case 'graph':
+            return <GraphPart part={p} s={s} live={data.live} />;
     }
+}
+
+/** The run a values or graph part draws: the one in progress when it is this session's and the part names no other. */
+function sourceOf(s: ProbeSessions, p: Part, live: ProbeLive | null | undefined): { live: ProbeLive | null; run: StoredRun | null } {
+    const l = live && live.sessionId === s.current && (p.run === undefined || p.run === live.n) ? live : null;
+    return { live: l, run: l ? null : runOf(s, p.run) };
+}
+
+/** Off target, as the diverging scale says it: above red, below blue, within or unjudged the ink. */
+const TONE: Record<GraphTone, string> = { above: '#F87A7F', below: '#6CCBEF', within: '#F2F2F5', none: '#F2F2F5' };
+/** The data series registry (tsunagi-m-design §1.10): measured feedback violet and thick, the target blue and dashed. */
+const SERIES = { value: '#B9A6EE', target: '#0A9BDB' };
+
+function channelLabel(id: string, lang: string): { name: string; unit: string } {
+    const c = MSS54_CHANNELS.get(id as ChannelId);
+    return c ? { name: lang === 'en' ? c.field.name : c.field.ja, unit: c.field.unit } : { name: id, unit: '' };
+}
+
+/**
+ * A graph part: the value large, coloured by how far it is from its target (when the assistant gave
+ * a band), the window's value and target as two lines, and the context values small. `large` is the
+ * MULTI pane's, for a driver's glance; the board draws it compact.
+ */
+export function GraphPart({ part: p, s, live, large = false }: { part: Part; s: ProbeSessions; live: ProbeLive | null | undefined; large?: boolean }) {
+    const { t, lang } = useLang();
+    const [value, target] = p.channels ?? [];
+    const src = sourceOf(s, p, live);
+    if (!value) return null;
+    if (!src.live && !src.run) return <Empty>{p.run ? t.board_noRunN(p.run) : t.board_noRun}</Empty>;
+    const samples = src.live ? src.live.samples : src.run!.samples;
+    const g = graphOf(samples, { value, target, context: p.context, seconds: p.seconds ?? BOARD_LIMITS.seconds.default, band: p.band });
+    const v = channelLabel(value, lang);
+    if (!g.latest) return <Empty>{t.graph_noValue}</Empty>;
+    // A tenth of the range above and below, so the thick line is not cut at the edges; a flat line sits in the middle.
+    const pad = (g.max - g.min) * 0.1 || Math.max(1, Math.abs(g.max) * 0.05);
+    const lo = g.min - pad;
+    const span = g.max + pad - lo;
+    const x = (tt: number) => ((tt - g.from) / (g.to - g.from || 1)) * 100;
+    const y = (n: number) => 100 - ((n - lo) / span) * 100;
+    const line = (pick: (q: (typeof g.points)[number]) => number | null) =>
+        g.points.flatMap((q) => {
+            const n = pick(q);
+            return n === null ? [] : [`${x(q.t).toFixed(2)},${y(n).toFixed(2)}`];
+        }).join(' ');
+    const dev = g.latest.deviation;
+    return (
+        <div className={large ? 'flex h-full flex-col gap-2' : 'space-y-1'}>
+            <div className="flex items-baseline justify-between gap-3">
+                <span className="min-w-0 truncate text-xs text-slate-300">{v.name}</span>
+                <span className="shrink-0 font-mono text-[10px] text-slate-600">
+                    {src.live ? `${t.run_tag} ${src.live.n} · LIVE` : `${t.run_tag} ${src.run!.n}`}
+                </span>
+            </div>
+            <div className="flex items-baseline gap-3">
+                <span className={`font-mono tabular-nums ${large ? 'text-6xl' : 'text-3xl'}`} style={{ color: TONE[g.tone] }}>
+                    {num(g.latest.value)}
+                </span>
+                <span className="text-xs text-slate-500">{v.unit}</span>
+                {g.latest.target !== null ? (
+                    <span className="font-mono text-xs tabular-nums text-slate-400">
+                        {t.graph_target} {num(g.latest.target)}
+                        {dev !== null ? <span className="ml-2" style={{ color: TONE[g.tone] }}>Δ {dev > 0 ? '+' : ''}{num(dev)}</span> : null}
+                    </span>
+                ) : null}
+            </div>
+            <svg viewBox="0 0 100 100" preserveAspectRatio="none" className={large ? 'min-h-0 w-full flex-1' : 'h-24 w-full'}>
+                {target ? <polyline points={line((q) => q.target)} fill="none" stroke={SERIES.target} strokeWidth="1.5" strokeDasharray="4 3" vectorEffect="non-scaling-stroke" /> : null}
+                <polyline points={line((q) => q.value)} fill="none" stroke={SERIES.value} strokeWidth="3" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+            </svg>
+            <div className="flex items-baseline justify-between gap-3 font-mono text-[10px] text-slate-600">
+                <span>
+                    {num(g.min)} – {num(g.max)} · {p.seconds ?? BOARD_LIMITS.seconds.default} s
+                </span>
+                {p.band !== undefined ? <Provenance>{t.graph_band(num(p.band))}</Provenance> : null}
+            </div>
+            {g.context.length ? (
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                    {g.context.map((c) => {
+                        const l = channelLabel(c.channel, lang);
+                        return (
+                            <span key={c.channel} className="flex items-baseline gap-1 text-[11px] text-slate-500">
+                                {l.name}
+                                <span className="font-mono tabular-nums text-slate-300">{num(c.value)}</span>
+                                {l.unit}
+                            </span>
+                        );
+                    })}
+                </div>
+            ) : null}
+        </div>
+    );
 }
 
 /** The newest number each channel has had in a run in progress. */
@@ -381,12 +476,16 @@ export function latestValues(live: Pick<ProbeLive, 'samples'>): Map<string, numb
 }
 
 /**
- * PROBE's MULTI: the picture of the board. The first open compare part, as bars of how far each
- * value moved for its own spread; otherwise the assistant's latest words; otherwise nothing.
+ * PROBE's MULTI: the picture of the board. The first open graph part, large; otherwise the first
+ * open compare part, as bars of how far each value moved for its own spread; otherwise the
+ * assistant's latest words; otherwise nothing.
  */
-export function BoardViz({ s }: { s: ProbeSessions }) {
+export function BoardViz({ s, live }: { s: ProbeSessions; live?: ProbeLive | null }) {
     const { t } = useLang();
     const parts = (s.board?.parts ?? []).filter((p) => p.open);
+    // A graph is what a driver glances at: the first open one, large.
+    const graph = parts.find((p) => p.kind === 'graph');
+    if (graph) return <GraphPart part={graph} s={s} live={live} large />;
     const compare = parts.find((p) => p.kind === 'compare');
     const c = compare ? compareOf(s, compare) : null;
     if (c && c.channels.length > 0) {

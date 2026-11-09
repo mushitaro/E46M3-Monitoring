@@ -28,6 +28,21 @@ describe('placing parts', () => {
         expect(partProblem({ kind: 'values', channels: [] })).toMatch(/channels/);
         expect(partProblem({ kind: 'judges', run: 2 })).toBeNull();
     });
+
+    it('takes a graph of a value and its target, with context, a window and a band', () => {
+        const ok = { kind: 'graph', channels: ['35:evan1_ist', '35:evan1_soll'], context: ['3:n', '3:wdk1'], seconds: 30, band: 2 };
+        expect(partProblem(ok)).toBeNull();
+        expect(partProblem({ kind: 'graph', channels: ['3:toel'] })).toBeNull();
+        expect(partProblem({ kind: 'graph' })).toMatch(/the value, its target/);
+        expect(partProblem({ kind: 'graph', channels: ['a', 'b', 'c'] })).toMatch(/the value, its target/);
+        expect(partProblem({ ...ok, seconds: 5 })).toMatch(/10 to 300/);
+        expect(partProblem({ ...ok, band: -1 })).toMatch(/positive/);
+        expect(partProblem({ kind: 'graph', channels: ['3:toel'], band: 2 })).toMatch(/needs a target/);
+        expect(partProblem({ kind: 'values', seconds: 30 })).toMatch(/only a graph/);
+        const placed = place(emptyBoard('rec-00000001'), [{ ...ok, extra: 1 }], { now: 1 }).board.parts[0];
+        expect(placed).toMatchObject({ kind: 'graph', channels: ok.channels, context: ok.context, seconds: 30, band: 2 });
+        expect(placed).not.toHaveProperty('extra');
+    });
 });
 
 describe('the owner rearranging', () => {

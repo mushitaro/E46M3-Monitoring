@@ -760,7 +760,7 @@ export default function Home() {
         actuator: <ActuatorViz profile={catalog} arming={arming} />,
         memory: sessionsEnabled ? <SessionsViz count={sessions.local?.length ?? 0} /> : null,
         startup: probeEnabled ? <StartupViz s={probeSessions} /> : null,
-        probe: probeEnabled ? <BoardViz s={probeSessions} /> : null,
+        probe: probeEnabled ? <BoardViz s={probeSessions} live={probe.live()} /> : null,
     };
 
     return (

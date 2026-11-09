@@ -167,6 +167,7 @@ export const CHROME = {
     part_judges: 'JUDGEMENTS',
     part_compare: 'COMPARE',
     part_values: 'VALUES',
+    part_graph: 'GRAPH',
     item_added: 'ADDED',
     item_removed: 'REMOVED',
     series: 'SERIES',

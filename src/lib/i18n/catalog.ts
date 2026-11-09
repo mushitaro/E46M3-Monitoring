@@ -351,6 +351,10 @@ export interface Localised {
     board_noPlan: string;
     board_noCompare: string;
     board_aiWords: string;
+    /** graph: the band the colour changes at is the assistant's number, not a specification. */
+    graph_band: (band: string) => string;
+    graph_target: string;
+    graph_noValue: string;
     board_up: string;
     board_down: string;
     board_open: string;

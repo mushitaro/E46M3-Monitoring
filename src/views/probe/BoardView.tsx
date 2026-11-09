@@ -11,7 +11,7 @@ import { useLang } from '@/lib/i18n';
 import { currentPlan } from '@/lib/notebook/rules';
 import type { Part, PartKind } from '@/lib/probe/board';
 import { channelStats, compareRuns, type Comparison } from '@/lib/probe/compare';
-import type { StoredRun } from '@/lib/probe/runStore';
+import type { ProbeLive, StoredRun } from '@/lib/probe/runStore';
 import type { ScanRun } from '@/lib/probe/scan';
 import { formOf } from '@/lib/probe/sessions';
 import { standing } from '@/views/diagnosis/ScanView';
@@ -27,6 +27,8 @@ export interface BoardData {
     catalog: EcuProfile | null;
     scan: ScanRun | null;
     progress: ProbeProgress | null;
+    /** The run in progress (its samples grow in place; `progress` changing is what redraws). */
+    live?: ProbeLive | null;
 }
 
 type T = ReturnType<typeof useLang>['t'];
@@ -330,12 +332,21 @@ function PartBody({ part: p, s, data }: { part: Part; s: ProbeSessions; data: Bo
         }
 
         case 'values': {
-            const run = runOf(s, p.run);
-            if (!run) return <Empty>{p.run ? t.board_noRunN(p.run) : t.board_noRun}</Empty>;
-            const stats = [...channelStats(run)].filter(([k]) => !p.channels || p.channels.includes(k));
+            // While a run is going and the part does not name another run, the values are the live
+            // ones: the latest sample of each channel, with the spread so far. Otherwise the stored run.
+            const live = data.live && data.live.sessionId === s.current && (p.run === undefined || p.run === data.live.n) ? data.live : null;
+            const run = live ? null : runOf(s, p.run);
+            if (!live && !run) return <Empty>{p.run ? t.board_noRunN(p.run) : t.board_noRun}</Empty>;
+            const source = live ?? run!;
+            const stats = [...channelStats(source)].filter(([k]) => !p.channels || p.channels.includes(k));
+            const latest = live ? latestValues(live) : null;
             return (
                 <div className="space-y-1">
-                    <p className="font-mono text-[11px] text-slate-500">{runLabel({ record: run.sessionId, n: run.n, planV: run.planV, startedAt: run.startedAt })}</p>
+                    <p className="font-mono text-[11px] text-slate-500">
+                        {live
+                            ? `${t.run_tag} ${live.n} · v${live.planV} · LIVE`
+                            : runLabel({ record: run!.sessionId, n: run!.n, planV: run!.planV, startedAt: run!.startedAt })}
+                    </p>
                     <DataList>
                         {stats.map(([k, x]) => (
                             <DataRow
@@ -344,6 +355,7 @@ function PartBody({ part: p, s, data }: { part: Part; s: ProbeSessions; data: Bo
                                 ident={k}
                                 trailing={
                                     <span className="shrink-0 font-mono text-[11px] tabular-nums text-slate-300">
+                                        {latest ? <span className="mr-2 text-sm text-slate-100">{num(latest.get(k))}</span> : null}
                                         {num(x.mean)}
                                         <span className="ml-2 text-slate-500">
                                             {num(x.min)}–{num(x.max)} · n {x.n}
@@ -357,6 +369,15 @@ function PartBody({ part: p, s, data }: { part: Part; s: ProbeSessions; data: Bo
             );
         }
     }
+}
+
+/** The newest number each channel has had in a run in progress. */
+export function latestValues(live: Pick<ProbeLive, 'samples'>): Map<string, number> {
+    const out = new Map<string, number>();
+    for (const smp of live.samples) {
+        for (const [k, v] of Object.entries(smp.values)) if (typeof v === 'number' && Number.isFinite(v)) out.set(k, v);
+    }
+    return out;
 }
 
 /**

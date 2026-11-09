@@ -195,6 +195,31 @@ describe('what it refuses, and how it says so', () => {
         expect(run.samples).toHaveLength(0);
     });
 
+    it('does not take a heartbeat between its frames for a lost line (2026-11-09: runs ended link-lost on a live link)', async () => {
+        const h = await harness({ speed: () => 30 });
+        let samples = 0;
+        let beats = 0;
+        // The tab's tester-present lands in the gap after a cycle, as the 2 s timer did on the car:
+        // it holds the gate while the run's next frames try to go.
+        const deps: ProbeDeps = {
+            ...h.deps,
+            pause: async () => {
+                await new Promise((r) => setTimeout(r, 0));
+                if (beats < 5) {
+                    beats++;
+                    void h.deps.link.keepAlive();
+                }
+            },
+            onSample: () => samples++,
+            stopped: () => samples >= 8,
+        };
+        const run = await runProbe(plan([{ n: 1, do: 'speed', kind: 'sample', channels: ['19:v'] }]), deps);
+        expect(beats).toBe(5);
+        expect(run.end).toBe('stopped');
+        expect(run.samples).toHaveLength(8);
+        expect(run.exchanges.filter((e) => e.outcome === 'failed')).toHaveLength(0);
+    });
+
     it('reads DME RAM only in the master windows, as raw big-endian bytes', async () => {
         const h = await harness({ speed: () => 0 }, 3);
         const run = await runProbe(plan([{ n: 1, do: 'torque request', kind: 'ram', address: 'FFD1A2', bytes: 2, every: 1 }]), h.deps);

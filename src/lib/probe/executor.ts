@@ -50,6 +50,12 @@ const LINK_LOST_AFTER = 3;
 /** Cycles a one-shot step may fail on transport before it is given up as `failed`. */
 const ONE_SHOT_ATTEMPTS = 2;
 
+/**
+ * Another frame of this tab held the link's gate (a heartbeat, a read on the screen). The line said
+ * nothing, so it is not a failure of the line: the frame goes on a later cycle.
+ */
+const gateHeld = (e: unknown) => isDs2Error(e) && e.code === 'GATE_HELD';
+
 export interface ProbeModule {
     protocol: ModuleProtocol;
     /** A catalogue job of this module and its best telegram; null when the job is not in the catalogue. */
@@ -212,6 +218,7 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
         // ---- the live lane: DME blocks, then RAM reads that are due ---------------------------
         const values: Record<string, number | null> = {};
         let laneFailed = false;
+        let held = false;
         for (const block of [...blocks]) {
             const id = `mss54:LIVE_${block.selection}`;
             const gate = mayRunProtocolRead(id, 'dme-measured', deps.ledger(), 'unknown');
@@ -226,6 +233,10 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
                 deps.link.assertPositive(frame, `Live block ${block.selection}`);
                 for (const v of decodeLiveBlock(block, frame)) values[channelId(block.selection, v.symbol)] = v.value;
             } catch (e) {
+                if (gateHeld(e)) {
+                    held = true;
+                    break;
+                }
                 if (isDs2Error(e) && (e.code === 'NEGATIVE_RESPONSE' || e.code === 'PAYLOAD_TOO_SHORT')) {
                     // The DME said no, or answered short: a fact about this block, not the line.
                     blocks = blocks.filter((b) => b !== block);
@@ -239,7 +250,7 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
                 }
             }
         }
-        for (const s of laneFailed ? [] : ramSteps) {
+        for (const s of laneFailed || held ? [] : ramSteps) {
             if (cycle % s.every !== 0) continue;
             const id = `mss54:RAM_${s.address}`;
             const segment = ramSegment(s.address, s.bytes);
@@ -257,6 +268,10 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
                 deps.link.assertPositive(frame, `RAM ${s.address}`);
                 values[`ram:${s.address}`] = frame.payload.length >= s.bytes ? beUint(frame.payload.slice(0, s.bytes)) : null;
             } catch (e) {
+                if (gateHeld(e)) {
+                    held = true;
+                    break;
+                }
                 if (isDs2Error(e) && e.code === 'NEGATIVE_RESPONSE') {
                     stepOf(s.n).state = 'rejected';
                     stepOf(s.n).reason = e.message;
@@ -267,6 +282,10 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
                     break;
                 }
             }
+        }
+        if (held) {
+            await deps.pause();
+            continue;
         }
         if (laneFailed) {
             if (++lost >= LINK_LOST_AFTER) {
@@ -356,6 +375,7 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
                 for (const v of decodeAdaptationBlock(block, frame.payload)) run.adaptations![`adapt:${block.selection}:${v.symbol}`] = v.value;
                 if (motion === 'parked') deps.onObserved?.({ id: `mss54:${what}`, telegram: hex, response, at: deps.now() });
             } catch (e) {
+                if (gateHeld(e)) return;
                 const message = e instanceof Error ? e.message : String(e);
                 const refused = isDs2Error(e) && e.code === 'NEGATIVE_RESPONSE';
                 record({ step: s.n, module: 'mss54', what, request: hex, response: null, outcome: refused ? 'rejected' : 'failed', reason: message, motion });
@@ -428,6 +448,7 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
                 record({ step: s.n, module: s.module, what, request: f.hex, response, outcome: 'ok', motion });
                 if (motion === 'parked') deps.onObserved?.({ id: `${s.module}:${what}`, telegram: f.hex, response, at: deps.now() });
             } catch (e) {
+                if (gateHeld(e)) return;
                 if (isDs2Error(e) && e.code === 'NEGATIVE_RESPONSE') {
                     settle('rejected', e.message);
                     record({ step: s.n, module: s.module, what, request: f.hex, response: null, outcome: 'rejected', reason: e.message, motion });

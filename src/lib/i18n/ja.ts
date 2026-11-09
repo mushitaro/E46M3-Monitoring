@@ -246,6 +246,7 @@ export const ja: Localised = {
     probe_title:
         '任せた調査の計画を、この接続で走らせます。送るのは読取だけで、停車中に限る読取は、送る直前に車速を読んで確かめます。',
     probe_line: (v, settled, total, samples) => `PROBE v${v} · ${settled}/${total} · ${samples} サンプル`,
+    probe_resuming: (v, resumes) => `PROBE v${v} · 回線が切れた · 再開を待つ（${resumes + 1}/3）`,
     error_electrical_steps: [
         'エンジン停止時と稼働時で失敗率を比べてください。稼働時だけ不安定なら、非シールドケーブルへの点火系ノイズ（EMI）であってソフトウェアの問題ではありません。',
         'OBD コネクタを挿し直し、接続したまま軽く動かして接触を確認してください。',

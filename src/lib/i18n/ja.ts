@@ -744,6 +744,8 @@ export const ja: Localised = {
     graph_band: (band) => `±${band} · AI の決めた幅`,
     graph_target: '目標',
     graph_noValue: 'この回にはまだこの値の読み取りがありません。',
+    door_wifi: 'ナビの Wi-Fi 設定',
+    door_datetime: 'ナビの日付と時刻の設定',
     board_up: '上へ',
     board_down: '下へ',
     board_open: '開く',

@@ -355,6 +355,9 @@ export interface Localised {
     graph_band: (band: string) => string;
     graph_target: string;
     graph_noValue: string;
+    /** The head unit's settings, through the launcher (lib/launcherDoors). */
+    door_wifi: string;
+    door_datetime: string;
     board_up: string;
     board_down: string;
     board_open: string;

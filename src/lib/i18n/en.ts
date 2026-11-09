@@ -758,6 +758,8 @@ export const en: Localised = {
     graph_band: (band) => `±${band} · the assistant’s band`,
     graph_target: 'target',
     graph_noValue: 'No reading of this value in the run yet.',
+    door_wifi: 'Head unit Wi-Fi settings',
+    door_datetime: 'Head unit date and time settings',
     board_up: 'Up',
     board_down: 'Down',
     board_open: 'Open',

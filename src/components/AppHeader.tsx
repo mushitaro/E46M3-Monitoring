@@ -1,6 +1,6 @@
 'use client';
 
-import { Github, LogIn, Medal, RefreshCw, Shield, type LucideIcon } from 'lucide-react';
+import { CalendarClock, Github, LogIn, Medal, RefreshCw, Shield, Wifi, type LucideIcon } from 'lucide-react';
 import { LABEL, Pill, TextButton, WORDMARK } from './ui';
 import { AiSwitch } from './AiSwitch';
 import type { AssistantBridge } from '@/hooks/useAssistantBridge';
@@ -10,6 +10,7 @@ import { APP_VERSION } from '@/lib/version';
 import { useBuildLabel, useBuildVariant } from '@/lib/build-variant';
 import { useLang } from '@/lib/i18n';
 import { PRIVACY_PREVIEW, REPOSITORY } from '@/lib/links';
+import { hasSettingsDoor, settingsDoorUrl } from '@/lib/launcherDoors';
 import type { SignIn } from '@/lib/signInLapse';
 import type { LinkState, LinkMode } from '@/hooks/useDs2Link';
 
@@ -171,7 +172,17 @@ export function AppHeader({
                 this app rests on asks that attribution stay intact, and a PWA user
                 never opens the README. No GUIDE — this app has no destination for
                 one, and the family keeps no empty slot. */}
-            <div className="ml-auto hidden items-center gap-4 min-[900px]:flex">
+            {/* The head unit's Wi-Fi and clock (owner, 2026-11-09), at every width — the head unit
+                is 683px, below the family's group — and only when the launcher that opened this
+                page can open them (lib/launcherDoors). Wi-Fi for the tether, the clock because a
+                head unit that woke in 2006 cannot sign in (lib/signInLapse). */}
+            {hasSettingsDoor() && (
+                <div className="ml-auto flex items-center gap-4 pl-4 min-[900px]:mr-4">
+                    <HeaderIcon Icon={Wifi} title={t.door_wifi} href={settingsDoorUrl('wifi')} external />
+                    <HeaderIcon Icon={CalendarClock} title={t.door_datetime} href={settingsDoorUrl('datetime')} external />
+                </div>
+            )}
+            <div className={`${hasSettingsDoor() ? '' : 'ml-auto'} hidden items-center gap-4 min-[900px]:flex`}>
                 {preview && <HeaderIcon Icon={Shield} title={t.privacy} href={PRIVACY_PREVIEW[lang]} />}
                 <HeaderIcon Icon={Github} title={t.github} href={REPOSITORY} />
                 <HeaderIcon Icon={Medal} title={t.credits_open} onClick={onCredits} />
@@ -253,12 +264,15 @@ function HeaderIcon({
     href,
     onClick,
     running = false,
+    external = false,
 }: {
     Icon: LucideIcon;
     title: string;
     href?: string;
     onClick?: () => void;
     running?: boolean;
+    /** An `intent:` link another app answers: in this tab, which Chrome hands over and never leaves. */
+    external?: boolean;
 }) {
     const className = `-my-3 py-3 transition-colors ${running ? 'cursor-default text-blue-400' : 'text-slate-500 hover:text-slate-300'}`;
     const glyph = <Icon aria-hidden="true" className={`size-5 ${running ? 'animate-spin' : ''}`} />;
@@ -266,7 +280,7 @@ function HeaderIcon({
     // `_blank` is not decoration: a same-tab navigation would drop the cable
     // link and whatever has not been saved (lib/links).
     return href ? (
-        <a href={href} target="_blank" rel="noopener noreferrer" title={title} aria-label={title} className={className}>
+        <a href={href} target={external ? undefined : '_blank'} rel="noopener noreferrer" title={title} aria-label={title} className={className}>
             {glyph}
         </a>
     ) : (

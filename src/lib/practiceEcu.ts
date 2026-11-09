@@ -182,6 +182,11 @@ function practiceModule(address: number): SimulatedEcuOptions {
             if (request.controlOrStatus === Ds2Control.READ_ERROR_MEMORY) {
                 return { payload: new Uint8Array(practiceCar.moduleFaults[address] ?? CLEAN) };
             }
+            // The clear empties this module's memory, as a car's does.
+            if (request.controlOrStatus === Ds2Control.CLEAR_ERROR_MEMORY) {
+                delete practiceCar.moduleFaults[address];
+                return { payload: new Uint8Array(0) };
+            }
             return dme.respond!(request);
         },
     };
@@ -204,6 +209,11 @@ export function practiceEcu(): SimulatedEcuOptions {
                     // and inventing a decoded ZB/HW/SW here would teach the UI a
                     // shape the car may not use.
                     return { payload: new Uint8Array([0x77, 0x83, 0x73, 0x40, 0x04, 0x00]) };
+
+                case Ds2Control.CLEAR_ERROR_MEMORY:
+                    // The clear empties the DME's memory; the next read finds none.
+                    practiceCar.dmeFaults = [];
+                    return { payload: new Uint8Array(0) };
 
                 case Ds2Control.READ_ERROR_MEMORY:
                     return arg === 0x00

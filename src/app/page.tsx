@@ -47,7 +47,7 @@ import { loadJobText, type JobTextTable } from '@/lib/jobText';
 import { PRIVACY_PREVIEW } from '@/lib/links';
 import { loadDscHydraulics, type DscHydraulics } from '@/lib/dscHydraulics';
 import { enabledTabs, featureEnabled } from '@/lib/features';
-import { EMPTY_LEDGER, applyKillList, fetchKillList, grantMovingOk, recordParkedObservation, type KillList, type Ledger } from '@/lib/ledger';
+import { EMPTY_LEDGER, applyKillList, fetchKillList, grantMovingOk, recordClear, recordParkedObservation, type KillList, type Ledger } from '@/lib/ledger';
 import { mayRun, type RunVerdict } from '@/lib/runGate';
 import { loadSmg2Workflows, type Smg2Workflows } from '@/lib/smg2Workflows';
 import { MODE_HOME, TAB_MODE, TAB_ORDER, type Mode, type Tab } from '@/lib/tabs';
@@ -1136,7 +1136,28 @@ export default function Home() {
                     onCancel={() => setClearOpen(false)}
                     onConfirm={() => {
                         setClearOpen(false);
-                        void link.clearFaults();
+                        // The clear, then the fault memory read again, and both into the ledger as
+                        // evidence (lib/ledger `recordClear`; operator, 2026-11-09).
+                        const before = link.faults?.length ?? null;
+                        void (async () => {
+                            const cleared = await link.clearFaults();
+                            if (!cleared) return;
+                            const again = await link.readFaults();
+                            // The ledger is about the car: PRACTICE's clear is not evidence of anything.
+                            if (link.mode !== 'vehicle') return;
+                            const after = again && target.decoder === 'mss54' ? again.length : null;
+                            setObserved((l) =>
+                                recordClear(l, `${cleared.moduleId}:FS_LOESCHEN`, {
+                                    telegram: cleared.telegram,
+                                    response: cleared.response,
+                                    at: new Date().toISOString(),
+                                    before,
+                                    after,
+                                    reRead: again !== null,
+                                    ecuIdent: cleared.ecuIdent,
+                                }),
+                            );
+                        })();
                     }}
                 />
             )}

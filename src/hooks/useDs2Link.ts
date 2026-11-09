@@ -970,7 +970,9 @@ export function useDs2Link(options: {
                 // is read right before, as for every parked-only read: only 0 km/h lets it go.
                 await preflight(link, 'Clear fault memory', 'parked');
                 append('tx', `Clear fault memory ${target.clear.hex} (${target.clear.source})`);
-                const frame = await to.exchangeWithRetry(control, payload);
+                // Recorded like a read (operator, 2026-11-09): the frame sent and what came back, so
+                // the owner's record shows the clear and the read after it side by side.
+                const frame = await readFrame(to, target.moduleId, 'FS_LOESCHEN', control, payload);
                 link.assertPositive(frame, 'Clear fault memory');
                 append('info', 'fault memory cleared — freeze frames are gone with it');
                 // The displayed faults are now a claim about a memory that no
@@ -978,9 +980,9 @@ export function useDs2Link(options: {
                 setFaults(null);
                 setQuickTest(null);
                 setRawFaults(null);
-                return true;
+                return { moduleId: target.moduleId, telegram: toHex(buildDs2Frame(to.address, control, payload)), response: toHex(frame.payload), ecuIdent: identRef.current?.hex };
             }),
-        [append, preflight, run, session],
+        [append, preflight, readFrame, run, session],
     );
 
     const startLog = useCallback(

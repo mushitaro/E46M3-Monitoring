@@ -3,9 +3,10 @@ import { connectPractice, tool } from './_lib.mjs';
 /** What the assistant must not be able to do, and what the app refuses while the car moves. */
 const scenario = {
     id: 'S06',
-    title: '安全：故障の読み取りは走行中も、消去と作動テストは AI からできない',
+    title: '安全：故障の読み取りは走行中も、消去は停車中に画面で人だけ、作動テストは AI からできない',
     story:
         '走行中（40 km/h）に AI が故障を読み直すと、読める（運営者、2026-11-04）。全モジュールの読み取りも走行中に最後まで行く。' +
+        '走行中に人が画面で消去を押しても、送る直前に車速を測って止まる。' +
         '故障の消去や作動テストの道具は AI に無く、手順は画面に置くだけで実行されない。',
     steps: [
         ...connectPractice,
@@ -28,6 +29,21 @@ const scenario = {
                         await page.waitForTimeout(1000);
                     }
                     return 'scan did not end';
+                },
+            },
+        },
+        // The clear is a person's, on the screen, stopped. Since reads go while moving, the button can
+        // show on the road; the speed is measured right before, and a moving car stops it there.
+        { ui: 'click', text: 'Clear faults', means: '走行中に、人が画面の消去を押す' },
+        { ui: 'click', text: '消去する', settle: 1500, means: '確認で「消去する」' },
+        {
+            check: {
+                desc: '走行中の消去は送られない（停車を測れない）、故障はそのまま',
+                run: async (page) => {
+                    const s = await tool(page, 'monitoring_status');
+                    const f = await tool(page, 'monitoring_faults', { module: 'mss54' });
+                    const kept = JSON.stringify(f).includes('0x2A');
+                    return /stationary/.test(s.error ?? '') && kept ? true : JSON.stringify({ error: s.error, faults: f }).slice(0, 400);
                 },
             },
         },

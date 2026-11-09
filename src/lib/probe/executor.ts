@@ -231,6 +231,9 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
                     blocks = blocks.filter((b) => b !== block);
                     record({ step: 0, module: 'mss54', what: `LIVE_${block.selection}`, request: toHex(buildDs2Frame(Ds2Address.DME, req.control, req.payload)), response: null, outcome: 'rejected', reason: e.message, motion: 'unknown' });
                 } else {
+                    // A transport failure: what the line said is kept, so a run that ends link-lost
+                    // can be read for why (timeout, framing, a closed port).
+                    record({ step: 0, module: 'mss54', what: `LIVE_${block.selection}`, request: toHex(buildDs2Frame(Ds2Address.DME, req.control, req.payload)), response: null, outcome: 'failed', reason: e instanceof Error ? e.message : String(e), motion: 'unknown' });
                     laneFailed = true;
                     break;
                 }
@@ -259,6 +262,7 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
                     stepOf(s.n).reason = e.message;
                     record({ step: s.n, module: 'mss54', what: `RAM_${s.address}`, request: null, response: null, outcome: 'rejected', reason: e.message, motion: 'unknown' });
                 } else {
+                    record({ step: s.n, module: 'mss54', what: `RAM_${s.address}`, request: null, response: null, outcome: 'failed', reason: e instanceof Error ? e.message : String(e), motion: 'unknown' });
                     laneFailed = true;
                     break;
                 }

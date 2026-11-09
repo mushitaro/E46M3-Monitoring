@@ -190,6 +190,8 @@ describe('what it refuses, and how it says so', () => {
         const h = await harness({ speed: () => 0, dme: 'dead' }, 50);
         const run = await runProbe(plan([{ n: 1, do: 'speed', kind: 'sample', channels: ['19:v'] }]), h.deps);
         expect(run.end).toBe('link-lost');
+        expect(run.exchanges.filter((e) => e.outcome === 'failed')).toHaveLength(3);
+        expect(run.exchanges.filter((e) => e.outcome === 'failed').every((e) => typeof e.reason === 'string' && e.reason.length > 0)).toBe(true);
         expect(run.samples).toHaveLength(0);
     });
 

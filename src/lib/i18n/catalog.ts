@@ -217,6 +217,8 @@ export interface Localised {
     probe_title: string;
     /** The hub's notice while a plan runs: version, one-shot steps settled of all, samples kept. */
     probe_line: (v: number, settled: number, total: number, samples: number) => string;
+    /** The line dropped and PROBE begins the plan again (lib useProbe RESUME_AFTER_MS). */
+    probe_resuming: (v: number, resumes: number) => string;
     /** MEMORY and SESSION SYNC — the preview's saved sessions and SYNC (lib/features.ts `sessionSync`). */
     sessions_current: string;
     /** The explanation behind this connection's ⓘ: what SAVE and SYNC each do. */

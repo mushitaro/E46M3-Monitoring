@@ -118,10 +118,11 @@ export interface ViewHubState {
 export function viewHubFor(s: ViewHubState): HubConfig | null {
     // The log is running. Which tab is up does not change what the one primary
     // control should be — see the note at the top.
+    // A PROBE run is the same kind of thing to the link, and is stopped the same way; what it reports
+    // is its own. It holds the hub between its runs too, while it waits to begin the plan again
+    // after the line dropped (useProbe): STOP there ends the wait.
+    if (s.probe) return { label: s.t.hub_stop, Icon: s.icons.stop, tone: 'armed', onClick: s.probe.stop, notice: s.probe.line };
     if (s.linkState === 'logging') {
-        // A PROBE run is the same kind of thing to the link, and is stopped the same way; what it
-        // reports is its own.
-        if (s.probe) return { label: s.t.hub_stop, Icon: s.icons.stop, tone: 'armed', onClick: s.probe.stop, notice: s.probe.line };
         return {
             label: s.t.hub_stop,
             Icon: s.icons.stop,

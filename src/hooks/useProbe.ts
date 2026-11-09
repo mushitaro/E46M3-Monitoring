@@ -18,7 +18,18 @@ export interface ProbeProgress {
     settled: number;
     total: number;
     samples: number;
+    /** Times this start has begun the plan again after the line dropped. */
+    resumes: number;
+    /** Waiting to begin it again. */
+    resuming: boolean;
 }
+
+/**
+ * After a run ends `link-lost`, the same plan (the version this start took) begins again by itself
+ * after each of these waits, then gives up. The owner is driving and does not press PROBE again;
+ * each attempt is its own run in the record, so the gap between them stays visible.
+ */
+const RESUME_AFTER_MS = [3_000, 10_000, 30_000];
 
 /**
  * PROBE on this tab: the plan the CO-WORK record on the device says may run, started by a person
@@ -42,10 +53,15 @@ export function useProbe(input: {
     const [progress, setProgress] = useState<ProbeProgress | null>(null);
     const [lastRun, setLastRun] = useState<StoredRun | null>(null);
     const liveRef = useRef<ProbeLive | null>(null);
+    /** Set while a start holds a plan, its runs and the waits between them. */
+    const holdingRef = useRef(false);
+    const stopRef = useRef(false);
     const ledgerRef = useRef(input.ledger);
+    const linkRef = useRef(link);
     useEffect(() => {
         ledgerRef.current = input.ledger;
-    }, [input.ledger]);
+        linkRef.current = link;
+    });
 
     const read = useCallback(
         (): Promise<NotebookEntry[]> => (enabled ? listAllEntries().catch(() => []) : Promise.resolve([])),
@@ -83,55 +99,85 @@ export function useProbe(input: {
     const start = useCallback(
         async (record?: string): Promise<{ started: true; record: string; v: number; n: number } | { started: false; reason: RunnablePlanRefusal | 'off' | 'running' }> => {
             if (!enabled || !index) return { started: false, reason: 'off' };
-            if (liveRef.current) return { started: false, reason: 'running' };
+            if (holdingRef.current) return { started: false, reason: 'running' };
             // Taken now, from the record as it stands: the plan this run holds until it ends.
             const r = runnablePlan(await read(), appNow(), record);
             if (!r.ok) return { started: false, reason: r.reason };
             const { body, id } = r.entry;
             const modules = await loadProbeModules(body.steps, index);
-            const n = (await listRuns(r.sessionId).catch(() => [])).length + 1;
-            const live: ProbeLive = { sessionId: r.sessionId, n, startedAt: appNow(), planV: body.v, samples: [] };
-            liveRef.current = live;
+            let n = (await listRuns(r.sessionId).catch(() => [])).length + 1;
+            const first = n;
+            holdingRef.current = true;
+            stopRef.current = false;
             const total = body.steps.filter((s) => s.kind === 'faults' || s.kind === 'read' || s.kind === 'adapt').length;
-            const settled = new Set<number>();
-            let samples = 0;
-            setProgress({ v: body.v, settled: 0, total, samples: 0 });
+            const waited = async (ms: number) => {
+                for (let left = ms; left > 0; left -= 250) {
+                    if (stopRef.current) return false;
+                    await new Promise((res) => setTimeout(res, Math.min(250, left)));
+                }
+                return !stopRef.current;
+            };
             void (async () => {
                 try {
-                    const run = await link.startProbe(
-                        { id, v: body.v, steps: body.steps, judge: body.judge },
-                        {
-                            module: (m) => modules.get(m) ?? null,
-                            ledger: () => ledgerRef.current,
-                            onSample: (s) => {
-                                samples++;
-                                live.samples.push(s);
-                                setProgress({ v: body.v, settled: settled.size, total, samples });
+                    for (let resumes = 0; ; resumes++) {
+                        const live: ProbeLive = { sessionId: r.sessionId, n, startedAt: appNow(), planV: body.v, samples: [] };
+                        liveRef.current = live;
+                        const settled = new Set<number>();
+                        let samples = 0;
+                        const show = () => setProgress({ v: body.v, settled: settled.size, total, samples, resumes, resuming: false });
+                        show();
+                        const run = await linkRef.current.startProbe(
+                            { id, v: body.v, steps: body.steps, judge: body.judge },
+                            {
+                                module: (m) => modules.get(m) ?? null,
+                                ledger: () => ledgerRef.current,
+                                onSample: (s) => {
+                                    samples++;
+                                    live.samples.push(s);
+                                    show();
+                                },
+                                onStep: (k, state) => {
+                                    if (state !== 'pending') settled.add(k);
+                                    show();
+                                },
                             },
-                            onStep: (n, state) => {
-                                if (state !== 'pending') settled.add(n);
-                                setProgress({ v: body.v, settled: settled.size, total, samples });
-                            },
-                        },
-                    );
-                    if (run) {
-                        const stored: StoredRun = { ...run, id: `${r.sessionId}-run-${n}-${run.startedAt}`, sessionId: r.sessionId, n, mock: link.mode === 'practice' };
+                        );
+                        liveRef.current = null;
+                        if (!run) break;
+                        const stored: StoredRun = { ...run, id: `${r.sessionId}-run-${n}-${run.startedAt}`, sessionId: r.sessionId, n, mock: linkRef.current.mode === 'practice' };
                         setLastRun(stored);
                         // Kept for the desk and the next conversation; a failed write loses the copy, not the run.
                         await putRun(stored).catch(() => {});
                         probeChanged();
+                        if (run.end !== 'link-lost' || stopRef.current || resumes >= RESUME_AFTER_MS.length) break;
+                        setProgress({ v: body.v, settled: settled.size, total, samples, resumes, resuming: true });
+                        if (!(await waited(RESUME_AFTER_MS[resumes]))) break;
+                        // A cable that closed is opened again — only the one this device already allowed
+                        // (the screen chose it; useDs2Link `reconnectPermitted`).
+                        if (linkRef.current.state === 'disconnected') {
+                            await linkRef.current.reconnectPermitted();
+                            if (!(await waited(500))) break;
+                        }
+                        n++;
                     }
                 } finally {
                     liveRef.current = null;
+                    holdingRef.current = false;
                     setProgress(null);
                 }
             })();
-            return { started: true, record: r.sessionId, v: body.v, n };
+            return { started: true, record: r.sessionId, v: body.v, n: first };
         },
-        [enabled, index, link, read],
+        [enabled, index, read],
     );
 
     const live = useCallback(() => liveRef.current, []);
+
+    /** Ends the run, and the waits to begin it again. */
+    const stop = useCallback(() => {
+        stopRef.current = true;
+        linkRef.current.stopLog();
+    }, []);
 
     return {
         /** A plan may run: the record's current plan, its mandate standing. */
@@ -142,7 +188,7 @@ export function useProbe(input: {
         /** The run in progress, read at the moment of asking (the bridge's moment and clock). */
         live,
         start,
-        stop: link.stopLog,
+        stop,
         refresh,
     };
 }

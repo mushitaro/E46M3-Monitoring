@@ -22,7 +22,7 @@ import {
     blockBySelection,
     type LiveValueBlock,
 } from '@tsunagi/ds2-mss54';
-import type { SimulatedEcuOptions } from '@tsunagi/ds2-core';
+import type { ExchangeBehavior, SimulatedEcuOptions } from '@tsunagi/ds2-core';
 import { CLEAN, practiceCar } from './practiceCar';
 
 const START = Date.now();
@@ -152,7 +152,24 @@ const SIM_TESTPRG_POLLS = 6;
  */
 export function practiceBus(addresses: readonly number[]): SimulatedEcuOptions[] {
     const unique = [...new Set([0x12, ...addresses])];
-    return unique.map((address) => (address === 0x12 ? practiceEcu() : practiceModule(address)));
+    return unique.map((address) => ({ ...(address === 0x12 ? practiceEcu() : practiceModule(address)), script: lineScript() }));
+}
+
+/**
+ * The practice car's line, as the simulated module's script: while `practiceCar.lineDown` it is an
+ * endless run of `dead` (no echo, no answer), otherwise empty, so the module answers as it always
+ * does. A script is read live by the simulator, one entry per exchange, which is what lets a
+ * scenario pull the cable in the middle of a run and plug it back.
+ */
+function lineScript(): ExchangeBehavior[] {
+    const dead: ExchangeBehavior = { kind: 'dead' };
+    return new Proxy([] as ExchangeBehavior[], {
+        get(target, key, receiver) {
+            if (key === 'length') return practiceCar.lineDown ? Number.MAX_SAFE_INTEGER : 0;
+            if (typeof key === 'string' && /^\d+$/.test(key)) return dead;
+            return Reflect.get(target, key, receiver);
+        },
+    });
 }
 
 /** A module other than the DME: its fault memory from the practice car, the rest the DME's responder. */

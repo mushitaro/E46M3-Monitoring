@@ -27,6 +27,8 @@ export interface PracticeCar {
     fitted: number[];
     /** Raw fault-read answers by address, for modules the app does not decode. Absent = clean. */
     moduleFaults: Record<number, number[]>;
+    /** The line has gone quiet: no module answers, not even the echo (a cable pulled, a K-line dropped). */
+    lineDown: boolean;
 }
 
 /** Late E46 M3, SMG II, navigation, RDC: the modules such a car carries (index addresses). */
@@ -61,6 +63,7 @@ function defaults(): PracticeCar {
         ],
         fitted: [...PRACTICE_FITTED],
         moduleFaults: {},
+        lineDown: false,
     };
 }
 

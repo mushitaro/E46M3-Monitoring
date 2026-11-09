@@ -84,6 +84,15 @@ describe('a running log outranks the tab', () => {
         expect(cfg?.notice).toBe('PROBE v2 · 1/3 · 40 samples');
     });
 
+    it('keeps STOP while PROBE waits between runs to begin again after the line dropped', () => {
+        const stop = vi.fn();
+        const cfg = viewHubFor(state({ tab: 'probe', linkState: 'connected', probe: { line: 'PROBE v1 · line dropped · resuming (1/3)', stop } }));
+        cfg?.onClick?.();
+        expect(stop).toHaveBeenCalledOnce();
+        expect(cfg?.label).toBe('STOP');
+        expect(cfg?.notice).toBe('PROBE v1 · line dropped · resuming (1/3)');
+    });
+
     it('is pressable — a stop that the busy tier could disable is not a stop', () => {
         const cfg = viewHubFor(state({ tab: 'datalog', linkState: 'logging' }));
         expect(cfg?.disabled).toBeFalsy();

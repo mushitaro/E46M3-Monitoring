@@ -79,7 +79,9 @@ export function useHub(input: {
             probeRun: input.probeRun,
             probe: input.probe
                 ? {
-                      line: t.probe_line(input.probe.progress.v, input.probe.progress.settled, input.probe.progress.total, input.probe.progress.samples),
+                      line: input.probe.progress.resuming
+                          ? t.probe_resuming(input.probe.progress.v, input.probe.progress.resumes)
+                          : t.probe_line(input.probe.progress.v, input.probe.progress.settled, input.probe.progress.total, input.probe.progress.samples),
                       stop: input.probe.stop,
                   }
                 : undefined,

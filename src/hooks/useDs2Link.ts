@@ -378,6 +378,8 @@ export function useDs2Link(options: {
     const logRef = useRef<CommsLogLine[]>([]);
     const pollingRef = useRef(false);
     const finishedRef = useRef(true);
+    /** An operation (`run`) is between its frames: the heartbeat keeps out of its gaps. */
+    const busyRef = useRef(false);
 
     const append = useCallback((kind: CommsLogLine['kind'], text: string) => {
         const line = { t: appNow(), kind, text };
@@ -715,6 +717,7 @@ export function useDs2Link(options: {
             if (!link) return null;
             clearError();
             setState('busy');
+            busyRef.current = true;
             try {
                 const result = await fn(link);
                 setState('connected');
@@ -725,6 +728,8 @@ export function useDs2Link(options: {
                 failWith(e);
                 notifyFailure(what, e);
                 return null;
+            } finally {
+                busyRef.current = false;
             }
         },
         [append, clearError, failWith, notifyFailure],
@@ -1196,6 +1201,13 @@ export function useDs2Link(options: {
             try {
                 const run = await runProbe(plan, {
                     ...deps,
+                    // The run reads the speed block every cycle (executor `SPEED_CHANNELS`): the car's
+                    // state is kept from it, as a recording keeps it, so the status and the read
+                    // records say how fast the car is while a plan runs (2026-11-09: null all drive).
+                    onSample: (sample) => {
+                        noteVehicle(sample.values);
+                        deps.onSample?.(sample);
+                    },
                     // Each frame the plan sent is a read record too; a frame the gate held back was
                     // never sent, and is not.
                     onExchange: (x) => {
@@ -1245,7 +1257,7 @@ export function useDs2Link(options: {
                 void latency?.('idle');
             }
         },
-        [append, failWith, notifyFailure],
+        [append, failWith, noteVehicle, notifyFailure],
     );
 
     /** Read the car's speed (DME block 19) now, as an operation of its own. */
@@ -1261,6 +1273,11 @@ export function useDs2Link(options: {
             // To the module in session, and only where there is evidence it takes one: the MSS54
             // (measured) and modules whose own SGBD has DIAGNOSE_AUFRECHT. SMG II and DSC have no
             // such job, and a frame they never send themselves is not ours to send every 2 s.
+            // Only on a quiet line. An operation or a run sends its own frames, and the link's gate is
+            // free for an instant between two of them: a tester-present that lands there makes the
+            // next frame of the run fail as if the line were gone. That is how PROBE runs on
+            // 2026-11-09 ended "link-lost" after about three minutes on a link that was still up.
+            if (busyRef.current || pollingRef.current) return;
             const link = linkRef.current;
             const at = sessionAddressRef.current;
             const target = targetRef.current;

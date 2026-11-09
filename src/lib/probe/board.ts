@@ -13,7 +13,7 @@
  * Pure: the bridge and the view apply the same rules.
  */
 
-export const PART_KINDS = ['message', 'faults', 'scan', 'plan', 'judges', 'compare', 'values'] as const;
+export const PART_KINDS = ['message', 'faults', 'scan', 'plan', 'judges', 'compare', 'values', 'graph'] as const;
 export type PartKind = (typeof PART_KINDS)[number];
 
 export const BOARD_LIMITS = {
@@ -21,6 +21,10 @@ export const BOARD_LIMITS = {
     title: 60,
     text: 400,
     channels: 12,
+    /** graph: the values beside the main one. */
+    context: 6,
+    /** graph: the window, seconds. */
+    seconds: { min: 10, max: 300, default: 30 },
 } as const;
 
 /** What the assistant asks for: a kind and what to show. */
@@ -37,8 +41,17 @@ export interface PartSpec {
     /** compare: the earlier run — of this session, or of another (`record`). Default: the run
      *  before, else the last run of the session this one follows. */
     against?: { record?: string; run?: number };
-    /** values, compare: only these channels. */
+    /** values, compare: only these channels. graph: the value to watch, then its target if it has one. */
     channels?: string[];
+    /** graph: the values that say what the car was doing (engine speed, throttle), drawn small beside it. */
+    context?: string[];
+    /** graph: how many seconds the line shows, the newest at the right (default 30). */
+    seconds?: number;
+    /**
+     * graph: how far from its target the value may be before its colour changes, in its own unit.
+     * The assistant's number, and drawn as the assistant's; without it the colour does not change.
+     */
+    band?: number;
 }
 
 export interface Part extends PartSpec {
@@ -80,6 +93,18 @@ export function partProblem(p: unknown): string | null {
         if (a.record !== undefined && (typeof a.record !== 'string' || !RECORD.test(a.record))) return 'part.against.record must be a session id';
         if (!RUN(a.run)) return 'part.against.run must be a run number, from 1';
     }
+    if (x.kind === 'graph') {
+        if (!Array.isArray(x.channels) || x.channels.length < 1 || x.channels.length > 2) return 'a graph part names channels: [the value, its target?] (35:evan1_ist, 35:evan1_soll)';
+        if (x.context !== undefined && (!Array.isArray(x.context) || x.context.length > BOARD_LIMITS.context || !x.context.every((c) => typeof c === 'string' && CHANNEL.test(c)))) {
+            return `part.context names up to ${BOARD_LIMITS.context} channels (3:n, 3:wdk)`;
+        }
+        const w = BOARD_LIMITS.seconds;
+        if (x.seconds !== undefined && !(Number.isInteger(x.seconds) && x.seconds >= w.min && x.seconds <= w.max)) return `part.seconds is a whole number from ${w.min} to ${w.max}`;
+        if (x.band !== undefined && !(typeof x.band === 'number' && Number.isFinite(x.band) && x.band > 0)) return 'part.band is a positive number, in the value’s own unit';
+        if (x.band !== undefined && x.channels.length < 2) return 'part.band needs a target: channels: [the value, its target]';
+    } else if (x.context !== undefined || x.seconds !== undefined || x.band !== undefined) {
+        return 'only a graph part takes context, seconds and band';
+    }
     if (
         x.channels !== undefined &&
         (!Array.isArray(x.channels) || x.channels.length === 0 || x.channels.length > BOARD_LIMITS.channels || !x.channels.every((c) => typeof c === 'string' && CHANNEL.test(c)))
@@ -118,6 +143,9 @@ function pick(s: PartSpec): PartSpec {
     if (s.run !== undefined) out.run = s.run;
     if (s.against !== undefined) out.against = { ...(s.against.record ? { record: s.against.record } : {}), ...(s.against.run ? { run: s.against.run } : {}) };
     if (s.channels !== undefined) out.channels = [...s.channels];
+    if (s.context !== undefined) out.context = [...s.context];
+    if (s.seconds !== undefined) out.seconds = s.seconds;
+    if (s.band !== undefined) out.band = s.band;
     return out;
 }
 

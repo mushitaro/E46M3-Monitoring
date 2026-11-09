@@ -65,6 +65,10 @@ export interface VerificationRecord {
     /** Who cleared it for a moving car, and when (ISO 8601). */
     movingOkBy?: string;
     movingOkAt?: string;
+    /** A fault-memory clear: how many times it was done on this car, and what the read after it found. */
+    clears?: number;
+    faultsBefore?: number | null;
+    faultsAfter?: number | null;
 }
 
 export interface Ledger {
@@ -106,6 +110,40 @@ export function recordParkedObservation(
                   lastObservedAt: seen.at,
                   ecuIdent: seen.ecuIdent ?? prior?.ecuIdent,
               };
+    return { ...ledger, records: { ...ledger.records, [id]: record } };
+}
+
+/**
+ * Records a fault-memory clear done on this car (operator, 2026-11-09: "record it automatically").
+ *
+ * Evidence only: the clear does not consult the ledger — it goes on the screen, confirmed, with the car
+ * measured stopped (useDs2Link `clearFaults`) — so nothing here lets anything be sent. `verified` when
+ * the module accepted the clear AND the fault memory was read again right after; the counts before and
+ * after are kept as facts, not judged (a fault that is present comes back at once, and that is a
+ * finding about the car, not about the clear). A revoked or refuted record stays what it is.
+ */
+export function recordClear(
+    ledger: Ledger,
+    id: string,
+    seen: { telegram: string; response: string; at: string; before: number | null; after: number | null; reRead: boolean; ecuIdent?: string },
+): Ledger {
+    const prior = ledger.records[id];
+    if (prior && (prior.status === 'revoked' || prior.status === 'refuted')) return ledger;
+    const count = (n: number | null) => (n === null ? '?' : String(n));
+    const record: VerificationRecord = {
+        ...prior,
+        id,
+        status: seen.reRead ? 'verified' : (prior?.status ?? 'candidate'),
+        telegram: seen.telegram,
+        observedResponse: seen.response,
+        observedBehavior: seen.reRead ? `cleared; the read after it found ${count(seen.after)} fault(s), ${count(seen.before)} before` : 'cleared; no read after it',
+        verifiedAt: seen.reRead ? seen.at : prior?.verifiedAt,
+        clears: (prior?.clears ?? 0) + 1,
+        faultsBefore: seen.before,
+        faultsAfter: seen.after,
+        lastObservedAt: seen.at,
+        ecuIdent: seen.ecuIdent ?? prior?.ecuIdent,
+    };
     return { ...ledger, records: { ...ledger.records, [id]: record } };
 }
 

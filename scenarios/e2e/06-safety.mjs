@@ -6,7 +6,7 @@ const scenario = {
     title: '安全：故障の読み取りは走行中も、消去は停車中に画面で人だけ、作動テストは AI からできない',
     story:
         '走行中（40 km/h）に AI が故障を読み直すと、読める（運営者、2026-11-04）。全モジュールの読み取りも走行中に最後まで行く。' +
-        '走行中に人が画面で消去を押しても、送る直前に車速を測って止まる。' +
+        '走行中に人が画面で消去を押しても、送る直前に車速を測って止まる。停車中なら送られ、直後に故障を読み直す。' +
         '故障の消去や作動テストの道具は AI に無く、手順は画面に置くだけで実行されない。',
     steps: [
         ...connectPractice,
@@ -60,6 +60,19 @@ const scenario = {
             },
         },
         { car: { speedKmh: 0 }, means: '止まる' },
+        { ui: 'click', text: 'Clear faults', means: '停車中に、人が画面の消去を押す' },
+        { ui: 'click', text: '消去する', settle: 2500, means: '確認で「消去する」' },
+        {
+            check: {
+                desc: '停車中の消去は送られ、そのあと故障を自動で読み直す（模擬車の故障は 0 件に）',
+                run: async (page) => {
+                    const s = await tool(page, 'monitoring_status');
+                    const f = await tool(page, 'monitoring_faults', { module: 'mss54' });
+                    const list = f?.faults?.faults;
+                    return !s.error && Array.isArray(list) && list.length === 0 ? true : JSON.stringify({ error: s.error, faults: f }).slice(0, 400);
+                },
+            },
+        },
         {
             ai: 'monitoring_catalog',
             args: { module: 'mss54' },

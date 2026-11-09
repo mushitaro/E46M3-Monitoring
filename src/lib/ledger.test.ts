@@ -7,6 +7,7 @@ import {
     mayReadWhileMoving,
     mayRunOnVehicle,
     movingOkChoices,
+    recordClear,
     recordParkedObservation,
     withdrawn,
     type Ledger,
@@ -158,5 +159,28 @@ describe('reads observed on a stationary car', () => {
         const after = movingOkChoices(l);
         expect(after.proposals).toEqual([]);
         expect(after.cleared.map((r) => r.id)).toEqual([id]);
+    });
+});
+
+describe('a fault-memory clear on the car', () => {
+    const seen = { telegram: '12 04 05 13', response: '', at: '2026-11-09T10:00:00.000Z', before: 5, after: 1, reRead: true, ecuIdent: '7783' };
+
+    it('is verified with the counts before and after when the memory was read again', () => {
+        const l = recordClear(EMPTY_LEDGER, 'mss54:FS_LOESCHEN', seen);
+        expect(l.records['mss54:FS_LOESCHEN']).toMatchObject({ status: 'verified', telegram: '12 04 05 13', clears: 1, faultsBefore: 5, faultsAfter: 1, verifiedAt: seen.at });
+        const again = recordClear(l, 'mss54:FS_LOESCHEN', { ...seen, before: 1, after: 0 });
+        expect(again.records['mss54:FS_LOESCHEN']).toMatchObject({ clears: 2, faultsBefore: 1, faultsAfter: 0 });
+    });
+
+    it('stays unverified without the read after it, and never argues with a withdrawal', () => {
+        expect(recordClear(EMPTY_LEDGER, 'x:FS_LOESCHEN', { ...seen, reRead: false }).records['x:FS_LOESCHEN'].status).toBe('candidate');
+        const revoked: Ledger = { version: 1, records: { 'x:FS_LOESCHEN': { id: 'x:FS_LOESCHEN', status: 'revoked', reason: 'kill list' } } };
+        expect(recordClear(revoked, 'x:FS_LOESCHEN', seen)).toBe(revoked);
+    });
+
+    it('is not offered for a moving car', () => {
+        const l = recordClear(EMPTY_LEDGER, 'mss54:FS_LOESCHEN', seen);
+        const choices = movingOkChoices(l);
+        expect([...choices.proposals, ...choices.cleared].some((r) => r.id === 'mss54:FS_LOESCHEN')).toBe(false);
     });
 });

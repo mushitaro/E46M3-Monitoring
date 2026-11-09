@@ -362,6 +362,8 @@ export function useDs2Link(options: {
     const [rawFaults, setRawFaults] = useState<RawFaultRead[] | null>(null);
     /** The last all-module scan, and how far one in progress has got. */
     const [scan, setScan] = useState<ScanRun | null>(null);
+    /** The module the reads on screen came from; a connect to another one drops them. */
+    const readsOfRef = useRef<string | null>(null);
     const [scanProgress, setScanProgress] = useState<{ done: number; total: number } | null>(null);
     const [vehicleState, setVehicleState] = useState<VehicleState | null>(null);
     const [motion, setMotion] = useState<Motion>('unknown');
@@ -601,6 +603,17 @@ export function useDs2Link(options: {
          */
         async (nextMode: LinkMode, permittedOnly = false, target?: ModuleProtocol) => {
             if (target) targetRef.current = target;
+            // What was read belongs to the module it was read from. Another module's link must not
+            // show the previous one's faults as its own (a DSC switch showed the DME's 0x2C).
+            if (readsOfRef.current !== null && readsOfRef.current !== targetRef.current.moduleId) {
+                setIdent(null);
+                setFaults(null);
+                setQuickTest(null);
+                setRawFaults(null);
+                setAdaptations(null);
+                setLastRun(null);
+            }
+            readsOfRef.current = targetRef.current.moduleId;
             clearError();
             setState('connecting');
             try {

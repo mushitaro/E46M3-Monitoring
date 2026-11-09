@@ -47,6 +47,7 @@ function tab(over: Partial<TabFacade> = {}) {
         display: vi.fn((t) => {
             mode = t === 'startup' || t === 'probe' ? 'probe' : 'manual';
         }),
+        pane: vi.fn(),
         stage: async () => ({}),
         startLog: () => null,
         datalog: () => ({ selected: ['3:n'], samples: 0 }),
@@ -386,6 +387,22 @@ describe('PROBE sessions: NEW SESSION, the owner’s words, NEXT', () => {
         const v2 = (await h.monitoring_plan({ mandate: m.mandate, purpose: 'p2', steps: SAMPLE(['3:n', '19:v']) })) as { v: number; form?: string };
         expect(v2.v).toBe(2);
         expect(v2.form).toMatch(/run 2/);
+    });
+});
+
+describe('monitoring_display pane', () => {
+    it('switches LIST and VISU without a tab, or with one', async () => {
+        const { f, h } = tab();
+        expect(await h.monitoring_display({ pane: 'visu' })).toEqual({ pane: 'visu' });
+        expect(f.pane).toHaveBeenLastCalledWith('visu');
+        expect(await h.monitoring_display({ show: 'datalog', pane: 'list' })).toEqual({ shown: 'datalog', pane: 'list' });
+        expect(f.display).toHaveBeenLastCalledWith('datalog');
+        expect(f.pane).toHaveBeenLastCalledWith('list');
+    });
+    it('refuses an unknown pane and an empty call', async () => {
+        const { h } = tab();
+        await expect(h.monitoring_display({ pane: 'graph' })).rejects.toThrow(/list or visu/);
+        await expect(h.monitoring_display({})).rejects.toThrow(/pane/);
     });
 });
 

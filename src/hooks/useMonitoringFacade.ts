@@ -85,6 +85,8 @@ export function useMonitoringFacade(input: {
     mode: Mode;
     tab: Tab;
     changeTab: (tab: Tab) => void;
+    /** Which window shares the screen with HUB below 900: the tab's rows (list) or its picture (visu). */
+    showPane: (pane: 'list' | 'visu') => void;
     selectJob: (job: EcuProfile['jobs'][number]) => void;
     /** Another module on the screen, the link opened again for it if it was open (page.tsx). */
     switchModule: (id: string) => Promise<string | null>;
@@ -283,6 +285,7 @@ export function useMonitoringFacade(input: {
         },
 
         display: (next) => input.changeTab(next),
+        pane: (next) => input.showPane(next),
 
         stage: async (module, jobId) => {
             if (module !== ecuId) {
@@ -308,6 +311,8 @@ export function useMonitoringFacade(input: {
             if (target.decoder !== 'mss54') return en.datalog_noDecoder;
             if (datalog.current().length === 0) return 'No DATALOG channel is selected: choose them first (monitoring_log_channels).';
             datalog.start();
+            // The owner asked for the values and the trace while a recording runs, not the fault list.
+            input.showPane('visu');
             return null;
         },
 

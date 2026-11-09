@@ -965,6 +965,10 @@ export function useDs2Link(options: {
                 if (!target.clear || target.clear.control !== control || target.clear.payload.length !== payload.length) {
                     refuse(`${target.moduleId}: its SGBD does not clear fault memory with this frame; nothing is sent.`);
                 }
+                // Parked, measured now (CLAUDE.md: the clear is a person's, on the screen, stopped). Since
+                // fault reads go while moving (2026-11-04) the button can show on the road, so the speed
+                // is read right before, as for every parked-only read: only 0 km/h lets it go.
+                await preflight(link, 'Clear fault memory', 'parked');
                 append('tx', `Clear fault memory ${target.clear.hex} (${target.clear.source})`);
                 const frame = await to.exchangeWithRetry(control, payload);
                 link.assertPositive(frame, 'Clear fault memory');
@@ -976,7 +980,7 @@ export function useDs2Link(options: {
                 setRawFaults(null);
                 return true;
             }),
-        [append, run, session],
+        [append, preflight, run, session],
     );
 
     const startLog = useCallback(

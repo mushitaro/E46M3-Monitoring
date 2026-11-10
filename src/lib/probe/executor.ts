@@ -399,6 +399,12 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
             if (reason) st.reason = reason;
             deps.onStep?.(s.n, state);
         };
+        // A KWP-on-DS2 module (DSC MK60) is read on its own screen, parked; PROBE's frames are DS2's.
+        if (mod?.protocol.kwp) {
+            settle('refused', 'KWP2000-shaped frames: read on the module screen, parked');
+            record({ step: s.n, module: s.module, what: s.kind === 'read' ? s.job : 'FS_LESEN', request: null, response: null, outcome: 'refused', reason: st.reason, motion });
+            return;
+        }
         if (!mod) {
             settle('refused', 'unknown module');
             record({ step: s.n, module: s.module, what: s.kind === 'read' ? s.job : 'FS_LESEN', request: null, response: null, outcome: 'refused', reason: 'unknown module', motion });

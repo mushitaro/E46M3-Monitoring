@@ -744,6 +744,7 @@ export const ja: Localised = {
     graph_band: (band) => `±${band} · AI の決めた幅`,
     graph_target: '目標',
     graph_noValue: 'この回にはまだこの値の読み取りがありません。',
+    faults_kwp_estimated: '故障コードは ISO 14230 の答えの形として読んだ推定です。MK60 の実車ではまだ確かめていません。上のバイトが答えそのものです。',
     door_wifi: 'ナビの Wi-Fi 設定',
     door_datetime: 'ナビの日付と時刻の設定',
     board_up: '上へ',

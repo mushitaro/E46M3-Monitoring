@@ -29,6 +29,11 @@ export interface PracticeCar {
     moduleFaults: Record<number, number[]>;
     /** The line has gone quiet: no module answers, not even the echo (a cable pulled, a K-line dropped). */
     lineDown: boolean;
+    /**
+     * The DSC MK60 (KWP2000-shaped frames on the DS2 line, wire address 0xB8; lib/kwpOnDs2): its
+     * stored codes, two bytes each, with their status byte. Null: not fitted, and nothing answers.
+     */
+    dscMk60: { code: number; status: number }[] | null;
 }
 
 /** Late E46 M3, SMG II, navigation, RDC: the modules such a car carries (index addresses). */
@@ -64,6 +69,9 @@ function defaults(): PracticeCar {
         fitted: [...PRACTICE_FITTED],
         moduleFaults: {},
         lineDown: false,
+        // The owner's car (2026-11-10): a MK60 with one code stored. Its layout is ISO 14230's, which is
+        // what the app reads it as; the real one has not answered yet.
+        dscMk60: [{ code: 0x5d90, status: 0x24 }],
     };
 }
 

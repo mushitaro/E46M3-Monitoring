@@ -758,6 +758,7 @@ export const en: Localised = {
     graph_band: (band) => `±${band} · the assistant’s band`,
     graph_target: 'target',
     graph_noValue: 'No reading of this value in the run yet.',
+    faults_kwp_estimated: 'Codes read as ISO 14230 lays out the answer — not yet confirmed on a MK60. The bytes above are the answer.',
     door_wifi: 'Head unit Wi-Fi settings',
     door_datetime: 'Head unit date and time settings',
     board_up: 'Up',

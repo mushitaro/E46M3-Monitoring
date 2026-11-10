@@ -9,7 +9,7 @@ import { normCode } from '@/lib/faultCode';
 import { en } from '@/lib/i18n/en';
 import { TUNER_WORKS } from '@/lib/links';
 import type { Ledger } from '@/lib/ledger';
-import type { ModuleProtocol } from '@/lib/moduleProtocol';
+import { hasFaultRead, hasIdent, type ModuleProtocol } from '@/lib/moduleProtocol';
 import { addEntries, listAllEntries } from '@/lib/notebook/store';
 import { getBoard, putBoard } from '@/lib/probe/boardStore';
 import { listRuns } from '@/lib/probe/runStore';
@@ -112,6 +112,18 @@ export function useMonitoringFacade(input: {
         const raw = fresh?.raw ?? (fresh ? null : link.rawFaults);
         if (decoded !== null) return { module: ecuId, read: true, decoded: true, faults: describeEntries(decoded, catalog) };
         if (raw !== null) {
+            // DSC MK60 (lib/kwpOnDs2): the codes as ISO 14230 lays a $58 answer out, with the SGBD's
+            // text — estimated, not yet confirmed on a MK60; the bytes stay the answer.
+            const rows = raw as RawFaultRead[];
+            const kwp = rows.flatMap((r) => r.kwpDtcs ?? []);
+            if (rows.some((r) => r.kwpDtcs)) {
+                const byCode = new Map((catalog?.faultText ?? []).map((f) => [normCode(f.code), f]));
+                const codes = kwp.map((d) => {
+                    const known = byCode.get(normCode(d.code));
+                    return { code: d.code, status: `0x${d.status.toString(16).padStart(2, '0')}`, text: known && catalog ? resolveText(catalog, known.text, 'en').text : null };
+                });
+                return { module: ecuId, read: true, decoded: false, estimated: true, note: 'Codes read as ISO 14230 lays out a $58 answer; not yet confirmed on a MK60. The bytes are the answer.', codes, raw };
+            }
             return { module: ecuId, read: true, decoded: false, note: 'No decoder for this module: the answer is kept as bytes.', raw };
         }
         return { module: ecuId, read: false, reason: 'Not read yet in this session.' };
@@ -174,7 +186,7 @@ export function useMonitoringFacade(input: {
 
         refreshFaults: async () => {
             if (link.state !== 'connected') return `The link is ${link.state}; faults are read when it is connected and idle.`;
-            if (!target.ident && target.faults.length === 0) return en.faults_notEstablished;
+            if (!hasIdent(target) && !hasFaultRead(target)) return en.faults_notEstablished;
             // The gate's answer for each read (a withdrawn read, a car measured moving), then the
             // link's own preflight measures the speed again just before the bytes go.
             const ident = mayRunProtocolRead(`${ecuId}:IDENT`, 'fault-read', ledger, link.motion);
@@ -183,10 +195,10 @@ export function useMonitoringFacade(input: {
             try {
                 // The link reports a refused or failed read as null and keeps its sentence: a read the
                 // preflight stopped (the car moving) must reach the assistant as not sent, and why.
-                if (target.ident && ident.allowed && (await link.readIdent(ident.requires)) === null) {
+                if (hasIdent(target) && ident.allowed && (await link.readIdent(ident.requires)) === null) {
                     return link.lastError() ?? 'The identity read did not complete.';
                 }
-                if (target.faults.length > 0) {
+                if (hasFaultRead(target)) {
                     const read = await link.readFaults(fs.requires);
                     if (read === null) return link.lastError() ?? 'The fault read did not complete.';
                     return target.decoder === 'mss54' ? { fresh: { faults: read, raw: null } } : { fresh: { faults: null, raw: read as RawFaultRead[] } };

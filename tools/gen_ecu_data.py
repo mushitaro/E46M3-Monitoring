@@ -97,6 +97,14 @@ MODULES = {
     # "Keine Diagnose bei V > 6 km/h" と述べている。
     "dsc_e46":  M("DSC_E46",  "DSC (E46)",                     "DSC (E46)",                   0x56, "chassis", "late",
                   "6 km/h 超では診断不可（ECU の COMMENT より）", "no diagnosis above 6 km/h (from the ECU's own COMMENT)"),
+    # Conti/Teves MK60（DSC III）。SGBD の INITIALISIERUNG は DS2 の通信方式（concept 0x0006、
+    # 9600 8E1）で、その上に KWP2000 の形の電文 `B8 29 F1 LL …` を載せる。線上の先頭は 0xB8
+    # （_addresses.json の宛先）、KWP の宛先は 0x29、テスターは 0xF1。2026-11-10、運営者の車の
+    # DSC がこれだった（0x56 の DSC_E46 は答えない）。根拠：データリポジトリの
+    # sgbd-dumps/DSC_MK60.telegrams.json（EDIABAS のシミュレーションでの実行トレース）。
+    "dsc_mk60": M("DSC_MK60", "DSC MK60",                      "DSC MK60",                    0xB8, "chassis", "late",
+                  "KWP2000 の形の電文（DS2 の回線）。読み取りは停車中だけ。答えはまだ実車で確かめていない",
+                  "KWP2000-shaped frames on the DS2 line. Read parked only; its answers are not yet confirmed on a car"),
     # 注記は「DSC MK60 と対」だった。**根拠が無い。** LWS5 の ECU 文字列は
     # "Lenkradwinkel mit CAN-Schnittstelle" で COMMENT は空、どの DSC と対かを
     # SGBD は一度も述べていない。DSC_MK60 はそもそもこの車の DS2 ECU ではない

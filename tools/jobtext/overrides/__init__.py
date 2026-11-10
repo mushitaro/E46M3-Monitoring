@@ -25,7 +25,8 @@ from .bmbt46tn import BMBT46TN
 from .bmbt_mir import BMBT_MIR
 from .cdc_46 import CDC_46
 from .cvm_ii import CVM_II
-from .dsc_e46 import DSC_MK60
+from .dsc_e46 import DSC_MK60 as DSC_E46
+from .dsc_mk60 import DSC_MK60
 from .ews3 import EWS3
 from .ews3d import EWS3D
 from .ihka46 import IHKA46
@@ -71,7 +72,8 @@ OVERRIDES: dict[str, dict[str, tuple[str, str]]] = {
     "bmbt_mir": BMBT_MIR,
     "cdc_46": CDC_46,
     "cvm_ii": CVM_II,
-    "dsc_e46": DSC_MK60,
+    "dsc_e46": DSC_E46,
+    "dsc_mk60": DSC_MK60,
     "ews3": EWS3,
     "ews3d": EWS3D,
     "ihka46": IHKA46,

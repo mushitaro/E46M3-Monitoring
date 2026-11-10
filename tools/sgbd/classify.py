@@ -231,6 +231,7 @@ HOME_SYSTEM: dict[str, str] = {
     "SMG2": "gearbox",
     "ASCMK20": "stability",
     "DSC_E46": "stability",
+    "DSC_MK60": "stability",
     "LWS5": "steering",
     "RDC": "tyres",
     # 乗員保護。ZUENDKREIS（スクイブ回路）が engine の ZUEND に当たる誤りも
@@ -282,10 +283,10 @@ HOME_SYSTEM: dict[str, str] = {
     "VIDEOMOD": "av",
 }
 
-# ブレーキ油圧のモジュレータを駆動するのはこの2つの ECU だけ。他の12モジュールの
+# ブレーキ油圧のモジュレータを駆動するのはこの3つの ECU だけ（DSC_MK60 は 2026-11-10 に追加）。他の12モジュールの
 # STEUERN_DIGITAL は名前が同じだけの汎用デジタル出力で、ブレーキとは関係が無い。
 # 規則ではなく所属で決まる事実なので、パターン表から出してここに置く。
-BRAKE_MODULATORS = {"DSC_E46", "ASCMK20"}
+BRAKE_MODULATORS = {"DSC_E46", "ASCMK20", "DSC_MK60"}
 
 
 def system_of(job: str, sgbd: str | None = None) -> str:

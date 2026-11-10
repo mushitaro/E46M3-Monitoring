@@ -22,7 +22,8 @@ import {
     blockBySelection,
     type LiveValueBlock,
 } from '@tsunagi/ds2-mss54';
-import type { ExchangeBehavior, SimulatedEcuOptions } from '@tsunagi/ds2-core';
+import { SimulatedSerialPort, type ExchangeBehavior, type SerialOptions, type SerialPortLike, type SimulatedEcuOptions } from '@tsunagi/ds2-core';
+import { KWP_FORMAT, KWP_TESTER, xorOf } from './kwpOnDs2';
 import { CLEAN, practiceCar } from './practiceCar';
 
 const START = Date.now();
@@ -348,4 +349,84 @@ export function practiceEcu(): SimulatedEcuOptions {
             }
         },
     };
+}
+
+/** The DSC MK60's KWP target, behind wire address 0xB8 (lib/kwpOnDs2). */
+const MK60_TARGET = 0x29;
+
+/**
+ * PRACTICE's answer to a KWP-on-DS2 frame for the DSC MK60, or null when the frame is not one (it then
+ * goes to the DS2 bus). Its echo, then `B8 F1 29 LL <SID+0x40> …`, as ISO 14230 lays answers out —
+ * the shape the app reads the real one as, and has not yet seen.
+ */
+export function practiceKwpAnswer(chunk: Uint8Array): Uint8Array[] | null {
+    if (chunk.length < 6 || chunk[0] !== KWP_FORMAT || chunk[3] !== chunk.length - 5 || xorOf(chunk.subarray(0, chunk.length - 1)) !== chunk[chunk.length - 1]) return null;
+    if (practiceCar.lineDown) return [];
+    const echo = Uint8Array.from(chunk);
+    if (chunk[1] !== MK60_TARGET || chunk[2] !== KWP_TESTER || !practiceCar.dscMk60) return [echo];
+    const sid = chunk[4];
+    let data: number[];
+    if (sid === 0x1a) data = [0x5a, chunk[5], 0x34, 0x51, 0x12, 0x07];
+    else if (sid === 0x18) data = [0x58, practiceCar.dscMk60.length, ...practiceCar.dscMk60.flatMap((d) => [d.code >> 8, d.code & 0xff, d.status])];
+    else data = [0x7f, sid, 0x11];
+    const head = [KWP_FORMAT, KWP_TESTER, MK60_TARGET, data.length, ...data];
+    return [echo, Uint8Array.from([...head, xorOf(head)])];
+}
+
+/**
+ * PRACTICE's port: the simulated DS2 bus (practiceBus), with the DSC MK60's KWP-on-DS2 frames answered
+ * in front of it — the DS2 simulator reads a frame's length from its second byte, so it cannot.
+ */
+export class PracticePort implements SerialPortLike {
+    private readonly inner: SimulatedSerialPort;
+    private controller: ReadableStreamDefaultController<Uint8Array> | null = null;
+    private _readable: ReadableStream<Uint8Array> | null = null;
+    private _writable: WritableStream<Uint8Array> | null = null;
+
+    constructor(addresses: readonly number[]) {
+        this.inner = new SimulatedSerialPort(practiceBus(addresses));
+    }
+    get readable() {
+        return this._readable;
+    }
+    get writable() {
+        return this._writable;
+    }
+
+    async open(options: SerialOptions): Promise<void> {
+        await this.inner.open(options);
+        this._readable = new ReadableStream<Uint8Array>({ start: (c) => void (this.controller = c) });
+        const reader = this.inner.readable!.getReader();
+        void (async () => {
+            for (;;) {
+                const { value, done } = await reader.read().catch(() => ({ value: undefined, done: true }));
+                if (done) return;
+                if (value) this.controller?.enqueue(value);
+            }
+        })();
+        const writer = this.inner.writable!.getWriter();
+        this._writable = new WritableStream<Uint8Array>({
+            write: async (chunk) => {
+                const kwp = practiceKwpAnswer(chunk);
+                if (kwp) for (const out of kwp) this.controller?.enqueue(out);
+                else await writer.write(chunk);
+            },
+        });
+    }
+
+    async close(): Promise<void> {
+        await this.inner.close();
+        try {
+            this.controller?.close();
+        } catch {
+            /* already closed */
+        }
+        this.controller = null;
+        this._readable = null;
+        this._writable = null;
+    }
+
+    async setSignals(signals: Record<string, boolean | undefined>): Promise<void> {
+        await this.inner.setSignals(signals);
+    }
 }

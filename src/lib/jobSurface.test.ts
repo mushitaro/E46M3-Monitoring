@@ -17,7 +17,7 @@ const modules = index.modules.map((m) => ({
 }));
 
 describe('every job belongs to exactly one tab', () => {
-    it('lands on one surface, across all 51 modules', () => {
+    it('lands on one surface, across all 52 modules', () => {
         // The property that makes this a partition rather than two filters that
         // happen to agree. Two surfaces run a job through DIFFERENT gates —
         // SERVICE via mayRun, ACTUATOR via mayActuate, which is wider in
@@ -31,7 +31,8 @@ describe('every job belongs to exactly one tab', () => {
                 counted++;
             }
         }
-        expect(counted).toBe(1524);
+        // 1524 across 51; 64 more with DSC MK60 (2026-11-10).
+        expect(counted).toBe(1588);
     });
 
     it('puts the actuators on ACTUATOR and nothing else there', () => {

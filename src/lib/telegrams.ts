@@ -52,6 +52,8 @@ export interface TelegramTable {
     sgbd: string;
     address: number;
     source?: string;
+    /** `kwp-ds2`: KWP2000-shaped frames on DS2's line (lib/kwpOnDs2). Absent: DS2. */
+    framing?: 'kwp-ds2';
     jobs: Record<string, Telegram[]>;
 }
 

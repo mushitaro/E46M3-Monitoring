@@ -22,6 +22,7 @@ import { useScreenWakeLock } from './useScreenWakeLock';
 import { useUnloadGuard } from './useUnloadGuard';
 import {
     Ds2Address,
+    Ds2Error,
     Ds2Link,
     FTDI_VENDOR_ID,
     buildDs2Frame,
@@ -66,7 +67,10 @@ import type { ModuleProtocol } from '@/lib/moduleProtocol';
 import { PracticePort } from '@/lib/practiceEcu';
 import { practiceCar } from '@/lib/practiceCar';
 import { runProbe, type ProbeDeps, type ProbePlan, type ProbeRun } from '@/lib/probe/executor';
+import { modulesOf } from '@/lib/probe/plan';
 import { runScan, type ScanRun, type ScanTarget } from '@/lib/probe/scan';
+import { EMPTY_IDENTITY, loadIdentity, type Identity } from '@/lib/identity';
+import { DME_ADDRESS, commonIdent, fittedFrom, frameVerdict, isCommonIdent, isM3, mayModuleBeSent, ruleFor, type Fitment, type Fitted } from '@/lib/variants';
 import type { Ledger } from '@/lib/ledger';
 import { clearFaultsCommand, telegramBytes, type SendRequirement } from '@/lib/runGate';
 import {
@@ -366,6 +370,16 @@ export function useDs2Link(options: {
     const [scan, setScan] = useState<ScanRun | null>(null);
     /** The module the reads on screen came from; a connect to another one drops them. */
     const readsOfRef = useRef<string | null>(null);
+    /**
+     * What each address said to its common IDENT on this link, and which module that makes it
+     * (lib/variants). Empty at every connect: it is a fact about the car on the other end, and the
+     * next connect may be another car. The link's send guard reads the ref; the screen the state.
+     */
+    const fitmentRef = useRef<Map<number, Fitted>>(new Map());
+    const [fitment, setFitment] = useState<Fitment>(new Map());
+    /** The group rules and the module map, loaded once a page; connect waits for them. */
+    const identityRef = useRef<Identity>(EMPTY_IDENTITY);
+    const identityLoadRef = useRef<Promise<Identity> | null>(null);
     const [scanProgress, setScanProgress] = useState<{ done: number; total: number } | null>(null);
     const [vehicleState, setVehicleState] = useState<VehicleState | null>(null);
     const [motion, setMotion] = useState<Motion>('unknown');
@@ -488,9 +502,74 @@ export function useDs2Link(options: {
         }
     }, []);
 
-    /** `exchangeWithRetry`, with the read told to `onRead` whichever way it went. */
+    /**
+     * Send `address` the common IDENT, once a link, and record which module its group's rule says it
+     * is (lib/variants). Silence is not kept — a module asleep now may answer in a minute — and an
+     * address whose common IDENT is not its own is refused rather than asked.
+     */
+    const identify = useCallback(
+        async (link: Ds2Link, address: number, fresh = false): Promise<Fitted> => {
+            const known = fitmentRef.current.get(address);
+            if (known && !fresh) return known;
+            const id = identityRef.current;
+            if (!id.identOk.has(address)) refuse(`${hex2(address)}: the common IDENT is not this address's own; which module is here is not asked.`);
+            const to = link.to(address);
+            const frameHex = toHex(commonIdent(address));
+            append('tx', `IDENT ${frameHex} (which module is at ${hex2(address)}${ruleFor(id.rules, address) ? `, chosen by ${ruleFor(id.rules, address)!.group}` : ''})`);
+            let answer: Uint8Array | null = null;
+            try {
+                const frame = await to.exchangeWithRetry(0x00, new Uint8Array(0), { attempts: 2 });
+                answer = Uint8Array.from([frame.address, frame.length, frame.controlOrStatus, ...frame.payload, frame.checksum]);
+                noteRead(to, hex2(address), 'IDENT', 0x00, new Uint8Array(0), { frame });
+            } catch (e) {
+                noteRead(to, hex2(address), 'IDENT', 0x00, new Uint8Array(0), { error: e });
+                if (isDs2Error(e) && e.code === 'NOT_SENT') throw e;
+            }
+            const f = fittedFrom(id.rules, id.modules, address, answer);
+            if (f.answer !== null) {
+                fitmentRef.current = new Map(fitmentRef.current).set(address, f);
+                setFitment(fitmentRef.current);
+            }
+            append(
+                f.answer === null ? 'info' : 'rx',
+                f.answer === null
+                    ? `${hex2(address)}: no answer to its IDENT`
+                    : `${hex2(address)} is ${f.sgbd ?? '?'}${f.sgbd && !f.moduleId ? ' (its SGBD is not carried: IDENT only)' : ''}${f.moduleId ? ` → ${f.moduleId}` : ''}`,
+            );
+            return f;
+        },
+        [append, noteRead],
+    );
+
+    /**
+     * Before any frame but the common IDENT goes to `address` for `moduleId`: identify what decides
+     * (the DME — is this an M3? — and the address itself, when it has a rule), then refuse unless
+     * lib/variants says this module's frames may go there. The link's send guard is the backstop
+     * under this; this is where the module is known and the refusal can say so.
+     */
+    const clearFor = useCallback(
+        async (address: number, moduleId: string): Promise<void> => {
+            const link = linkRef.current ?? refuse('No open link.');
+            const id = identityRef.current;
+            if (mayModuleBeSent(address, moduleId, fitmentRef.current, id.rules).ok) return;
+            if (!fitmentRef.current.has(DME_ADDRESS) && id.identOk.has(DME_ADDRESS)) await identify(link, DME_ADDRESS);
+            if (address !== DME_ADDRESS && ruleFor(id.rules, address) && !fitmentRef.current.has(address)) await identify(link, address);
+            const v = mayModuleBeSent(address, moduleId, fitmentRef.current, id.rules);
+            if (!v.ok) {
+                append('warn', `${moduleId}: not sent — ${v.reason}`);
+                throw new Ds2Error('NOT_SENT', `${moduleId}: not sent — ${v.reason}`, { kind: 'refused', detail: { address, moduleId, reason: v.reason } });
+            }
+        },
+        [append, identify],
+    );
+
+    /**
+     * `exchangeWithRetry`, with the read told to `onRead` whichever way it went — after `clearFor`
+     * has said the module is the one at that address, for every frame but the common IDENT.
+     */
     const readFrame = useCallback(
         async (to: Ds2Target, moduleId: string, job: string, control: number, payload: Uint8Array, options?: RetryOptions): Promise<Ds2Frame> => {
+            if (!isCommonIdent(buildDs2Frame(to.address, control, payload))) await clearFor(to.address, moduleId);
             try {
                 const frame = await to.exchangeWithRetry(control, payload, options);
                 noteRead(to, moduleId, job, control, payload, { frame });
@@ -500,7 +579,7 @@ export function useDs2Link(options: {
                 throw e;
             }
         },
-        [noteRead],
+        [clearFor, noteRead],
     );
 
     /**
@@ -681,6 +760,12 @@ export function useDs2Link(options: {
                 // The link's own address is the DME's only because it has to be something; every
                 // operation below names the module it sends to (`session`).
                 const link = new Ds2Link(selected.transport, { address: Ds2Address.DME });
+                // Which module is where is asked again on every link, and nothing but a common IDENT
+                // goes anywhere until it has been (lib/variants): the guard is on before the port opens.
+                identityRef.current = await (identityLoadRef.current ??= loadIdentity());
+                fitmentRef.current = new Map();
+                setFitment(fitmentRef.current);
+                link.setSendGuard((frame) => frameVerdict(frame, fitmentRef.current, identityRef.current.rules, identityRef.current.identOk));
                 await link.connect();
                 linkRef.current = link;
                 sessionAddressRef.current = address;
@@ -797,6 +882,14 @@ export function useDs2Link(options: {
                 const frame = await readFrame(to, target.moduleId, 'IDENT', ident.control, ident.payload);
                 link.assertPositive(frame, 'Identity read');
                 append('rx', toHex(frame.payload));
+                // The screen's IDENT is the common one (moduleProtocol takes no other): what it says
+                // about which module this is counts as much as the scan's.
+                if (isCommonIdent(buildDs2Frame(to.address, ident.control, ident.payload))) {
+                    const answer = Uint8Array.from([frame.address, frame.length, frame.controlOrStatus, ...frame.payload, frame.checksum]);
+                    const f = fittedFrom(identityRef.current.rules, identityRef.current.modules, to.address, answer);
+                    fitmentRef.current = new Map(fitmentRef.current).set(to.address, f);
+                    setFitment(fitmentRef.current);
+                }
                 const value = { hex: toHex(frame.payload), length: frame.payload.length };
                 identRef.current = value;
                 setIdent(value);
@@ -1097,6 +1190,8 @@ export function useDs2Link(options: {
             void (async () => {
                 let failure: string | null = null;
                 try {
+                    // The blocks are the MSS54's: only to a DME that has said it is one.
+                    await clearFor(to.address, targetRef.current.moduleId);
                     while (pollingRef.current && linkRef.current) {
                         const values: Partial<Record<ChannelId, number | null>> = {};
                         let incomplete = false;
@@ -1171,7 +1266,7 @@ export function useDs2Link(options: {
                 }
             })();
         },
-        [append, failWith, noteRead, noteVehicle, notifyFailure, session],
+        [append, clearFor, failWith, noteRead, noteVehicle, notifyFailure, session],
     );
 
     const stopLog = useCallback(() => {
@@ -1195,7 +1290,15 @@ export function useDs2Link(options: {
                 try {
                     const result = await runScan(targets, {
                         ledger,
-                        measure: () => measureMotion(link),
+                        identity: {
+                            rules: identityRef.current.rules,
+                            identOk: identityRef.current.identOk,
+                            fitment: () => fitmentRef.current,
+                            identify: (address) => identify(link, address),
+                        },
+                        // On an M3 the speed read says the DME is there; on another car its IDENT, asked again.
+                        dmeAnswers: async () =>
+                            isM3(fitmentRef.current) ? (await measureMotion(link)) !== 'unknown' : (await identify(link, DME_ADDRESS, true).catch(() => null))?.answer != null,
                         // PRACTICE answers only the DME and the module on the screen; the rest are silent there by
                         // design, and the car's two-second wait for each would make a practice scan a minute of nothing.
                         exchange: (address, moduleId, job, f, options) =>
@@ -1238,7 +1341,11 @@ export function useDs2Link(options: {
                     } else if (own) {
                         setFaults(null);
                         setQuickTest(null);
-                        setRawFaults(own.exchanges.map((x) => ({ request: x.request, response: x.response ?? '', source: 'FS_LESEN (SGBD telegram)' })));
+                        setRawFaults(
+                            own.exchanges
+                                .filter((x) => !isCommonIdent(telegramBytes(x.request) ?? new Uint8Array(0)))
+                                .map((x) => ({ request: x.request, response: x.response ?? '', source: 'FS_LESEN (SGBD telegram)' })),
+                        );
                     }
                     setScan(result);
                     append('info', `Scan ended (${result.end}).`);
@@ -1247,7 +1354,7 @@ export function useDs2Link(options: {
                     setScanProgress(null);
                 }
             }),
-        [append, measureMotion, readFrame, run],
+        [append, identify, measureMotion, readFrame, run],
     );
 
     /**
@@ -1272,6 +1379,18 @@ export function useDs2Link(options: {
             const latency = transportRef.current ? latencyTimerOf(transportRef.current) : null;
             void latency?.('log');
             try {
+                // The executor sends on `link.to` directly; the link's guard holds back anything to an
+                // address not yet identified. So identify first what the plan reaches: the DME (its speed
+                // block every cycle) and every address of its modules that has a rule.
+                const id = identityRef.current;
+                const addresses = new Set<number>([DME_ADDRESS]);
+                for (const m of modulesOf(plan.steps)) {
+                    const a = deps.module(m)?.protocol.address;
+                    if (a !== undefined && ruleFor(id.rules, a)) addresses.add(a);
+                }
+                for (const a of addresses) {
+                    if (id.identOk.has(a)) await identify(link, a).catch((e) => append('warn', `IDENT ${hex2(a)}: ${e instanceof Error ? e.message : String(e)}`));
+                }
                 const run = await runProbe(plan, {
                     ...deps,
                     // The run reads the speed block every cycle (executor `SPEED_CHANNELS`): the car's
@@ -1330,7 +1449,7 @@ export function useDs2Link(options: {
                 void latency?.('idle');
             }
         },
-        [append, failWith, noteVehicle, notifyFailure],
+        [append, failWith, identify, noteVehicle, notifyFailure],
     );
 
     /** Read the car's speed (DME block 19) now, as an operation of its own. */
@@ -1418,6 +1537,8 @@ export function useDs2Link(options: {
         errorKind,
         log,
         ident,
+        /** Which module each address said it is on this link (lib/variants), the DME's first. */
+        fitment,
         faults,
         quickTest,
         rawFaults,

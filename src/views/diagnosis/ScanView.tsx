@@ -41,6 +41,8 @@ export function standing(r: ScanResult, t: ReturnType<typeof useLang>['t']): { w
                     : { word: t.scan_outcome.clean, tone: 'text-emerald-400', rank: 1, entries };
             }
             return { word: t.scan_outcome.undecoded, tone: 'text-slate-400', rank: 2, entries: null };
+        case 'identified':
+            return { word: t.scan_outcome.identified, tone: 'text-slate-400', rank: 2, entries: null };
         case 'rejected':
             return { word: t.scan_outcome.rejected, tone: 'text-amber-400', rank: 3, entries: null };
         case 'refused':
@@ -146,6 +148,7 @@ function Opened({
                             {x.request} → {x.response || '—'}
                         </p>
                     ))}
+            {r.variant && r.variant.basis !== 'm3-fitment' && <p className="pl-[52px] font-mono text-[11px] text-slate-400">{t.scan_variant(r.variant.sgbd, r.variant.moduleId !== null)}</p>}
             {reason && <p className="pl-[52px] text-[11px] text-slate-500">{reason}</p>}
             {r.modules.length > 1 && <p className="pl-[52px] text-[11px] text-slate-500">{t.scan_shared}</p>}
         </>

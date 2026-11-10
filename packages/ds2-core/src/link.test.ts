@@ -190,6 +190,38 @@ describe.each<Backend>(['web-serial', 'web-usb-ftdi'])('over %s', (backend) => {
         });
     });
 
+    describe('the send guard', () => {
+        it('holds a frame back before the write: nothing reaches the line, and it is not retried', async () => {
+            const h = await connected([{ kind: 'respond' }]);
+            const seen: string[] = [];
+            h.link.setSendGuard((frame) => {
+                seen.push(toHex(frame));
+                return 'not this module';
+            });
+            const err = await h.link.exchangeWithRetry(Ds2Control.READ_IO_STATUS, new Uint8Array([0x03]), { attempts: 3 }).catch((e) => e);
+
+            expect(isDs2Error(err) && err.code).toBe('NOT_SENT');
+            expect(isDs2Error(err) && err.kind).toBe('refused');
+            expect(h.trace).toHaveLength(0);
+            // Asked once, for the whole frame — the retry loop never ran.
+            expect(seen).toEqual(['12 05 0b 03 1f']);
+        });
+
+        it('guards every path that writes: another module, a single exchange, the heartbeat', async () => {
+            const h = await connected([{ kind: 'respond' }, { kind: 'respond' }]);
+            h.link.setSendGuard((frame) => (frame[0] === Ds2Address.DME ? null : 'only the DME'));
+            await expect(h.link.to(Ds2Address.SMG).exchange(Ds2Control.READ_ERROR_MEMORY)).rejects.toMatchObject({ code: 'NOT_SENT' });
+            await expect(h.link.to(Ds2Address.SMG).keepAlive()).resolves.toBe(false);
+            expect(h.trace).toHaveLength(0);
+
+            // What the guard lets through goes as before, and clearing it lifts it.
+            await expect(h.link.exchange(Ds2Control.READ_ERROR_MEMORY)).resolves.toMatchObject({ controlOrStatus: Ds2Status.ACKNOWLEDGE });
+            h.link.setSendGuard(null);
+            await expect(h.link.exchange(Ds2Control.READ_ERROR_MEMORY)).resolves.toMatchObject({ controlOrStatus: Ds2Status.ACKNOWLEDGE });
+            expect(h.trace).toHaveLength(2);
+        });
+    });
+
     describe('keepAlive', () => {
         it('never throws, and skips rather than queuing when the gate is held', async () => {
             const h = await connected([{ kind: 'silent' }, { kind: 'respond' }]);

@@ -18,6 +18,42 @@ export interface PracticeFault {
     frequency: number;
 }
 
+/**
+ * What a module says to the common IDENT (`<addr> 04 00`), as far as the group files read it: the
+ * hardware number and the diagnosis index (lib/variants). The rest of the answer is synthetic.
+ */
+export interface PracticeIdent {
+    /** Two characters: the answer's bytes 10..11. */
+    hw: string;
+    /** Two characters: the answer's bytes 14..15. */
+    diag: string;
+}
+
+/** The late E46 M3's: MSS54 (`1B`/`90`, D_0012 → MSS54DS0) and SMG II (`2F`, D_0032 → SMG2). */
+export const M3_IDENTS: Readonly<Record<number, PracticeIdent>> = {
+    0x12: { hw: '1B', diag: '90' },
+    0x32: { hw: '2F', diag: '00' },
+};
+
+/** A DS2 E46 that is not an M3: MS43 (`19`/`10`, D_0012 → MS430DS0) and the GS20 automatic (`29`, D_0032 → GS20). */
+export const NON_M3_IDENTS: Readonly<Record<number, PracticeIdent>> = {
+    0x12: { hw: '19', diag: '10' },
+    0x32: { hw: '29', diag: '00' },
+};
+
+/** The part number every practice module answers with: seven digits no group file lists. */
+export const PRACTICE_PART_NUMBER = '9999999';
+
+/**
+ * The data of a DS2 IDENT answer, laid out as the group files read it: part number (7 characters),
+ * hardware number (2), coding index (2), diagnosis index (2), bus index (2), the date (4, unknown
+ * here), and the rest. 42 bytes, as the MSS54's own answer on the car is.
+ */
+export function ds2IdentData(ident: PracticeIdent): number[] {
+    const text = PRACTICE_PART_NUMBER + ident.hw + '00' + ident.diag + '60';
+    return [...Array.from(text, (c) => c.charCodeAt(0)), 0xff, 0xff, 0xff, 0xff, ...Array.from('00001158520401', (c) => c.charCodeAt(0)), ...new Array(9).fill(0xff)];
+}
+
 export interface PracticeCar {
     /** Road speed the DME reports (blocks' km/h fields). 0 = parked. */
     speedKmh: number;
@@ -34,6 +70,11 @@ export interface PracticeCar {
      * stored codes, two bytes each, with their status byte. Null: not fitted, and nothing answers.
      */
     dscMk60: { code: number; status: number }[] | null;
+    /**
+     * What each address answers to its IDENT, where it matters (lib/variants). An address not listed
+     * answers with `00`/`00`, which no group rule maps to anything this app carries.
+     */
+    idents: Record<number, PracticeIdent>;
 }
 
 /** Late E46 M3, SMG II, navigation, RDC: the modules such a car carries (index addresses). */
@@ -72,6 +113,7 @@ function defaults(): PracticeCar {
         // The owner's car (2026-11-10): a MK60 with one code stored. Its layout is ISO 14230's, which is
         // what the app reads it as; the real one has not answered yet.
         dscMk60: [{ code: 0x5d90, status: 0x24 }],
+        idents: { ...M3_IDENTS },
     };
 }
 

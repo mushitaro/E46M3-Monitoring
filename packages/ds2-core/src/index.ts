@@ -112,6 +112,7 @@ export {
     type Ds2LinkOptions,
     type Ds2Target,
     type RetryOptions,
+    type SendGuard,
 } from './link';
 
 export { isWebSerialSupported, getSerial } from './webSerialTypes';

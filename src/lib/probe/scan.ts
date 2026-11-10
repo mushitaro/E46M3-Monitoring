@@ -6,23 +6,36 @@
  * DS2 has no broadcast. A scan is each module's own fault read (FS_LESEN, control 0x04) sent to
  * its own address in turn, on the one link, through the same gate as the screen's READ.
  *
+ * ## Which module is at an address: its IDENT first
+ *
+ * The module list is the E46 M3's, and a non-M3 E46 has other modules at the same addresses (MS43 at
+ * 0x12, GS20 at 0x32). So an address is first asked the common IDENT (`<addr> 04 00`) wherever the
+ * answer decides anything, and its group file's rule (lib/variants, generated from `D_00xx.grp`)
+ * chooses the SGBD from the answer:
+ *
+ *   - An address with a rule (0x12, 0x32) is sent its fault read only when the rule chose a module
+ *     this app carries, and then that module's own frames.
+ *   - An address without one is `?`. On a car whose DME said it is the MSS54 (an M3) it keeps the M3
+ *     fitment below, without an IDENT; on any other car it gets the IDENT and nothing else
+ *     (`identified`), whatever it answers.
+ *
  * ## Fourteen addresses hold more than one SGBD
  *
  * 0x56 is ASCMK20 on an early car and DSC_E46 on a late one; 0x5B has three IHKA variants; and so
- * on. Which one is fitted is not known before it answers, and IDENT cannot say (only the MSS54's
- * IDENT is decoded). The house rule is that a module is sent only what its own SGBD sends it, so an
- * address gets only the frames EVERY candidate's table carries — whichever is fitted, the bytes are
- * its own. Most shared addresses agree byte for byte; where none is common (0x50: MFL carries one,
- * MFL2 none), the address is not asked, and says so.
+ * on. Where no rule chooses between them yet, the house rule is that a module is sent only what its
+ * own SGBD sends it, so on an M3 such an address gets only the frames EVERY candidate's table
+ * carries — whichever is fitted, the bytes are its own. Most shared addresses agree byte for byte;
+ * where none is common (0x50: MFL carries one, MFL2 none), the address is not asked, and says so.
  *
  * ## What it never does
  *
  *   - Wait for the car to stop. A fault read is a read, and it goes while the car moves too
- *     (operator, 2026-11-04). The DME's speed is still read when the line goes quiet, to tell a
- *     lost line from modules that are not fitted.
+ *     (operator, 2026-11-04). The DME is still asked when the line goes quiet (`dmeAnswers`), to
+ *     tell a lost line from modules that are not fitted.
  *   - Retry. A module that does not answer is `silent` — likely not fitted, which is a fact about
  *     the car worth stating — and a refusal (`rejected`) is the module's answer, recorded as said.
- *   - Read meaning into bytes. Only the MSS54 has a decoder; every other answer is kept as bytes.
+ *   - Read meaning into bytes. Only the MSS54 has a decoder, and only an address whose IDENT chose
+ *     the MSS54 is decoded; every other answer is kept as bytes.
  *
  * Pure apart from its deps, so the rules hold in a test with a simulated K-line.
  */
@@ -30,7 +43,7 @@ import { isDs2Error, isPositiveResponse, toHex, type Ds2Frame, type RetryOptions
 import type { Ledger } from '../ledger';
 import type { ModuleProtocol, ProtocolFrame } from '../moduleProtocol';
 import { mayRunProtocolRead, type RunBlockKey } from '../runGate';
-import type { Motion } from '../vehicleState';
+import { commonIdent, isM3, mayModuleBeSent, ruleFor, type Fitment, type Fitted, type VariantRules } from '../variants';
 
 export interface ScanTarget {
     address: number;
@@ -38,6 +51,8 @@ export interface ScanTarget {
     modules: string[];
     /** The fault-read frames every candidate's own table carries, in the first candidate's order. */
     frames: ProtocolFrame[];
+    /** Each candidate's own fault-read frames: what goes once the IDENT has chosen one of them. */
+    byModule: Record<string, ProtocolFrame[]>;
     /** The MSS54 alone is decoded. */
     decoder: 'mss54' | null;
     /** A KWP-on-DS2 module (DSC MK60): not in the scan, which runs while moving — it is read on its own screen, parked. */
@@ -47,6 +62,11 @@ export interface ScanTarget {
 export type ScanOutcome =
     /** It answered every frame. */
     | 'answered'
+    /**
+     * It answered its IDENT, and nothing more was sent: which module it is is not known (`?`), or it
+     * is one whose SGBD this app does not carry. The answer and the variant are on the result.
+     */
+    | 'identified'
     /** No answer: not fitted, asleep, or on a bus this line does not reach. */
     | 'silent'
     /** It answered with a refusal. */
@@ -64,6 +84,12 @@ export interface ScanResult {
     reason?: string;
     /** The MSS54's decoded entries, as the decoder gives them. */
     decoded?: unknown;
+    /**
+     * What the address's IDENT said, when one was sent or was already known: the SGBD its group
+     * chose (null: `?`), the module that is, and on what ground the fault read went (`m3-fitment`:
+     * no rule, an M3).
+     */
+    variant?: { sgbd: string | null; moduleId: string | null; basis?: 'identified' | 'm3-fitment' };
 }
 
 export interface ScanRun {
@@ -74,10 +100,21 @@ export interface ScanRun {
     results: ScanResult[];
 }
 
+export interface ScanIdentity {
+    rules: VariantRules;
+    /** The addresses the common IDENT may go to (lib/variants `identAddresses`). */
+    identOk: ReadonlySet<number>;
+    /** What each address has said this session. */
+    fitment(): Fitment;
+    /** Send the address its common IDENT (once a session) and say what it chose; the hook's. */
+    identify(address: number): Promise<Fitted>;
+}
+
 export interface ScanDeps {
     ledger(): Ledger;
-    /** The DME's speed, read now: whether the DME still answers when the line goes quiet. */
-    measure(): Promise<Motion>;
+    identity: ScanIdentity;
+    /** Whether the DME still answers, asked when the line goes quiet: lost line, or absent modules. */
+    dmeAnswers(): Promise<boolean>;
     /** One exchange, told to the read record; the hook's readFrame. */
     exchange(address: number, moduleId: string, job: string, f: ProtocolFrame, options: RetryOptions): Promise<Ds2Frame>;
     decode?(target: ScanTarget, responses: Ds2Frame[]): unknown;
@@ -94,6 +131,7 @@ export const ALL_MODULES = 'all';
 const LINE_LOST_AFTER = 8;
 
 const hex2 = (a: number) => `0x${a.toString(16).toUpperCase().padStart(2, '0')}`;
+const hexOf = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join(' ');
 
 /** The addresses to ask and what each may be sent, from every module's own protocol. */
 export function scanTargets(protocols: readonly ModuleProtocol[]): ScanTarget[] {
@@ -107,6 +145,7 @@ export function scanTargets(protocols: readonly ModuleProtocol[]): ScanTarget[] 
             address,
             modules: group.map((p) => p.moduleId),
             frames,
+            byModule: Object.fromEntries(group.map((p) => [p.moduleId, p.faults])),
             decoder: group.length === 1 && first.decoder === 'mss54' ? 'mss54' : null,
             ...(group.some((p) => p.kwp) ? { kwp: true } : {}),
         });
@@ -126,6 +165,18 @@ export async function runScan(targets: readonly ScanTarget[], deps: ScanDeps): P
     };
 
     let lostInARow = 0;
+    // Something answered a moment ago, so a long run of silence after it is the line, not the car's
+    // equipment. Stop rather than mark every module absent — once the DME is asked and says nothing.
+    const lineLost = async (i: number): Promise<boolean> => {
+        if (lostInARow < LINE_LOST_AFTER || !run.results.some((r) => r.outcome === 'answered' || r.outcome === 'identified')) return false;
+        if (!(await deps.dmeAnswers())) {
+            run.end = 'link-lost';
+            skipRest(i + 1, 'the DME stopped answering too: the line, not the modules');
+            return true;
+        }
+        lostInARow = 0;
+        return false;
+    };
     for (const [i, t] of targets.entries()) {
         if (deps.stopped()) {
             run.end = 'stopped';
@@ -146,23 +197,65 @@ export async function runScan(targets: readonly ScanTarget[], deps: ScanDeps): P
             });
             continue;
         }
-        const blocked = t.modules.map((m) => mayRunProtocolRead(`${m}:FS_LESEN`, 'fault-read', deps.ledger(), 'unknown')).find((g) => !g.allowed) as
-            | { allowed: false; reason: RunBlockKey }
-            | undefined;
-        if (blocked) {
-            push({ ...base, outcome: 'refused', exchanges: [], reason: blocked.reason });
+        // Which module answers here, and so which frames are its own.
+        const id = deps.identity;
+        const rule = ruleFor(id.rules, t.address);
+        const exchanges: ScanResult['exchanges'] = [];
+        let variant: ScanResult['variant'];
+        if (rule || !isM3(id.fitment())) {
+            if (!id.identOk.has(t.address)) {
+                push({ ...base, outcome: 'refused', exchanges: [], reason: 'which module is here is not known (?), and the common IDENT is not its own: nothing is sent' });
+                continue;
+            }
+            const f = await id.identify(t.address);
+            exchanges.push({ request: hexOf(commonIdent(t.address)), response: f.answer });
+            variant = { sgbd: f.sgbd, moduleId: f.moduleId };
+            if (f.answer === null) {
+                lostInARow++;
+                push({ ...base, outcome: 'silent', exchanges, variant, reason: 'no answer to its IDENT' });
+                if (await lineLost(i)) break;
+                await deps.pause();
+                continue;
+            }
+            lostInARow = 0;
+        }
+        const chosen = rule ? (id.fitment().get(t.address)?.moduleId ?? null) : t.modules[0];
+        const verdict = mayModuleBeSent(t.address, chosen && t.modules.includes(chosen) ? chosen : t.modules[0], id.fitment(), id.rules);
+        if (!verdict.ok || !chosen || !t.modules.includes(chosen)) {
+            push({
+                ...base,
+                outcome: 'identified',
+                exchanges,
+                ...(variant ? { variant } : {}),
+                reason: verdict.ok ? 'not a module this scan reads at this address' : verdict.reason,
+            });
+            await deps.pause();
+            continue;
+        }
+        variant = { ...(variant ?? { sgbd: null, moduleId: null }), basis: verdict.basis };
+        const modules = verdict.basis === 'identified' ? [chosen] : t.modules;
+        const toSend = verdict.basis === 'identified' ? (t.byModule[chosen] ?? []) : t.frames;
+        if (toSend.length === 0) {
+            push({ ...base, outcome: 'refused', exchanges, variant, reason: `${chosen}: its SGBD carries no short fault-read frame` });
             continue;
         }
 
-        const exchanges: ScanResult['exchanges'] = [];
+        const blocked = modules.map((m) => mayRunProtocolRead(`${m}:FS_LESEN`, 'fault-read', deps.ledger(), 'unknown')).find((g) => !g.allowed) as
+            | { allowed: false; reason: RunBlockKey }
+            | undefined;
+        if (blocked) {
+            push({ ...base, outcome: 'refused', exchanges, variant, reason: blocked.reason });
+            continue;
+        }
+
         const frames: Ds2Frame[] = [];
         let outcome: ScanOutcome = 'answered';
         let reason: string | undefined;
-        for (const f of t.frames) {
+        for (const f of toSend) {
             try {
                 // One attempt: silence is the answer of a module that is not there, and three tries
                 // of 37 absent ones would turn a one-minute scan into five.
-                const frame = await deps.exchange(t.address, t.modules[0], 'FS_LESEN', f, { attempts: 1 });
+                const frame = await deps.exchange(t.address, modules[0], 'FS_LESEN', f, { attempts: 1 });
                 if (!isPositiveResponse(frame)) {
                     outcome = 'rejected';
                     reason = `status 0x${frame.controlOrStatus.toString(16).padStart(2, '0')}`;
@@ -175,6 +268,9 @@ export async function runScan(targets: readonly ScanTarget[], deps: ScanDeps): P
                 exchanges.push({ request: f.hex, response: null });
                 if (isDs2Error(e) && e.code === 'NEGATIVE_RESPONSE') {
                     outcome = 'rejected';
+                } else if (isDs2Error(e) && e.code === 'NOT_SENT') {
+                    // The link's guard held it back: nothing went, so it says nothing about the car.
+                    outcome = 'refused';
                 } else {
                     outcome = 'silent';
                 }
@@ -183,8 +279,9 @@ export async function runScan(targets: readonly ScanTarget[], deps: ScanDeps): P
             }
         }
         lostInARow = outcome === 'silent' ? lostInARow + 1 : 0;
-        const result: ScanResult = { ...base, outcome, exchanges, ...(reason ? { reason } : {}) };
-        if (outcome === 'answered' && t.decoder && deps.decode) {
+        const result: ScanResult = { ...base, outcome, exchanges, variant, ...(reason ? { reason } : {}) };
+        // Decoded only when the module that answered is the decoded one, as its IDENT chose.
+        if (outcome === 'answered' && t.decoder && deps.decode && verdict.basis === 'identified' && chosen === 'mss54') {
             try {
                 result.decoded = deps.decode(t, frames);
             } catch (e) {
@@ -192,17 +289,7 @@ export async function runScan(targets: readonly ScanTarget[], deps: ScanDeps): P
             }
         }
         push(result);
-        // The DME answered the speed read a moment ago, so a long run of silence after it is the
-        // line, not the cars' equipment. Stop rather than mark every module absent.
-        if (lostInARow >= LINE_LOST_AFTER && run.results.some((r) => r.outcome === 'answered')) {
-            const probe = await deps.measure();
-            if (probe === 'unknown') {
-                run.end = 'link-lost';
-                skipRest(i + 1, 'the DME stopped answering too: the line, not the modules');
-                break;
-            }
-            lostInARow = 0;
-        }
+        if (await lineLost(i)) break;
         await deps.pause();
     }
     run.endedAt = deps.now();
@@ -211,7 +298,7 @@ export async function runScan(targets: readonly ScanTarget[], deps: ScanDeps): P
 
 /** A line per outcome, for the answer and the log: `answered 21 · silent 14 · refused 2`. */
 export function scanCounts(results: readonly ScanResult[]): Record<ScanOutcome, number> {
-    const out: Record<ScanOutcome, number> = { answered: 0, silent: 0, rejected: 0, refused: 0, skipped: 0 };
+    const out: Record<ScanOutcome, number> = { answered: 0, identified: 0, silent: 0, rejected: 0, refused: 0, skipped: 0 };
     for (const r of results) out[r.outcome]++;
     return out;
 }

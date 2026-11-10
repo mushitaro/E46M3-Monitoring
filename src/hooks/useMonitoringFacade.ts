@@ -15,7 +15,8 @@ import { getBoard, putBoard } from '@/lib/probe/boardStore';
 import { listRuns } from '@/lib/probe/runStore';
 import { scanCounts, type ScanRun } from '@/lib/probe/scan';
 import type { RunBlockKey } from '@/lib/runGate';
-import { mayRun, mayRunProtocolRead } from '@/lib/runGate';
+import { mayRun, mayRunProtocolRead, telegramBytes } from '@/lib/runGate';
+import { isCommonIdent } from '@/lib/variants';
 import { canSync } from '@/lib/sync/cloud';
 import { needsSync, sessionLabel, summarise } from '@/lib/sync/session';
 import { expiresAt } from '@/lib/journal';
@@ -129,6 +130,9 @@ export function useMonitoringFacade(input: {
         return { module: ecuId, read: false, reason: 'Not read yet in this session.' };
     };
 
+    /** A scan result's fault reads, without the IDENT that chose its module. */
+    const reads = (x: ScanRun['results'][number]) => x.exchanges.filter((e) => !isCommonIdent(telegramBytes(e.request) ?? new Uint8Array(0)));
+
     /** A scan, module by module: what answered, with the MSS54's codes decoded and the rest as bytes. */
     const describeScan = async (r: ScanRun) => {
         const mss54 = ecuId === 'mss54' && catalog ? catalog : await loadEcuCatalog('mss54').catch(() => null);
@@ -142,8 +146,11 @@ export function useMonitoringFacade(input: {
                 modules: x.modules.map((id) => ({ id, name: moduleName(id) })),
                 outcome: x.outcome,
                 ...(x.reason ? { reason: en.runBlock[x.reason as RunBlockKey] ?? x.reason } : {}),
+                // Which module its IDENT chose (`?`: none), never the IDENT answer itself: an identity
+                // read stays with the owner (lib/investigation/redact), so only the fault reads go as bytes.
+                ...(x.variant ? { variant: { sgbd: x.variant.sgbd ?? '?', carried: x.variant.moduleId !== null, ...(x.variant.basis ? { basis: x.variant.basis } : {}) } } : {}),
                 ...(x.decoded ? { faults: describeEntries(x.decoded as ErrorMemoryEntry[], mss54) } : {}),
-                ...(!x.decoded && x.exchanges.some((e) => e.response !== null) ? { raw: x.exchanges, note: 'No decoder for this module: the answer is kept as bytes.' } : {}),
+                ...(!x.decoded && reads(x).some((e) => e.response !== null) ? { raw: reads(x), note: 'No decoder for this module: the answer is kept as bytes.' } : {}),
             })),
         };
     };
@@ -163,6 +170,9 @@ export function useMonitoringFacade(input: {
             speedReadAt: link.vehicleState ? new Date(link.vehicleState.at).toISOString() : null,
             // The speed preflight's verdict: parked, moving or unknown (not read, or too old).
             car: link.motion,
+            // Which module each address said it is on this link: the SGBD its group chose, or '?'.
+            // An M3 is a car whose 0x12 said MSS54DS0; on any other, '?' addresses get their IDENT only.
+            variants: Object.fromEntries([...link.fitment.values()].map((f) => [`0x${f.address.toString(16).toUpperCase().padStart(2, '0')}`, f.sgbd ?? (f.answer === null ? 'silent' : '?')])),
             recording: link.state === 'logging' && !running,
             datalog: { selected: datalog.current(), samples: datalog.snapshot().samples.length },
             probe: running

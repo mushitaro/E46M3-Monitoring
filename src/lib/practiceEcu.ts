@@ -24,7 +24,7 @@ import {
 } from '@tsunagi/ds2-mss54';
 import { SimulatedSerialPort, type ExchangeBehavior, type SerialOptions, type SerialPortLike, type SimulatedEcuOptions } from '@tsunagi/ds2-core';
 import { KWP_FORMAT, KWP_TESTER, xorOf } from './kwpOnDs2';
-import { CLEAN, practiceCar } from './practiceCar';
+import { CLEAN, ds2IdentData, practiceCar } from './practiceCar';
 
 const START = Date.now();
 
@@ -179,7 +179,7 @@ function practiceModule(address: number): SimulatedEcuOptions {
     return {
         address,
         respond: (request) => {
-            if (request.controlOrStatus === 0x00) return { payload: new Uint8Array([address, 0x46, 0x30, 0x01]) };
+            if (request.controlOrStatus === 0x00) return { payload: new Uint8Array(ds2IdentData(practiceCar.idents[address] ?? { hw: '00', diag: '00' })) };
             if (request.controlOrStatus === Ds2Control.READ_ERROR_MEMORY) {
                 return { payload: new Uint8Array(practiceCar.moduleFaults[address] ?? CLEAN) };
             }
@@ -206,10 +206,10 @@ export function practiceEcu(): SimulatedEcuOptions {
             const arg = request.payload[0];
             switch (request.controlOrStatus) {
                 case 0x00: // IDENT
-                    // Raw bytes only — the response layout is genuinely unknown,
-                    // and inventing a decoded ZB/HW/SW here would teach the UI a
-                    // shape the car may not use.
-                    return { payload: new Uint8Array([0x77, 0x83, 0x73, 0x40, 0x04, 0x00]) };
+                    // Laid out as the group files read a DS2 IDENT answer (practiceCar
+                    // `ds2IdentData`), so the practice car is identified the way a car is:
+                    // an M3's MSS54 by default, another DME when a scenario says so.
+                    return { payload: new Uint8Array(ds2IdentData(practiceCar.idents[0x12] ?? { hw: '00', diag: '00' })) };
 
                 case Ds2Control.CLEAR_ERROR_MEMORY:
                     // The clear empties the DME's memory; the next read finds none.

@@ -10,6 +10,7 @@ import {
     ListControls,
     MicroLabel,
     Pane,
+    Provenance,
     Section,
     Well,
     humanName,
@@ -115,6 +116,31 @@ export const DiagnosisView = memo(function DiagnosisView({
                             <p className="font-mono text-[10px] text-slate-600">{r.source}</p>
                         </Well>
                     ))}
+                    {/* DSC MK60 (lib/kwpOnDs2): the codes, read as ISO 14230 lays a $58 answer out —
+                        not yet confirmed on a MK60, and said so; the bytes above stay the answer. */}
+                    {rawFaults.some((r) => r.kwpDtcs) ? (
+                        <>
+                            <DataList>
+                                {rawFaults.flatMap((r) =>
+                                    (r.kwpDtcs ?? []).map((d) => {
+                                        const known = faultByCode.get(normCode(d.code));
+                                        const meaning = known && catalog ? resolveText(catalog, known.text, lang) : null;
+                                        return (
+                                            <DataRow
+                                                key={`${r.request}-${d.code}`}
+                                                code={d.code.toUpperCase().replace('0X', '0x')}
+                                                codeTone="danger"
+                                                name={meaning?.text ?? humanName('')}
+                                                trailing={<span className="shrink-0 font-mono text-[10px] text-slate-600">{`0x${d.status.toString(16).padStart(2, '0')}`}</span>}
+                                            />
+                                        );
+                                    }),
+                                )}
+                            </DataList>
+                            {rawFaults.every((r) => r.kwpDtcs?.length === 0) ? <p className="py-2 text-xs text-emerald-400">{t.faults_none}</p> : null}
+                            <Provenance>{t.faults_kwp_estimated}</Provenance>
+                        </>
+                    ) : null}
                 </div>
             ) : faults === null ? (
                 <p className="py-2 font-mono text-xs uppercase text-slate-600">{t.awaiting_read}</p>

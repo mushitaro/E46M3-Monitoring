@@ -4,7 +4,7 @@ import { CircleDot, Loader2, Play, PlayCircle, PlugZap, Radar, Radio, Square, Za
 import type { HubConfig, NoticeTone } from '@/components/Hub';
 import type { useDs2Link } from '@/hooks/useDs2Link';
 import type { ProbeProgress } from '@/hooks/useProbe';
-import type { ModuleProtocol } from '@/lib/moduleProtocol';
+import { hasFaultRead, hasIdent, type ModuleProtocol } from '@/lib/moduleProtocol';
 import { hubConfigFor, hubNoticeFor } from '@/lib/hub';
 import { jobRiskOf, type CatalogJob } from '@/lib/ecuCatalog';
 import { useLang } from '@/lib/i18n';
@@ -88,10 +88,10 @@ export function useHub(input: {
             // IDENT first where the module has one, then the fault memory — and only the reads its own
             // SGBD carries, so a module with fault frames but no IDENT is not sent a refused IDENT.
             readFaults: () =>
-                void (input.target.ident ? link.readIdent() : Promise.resolve(null)).then(() =>
-                    input.target.faults.length > 0 ? link.readFaults() : null,
+                void (hasIdent(input.target) ? link.readIdent() : Promise.resolve(null)).then(() =>
+                    hasFaultRead(input.target) ? link.readFaults() : null,
                 ),
-            faultsAvailable: input.target.ident !== null || input.target.faults.length > 0,
+            faultsAvailable: hasIdent(input.target) || hasFaultRead(input.target),
             scan: input.scan
                 ? { run: input.scan.run, line: input.scan.progress ? t.scan_progress(input.scan.progress.done, input.scan.progress.total) : undefined }
                 : undefined,

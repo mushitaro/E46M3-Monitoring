@@ -17,6 +17,10 @@
    "jobs": 54,
    "results": 293
   },
+  "dsc_mk60": {
+   "jobs": 64,
+   "results": 339
+  },
   "lws5": {
    "jobs": 24,
    "results": 165
@@ -207,16 +211,16 @@
   }
  },
  "totals": {
-  "jobs": 1524,
-  "results": 9580
+  "jobs": 1588,
+  "results": 9919
  },
  "roles": {
-  "raw": 36,
-  "status": 1417,
-  "telegram": 587,
-  "text": 451,
-  "unit": 782,
-  "value": 6307
+  "raw": 37,
+  "status": 1477,
+  "telegram": 635,
+  "text": 463,
+  "unit": 800,
+  "value": 6507
  },
- "unclassified": 139
+ "unclassified": 151
 }

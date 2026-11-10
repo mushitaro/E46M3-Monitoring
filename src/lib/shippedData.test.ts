@@ -345,6 +345,9 @@ describe('reads whose control byte we cannot vouch for', () => {
     const found = new Map<number, string[]>();
     for (const [id, p] of profiles) {
         const table = telegrams.get(id)!;
+        // KWP-on-DS2 (DSC MK60): the third byte is the tester, not a control byte. Its two frames are
+        // reads by their service byte, and the app sends them by their own path (lib/kwpOnDs2).
+        if ((table as { framing?: string }).framing === 'kwp-ds2') continue;
         for (const j of p.jobs) {
             if (j.class !== 'read') continue;
             const entries = table.jobs[j.id] ?? [];

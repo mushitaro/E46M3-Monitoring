@@ -32,7 +32,6 @@ import {
     detectTransportKind,
     isDs2Error,
     latencyTimerOf,
-    simulatedPort,
     toHex,
     type Ds2ByteTransport,
     type Ds2ErrorKind,
@@ -60,10 +59,11 @@ import {
     type ErrorMemoryQuickTest,
 } from '@tsunagi/ds2-mss54';
 import { appNow } from '@/lib/clock';
+import { kwpExchange, parseDtcsByStatus, type KwpDtc, type KwpFrame } from '@/lib/kwpOnDs2';
 import { whyNotSendable } from '@/lib/actuationGate';
 import type { ReadRecord } from '@/lib/investigation/readRecord';
 import type { ModuleProtocol } from '@/lib/moduleProtocol';
-import { practiceBus } from '@/lib/practiceEcu';
+import { PracticePort } from '@/lib/practiceEcu';
 import { practiceCar } from '@/lib/practiceCar';
 import { runProbe, type ProbeDeps, type ProbePlan, type ProbeRun } from '@/lib/probe/executor';
 import { runScan, type ScanRun, type ScanTarget } from '@/lib/probe/scan';
@@ -183,6 +183,8 @@ export interface RawFaultRead {
     response: string;
     /** The module's own job whose telegram this frame is. */
     source: string;
+    /** A KWP-on-DS2 `$58` answer read as ISO 14230 lays it out (lib/kwpOnDs2); not yet confirmed on a MK60. */
+    kwpDtcs?: KwpDtc[];
 }
 
 /**
@@ -573,6 +575,39 @@ export function useDs2Link(options: {
         [measureMotion],
     );
 
+    /**
+     * One KWP-on-DS2 read (lib/kwpOnDs2; DSC MK60). Parked only, measured now: whether the MK60 minds
+     * being asked while it works is not known yet (operator, 2026-11-10: the first reads parked, moving
+     * once it has answered). Under the link's gate, so one frame is in flight; recorded like a read.
+     */
+    const kwpRead = useCallback(
+        async (link: Ds2Link, moduleId: string, job: string, frame: KwpFrame) => {
+            await preflight(link, `${moduleId} ${job}`, 'parked');
+            const transport = transportRef.current ?? refuse('No open transport.');
+            append('tx', `${job} ${frame.hex} (${frame.source})`);
+            const record = (response: string | null, outcome: 'ok' | 'rejected' | 'failed', reason: string | null) => {
+                if (modeRef.current !== 'vehicle' || !onReadRef.current) return;
+                try {
+                    const state = vehicleStateRef.current;
+                    onReadRef.current({ at: appNow(), module: moduleId, job, request: frame.hex, response, outcome, reason, speedKmh: state?.speedKmh ?? null, motion: motionOf(state, appNow()) });
+                } catch {
+                    /* the record is lost, the read is not */
+                }
+            };
+            try {
+                const answer = await link.withGate(() => kwpExchange(transport, frame));
+                append('rx', toHex(answer.bytes));
+                record(toHex(answer.bytes), 'ok', null);
+                return answer;
+            } catch (e) {
+                const message = e instanceof Error ? e.message : String(e);
+                record(null, isDs2Error(e) && e.code === 'NEGATIVE_RESPONSE' ? 'rejected' : 'failed', message.slice(0, 300));
+                throw e;
+            }
+        },
+        [append, preflight],
+    );
+
     /** The last identity read, for the failure report — state would be stale inside the callbacks. */
     const identRef = useRef<{ hex: string; length: number } | null>(null);
     const notifyFailure = useCallback(
@@ -630,7 +665,7 @@ export function useDs2Link(options: {
                               transport: new WebSerialTransport({
                                   // The practice car: the DME, the module asked for, and every module such a
                                   // car carries (lib/practiceCar), so a scan finds what a car would.
-                                  requestPort: simulatedPort(practiceBus([address, ...practiceCar.fitted])).requestPort,
+                                  requestPort: async () => new PracticePort([address, ...practiceCar.fitted]),
                               }),
                           }
                         : permittedOnly
@@ -741,6 +776,14 @@ export function useDs2Link(options: {
         (requires: SendRequirement = 'none') =>
             run('Read identity', async (link) => {
                 const { target, to } = session(link);
+                if (target.kwp) {
+                    const f = target.kwp.ident ?? refuse(`${target.moduleId}: its SGBD carries no identity frame; nothing is sent.`);
+                    const answer = await kwpRead(link, target.moduleId, 'IDENT', f);
+                    const value = { hex: toHex(answer.data), length: answer.data.length };
+                    identRef.current = value;
+                    setIdent(value);
+                    return value;
+                }
                 const ident = target.ident ?? refuse(`${target.moduleId}: its SGBD carries no short IDENT frame; nothing is sent.`);
                 await preflight(link, 'Identity read', requires);
                 append('tx', `IDENT ${ident.hex} (${ident.source})`);
@@ -752,13 +795,27 @@ export function useDs2Link(options: {
                 setIdent(value);
                 return value;
             }),
-        [append, preflight, readFrame, run, session],
+        [append, kwpRead, preflight, readFrame, run, session],
     );
 
     const readFaults = useCallback(
         (requires: SendRequirement = 'none') =>
             run('Read fault memory', async (link) => {
                 const { target, to } = session(link);
+                if (target.kwp) {
+                    if (target.kwp.faults.length === 0) refuse(`${target.moduleId}: its SGBD carries no fault-read frame; nothing is sent.`);
+                    const out: RawFaultRead[] = [];
+                    for (const f of target.kwp.faults) {
+                        const answer = await kwpRead(link, target.moduleId, 'FS_LESEN', f);
+                        const dtcs = parseDtcsByStatus(answer.data);
+                        append('rx', dtcs ? `${dtcs.length} code(s), read as ISO 14230 lays a $58 answer out — not yet confirmed on a MK60` : `${answer.data.length} bytes — not the $58 shape`);
+                        out.push({ request: f.hex, response: toHex(answer.data), source: f.source, ...(dtcs ? { kwpDtcs: dtcs } : {}) });
+                    }
+                    setFaults(null);
+                    setQuickTest(null);
+                    setRawFaults(out);
+                    return out;
+                }
                 if (target.decoder !== 'mss54' && target.faults.length === 0) {
                     refuse(`${target.moduleId}: its SGBD carries no short fault-read frame; nothing is sent.`);
                 }
@@ -794,7 +851,7 @@ export function useDs2Link(options: {
                 setFaults(entries);
                 return entries;
             }),
-        [append, preflight, readFrame, run, session],
+        [append, kwpRead, preflight, readFrame, run, session],
     );
 
     /**
@@ -883,6 +940,9 @@ export function useDs2Link(options: {
         (jobId: string, hex: string, requires: SendRequirement = 'parked') =>
             run(`Run ${jobId}`, async (link) => {
                 const { target, to } = session(link);
+                // A KWP-on-DS2 module is sent its identity and its fault read, and nothing else: the
+                // catalogue path builds DS2 frames, which this module would read as something else.
+                if (target.kwp) refuse(`${jobId}: ${target.moduleId} speaks KWP2000-shaped frames; only its identity and fault read are built for it.`);
                 const bytes = telegramBytes(hex);
                 if (!bytes) {
                     // A plain Error on purpose: this is the APP refusing, not

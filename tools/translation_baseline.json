@@ -10,7 +10,7 @@
   "envField",
   "vocabulary"
  ],
- "total": 360,
+ "total": 505,
  "modules": {
   "alc_ds2": {
    "argComment": 1
@@ -38,6 +38,13 @@
   "dsc_e46": {
    "faultText": 5,
    "resultComment": 2
+  },
+  "dsc_mk60": {
+   "argComment": 5,
+   "desc": 43,
+   "faultText": 55,
+   "label": 5,
+   "resultComment": 37
   },
   "ews3": {
    "argComment": 1,

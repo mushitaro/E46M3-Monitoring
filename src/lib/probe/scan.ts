@@ -40,6 +40,8 @@ export interface ScanTarget {
     frames: ProtocolFrame[];
     /** The MSS54 alone is decoded. */
     decoder: 'mss54' | null;
+    /** A KWP-on-DS2 module (DSC MK60): not in the scan, which runs while moving — it is read on its own screen, parked. */
+    kwp?: boolean;
 }
 
 export type ScanOutcome =
@@ -106,6 +108,7 @@ export function scanTargets(protocols: readonly ModuleProtocol[]): ScanTarget[] 
             modules: group.map((p) => p.moduleId),
             frames,
             decoder: group.length === 1 && first.decoder === 'mss54' ? 'mss54' : null,
+            ...(group.some((p) => p.kwp) ? { kwp: true } : {}),
         });
     }
     // The DME first: it is the one decoded, and the speed comes from it anyway.
@@ -135,8 +138,9 @@ export async function runScan(targets: readonly ScanTarget[], deps: ScanDeps): P
                 ...base,
                 outcome: 'refused',
                 exchanges: [],
-                reason:
-                    t.modules.length > 1
+                reason: t.kwp
+                    ? 'KWP2000-shaped frames on the DS2 line: read on its own screen, parked, not in the scan'
+                    : t.modules.length > 1
                         ? `no fault-read frame is common to ${t.modules.join(', ')}; which one is fitted is chosen on the screen, then read`
                         : 'its SGBD carries no short fault-read frame',
             });

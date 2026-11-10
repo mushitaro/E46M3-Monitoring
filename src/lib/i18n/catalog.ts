@@ -356,6 +356,8 @@ export interface Localised {
     graph_target: string;
     graph_noValue: string;
     /** The head unit's settings, through the launcher (lib/launcherDoors). */
+    /** DSC MK60's codes read as ISO 14230's $58 layout, not yet confirmed on the car (lib/kwpOnDs2). */
+    faults_kwp_estimated: string;
     door_wifi: string;
     door_datetime: string;
     board_up: string;

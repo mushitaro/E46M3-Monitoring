@@ -17,6 +17,7 @@
  * and a layout guessed from the MSS54's would be a reading of fiction.
  */
 
+import { kwpFrameOf, type KwpFrame } from './kwpOnDs2';
 import { telegramBytes } from './runGate';
 import type { TelegramTable } from './telegrams';
 
@@ -40,6 +41,12 @@ export interface ModuleProtocol {
     endSession: ProtocolFrame | null;
     /** Which decoder reads this module's answers. Null: none, and the bytes are the answer. */
     decoder: 'mss54' | null;
+    /**
+     * A module whose SGBD speaks KWP2000-shaped frames on DS2's line (lib/kwpOnDs2; DSC MK60). Only
+     * its identity and its fault read, each taken from its own table by exact bytes; every DS2 frame
+     * above is then absent, so nothing else is ever sent to it. Null for a DS2 module.
+     */
+    kwp: { ident: KwpFrame | null; faults: KwpFrame[] } | null;
 }
 
 const C = { IDENT: 0x00, READ_FAULTS: 0x04, CLEAR_FAULTS: 0x05, KEEP_ALIVE: 0x9e, END_SESSION: 0x9f } as const;
@@ -79,6 +86,26 @@ export function moduleProtocol(moduleId: string, address: number, table: Telegra
         return out;
     };
 
+    // KWP-on-DS2: the module's own frames by their service byte — $1A ReadECUIdentification, $18
+    // ReadDiagnosticTroubleCodesByStatus — addressed to this module on the wire. Nothing else.
+    if (table?.framing === 'kwp-ds2') {
+        const frames = (job: string, sid: number) =>
+            (jobs[job] ?? [])
+                .map((t) => kwpFrameOf(t.hex, `${job} (SGBD execution trace)`))
+                .filter((f): f is KwpFrame => f !== null && parseInt(f.hex.slice(0, 2), 16) === address && f.data[0] === sid);
+        return {
+            moduleId,
+            address,
+            ident: null,
+            faults: [],
+            clear: null,
+            keepAlive: null,
+            endSession: null,
+            decoder: null,
+            kwp: { ident: frames('IDENT', 0x1a)[0] ?? null, faults: frames('FS_LESEN', 0x18) },
+        };
+    }
+
     const measured = MEASURED_KEEP_ALIVE[moduleId];
     const measuredBytes = measured ? telegramBytes(measured) : null;
 
@@ -94,6 +121,7 @@ export function moduleProtocol(moduleId: string, address: number, table: Telegra
                 : (find(['DIAGNOSE_AUFRECHT'], C.KEEP_ALIVE, 0)[0] ?? null),
         endSession: find(['DIAGNOSE_ENDE'], C.END_SESSION, 0)[0] ?? null,
         decoder: moduleId === 'mss54' ? 'mss54' : null,
+        kwp: null,
     };
 }
 
@@ -101,3 +129,9 @@ export function moduleProtocol(moduleId: string, address: number, table: Telegra
 export function noProtocol(moduleId: string, address: number): ModuleProtocol {
     return moduleProtocol(moduleId, address, null);
 }
+
+/** Whether the app has an identity frame for this module, DS2 or KWP-on-DS2. */
+export const hasIdent = (p: ModuleProtocol): boolean => p.ident !== null || !!p.kwp?.ident;
+
+/** Whether the app has a fault-read frame for this module, DS2 or KWP-on-DS2. */
+export const hasFaultRead = (p: ModuleProtocol): boolean => p.faults.length > 0 || (p.kwp?.faults.length ?? 0) > 0;

@@ -248,6 +248,37 @@ def extract(path, addr, arg_counts=None):
     return out
 
 
+#  DS2 の上に KWP2000 の形の電文を載せるモジュール（`B8 <宛先> F1 LL <SID> …`）。上の静的抽出は
+#  DS2 の形（宛先・長さ・コマンド）で読むので、これには使えない——DSC_MK60 では書き込みジョブの
+#  断片を拾っていた。代わりに、データリポジトリの実行トレース（EDIABAS のシミュレーションで、各ジョブが
+#  最初に送ったフレーム）から、**読み取りだけ**（IDENT と FS_LESEN）を表にする。
+KWP_ON_DS2 = {"dsc_mk60": ("DSC_MK60", ("IDENT", "FS_LESEN"))}
+DUMP_DIR = os.environ.get("SGBD_DUMP_DIR", r"C:\EDIABAS-derived\sgbd-dumps")
+
+
+def kwp_table(mid: str, prg: str, addr: int) -> dict:
+    stem, jobs = KWP_ON_DS2[mid]
+    traced = json.load(open(os.path.join(DUMP_DIR, f"{stem}.telegrams.json"), encoding="utf-8"))
+    out = {}
+    for job in jobs:
+        e = traced["executed"][job]
+        wire = [int(b, 16) for b in e["wire"].split()]
+        # 線上の形の確かめ：先頭が線上の宛先、4 バイト目がデータ長、末尾が XOR。
+        assert wire[0] == addr and wire[3] == len(wire) - 5, (mid, job, e["wire"])
+        x = 0
+        for b in wire[:-1]:
+            x ^= b
+        assert x == wire[-1], (mid, job, e["wire"])
+        out[job] = [{
+            "hex": " ".join(f"{b:02x}" for b in wire), "cmd": wire[4],
+            "cmdName": e["service"].split(",")[0], "named": True, "occurrences": 1,
+            "sharedWithJobs": 0, "confidence": "single", "payloadBytes": wire[3] - 1,
+            "declaredArgs": 0, "argsAgree": True, "framing": "kwp-ds2",
+        }]
+    return {"module": mid, "sgbd": prg, "address": addr, "framing": "kwp-ds2",
+            "source": f"execution trace in EDIABAS simulation ({stem}.telegrams.json); reads only", "jobs": out}
+
+
 if __name__ == "__main__":
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -263,11 +294,13 @@ if __name__ == "__main__":
         try:
             if not os.path.exists(path):
                 raise FileNotFoundError(path)
-            data = extract(path, addr, arg_counts(prg))
+            kwp = mid in KWP_ON_DS2
+            table = kwp_table(mid, prg, addr) if kwp else None
+            data = table["jobs"] if kwp else extract(path, addr, arg_counts(prg))
             dest = os.path.join(OUT, f"{mid}.telegrams.json")
             tmp = dest + ".tmp"
             with open(tmp, "w", encoding="utf-8") as f:
-                json.dump({
+                json.dump(table if kwp else {
                     "module": mid, "sgbd": prg, "address": addr,
                     "source": "static extraction of XOR-0xF7 job bytecode (NOT an execution trace)",
                     "jobs": data,

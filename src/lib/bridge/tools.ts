@@ -329,6 +329,12 @@ export type MonitoringToolName = keyof typeof MONITORING_TOOLS;
 /** Answered by the relay from the guide the tab declared; never by the tab. */
 export const GUIDE_TOOL = 'monitoring_guide';
 
+/**
+ * Held by the relay itself and answered without the tab, for the operator only: the operator's words
+ * to the development desk, and its answers (functions/api/bridge/dev-*, docs/AUTONOMY.md §7).
+ */
+export const RELAY_DEV_TOOLS = ['monitoring_dev_request', 'monitoring_dev_status'] as const;
+
 /** The tools as the hello declares them. */
 export function helloTools(): Array<{ name: string; description: string; inputSchema: ToolDef['inputSchema']; scope: ToolScope }> {
     return (Object.entries(MONITORING_TOOLS) as [MonitoringToolName, ToolDef][]).map(([name, d]) => ({

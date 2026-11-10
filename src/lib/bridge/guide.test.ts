@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { GUIDE_TOPICS, loadGuide } from './guide';
-import { GUIDE_TOOL, MONITORING_TOOLS, helloTools } from './tools';
+import { GUIDE_TOOL, RELAY_DEV_TOOLS, MONITORING_TOOLS, helloTools } from './tools';
 
 /**
  * The procedure the voice assistant follows (`monitoring_guide`), checked the way the relay will
@@ -75,7 +75,7 @@ describe('the tools fit what the relay accepts', () => {
 
 describe('the guide names only tools the tab has', () => {
     it('mentions no monitoring_* tool missing from the registry', () => {
-        const known = new Set<string>([...Object.keys(MONITORING_TOOLS), GUIDE_TOOL]);
+        const known = new Set<string>([...Object.keys(MONITORING_TOOLS), GUIDE_TOOL, ...RELAY_DEV_TOOLS]);
         for (const f of files) {
             for (const m of read(f).matchAll(/`(monitoring_[a-z0-9_]+)`/g)) {
                 expect(known.has(m[1]), `${f} names ${m[1]}`).toBe(true);

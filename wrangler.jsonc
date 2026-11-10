@@ -46,6 +46,11 @@
     // wakes the moment it asks something (functions/_lib/wake.ts). Firing it also takes
     // LOOP_FIRE_TOKEN, the task's API-trigger token — a Pages secret, never here; without it, the
     // loop keeps only its scheduled turns.
-    "LOOP_TRIGGER_ID": "trig_01TrL8w14QvVQNPv64HA4TYW"
+    "LOOP_TRIGGER_ID": "trig_01TrL8w14QvVQNPv64HA4TYW",
+    // The Mainstays whose servers may send the diagnostic engine's errors to the desk
+    // (functions/api/bridge/engine-report.ts, operator 2026-11-11). Each also needs its own key, the
+    // Pages secret ENGINE_REPORT_SECRET_<SLUG> (gren-blue-auto → ENGINE_REPORT_SECRET_GREN_BLUE_AUTO);
+    // until it is set, that store's reports are refused and wait on the store's side.
+    "ENGINE_REPORT_MAINSTAYS": "gren-blue-auto"
   }
 }

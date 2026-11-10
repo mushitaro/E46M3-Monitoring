@@ -50,7 +50,15 @@ const gate = createGate({
 // every response it passes by rebuilding it, and a 101 does not survive being rebuilt — so the gate
 // is handed a stand-in to re-mark, and the real answer is returned instead. It is only ever the
 // answer of a request the gate let through: refused, the gate never calls next().
+//
+// And one door is left outside the gate: /api/bridge/engine-report. A Mainstay's server calls it, not
+// a browser, so there is no cookie to show — each request carries the store's own one-time ticket
+// instead, bound to its body, and the route refuses anything else (functions/_lib/engineReportTicket.ts).
+// One exact path, not a prefix; nothing else of this origin is served without the gate.
+const OUTSIDE_GATE = ['/api/bridge/engine-report'];
+
 export const onRequest = async (context: GateContext): Promise<Response> => {
+    if (OUTSIDE_GATE.includes(new URL(context.request.url).pathname)) return context.next();
     let upgrade: Response | null = null;
     const res = await gate({
         ...context,

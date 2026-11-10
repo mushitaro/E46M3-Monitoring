@@ -26,6 +26,12 @@ export const KWP_TESTER = 0xf1;
 /** DSC_MK60's INITIALISIERUNG: first answer byte within 1000 ms, 25 ms after an answer before the next request. */
 export const KWP_TIMEOUT_MS = 1000;
 export const KWP_REGEN_MS = 25;
+/**
+ * The quiet the line is given before a request. ISO 14230 has a module take a new request only after
+ * the bus has been idle for P3 (55 ms at least); the DME's speed read goes just before every MK60 read,
+ * and the first try on the car (2026-11-10) sent straight after its answer and met silence.
+ */
+export const KWP_IDLE_MS = 150;
 
 /** One frame the app may send, from the module's own telegram table. */
 export interface KwpFrame {
@@ -75,6 +81,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  */
 export async function kwpExchange(transport: Ds2ByteTransport, frame: KwpFrame, timeoutMs = KWP_TIMEOUT_MS): Promise<KwpAnswer> {
     const request = kwpRequest(frame.target, frame.data);
+    await sleep(KWP_IDLE_MS);
+    // Whatever the line carried in the quiet (a module talking to itself) is not this answer.
+    transport.purge();
     await transport.write(request);
     // The K-line is half-duplex: the request comes back first.
     const echo = await transport.readExact(request.length, timeoutMs);

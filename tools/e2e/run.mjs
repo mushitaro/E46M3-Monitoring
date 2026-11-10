@@ -28,13 +28,14 @@
  *   { reload: true }              the page reloaded, as a head unit does on a key cycle
  *   { check: { desc, run } }      run(page, door) inside the page context returns true or why not
  */
-import { spawn } from 'node:child_process';
-import { mkdirSync, readdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { createServer } from 'node:http';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
+import { extname, join, normalize, resolve, sep } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 
-const ROOT = resolve(new URL('../..', import.meta.url).pathname);
+// fileURLToPath, not URL.pathname: on Windows the pathname is `/C:/…`, which resolves to no folder.
+const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
 // Playwright is not a dependency of the app: the runner uses the one installed on the machine
 // (the cloud sessions have it; on a desk, `npm i -g playwright` and `npx playwright install chromium`).
@@ -59,16 +60,29 @@ const files = readdirSync(join(ROOT, 'scenarios', 'e2e'))
     .filter((f) => f.endsWith('.mjs') && !f.startsWith('_') && (only.length === 0 || only.some((o) => f.startsWith(o))))
     .sort();
 
-const server = spawn('npx', ['serve', '-l', String(PORT), 'out'], { cwd: ROOT, stdio: 'ignore' });
-const base = `http://localhost:${PORT}/`;
-for (let i = 0; i < 40; i++) {
-    try {
-        if ((await fetch(base)).ok) break;
-    } catch {
-        // not up yet
+// The static export, served by Node itself: no `npx serve` (not a dependency, and `npx` cannot be
+// spawned without a shell on Windows). `/x` is `x.html` or `x/index.html`, as the export lays it out.
+const OUT = join(ROOT, 'out');
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.txt': 'text/plain; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json', '.woff2': 'font/woff2' };
+const fileFor = (urlPath) => {
+    const rel = normalize(decodeURIComponent(urlPath.split('?')[0])).replace(/^[\\/]+/, '');
+    const at = join(OUT, rel);
+    if (!at.startsWith(OUT + sep) && at !== OUT) return null;
+    for (const f of [at, `${at}.html`, join(at, 'index.html')]) if (existsSync(f) && statSync(f).isFile()) return f;
+    return null;
+};
+const server = createServer((req, res) => {
+    const f = fileFor(req.url ?? '/');
+    if (!f) {
+        res.writeHead(404, { 'content-type': TYPES['.html'] });
+        res.end(existsSync(join(OUT, '404.html')) ? readFileSync(join(OUT, '404.html')) : 'not found');
+        return;
     }
-    await new Promise((r) => setTimeout(r, 250));
-}
+    res.writeHead(200, { 'content-type': TYPES[extname(f)] ?? 'application/octet-stream' });
+    res.end(readFileSync(f));
+});
+await new Promise((r) => server.listen(PORT, '127.0.0.1', r));
+const base = `http://localhost:${PORT}/`;
 
 mkdirSync(join(reportAt, 'shots'), { recursive: true });
 const browser = await chromium.launch();
@@ -166,7 +180,7 @@ for (const file of files) {
 }
 
 await browser.close();
-server.kill();
+server.close();
 
 // ---- the report ------------------------------------------------------------------------------
 const esc = (s) => String(s ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ');

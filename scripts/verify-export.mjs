@@ -88,7 +88,7 @@ check('DOCUMENTS lists every exported .html', missingDocs.length === 0,
 // This is the assertion that settles which filename shape Next emitted for a second route, rather
 // than the worker assuming one. A route the worker cannot resolve is served the shell instead —
 // silently, which on /usb-check means the diagnostic page shows the app it was meant to diagnose.
-for (const route of ['/usb-check']) {
+for (const route of ['/usb-check', '/intake']) {
     const shapes = [`${route}/index.html`, `${route}.html`];
     const found = shapes.filter((s) => documents.includes(s));
     // Only assert a route the build actually emitted. Keying this on the document COUNT instead

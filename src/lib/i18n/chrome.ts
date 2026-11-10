@@ -32,6 +32,12 @@ export const CHROME = {
     module_all: 'ALL MODULES',
     // The sub-action under the scan: put the chosen module on the screen.
     open_module: 'Open',
+    // The sub-action under a finished scan: the intake report to the store's MAINTENANCE (lib/intake).
+    // Its label is its state for that scan: SEND, SENDING, then SENT (received) or SAVED (the file).
+    intake_send: 'Send',
+    intake_sending: 'Sending',
+    intake_sent: 'Sent',
+    intake_saved: 'Saved',
     practice: 'PRACTICE',
     probe: 'PROBE',
     exportCsv: 'Export CSV',

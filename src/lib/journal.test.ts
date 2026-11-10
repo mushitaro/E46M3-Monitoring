@@ -32,7 +32,7 @@ describe('episodes', () => {
 
     it('counts what each holds', () => {
         const [first] = episodes(day);
-        expect(first.counts).toEqual({ faultReads: 1, samples: 120, adaptations: 0, runs: 0, failures: 0 });
+        expect(first.counts).toEqual({ faultReads: 1, scans: 0, samples: 120, adaptations: 0, runs: 0, failures: 0 });
         expect(first.end).toBe(3 * MIN);
     });
 
@@ -131,6 +131,25 @@ describe('toSession', () => {
         expect(s.rawFaults).toEqual(reads);
         expect(s.ecu).toBe('smg2');
         expect(s.label).toContain('SMG2');
+    });
+
+    it('keeps a scan of every module as one record, and an episode with only a scan is worth keeping', () => {
+        const scan = {
+            startedAt: 1,
+            endedAt: 5,
+            end: 'done' as const,
+            results: [
+                { address: '0x12', modules: ['mss54'], outcome: 'answered' as const, exchanges: [{ request: '12 04 00 16', response: '12 2e a0' }] },
+                { address: '0x80', modules: ['kombi46'], outcome: 'silent' as const, exchanges: [] },
+            ],
+        };
+        const [ep] = episodes([
+            { t: 0, kind: 'connect', ecu: 'mss54', mock: true },
+            { t: 6, kind: 'scan', scan },
+        ]);
+        expect(ep.counts.scans).toBe(1);
+        const s = toSession(ep, { id: 'x', syncedAt: null }, 7, 'mss54', null);
+        expect(s.scans).toEqual([scan]);
     });
 
     it('says the faults were not read rather than that there were none', () => {

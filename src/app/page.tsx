@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, ArrowRight, Download, Plus, Radar, RotateCcw, SkipForward, Square } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Download, Plus, Radar, RotateCcw, Send, SkipForward, Square } from 'lucide-react';
 import { AppHeader } from '@/components/AppHeader';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { CreditsDialog } from '@/components/CreditsDialog';
@@ -24,6 +24,7 @@ import { useHub } from '@/hooks/useHub';
 import { useProbe } from '@/hooks/useProbe';
 import { useInvestigationSync } from '@/hooks/useInvestigationSync';
 import { useAssistantBridge } from '@/hooks/useAssistantBridge';
+import { useIntakeSend } from '@/hooks/useIntakeSend';
 import { useMonitoringFacade } from '@/hooks/useMonitoringFacade';
 import { useInstallPrompt } from '@/hooks/useInstallPrompt';
 import { useOnline } from '@/hooks/useOnline';
@@ -198,6 +199,8 @@ export default function Home() {
     // A sentence the screen owes the owner for a press that did nothing (PROBE locked, NEXT refused),
     // shown in the notice line until the next tab or mode change.
     const [screenNotice, setScreenNotice] = useState<string | null>(null);
+    // What SEND came to (useIntakeSend), said once on the notice line until the next tab or mode change.
+    const [sendNotice, setSendNotice] = useState<{ text: string; tone: 'info' | 'warn' | 'error' } | null>(null);
     const [ecuId, setEcuId] = useState('mss54');
 
     // Which window shares the screen with HUB below 900; the footer switches it. MAIN first: it is
@@ -406,6 +409,7 @@ export default function Home() {
                 setMode(TAB_MODE[next]);
                 setTab(next);
                 setScreenNotice(null);
+                setSendNotice(null);
             }),
         [releaseThen],
     );
@@ -460,6 +464,8 @@ export default function Home() {
         const targets = await loadScanTargets(ecuIndex);
         setAllModules(true);
         setScanOpen(null);
+        // A new scan is a new report: what the last SEND came to is about the last one.
+        setSendNotice(null);
         void link.scanAll(targets, () => ledgerRef.current);
         return { addresses: targets.length };
     }, [ecuIndex, link]);
@@ -613,7 +619,14 @@ export default function Home() {
     // until switched on on this device). The facade is what the tools may reach — the screen's own
     // controls, never a run.
     const buildId = useBuildId();
-    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, probeSessions, mode, tab, changeTab, showPane: setPane, selectJob, switchModule, startScan, updateWaiting, syncInvestigations, defaultDevice: t.assistant_defaultDevice });
+    // SEND under a finished scan: the intake report to the store's MAINTENANCE tab that opened this one (lib/intake).
+    const intakeAlsoRead = useCallback(
+        () => [...(link.ident ? [link.ident.hex] : []), ...(link.rawFaults ?? []).map((r) => r.response)],
+        [link.ident, link.rawFaults],
+    );
+    const sayIntake = useCallback((text: string, tone: 'info' | 'warn' | 'error') => setSendNotice({ text, tone }), []);
+    const intake = useIntakeSend({ scan: link.scan, practice: link.mode === 'practice', index: ecuIndex, mss54: mss54Catalog, alsoRead: intakeAlsoRead, say: sayIntake });
+    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, probeSessions, mode, tab, changeTab, showPane: setPane, selectJob, switchModule, startScan, updateWaiting, syncInvestigations, intake: intake.status, defaultDevice: t.assistant_defaultDevice });
     // The end-to-end scenarios' door to the same tools (lib/e2e): a test build only.
     useE2EDoor(facade);
     const assistant = useAssistantBridge({
@@ -667,7 +680,12 @@ export default function Home() {
                 ? { runnable: probeSessions.runnable, run: () => void probe.start(probeSessions.current ?? undefined) }
                 : undefined,
     });
-    const shownNotice = screenNotice ? { text: screenNotice, tone: 'warn' as const } : notice;
+    // SEND's one sentence sits under a link error and under a scan in progress, which say more urgent things.
+    const shownNotice = screenNotice
+        ? { text: screenNotice, tone: 'warn' as const }
+        : sendNotice && !link.error && link.scanProgress === null
+          ? sendNotice
+          : notice;
 
     const panes: Record<Tab, React.ReactNode> = {
         diagnosis: scopeAll ? (
@@ -905,6 +923,19 @@ export default function Home() {
                             {scanOpenModule.length === 1 && link.state !== 'busy' && (
                                 <TextButton onClick={() => openScanned(scanOpenModule[0])} Icon={ArrowRight}>
                                     {t.open_module}
+                                </TextButton>
+                            )}
+                            {/* The intake report (lib/intake), once a scan of every module has ended: one press, and
+                                the store's MAINTENANCE takes it in the background (D6). WORKS only, like every send. */}
+                            {sessionsEnabled && scopeAll && link.scan !== null && link.scanProgress === null && (
+                                <TextButton
+                                    onClick={() => void intake.send()}
+                                    Icon={Send}
+                                    tone={intake.status.phase === 'idle' || intake.status.phase === 'refused' ? 'primary' : 'neutral'}
+                                    disabled={intake.status.phase === 'sending' || intake.status.phase === 'received'}
+                                    title={t.intake_title}
+                                >
+                                    {intake.label}
                                 </TextButton>
                             )}
                             {/* DISCONNECT was here. It is now on the MODULE row —

@@ -2,6 +2,7 @@
 
 import { formatErrorCode, type ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
 import type { RawFaultRead, useDs2Link } from '@/hooks/useDs2Link';
+import type { IntakeStatus } from '@/hooks/useIntakeSend';
 import type { useProbe } from '@/hooks/useProbe';
 import type { FreshFaults, TabFacade } from '@/lib/bridge/handlers';
 import { jobRiskOf, loadEcuCatalog, text as resolveText, type EcuIndex, type EcuProfile, type JobClass } from '@/lib/ecuCatalog';
@@ -17,6 +18,7 @@ import { scanCounts, type ScanRun } from '@/lib/probe/scan';
 import type { RunBlockKey } from '@/lib/runGate';
 import { mayRun, mayRunProtocolRead, telegramBytes } from '@/lib/runGate';
 import { isCommonIdent } from '@/lib/variants';
+import { redactHex } from '@/lib/investigation/redact';
 import { canSync } from '@/lib/sync/cloud';
 import { needsSync, sessionLabel, summarise } from '@/lib/sync/session';
 import { expiresAt } from '@/lib/journal';
@@ -95,6 +97,8 @@ export function useMonitoringFacade(input: {
     startScan: () => Promise<{ addresses: number } | string>;
     /** A newer build is downloaded; it is taken once the link has been down a minute (lib/adoptBuild). */
     updateWaiting: boolean;
+    /** SEND's phase for the scan on the screen (useIntakeSend): never the report. */
+    intake: IntakeStatus;
     /** Bring the delegated investigations level with the account (hooks/useInvestigationSync). */
     syncInvestigations: () => void;
     /** The name a device answers as when the owner gave it none. */
@@ -103,6 +107,9 @@ export function useMonitoringFacade(input: {
     const { link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, tab } = input;
     const moduleName = (id: string) => ecuIndex?.modules.find((m) => m.id === id)?.name_en ?? id;
     const running = probe.progress !== null;
+
+    /** A raw read with any VIN its bytes spell masked (lib/investigation/redact). */
+    const masked = <T extends { response: string }>(r: T): T => ({ ...r, response: redactHex(r.response).hex });
 
     /** The module on the screen, as far as it has been read. */
     const inSession = (moduleId?: string, fresh?: FreshFaults) => {
@@ -123,15 +130,20 @@ export function useMonitoringFacade(input: {
                     const known = byCode.get(normCode(d.code));
                     return { code: d.code, status: `0x${d.status.toString(16).padStart(2, '0')}`, text: known && catalog ? resolveText(catalog, known.text, 'en').text : null };
                 });
-                return { module: ecuId, read: true, decoded: false, estimated: true, note: 'Codes read as ISO 14230 lays out a $58 answer; not yet confirmed on a MK60. The bytes are the answer.', codes, raw };
+                return { module: ecuId, read: true, decoded: false, estimated: true, note: 'Codes read as ISO 14230 lays out a $58 answer; not yet confirmed on a MK60. The bytes are the answer.', codes, raw: rows.map(masked) };
             }
-            return { module: ecuId, read: true, decoded: false, note: 'No decoder for this module: the answer is kept as bytes.', raw };
+            return { module: ecuId, read: true, decoded: false, note: 'No decoder for this module: the answer is kept as bytes.', raw: rows.map(masked) };
         }
         return { module: ecuId, read: false, reason: 'Not read yet in this session.' };
     };
 
-    /** A scan result's fault reads, without the IDENT that chose its module. */
-    const reads = (x: ScanRun['results'][number]) => x.exchanges.filter((e) => !isCommonIdent(telegramBytes(e.request) ?? new Uint8Array(0)));
+    /**
+     * A scan result's fault reads, without the IDENT that chose its module, and with any VIN the
+     * bytes spell masked (lib/investigation/redact): the VIN never reaches the assistant, from
+     * whichever answer it would have come.
+     */
+    const reads = (x: ScanRun['results'][number]) =>
+        x.exchanges.filter((e) => !isCommonIdent(telegramBytes(e.request) ?? new Uint8Array(0))).map((e) => ({ ...e, response: e.response === null ? null : redactHex(e.response).hex }));
 
     /** A scan, module by module: what answered, with the MSS54's codes decoded and the rest as bytes. */
     const describeScan = async (r: ScanRun) => {
@@ -187,6 +199,9 @@ export function useMonitoringFacade(input: {
                   : null,
             // Said so the assistant can tell the driver: it is taken once the link is down a minute, nothing unsaved.
             newBuildWaiting: input.updateWaiting,
+            // SEND under the scan (useIntakeSend): how far it got and which store took it. Never the report:
+            // a person sends it, and its VIN and identification are for the store alone.
+            intakeReport: input.intake.phase === 'idle' ? null : { phase: input.intake.phase, store: input.intake.store, at: input.intake.at ? new Date(input.intake.at).toISOString() : null },
         }),
 
         faults: async (moduleId, fresh) => {
@@ -290,6 +305,7 @@ export function useMonitoringFacade(input: {
                     to: new Date(ep.end).toISOString(),
                     practice: ep.mock,
                     faultReads: ep.counts.faultReads,
+                    scans: ep.counts.scans,
                     samples: ep.counts.samples,
                     learnedValueReads: ep.counts.adaptations,
                     procedures: ep.counts.runs,

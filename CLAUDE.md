@@ -64,6 +64,12 @@ Next.js 16 / React 19 / Tailwind v4、`output: 'export'` の静的書き出し�
   （運営者 2026-11-04）。
   どれも読取だけで、新しい種類のフレームは無い。新しい機器の許可・作動テスト・調整・消去・書き込みの口は
   facade に無い。走行中の読取を認めるのも画面の人。
+- **点検報告は人の SEND だけが運ぶ**（運営者 2026-11-10、D5・D6）。全モジュールの読取の後、SEND 一回で
+  `e46.intake-check.v1`（`src/lib/intake/intakeCheck.ts`。MAINTENANCE の contract と同じバイト）を書き、
+  この MONITORING を開いた店の MAINTENANCE のタブ（`window.opener`、登録したオリジンだけ）へ postMessage で
+  裏で渡す。開いていなければ JSON で保存する。MAINTENANCE を前に出さない。MAINTENANCE が開く入口は `/intake`
+  で、そこだけ COOP を外す（`public/_headers`）。報告と VIN は AI の道具の返り値に出さない（facade は
+  `intakeReport` の状態だけ、生のバイトの VIN は伏せる。デモテスト S16）。
 - **出所を落とさない。** 分類・訳・規定値には `provenance` が付く。分からないものは
   「分からない」と表示する。推定値を実測値の顔で出さない。
 - **予約スロット**。状態が変わっても再レイアウトが起きないよう、通知行・サブアクション行などは

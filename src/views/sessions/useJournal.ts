@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
 import type { LinkMode, LinkState } from '@/hooks/useDs2Link';
+import type { ScanRun } from '@/lib/probe/scan';
 import { KEEP_MS, episodes, expired, rebaseMeta, unfound, type Episode, type JournalEvent } from '@/lib/journal';
 import type { FailureNote, SavedSession } from '@/lib/sync/session';
 import { appendEvent, deleteEvents, getMeta, listEvents, putMeta, rebaseEvents, type JournalMeta } from '@/lib/sync/journalStore';
@@ -89,6 +90,8 @@ export function useJournal(input: {
         ident: { hex: string; length: number } | null;
         faults: ErrorMemoryEntry[] | null;
         rawFaults: Array<{ request: string; response: string; source: string }> | null;
+        /** The last scan of every module (lib/probe/scan), a new object per scan. */
+        scan: ScanRun | null;
         adaptations: unknown;
         lastRun: unknown;
     };
@@ -193,20 +196,22 @@ export function useJournal(input: {
 
     // Each new read the screen shows. By reference: the link hands over a new object per read, and
     // the same object again on every render in between.
-    const seen = useRef({ ident: link.ident, faults: link.faults, rawFaults: link.rawFaults, adaptations: link.adaptations, lastRun: link.lastRun });
+    const seen = useRef({ ident: link.ident, faults: link.faults, rawFaults: link.rawFaults, scan: link.scan, adaptations: link.adaptations, lastRun: link.lastRun });
     useEffect(() => {
         const s = seen.current;
         const t = appNow();
         if (link.ident && link.ident !== s.ident) append({ t, kind: 'ident', ident: link.ident });
         if (link.faults && link.faults !== s.faults) append({ t, kind: 'faults', faults: link.faults });
         if (link.rawFaults && link.rawFaults !== s.rawFaults) append({ t, kind: 'rawFaults', reads: link.rawFaults });
+        // The whole scan as one event, timed by when it ended (its own times are inside it).
+        if (link.scan && link.scan !== s.scan) append({ t, kind: 'scan', scan: link.scan });
         if (link.adaptations && link.adaptations !== s.adaptations) append({ t, kind: 'adaptation', blocks: link.adaptations });
         if (link.lastRun && link.lastRun !== s.lastRun) {
             const job = (link.lastRun as { job?: { id?: string } | string }).job;
             append({ t, kind: 'run', job: typeof job === 'string' ? job : (job?.id ?? ''), result: link.lastRun });
         }
-        seen.current = { ident: link.ident, faults: link.faults, rawFaults: link.rawFaults, adaptations: link.adaptations, lastRun: link.lastRun };
-    }, [link.ident, link.faults, link.rawFaults, link.adaptations, link.lastRun, append]);
+        seen.current = { ident: link.ident, faults: link.faults, rawFaults: link.rawFaults, scan: link.scan, adaptations: link.adaptations, lastRun: link.lastRun };
+    }, [link.ident, link.faults, link.rawFaults, link.scan, link.adaptations, link.lastRun, append]);
 
     // Failures, one event per new note.
     const seenFailures = useRef(failures.length);

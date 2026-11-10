@@ -244,6 +244,20 @@ export const ja: Localised = {
               ? `変種 ${sgbd}`
               : `変種 ${sgbd}：この SGBD はまだ載せていないので、IDENT のほかは送っていません。`,
     scan_progress: (d, n) => `読取中 ${d} / ${n}`,
+    intake_received: (store, n) => `${store} が受け取りました（所見 ${n}）。`,
+    intake_refused: (store, why) => `${store} が止めました：${why}`,
+    intake_refusal: {
+        'vin-mismatch': 'VIN が開いている車と合いません。',
+        'vin-missing': '報告に VIN がありません。',
+        practice: 'PRACTICE の報告は車に入れません。',
+        invalid: '報告の形が合いません。',
+        busy: '取り込みの最中です。少し待って送り直してください。',
+        other: '理由は MAINTENANCE の画面にあります。',
+    },
+    intake_savedFile: 'MAINTENANCE のタブが開いていないので、報告を JSON で保存しました。',
+    intake_noAnswer: (store) => `${store} から返事が無いので、報告を JSON で保存しました。`,
+    intake_failed: '報告を書けませんでした。',
+    intake_title: '全モジュールの読取を点検報告にして、この画面を開いた MAINTENANCE に渡します。開いていなければ JSON で保存します。',
     awaiting_scan: '全モジュール読取待機中…',
     viz_scanAnswered: '応答したモジュール',
     faults_notEstablished:

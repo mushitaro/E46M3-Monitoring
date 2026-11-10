@@ -50,3 +50,14 @@
   # tables private — the owner gate on the WORKS build, Cloudflare Access on the
   # production project — and `noindex` and `robots.txt` only ask politely.
   X-Robots-Tag: noindex
+
+# The one path whose document keeps a cross-origin opener: /intake, where the store's E46 ///
+# MAINTENANCE opens MONITORING (src/app/intake/page.tsx). `same-origin` above would put the opened
+# tab in a new browsing-context group and cut `window.opener`, and SEND hands the intake report to
+# that opener by postMessage, in the background (lib/intake/handoff, operator 2026-11-10, D6). The
+# detach (`!`) removes the header the rule above set, which leaves the default, `unsafe-none`, for
+# this document only. What the opener can then do to this tab is navigate it or post to it; the tab
+# reads only messages from the registered store origins, sent by its own opener. Every other path,
+# the head unit's included, keeps `same-origin`.
+/intake
+  ! Cross-Origin-Opener-Policy

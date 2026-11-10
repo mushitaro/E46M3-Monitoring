@@ -23,6 +23,7 @@
  */
 import type { ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
 import { PLAUSIBLE_FROM } from './clock';
+import type { ScanRun } from './probe/scan';
 import { sessionLabel, type FailureNote, type SavedSession } from './sync/session';
 
 /** Nothing recorded for this long ends an episode. */
@@ -52,6 +53,12 @@ export type JournalEvent = (
     /** A module with no decoder: the frames its own SGBD sends and the bytes that came back. */
     | { t: number; kind: 'rawFaults'; reads: Array<{ request: string; response: string; source: string }> }
     | { t: number; kind: 'datalog'; datalog: Datalog }
+    /**
+     * Every module's fault memory, read one address at a time (lib/probe/scan): one event for the
+     * whole scan, each module's IDENT answer, fault-read bytes and outcome in it. What the intake
+     * report (lib/intake) is written from, and what a kept episode carries as `scans`.
+     */
+    | { t: number; kind: 'scan'; scan: ScanRun }
     | { t: number; kind: 'adaptation'; blocks: unknown }
     | { t: number; kind: 'run'; job: string; result: unknown }
     | { t: number; kind: 'failure'; note: FailureNote }
@@ -66,7 +73,7 @@ export type JournalEvent = (
 export const undated = (e: JournalEvent): boolean => e.loose === true || e.t < PLAUSIBLE_FROM;
 
 /** The kinds that are something read or done, rather than the link coming and going. */
-const CONTENT: ReadonlySet<JournalEvent['kind']> = new Set(['ident', 'faults', 'rawFaults', 'datalog', 'adaptation', 'run', 'failure']);
+const CONTENT: ReadonlySet<JournalEvent['kind']> = new Set(['ident', 'faults', 'rawFaults', 'scan', 'datalog', 'adaptation', 'run', 'failure']);
 
 export interface Episode {
     /** Its first event's time, which also names it: stable while it grows, and unique on one device. */
@@ -75,7 +82,7 @@ export interface Episode {
     ecu: string | null;
     mock: boolean;
     events: JournalEvent[];
-    counts: { faultReads: number; samples: number; adaptations: number; runs: number; failures: number };
+    counts: { faultReads: number; scans: number; samples: number; adaptations: number; runs: number; failures: number };
     /** Some of its times cannot be trusted (`undated`): it is not deleted after seven days. */
     undated: boolean;
 }
@@ -107,9 +114,10 @@ function groups(events: readonly JournalEvent[], joins: ReadonlySet<number>): Jo
 
 function toEpisode(events: JournalEvent[]): Episode {
     const connect = events.find((e): e is Extract<JournalEvent, { kind: 'connect' }> => e.kind === 'connect');
-    const counts = { faultReads: 0, samples: 0, adaptations: 0, runs: 0, failures: 0 };
+    const counts = { faultReads: 0, scans: 0, samples: 0, adaptations: 0, runs: 0, failures: 0 };
     for (const e of events) {
         if (e.kind === 'faults' || e.kind === 'rawFaults') counts.faultReads++;
+        else if (e.kind === 'scan') counts.scans++;
         else if (e.kind === 'datalog') counts.samples += e.datalog.samples;
         else if (e.kind === 'adaptation') counts.adaptations++;
         else if (e.kind === 'run') counts.runs++;
@@ -176,7 +184,7 @@ export function rebaseMeta<M extends { joins: number[]; kept: Record<string, str
 /**
  * An episode as a saved session: what MEMORY lists and SYNC sends once it is kept. The newest
  * identity and fault read stand for the episode, the last recording is its datalog (each recording
- * is kept in `datalogs`), and learned values and procedure results ride along.
+ * is kept in `datalogs`), and every scan, learned values and procedure results ride along.
  */
 export function toSession(
     ep: Episode,
@@ -187,6 +195,7 @@ export function toSession(
 ): SavedSession & {
     datalogs: Datalog[];
     rawFaults: Array<{ request: string; response: string; source: string }> | null;
+    scans: ScanRun[];
     adaptations: unknown[];
     runs: Array<{ job: string; result: unknown }>;
 } {
@@ -210,6 +219,7 @@ export function toSession(
         failures: ep.events.filter((e): e is Extract<JournalEvent, { kind: 'failure' }> => e.kind === 'failure').map((e) => e.note),
         datalogs,
         rawFaults: last('rawFaults')?.reads ?? null,
+        scans: ep.events.filter((e): e is Extract<JournalEvent, { kind: 'scan' }> => e.kind === 'scan').map((e) => e.scan),
         adaptations: ep.events.filter((e): e is Extract<JournalEvent, { kind: 'adaptation' }> => e.kind === 'adaptation').map((e) => e.blocks),
         runs: ep.events.filter((e): e is Extract<JournalEvent, { kind: 'run' }> => e.kind === 'run').map((e) => ({ job: e.job, result: e.result })),
     };

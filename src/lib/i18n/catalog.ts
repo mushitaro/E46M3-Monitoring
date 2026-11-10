@@ -212,6 +212,18 @@ export interface Localised {
     scan_shared: string;
     /** The hub's notice while it runs. */
     scan_progress: (done: number, total: number) => string;
+    /**
+     * SEND's outcome, said once on the notice line (lib/intake): the store's MAINTENANCE received it,
+     * stopped it and why, or there was no MAINTENANCE tab to take it and the file was saved.
+     */
+    intake_received: (store: string, findings: number) => string;
+    intake_refused: (store: string, why: string) => string;
+    intake_refusal: Record<'vin-mismatch' | 'vin-missing' | 'practice' | 'invalid' | 'busy' | 'other', string>;
+    intake_savedFile: string;
+    intake_noAnswer: (store: string) => string;
+    intake_failed: string;
+    /** SEND's title: what it sends and where. */
+    intake_title: string;
     awaiting_scan: string;
     viz_scanAnswered: string;
     /** The hub's notice where a module's own SGBD carries no short IDENT or fault-read frame. */

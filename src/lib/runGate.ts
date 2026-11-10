@@ -230,10 +230,16 @@ export function mayRun(
  *     the frames its own SGBD sends for them (lib/moduleProtocol). Sent while the car moves too
  *     (operator, 2026-11-04: "read the fault codes while driving"). Clearing the fault memory is
  *     not a read and stays parked, on the screen, behind its confirmation.
+ *   - `identity-read`: the instrument cluster's VIN read (KOMBI46 / KOMBI46R, AIF block 2,
+ *     `80 05 02 02`; lib/clusterVin), sent once in a scan so the store can match the car (operator,
+ *     2026-11-10). It is an identification like IDENT and treated as IDENT is: it does not wait for
+ *     the car to stop, and a withdrawal stops it. Its control byte (0x02) is NOT a read on every
+ *     module — on SMG II it starts a learning procedure — so it is never added to
+ *     READ_ONLY_CONTROLS: it goes only as the cluster's own frame, picked by moduleProtocol.
  *   - `module`: anything else built from the protocol — the MSS54's learned values. Read on a
  *     moving car only once the owner has cleared it in the ledger, exactly like a catalogue read.
  */
-export type ProtocolReadEvidence = 'dme-measured' | 'fault-read' | 'module';
+export type ProtocolReadEvidence = 'dme-measured' | 'fault-read' | 'identity-read' | 'module';
 
 /**
  * The gate for a read the app builds from the protocol rather than takes from the catalogue: the
@@ -241,7 +247,8 @@ export type ProtocolReadEvidence = 'dme-measured' | 'fault-read' | 'module';
  * `mayRun`: a withdrawal refuses it, a moving car refuses it unless the evidence or the owner says
  * otherwise, and a stationary car is measured at the wire rather than assumed.
  *
- * `id` is the ledger's key for it: `${moduleId}:FS_LESEN`, `mss54:LIVE_19`, `mss54:RAM_FFD1A2`.
+ * `id` is the ledger's key for it: `${moduleId}:FS_LESEN`, `mss54:LIVE_19`, `mss54:RAM_FFD1A2`,
+ * `kombi46r:STATUS_AIF_FG_NR_LESEN`.
  */
 export function mayRunProtocolRead(
     id: string,
@@ -250,7 +257,7 @@ export function mayRunProtocolRead(
     motion: Motion,
 ): { allowed: true; requires: SendRequirement } | { allowed: false; reason: RunBlockKey } {
     if (withdrawn(ledger, id)) return { allowed: false, reason: 'run_block_revoked' };
-    if (evidence === 'dme-measured' || evidence === 'fault-read' || mayReadWhileMoving(ledger, id)) return { allowed: true, requires: 'none' };
+    if (evidence === 'dme-measured' || evidence === 'fault-read' || evidence === 'identity-read' || mayReadWhileMoving(ledger, id)) return { allowed: true, requires: 'none' };
     if (motion === 'moving') return { allowed: false, reason: 'run_block_moving' };
     return { allowed: true, requires: 'parked' };
 }

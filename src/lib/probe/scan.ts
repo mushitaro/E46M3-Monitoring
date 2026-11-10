@@ -27,6 +27,17 @@
  * carries — whichever is fitted, the bytes are its own. Most shared addresses agree byte for byte;
  * where none is common (0x50: MFL carries one, MFL2 none), the address is not asked, and says so.
  *
+ * ## The VIN, once (intake, operator 2026-11-10)
+ *
+ * The instrument cluster keeps the VIN's last seven (lib/clusterVin). Once its IDENT has chosen
+ * KOMBI46 or KOMBI46R (D_0080; on any car, M3 or not) and its fault read has been answered, it is
+ * sent that module's own VIN read, once, and what it said goes on the run as `vin` — NOT among the
+ * results' exchanges. The exchanges are what the screen shows as raw bytes, what the ledger records
+ * as fault-read facts, and what the assistant's answers carry (masked for an ASCII VIN; the cluster
+ * answers in BCD, which no mask would catch). Kept apart, the answer has no road there. Only the
+ * seven characters are kept on the run, not the bytes. Where 0x80 has no variant (`?`, or a module
+ * the app does not carry) nothing is sent and `vin` stays null.
+ *
  * ## What it never does
  *
  *   - Wait for the car to stop. A fault read is a read, and it goes while the car moves too
@@ -41,6 +52,7 @@
  */
 import { isDs2Error, isPositiveResponse, toHex, type Ds2Frame, type RetryOptions } from '@tsunagi/ds2-core';
 import type { Ledger } from '../ledger';
+import { clusterVinShort } from '../clusterVin';
 import type { ModuleProtocol, ProtocolFrame } from '../moduleProtocol';
 import { mayRunProtocolRead, type RunBlockKey } from '../runGate';
 import { commonIdent, isM3, mayModuleBeSent, ruleFor, type Fitment, type Fitted, type VariantRules } from '../variants';
@@ -53,6 +65,8 @@ export interface ScanTarget {
     frames: ProtocolFrame[];
     /** Each candidate's own fault-read frames: what goes once the IDENT has chosen one of them. */
     byModule: Record<string, ProtocolFrame[]>;
+    /** Each candidate's own VIN read (the cluster's; lib/clusterVin), where it has one. */
+    vinByModule?: Record<string, ProtocolFrame & { job: string }>;
     /** The MSS54 alone is decoded. */
     decoder: 'mss54' | null;
     /** A KWP-on-DS2 module (DSC MK60): not in the scan, which runs while moving — it is read on its own screen, parked. */
@@ -92,12 +106,28 @@ export interface ScanResult {
     variant?: { sgbd: string | null; moduleId: string | null; basis?: 'identified' | 'm3-fitment' };
 }
 
+/**
+ * The cluster's VIN read in a scan, apart from the results (see the header). The seven characters
+ * only, never the bytes; null where the answer did not hold a short VIN where the SGBD reads it.
+ */
+export interface ScanVinRead {
+    address: string;
+    moduleId: string;
+    /** The module's own job that carries the frame (`AIF_FG_NR_LESEN`, `STATUS_AIF_FG_NR_LESEN`). */
+    job: string;
+    outcome: 'answered' | 'rejected' | 'silent' | 'refused';
+    vinShort: string | null;
+    reason?: string;
+}
+
 export interface ScanRun {
     startedAt: number;
     endedAt: number;
     /** `not-parked` is on scans kept before fault reads went while moving (2026-11-04). */
     end: 'done' | 'not-parked' | 'stopped' | 'link-lost';
     results: ScanResult[];
+    /** The cluster's VIN read, when one was sent; absent on scans kept before it (2026-11-11). */
+    vin?: ScanVinRead | null;
 }
 
 export interface ScanIdentity {
@@ -146,6 +176,7 @@ export function scanTargets(protocols: readonly ModuleProtocol[]): ScanTarget[] 
             modules: group.map((p) => p.moduleId),
             frames,
             byModule: Object.fromEntries(group.map((p) => [p.moduleId, p.faults])),
+            ...(group.some((p) => p.vin) ? { vinByModule: Object.fromEntries(group.flatMap((p) => (p.vin ? [[p.moduleId, p.vin]] : []))) } : {}),
             decoder: group.length === 1 && first.decoder === 'mss54' ? 'mss54' : null,
             ...(group.some((p) => p.kwp) ? { kwp: true } : {}),
         });
@@ -155,7 +186,7 @@ export function scanTargets(protocols: readonly ModuleProtocol[]): ScanTarget[] 
 }
 
 export async function runScan(targets: readonly ScanTarget[], deps: ScanDeps): Promise<ScanRun> {
-    const run: ScanRun = { startedAt: deps.now(), endedAt: deps.now(), end: 'done', results: [] };
+    const run: ScanRun = { startedAt: deps.now(), endedAt: deps.now(), end: 'done', results: [], vin: null };
     const push = (r: ScanResult) => {
         run.results.push(r);
         deps.onResult?.(r);
@@ -289,11 +320,32 @@ export async function runScan(targets: readonly ScanTarget[], deps: ScanDeps): P
             }
         }
         push(result);
+        // The cluster's VIN, once: only a module its IDENT chose (never on the M3 fitment alone), only
+        // after it answered its fault read, and through the same gate, which a withdrawal stops.
+        const vinFrame = verdict.basis === 'identified' ? t.vinByModule?.[chosen] : undefined;
+        if (vinFrame && run.vin === null && outcome === 'answered') run.vin = await readVin(t.address, chosen, vinFrame, deps);
         if (await lineLost(i)) break;
         await deps.pause();
     }
     run.endedAt = deps.now();
     return run;
+}
+
+/** One VIN read: the seven characters, or why there are none. Never throws; never keeps the bytes. */
+async function readVin(address: number, moduleId: string, f: ProtocolFrame & { job: string }, deps: ScanDeps): Promise<ScanVinRead> {
+    const base = { address: hex2(address), moduleId, job: f.job };
+    const gate = mayRunProtocolRead(`${moduleId}:${f.job}`, 'identity-read', deps.ledger(), 'unknown');
+    if (!gate.allowed) return { ...base, outcome: 'refused', vinShort: null, reason: gate.reason };
+    try {
+        const frame = await deps.exchange(address, moduleId, f.job, f, { attempts: 2 });
+        if (!isPositiveResponse(frame)) return { ...base, outcome: 'rejected', vinShort: null, reason: `status 0x${frame.controlOrStatus.toString(16).padStart(2, '0')}` };
+        const vinShort = clusterVinShort(frame.payload);
+        return { ...base, outcome: 'answered', vinShort, ...(vinShort ? {} : { reason: 'the answer does not hold a short VIN where the SGBD reads it' }) };
+    } catch (e) {
+        const outcome = isDs2Error(e) && e.code === 'NEGATIVE_RESPONSE' ? 'rejected' : isDs2Error(e) && e.code === 'NOT_SENT' ? 'refused' : 'silent';
+        // The error's text can quote the answer: kept to its code.
+        return { ...base, outcome, vinShort: null, reason: isDs2Error(e) ? e.code : 'error' };
+    }
 }
 
 /** A line per outcome, for the answer and the log: `answered 21 · silent 14 · refused 2`. */

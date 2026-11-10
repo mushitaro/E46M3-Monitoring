@@ -69,6 +69,7 @@ import { practiceCar } from '@/lib/practiceCar';
 import { runProbe, type ProbeDeps, type ProbePlan, type ProbeRun } from '@/lib/probe/executor';
 import { modulesOf } from '@/lib/probe/plan';
 import { runScan, type ScanRun, type ScanTarget } from '@/lib/probe/scan';
+import { CLUSTER_VIN_UNVERIFIED } from '@/lib/clusterVin';
 import { EMPTY_IDENTITY, loadIdentity, type Identity } from '@/lib/identity';
 import { DME_ADDRESS, commonIdent, fittedFrom, frameVerdict, isCommonIdent, isM3, mayModuleBeSent, ruleFor, type Fitment, type Fitted } from '@/lib/variants';
 import type { Ledger } from '@/lib/ledger';
@@ -1348,6 +1349,14 @@ export function useDs2Link(options: {
                         );
                     }
                     setScan(result);
+                    // The cluster's VIN read (lib/clusterVin): whether it was read, never what it said.
+                    if (result.vin) {
+                        const v = result.vin;
+                        append(
+                            v.vinShort ? 'info' : 'warn',
+                            `${v.address} ${v.moduleId}: VIN (last seven) ${v.vinShort ? 'read' : `not read — ${v.outcome}${v.reason ? `, ${v.reason}` : ''}`} by ${v.job}${CLUSTER_VIN_UNVERIFIED ? ' — not confirmed on a car yet' : ''}.`,
+                        );
+                    }
                     append('info', `Scan ended (${result.end}).`);
                     return result;
                 } finally {

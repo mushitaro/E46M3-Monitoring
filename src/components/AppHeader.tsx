@@ -10,7 +10,7 @@ import { APP_VERSION } from '@/lib/version';
 import { useBuildLabel, useBuildVariant } from '@/lib/build-variant';
 import { useLang } from '@/lib/i18n';
 import { PRIVACY_PREVIEW, REPOSITORY } from '@/lib/links';
-import { hasSettingsDoor, settingsDoorUrl } from '@/lib/launcherDoors';
+import { settingsDoorUrl, useSettingsDoor } from '@/lib/launcherDoors';
 import type { SignIn } from '@/lib/signInLapse';
 import type { LinkState, LinkMode } from '@/hooks/useDs2Link';
 
@@ -113,6 +113,7 @@ export function AppHeader({
     // in the reader's language. Production has nothing to disclose here and draws nothing.
     const preview = useBuildVariant() === 'preview';
     const buildLabel = useBuildLabel();
+    const doors = useSettingsDoor();
 
     return (
         <header className="relative z-10 flex h-[48px] shrink-0 items-center bg-slate-950/80 px-6 backdrop-blur-md">
@@ -176,13 +177,13 @@ export function AppHeader({
                 is 683px, below the family's group — and only when the launcher that opened this
                 page can open them (lib/launcherDoors). Wi-Fi for the tether, the clock because a
                 head unit that woke in 2006 cannot sign in (lib/signInLapse). */}
-            {hasSettingsDoor() && (
+            {doors && (
                 <div className="ml-auto flex items-center gap-4 pl-4 min-[900px]:mr-4">
                     <HeaderIcon Icon={Wifi} title={t.door_wifi} href={settingsDoorUrl('wifi')} external />
                     <HeaderIcon Icon={CalendarClock} title={t.door_datetime} href={settingsDoorUrl('datetime')} external />
                 </div>
             )}
-            <div className={`${hasSettingsDoor() ? '' : 'ml-auto'} hidden items-center gap-4 min-[900px]:flex`}>
+            <div className={`${doors ? '' : 'ml-auto'} hidden items-center gap-4 min-[900px]:flex`}>
                 {preview && <HeaderIcon Icon={Shield} title={t.privacy} href={PRIVACY_PREVIEW[lang]} />}
                 <HeaderIcon Icon={Github} title={t.github} href={REPOSITORY} />
                 <HeaderIcon Icon={Medal} title={t.credits_open} onClick={onCredits} />

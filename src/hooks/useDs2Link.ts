@@ -595,7 +595,14 @@ export function useDs2Link(options: {
                 }
             };
             try {
-                const answer = await link.withGate(() => kwpExchange(transport, frame));
+                // One more try on silence, after a longer quiet: the answer to the first may be what
+                // the line lacked (2026-11-10). A refusal or a wrong answer is an answer, not tried again.
+                const answer = await link.withGate(() => kwpExchange(transport, frame)).catch(async (e) => {
+                    if (!(isDs2Error(e) && e.code === 'READ_TIMEOUT')) throw e;
+                    append('warn', `${job}: no answer; once more after 500 ms of quiet`);
+                    await new Promise((r) => setTimeout(r, 500));
+                    return link.withGate(() => kwpExchange(transport, frame));
+                });
                 append('rx', toHex(answer.bytes));
                 record(toHex(answer.bytes), 'ok', null);
                 return answer;

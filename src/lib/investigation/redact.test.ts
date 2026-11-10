@@ -60,3 +60,20 @@ describe('words', () => {
         ]);
     });
 });
+
+describe('the instrument cluster’s VIN read (intake, 2026-11-10)', () => {
+    it('withholds each cluster job’s answer whole: its BCD digits are no ASCII any mask would find', () => {
+        // 02 'J' 'R' 12 34 50: the made-up answer the practice cluster gives.
+        const answer = '02 4a 52 12 34 50';
+        expect(redactHex(answer)).toEqual({ hex: answer, masked: false });
+        for (const job of ['AIF_FG_NR_LESEN', 'STATUS_AIF_FG_NR_LESEN', 'C_FG_LESEN']) {
+            expect(isIdentification(job)).toBe(true);
+            expect(redactResponse(job, answer)).toEqual({ response: null, note: 'withheld: identification (6 bytes)' });
+        }
+    });
+
+    it('masks the seven characters a scan keeps for the report, wherever a record carries them', () => {
+        const scan = { end: 'done', results: [], vin: { address: '0x80', moduleId: 'kombi46r', job: 'STATUS_AIF_FG_NR_LESEN', outcome: 'answered', vinShort: 'JR12345' } };
+        expect(redactDeep(scan).vin.vinShort).toBe('[VIN]');
+    });
+});

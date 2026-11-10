@@ -8,6 +8,7 @@ import {
     READ_ONLY_CONTROLS,
     clearFaultsCommand,
     mayRun,
+    mayRunProtocolRead,
     telegramBytes,
 } from './runGate';
 import { EMPTY_LEDGER, type Ledger } from './ledger';
@@ -353,5 +354,24 @@ describe('the car, as the gate sees it', () => {
         for (const motion of ['parked', 'moving', 'unknown'] as const) {
             expect(mayRun(READ, T, killed, { moduleId: 'mss54', motion })).toEqual({ allowed: false, reason: 'run_block_revoked' });
         }
+    });
+});
+
+describe('the cluster’s VIN read (identity-read, intake 2026-11-10)', () => {
+    const id = 'kombi46r:STATUS_AIF_FG_NR_LESEN';
+
+    it('goes as an IDENT goes: it does not wait for the car to stop', () => {
+        for (const motion of ['parked', 'moving', 'unknown'] as const) {
+            expect(mayRunProtocolRead(id, 'identity-read', EMPTY_LEDGER, motion)).toEqual({ allowed: true, requires: 'none' });
+        }
+    });
+
+    it('stops when it has been withdrawn', () => {
+        const ledger: Ledger = { version: 1, records: { [id]: { id, status: 'revoked', reason: 'kill list' } } };
+        expect(mayRunProtocolRead(id, 'identity-read', ledger, 'parked')).toEqual({ allowed: false, reason: 'run_block_revoked' });
+    });
+
+    it('its control byte, 0x02, is not a read on every module (SMG II learns with it): never on the allowlist', () => {
+        expect(READ_ONLY_CONTROLS.has(0x02)).toBe(false);
     });
 });

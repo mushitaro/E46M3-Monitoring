@@ -24,6 +24,10 @@ EDIABAS は `D_00xx.grp` の IDENTIFIKATION（BEST/2 のバイトコード）を
      `SgbdDump --ident` で EdiabasLib にグループファイルそのもの（BMW のバイトコード）を走らせ、
      RULES の評価と一件でも食い違えば非ゼロで終わる。食い違ったまま書き出す道は無い。
 
+選び方は三つの形で書く。表引き（D_0012・D_0032：答えの区間を文字にして表の行と比べる）、
+バイトの範囲（D_0080：答えの 1 バイトを BCD の数として読み、どの範囲に入るか）、バイトのマスク
+（D_0080：答えの 1 バイトの上位 4 ビットが D か）。どれも逆アセンブルを読んで書き、EDIABAS と突き合わせる。
+
 RULES に無いアドレスは「選び方が無い」のであって、「何でもよい」のではない。アプリはそのアドレスの
 変種を「?」のまま扱い、非 M3 の車では IDENT のほかに何も送らない（src/lib/variants.ts）。
 
@@ -32,6 +36,8 @@ RULES に無いアドレスは「選び方が無い」のであって、「何�
 答えはケーブルから来たままのテレグラム全体（アドレス、長さ、状態 0xA0、データ、チェックサム）。
 グループのバイトコードも同じ S2 全体を添字で読むので、番地はそのまま一致する。
 DS2 の IDENT の答えでは 3..9 が部品番号（7 桁）、10..11 が HW、14..15 が診断インデックス。
+メーター（KOMBI）の IDENT は並びが違い、BCD で 3..6 が部品番号、7 が HW、8 が COD、9 が診断インデックス
+（KOMBI46・KOMBI46R の IDENT ジョブ）。D_0080 はこの 9 番を数として読む。
 """
 from __future__ import annotations
 
@@ -90,6 +96,30 @@ RULES: dict[str, dict] = {
         # 表の最後の行の名前。SGBD ではなく「見つからない」の印。
         "unknown": ["XYZ"],
     },
+    # メーター。D_0080 IDENTIFIKATION（rev 1.61）の DS2 の道:
+    #   答えの [2] が 0xA0 でなければ通信の設定を変えて IDENT を送り直す（この段の答えは同じなので、選ばない）。
+    #   n = 答え[9]（診断インデックス）を BCD として読んだ数（上位 4 ビット×10＋下位 4 ビット。A–F もそのまま足す）。
+    #   答え[3] の上位 4 ビットが D なら、n が 1・2 か 80..84 のとき KOMBIR40、ほかは選ばない。
+    #   そうでなければ n の範囲を上から順に見る（最初に当たったもの）。どれにも当たらなければ選ばない。
+    #   逆アセンブル: EdiabasLib の Tools/BESTDIS で D_0080.grp を読んだもの。
+    "D_0080": {
+        "address": 0x80,
+        "choose": {
+            "byte": 3, "mask": 0xF0, "equals": 0xD0,
+            "then": {"byte": 9, "read": "bcd", "ranges": [[1, 2, "KOMBIR40"], [80, 84, "KOMBIR40"]], "else": None},
+            "else": {
+                "byte": 9, "read": "bcd",
+                "ranges": [
+                    [85, 86, "KOMBIR50"], [87, 89, "KOMBI50F"], [95, 99, "KOMBIL50"], [65, 69, "KOMBIL30"],
+                    [70, 79, "KOMBIR30"], [1, 4, "IKE"], [5, 14, "IKI"], [20, 29, "KOMBI85"],
+                    [30, 31, "KOMBI39"], [32, 40, "KOMBI39C"], [41, 47, "KOMBI52"], [48, 53, "KOMBI46"],
+                    [54, 64, "KOMBI46R"], [90, 94, "KOMBI36C"],
+                ],
+                "else": None,
+            },
+        },
+        "unknown": [],
+    },
 }
 
 POSITIVE = 0xA0
@@ -121,6 +151,13 @@ def resolve(choice, tables: dict):
     """RULES の Choice を、表の行を埋め込んだ自己完結の形にする（アプリはグループファイルを持たない）。"""
     if choice is None or isinstance(choice, str):
         return choice
+    if "mask" in choice:
+        return {"byte": choice["byte"], "mask": choice["mask"], "equals": choice["equals"],
+                "then": resolve(choice["then"], tables), "else": resolve(choice.get("else"), tables)}
+    if "ranges" in choice:
+        return {"byte": choice["byte"], "read": choice["read"],
+                "ranges": [[lo, hi, resolve(v, tables)] for lo, hi, v in choice["ranges"]],
+                "else": resolve(choice.get("else"), tables)}
     rows: list = [[k, resolve(v, tables)] for k, v in choice.get("first", [])]
     if "table" in choice:
         table = tables["tables"].get(choice["table"])
@@ -147,8 +184,24 @@ def key_of(answer: bytes, slices) -> str:
     return out
 
 
+def bcd(b: int) -> int:
+    """BEST/2 の D_0080 の読み方: 上位 4 ビット×10＋下位 4 ビット（A–F も数のまま）。"""
+    return (b >> 4) * 10 + (b & 0x0F)
+
+
 def evaluate(choice, answer: bytes):
     while isinstance(choice, dict):
+        if "mask" in choice or "ranges" in choice:
+            # 答えの外のバイトは読めない。そのときは選ばない（短い答えの突き合わせで確かめる）。
+            if choice["byte"] >= len(answer):
+                return None
+            b = answer[choice["byte"]]
+            if "mask" in choice:
+                choice = choice["then"] if (b & choice["mask"]) == choice["equals"] else choice["else"]
+            else:
+                n = bcd(b)
+                choice = next((v for lo, hi, v in choice["ranges"] if lo <= n <= hi), choice["else"])
+            continue
         k = key_of(answer, choice["key"]).upper()
         hit = next((v for rk, v in choice["rows"] if rk.upper() == k), "__miss__")
         choice = choice["else"] if hit == "__miss__" else hit
@@ -181,8 +234,23 @@ def base_data() -> bytearray:
     return d
 
 
+def bytes_read(choice) -> set[int]:
+    """マスクや範囲で数として読む、答えのバイトの番地。"""
+    if not isinstance(choice, dict):
+        return set()
+    if "mask" in choice:
+        return {choice["byte"]} | bytes_read(choice["then"]) | bytes_read(choice["else"])
+    if "ranges" in choice:
+        return {choice["byte"]} | {b for _, _, v in choice["ranges"] for b in bytes_read(v)} | bytes_read(choice["else"])
+    return {b for _, v in choice["rows"] for b in bytes_read(v)} | bytes_read(choice["else"])
+
+
 def keys_in(choice) -> list[tuple[list, str]]:
     out = []
+    if isinstance(choice, dict) and "mask" in choice:
+        return keys_in(choice["then"]) + keys_in(choice["else"])
+    if isinstance(choice, dict) and "ranges" in choice:
+        return [kv for _, _, v in choice["ranges"] for kv in keys_in(v)] + keys_in(choice["else"])
     if isinstance(choice, dict):
         for k, v in choice["rows"]:
             out.append((choice["key"], k))
@@ -217,6 +285,17 @@ def corpus(rule: dict, n_random: int, seed: int) -> list[bytes]:
                     if rng.random() < 0.15:
                         d2[j] = ord(rng.choice("0123456789ABCDEF"))
                 out.append(frame(a, POSITIVE, bytes(d2)))
+    # 数として読むバイト（D_0080 の 3 と 9）: 9 は 0..255 の全部を、3 はマスクの内と外の値と組にして。
+    numeric = bytes_read(rule["choose"])
+    if numeric:
+        firsts = sorted({0x00, 0x09, 0x39, 0xC9, 0xD0, 0xD9, 0xDF, 0xE0} if 3 in numeric else {base_data()[0]})
+        for b3 in firsts:
+            for b9 in range(256):
+                d = base_data()
+                d[0] = b3
+                if 9 in numeric:
+                    d[6] = b9
+                out.append(frame(a, POSITIVE, bytes(d)))
     alphabet = "0123456789ABCDEFGHJKLXZabcdef"
     for _ in range(n_random):
         d = base_data()
@@ -224,10 +303,10 @@ def corpus(rule: dict, n_random: int, seed: int) -> list[bytes]:
             r = rng.random()
             d[j] = 0 if r < 0.02 else 0xFF if r < 0.04 else ord(rng.choice(alphabet))
         out.append(frame(a, POSITIVE, bytes(d)))
-    # 否定応答、短い答え
+    # 否定応答、短い答え（3 と 9 の手前で切れるものも）
     out.append(frame(a, 0xA1, bytes(base_data())))
     out.append(frame(a, 0xA2, bytes(base_data())))
-    for cut in (0, 6, 9, 11, 12, 13):
+    for cut in (0, 1, 6, 7, 9, 11, 12, 13):
         out.append(frame(a, POSITIVE, bytes(base_data()[:cut])))
     seen, uniq = set(), []
     for f in out:

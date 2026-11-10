@@ -220,6 +220,11 @@ export interface Localised {
     intake_refused: (store: string, why: string) => string;
     intake_refusal: Record<'vin-mismatch' | 'vin-missing' | 'practice' | 'invalid' | 'busy' | 'other', string>;
     intake_savedFile: string;
+    /**
+     * One sentence after SEND's notice on where the report's VIN came from — never the VIN. `cluster`
+     * carries the not-confirmed-on-a-car mark until a real cluster has answered (lib/clusterVin).
+     */
+    intake_vin: Record<'cluster' | 'bytes' | 'conflict' | 'none', string>;
     intake_noAnswer: (store: string) => string;
     intake_failed: string;
     /** SEND's title: what it sends and where. */

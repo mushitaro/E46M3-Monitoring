@@ -255,6 +255,12 @@ export const ja: Localised = {
         other: '理由は MAINTENANCE の画面にあります。',
     },
     intake_savedFile: 'MAINTENANCE のタブが開いていないので、報告を JSON で保存しました。',
+    intake_vin: {
+        cluster: 'VIN は KOMBI から下 7 桁を読みました（実車未確認）。',
+        bytes: '',
+        conflict: 'KOMBI と別の答えで VIN が食い違うので、報告に VIN を入れていません。',
+        none: 'KOMBI から VIN を読めなかったので、報告に VIN がありません。',
+    },
     intake_noAnswer: (store) => `${store} から返事が無いので、報告を JSON で保存しました。`,
     intake_failed: '報告を書けませんでした。',
     intake_title: '全モジュールの読取を点検報告にして、この画面を開いた MAINTENANCE に渡します。開いていなければ JSON で保存します。',

@@ -10,6 +10,9 @@
  * read back. So the rule is now: **frames other than the common IDENT go to an address only when
  * its IDENT answer has chosen a module this app carries, and only that module's frames.**
  *
+ * The rules today: 0x12 (D_0012), 0x32 (D_0032) and 0x80, the instrument cluster (D_0080, chosen by
+ * its diagnosis index read as a number; KOMBI46 and KOMBI46R on an E46).
+ *
  * An address with no rule yet is `?`. On a car whose DME has identified itself as the MSS54 — an M3
  * — such an address keeps the M3 fitment the module list was built on (the frames every M3
  * candidate's table carries, lib/probe/scan); on any other car it is sent its IDENT and nothing
@@ -28,14 +31,36 @@
 /** A slice of the answer: `[start, length]` into the whole frame (address, length, status, data, checksum). */
 export type Slice = readonly [number, number];
 
-/** What a step of a rule comes to: an SGBD name, another lookup, or nothing chosen. */
-export type Choice = string | Lookup | null;
+/** What a step of a rule comes to: an SGBD name, another step, or nothing chosen. */
+export type Choice = string | Lookup | ByteRange | ByteMask | null;
 
+/** D_0012, D_0032: the answer's text at some slices, looked up in a table of the group file. */
 export interface Lookup {
     /** The slices whose text, joined, is the key. Each stops at a NUL, as a BEST/2 string does. */
     key: readonly Slice[];
     /** Compared without regard to case; the first matching row wins. */
     rows: ReadonlyArray<readonly [string, Choice]>;
+    else: Choice;
+}
+
+/**
+ * D_0080: one byte of the answer read as a number, and the first range it falls in. `bcd` is the
+ * group's own reading: the high nibble times ten plus the low one, A–F counted as they are (0x5A
+ * is 60). A byte past the end of the answer chooses nothing (checked against EdiabasLib).
+ */
+export interface ByteRange {
+    byte: number;
+    read: 'bcd';
+    ranges: ReadonlyArray<readonly [number, number, Choice]>;
+    else: Choice;
+}
+
+/** D_0080: whether one byte of the answer, masked, equals a value (its high nibble is D). */
+export interface ByteMask {
+    byte: number;
+    mask: number;
+    equals: number;
+    then: Choice;
     else: Choice;
 }
 
@@ -81,9 +106,22 @@ export function groupChoice(rule: GroupRule, answer: Uint8Array): string | null 
     if (answer.length < 3 || answer[0] !== rule.address || answer[2] !== rule.positive) return null;
     let choice: Choice = rule.choose;
     while (choice !== null && typeof choice !== 'string') {
-        const key = keyOf(answer, choice.key).toUpperCase();
-        const row: (readonly [string, Choice]) | undefined = choice.rows.find(([k]) => k.toUpperCase() === key);
-        choice = row ? row[1] : choice.else;
+        if ('mask' in choice) {
+            if (choice.byte >= answer.length) return null;
+            choice = (answer[choice.byte] & choice.mask) === choice.equals ? choice.then : choice.else;
+        } else if ('ranges' in choice) {
+            if (choice.byte >= answer.length || choice.read !== 'bcd') return null;
+            const n = (answer[choice.byte] >> 4) * 10 + (answer[choice.byte] & 0x0f);
+            const hit: (readonly [number, number, Choice]) | undefined = choice.ranges.find(([lo, hi]) => lo <= n && n <= hi);
+            choice = hit ? hit[2] : choice.else;
+        } else if ('key' in choice && Array.isArray(choice.key)) {
+            const key = keyOf(answer, choice.key).toUpperCase();
+            const row: (readonly [string, Choice]) | undefined = choice.rows.find(([k]) => k.toUpperCase() === key);
+            choice = row ? row[1] : choice.else;
+        } else {
+            // A step this build does not know (a newer variants.json): nothing chosen, so only the IDENT goes.
+            return null;
+        }
     }
     return choice;
 }

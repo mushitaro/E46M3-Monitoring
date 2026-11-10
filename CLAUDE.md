@@ -67,7 +67,9 @@ Next.js 16 / React 19 / Tailwind v4、`output: 'export'` の静的書き出し�
 - **点検報告は人の SEND だけが運ぶ**（運営者 2026-11-10、D5・D6）。全モジュールの読取の後、SEND 一回で
   `e46.intake-check.v1`（`src/lib/intake/intakeCheck.ts`。MAINTENANCE の contract と同じバイト）を書き、
   この MONITORING を開いた店の MAINTENANCE のタブ（`window.opener`、登録したオリジンだけ）へ postMessage で
-  裏で渡す。開いていなければ JSON で保存する。MAINTENANCE を前に出さない。MAINTENANCE が開く入口は `/intake`
+  裏で渡す。開いていなければ JSON で保存する。MAINTENANCE を前に出さない。VIN は走査がメーター（KOMBI46・46R、
+  IDENT が選んだときだけ）の AIF ブロック 2（`80 05 02 02`）を一度読み、下 7 桁を `vinShort` に入れる（17 桁は
+  メーターに無いので `vin` は空。`lib/clusterVin.ts`、実車未確認）。MAINTENANCE が開く入口は `/intake`
   で、そこだけ COOP を外す（`public/_headers`）。報告と VIN は AI の道具の返り値に出さない（facade は
   `intakeReport` の状態だけ、生のバイトの VIN は伏せる。デモテスト S16）。
 - **出所を落とさない。** 分類・訳・規定値には `provenance` が付く。分からないものは

@@ -256,6 +256,12 @@ export const en: Localised = {
         other: 'the reason is on the MAINTENANCE screen.',
     },
     intake_savedFile: 'No MAINTENANCE tab opened this one, so the report was saved as JSON.',
+    intake_vin: {
+        cluster: 'The VIN’s last seven were read from KOMBI (not confirmed on a car).',
+        bytes: '',
+        conflict: 'KOMBI and another answer disagree on the VIN, so the report carries none.',
+        none: 'KOMBI did not give the VIN, so the report has none.',
+    },
     intake_noAnswer: (store) => `${store} did not answer, so the report was saved as JSON.`,
     intake_failed: 'The report could not be written.',
     intake_title: 'Writes every module’s read as an intake report and hands it to the MAINTENANCE tab that opened this screen. Saved as JSON when none did.',

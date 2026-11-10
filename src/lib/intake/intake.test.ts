@@ -143,6 +143,30 @@ describe('the intake report from a scan of the practice car', () => {
         expect(two).toMatchObject({ vin: null, vinShort: null });
     });
 
+    it('takes the VIN’s last seven from the cluster’s own read in the scan (KOMBI, AIF block 2)', async () => {
+        const cluster = (vinShort: string | null): ScanRun['vin'] => ({ address: '0x80', moduleId: 'kombi46r', job: 'STATUS_AIF_FG_NR_LESEN', outcome: 'answered', vinShort });
+        const scan = await practiceScan();
+        const fromCluster = buildIntakeCheck(input({ ...scan, vin: cluster('JR12345') }));
+        // The cluster keeps the last seven only: the seventeen stay unknown, not guessed.
+        expect(fromCluster.report).toMatchObject({ vin: null, vinShort: 'JR12345' });
+        expect(fromCluster.vinSource).toBe('cluster');
+        expect(intakeCheckReport.parse(JSON.parse(fromCluster.json))).toEqual(fromCluster.report);
+
+        // An answer spelling the whole VIN that ends the same: both, from the two.
+        const agree = buildIntakeCheck(input({ ...(await practiceScan({ kombi: [0x01, ...ascii(VIN), 0x00] })), vin: cluster('JR12345') }));
+        expect(agree.report).toMatchObject({ vin: VIN, vinShort: 'JR12345' });
+
+        // Two sources that disagree: none, so the store does not match the car by a wrong one.
+        const disagree = buildIntakeCheck(input({ ...(await practiceScan({ kombi: [0x01, ...ascii(VIN), 0x00] })), vin: cluster('JR99999') }));
+        expect(disagree.report).toMatchObject({ vin: null, vinShort: null });
+        expect(disagree.vinSource).toBe('conflict');
+
+        // A cluster read that held no short VIN says nothing; neither does a scan without one.
+        expect(buildIntakeCheck(input({ ...scan, vin: cluster(null) }))).toMatchObject({ report: { vin: null, vinShort: null }, vinSource: null });
+        expect(buildIntakeCheck(input(scan)).vinSource).toBeNull();
+        expect(buildIntakeCheck(input(await practiceScan({ kombi: [0x01, ...ascii(VIN), 0x00] }))).vinSource).toBe('bytes');
+    });
+
     it('says whose clock the time is on', async () => {
         expect(buildIntakeCheck(input(await practiceScan(), { clockSet: false })).report.clock).toBe('device');
     });

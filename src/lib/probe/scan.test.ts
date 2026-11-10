@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { Ds2Error, Ds2Status, type Ds2Frame } from '@tsunagi/ds2-core';
 import { EMPTY_LEDGER, type Ledger } from '../ledger';
 import { moduleProtocol } from '../moduleProtocol';
-import { M3_IDENTS, NON_M3_IDENTS, type PracticeIdent } from '../practiceCar';
+import { clusterVinAnswer, kombiIdentData, M3_IDENTS, NON_M3_IDENTS, PRACTICE_VIN_SHORT, type PracticeIdent } from '../practiceCar';
 import type { TelegramTable } from '../telegrams';
-import { FIXTURE_MODULES, FIXTURE_RULES, identFrame } from '../testing/variantFixture';
-import { fittedFrom, type Fitted } from '../variants';
+import { FIXTURE_MODULES, FIXTURE_RULES, FIXTURE_RULES_KOMBI, identFrame } from '../testing/variantFixture';
+import { fittedFrom, type Fitted, type VariantRules } from '../variants';
 import { runScan, scanTargets, type ScanDeps } from './scan';
 
 /**
@@ -44,6 +44,9 @@ function deps(
         idents?: Record<number, PracticeIdent | 'silent'>;
         identOk?: number[];
         ledger?: Ledger;
+        rules?: VariantRules;
+        /** What the cluster answers its VIN read with. */
+        vin?: 'ok' | 'rejected' | 'silent' | 'junk';
     } = {},
 ) {
     const sent: string[] = [];
@@ -53,7 +56,7 @@ function deps(
     const d: ScanDeps = {
         ledger: () => opts.ledger ?? EMPTY_LEDGER,
         identity: {
-            rules: FIXTURE_RULES,
+            rules: opts.rules ?? FIXTURE_RULES,
             identOk: new Set(opts.identOk ?? [0x12, 0x32, 0x50, 0x56, 0x80]),
             fitment: () => fitment,
             identify: async (address) => {
@@ -61,7 +64,7 @@ function deps(
                 if (known) return known;
                 sent.push(`${address.toString(16).padStart(2, '0')} 04 00 ${(address ^ 4).toString(16).padStart(2, '0')}`);
                 const i = idents[address] ?? { hw: '00', diag: '00' };
-                const f = fittedFrom(FIXTURE_RULES, FIXTURE_MODULES, address, i === 'silent' || opts.answers?.[address] === 'silent' ? null : identFrame(address, i));
+                const f = fittedFrom(opts.rules ?? FIXTURE_RULES, FIXTURE_MODULES, address, i === 'silent' || opts.answers?.[address] === 'silent' ? null : identFrame(address, i));
                 if (f.answer !== null) fitment.set(address, f);
                 return f;
             },
@@ -74,6 +77,11 @@ function deps(
             sent.push(f.hex);
             const a = opts.answers?.[address] ?? 'ok';
             if (a === 'silent') throw new Ds2Error('READ_TIMEOUT', 'no answer', { kind: 'timeout' });
+            if (f.hex === '80 05 02 02 85') {
+                const v = opts.vin ?? 'ok';
+                if (v === 'silent') throw new Ds2Error('READ_TIMEOUT', 'no answer', { kind: 'timeout' });
+                return v === 'rejected' ? no() : ok(v === 'junk' ? [0x02, 0x00, 0x00, 0x00, 0x00, 0x00] : clusterVinAnswer(PRACTICE_VIN_SHORT));
+            }
             return a === 'rejected' ? no() : ok([0x01, 0x02]);
         },
         decode: (_t, frames) => ({ entries: frames.length }),
@@ -205,5 +213,79 @@ describe('scan run on an M3 whose 0x32 is not the SMG II', () => {
         const run = await runScan(scanTargets([P.mss54, P.smg2]), d);
         expect(sent.filter((h) => h.startsWith('32'))).toEqual(['32 04 00 36']);
         expect(run.results.find((r) => r.address === '0x32')).toMatchObject({ outcome: 'identified', variant: { sgbd: null } });
+    });
+});
+
+describe('the instrument cluster’s VIN, once (intake, operator 2026-11-10)', () => {
+    /** The two E46 clusters with their own fault read and their own AIF block 2 read. */
+    const cluster = (module: string, job: string) =>
+        moduleProtocol(module, 0x80, {
+            module,
+            sgbd: module.toUpperCase(),
+            address: 0x80,
+            jobs: {
+                FS_LESEN: [{ hex: '80 05 04 01 80', cmd: 4, cmdName: '', occurrences: 1, confidence: 'shared' as const }],
+                [job]: [{ hex: '80 05 02 02 85', cmd: 2, cmdName: '', occurrences: 1, confidence: 'shared' as const }],
+            },
+        });
+    const targets = () => scanTargets([P.mss54, cluster('kombi46', 'AIF_FG_NR_LESEN'), cluster('kombi46r', 'STATUS_AIF_FG_NR_LESEN')]);
+    const VIN_FRAME = '80 05 02 02 85';
+    const spells = (x: unknown) => {
+        const text = JSON.stringify(x).toLowerCase();
+        return text.includes(PRACTICE_VIN_SHORT.toLowerCase()) || text.includes('4a 52') || text.includes('4a52') || text.includes(VIN_FRAME);
+    };
+
+    it('an M3 whose cluster said KOMBI46R: its fault read, then its VIN read, once — and the answer is not among the results', async () => {
+        const { d, sent } = deps({ rules: FIXTURE_RULES_KOMBI });
+        const run = await runScan(targets(), d);
+        expect(sent.filter((h) => h.startsWith('80'))).toEqual(['80 04 00 84', '80 05 04 01 80', VIN_FRAME]);
+        expect(run.vin).toEqual({ address: '0x80', moduleId: 'kombi46r', job: 'STATUS_AIF_FG_NR_LESEN', outcome: 'answered', vinShort: PRACTICE_VIN_SHORT });
+        // Not in what the screen shows as bytes, what the ledger records, what the assistant reads.
+        expect(spells(run.results)).toBe(false);
+        expect(run.results.find((r) => r.address === '0x80')).toMatchObject({ outcome: 'answered', variant: { sgbd: 'KOMBI46R', moduleId: 'kombi46r', basis: 'identified' } });
+    });
+
+    it('a car that is not an M3, with the E46’s KOMBI46: the cluster is identified, so its VIN is read too', async () => {
+        const { d, sent } = deps({ rules: FIXTURE_RULES_KOMBI, idents: { ...NON_M3_IDENTS } });
+        const run = await runScan(targets(), d);
+        expect(sent.filter((h) => h.startsWith('80'))).toEqual(['80 04 00 84', '80 05 04 01 80', VIN_FRAME]);
+        expect(run.vin).toMatchObject({ moduleId: 'kombi46', job: 'AIF_FG_NR_LESEN', vinShort: PRACTICE_VIN_SHORT });
+        // Nothing beyond IDENT went to the DME or the gearbox of this car.
+        expect(beyondIdent(sent).filter((h) => !h.startsWith('80'))).toEqual([]);
+    });
+
+    it('a cluster whose variant is not known — no rule (M3 fitment), `?`, or one the app does not carry — is not sent it', async () => {
+        for (const opts of [
+            { rules: FIXTURE_RULES }, // no D_0080: the M3 fitment reads its faults, not its identity
+            { rules: FIXTURE_RULES_KOMBI, idents: { ...M3_IDENTS, 0x80: { data: kombiIdentData(0x99) } } }, // `?`
+            { rules: FIXTURE_RULES_KOMBI, idents: { ...M3_IDENTS, 0x80: { data: kombiIdentData(0x31) } } }, // KOMBI39
+        ]) {
+            const { d, sent } = deps(opts);
+            const run = await runScan(targets(), d);
+            expect(sent).not.toContain(VIN_FRAME);
+            expect(run.vin).toBeNull();
+        }
+    });
+
+    it('not when its fault read went unanswered, and not when the read has been withdrawn', async () => {
+        const silent = deps({ rules: FIXTURE_RULES_KOMBI, answers: { 0x80: 'silent' } });
+        // Silent to its IDENT too: nothing beyond it went.
+        expect((await runScan(targets(), silent.d)).vin).toBeNull();
+        expect(silent.sent).not.toContain(VIN_FRAME);
+
+        const ledger: Ledger = { version: 1, records: { 'kombi46r:STATUS_AIF_FG_NR_LESEN': { id: 'kombi46r:STATUS_AIF_FG_NR_LESEN', status: 'revoked', reason: 'test' } } };
+        const withdrawn = deps({ rules: FIXTURE_RULES_KOMBI, ledger });
+        const run = await runScan(targets(), withdrawn.d);
+        expect(withdrawn.sent).not.toContain(VIN_FRAME);
+        expect(run.vin).toMatchObject({ outcome: 'refused', vinShort: null, reason: 'run_block_revoked' });
+    });
+
+    it('a refusal, silence or an answer that holds no short VIN: null, said as such, never a guess', async () => {
+        for (const [vin, outcome] of [['rejected', 'rejected'], ['silent', 'silent'], ['junk', 'answered']] as const) {
+            const { d } = deps({ rules: FIXTURE_RULES_KOMBI, vin });
+            const run = await runScan(targets(), d);
+            expect(run.vin).toMatchObject({ outcome, vinShort: null });
+            expect(run.vin?.reason).toBeTruthy();
+        }
     });
 });

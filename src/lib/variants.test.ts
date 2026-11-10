@@ -3,11 +3,11 @@ import { Ds2Address, Ds2Link, WebSerialTransport, isDs2Error, simulatedPort, toH
 import { blockBySelection, liveBlockRequest } from '@tsunagi/ds2-mss54';
 import type { EcuIndex } from './ecuCatalog';
 import { moduleProtocol } from './moduleProtocol';
-import { M3_IDENTS, NON_M3_IDENTS, practiceCar, resetPracticeCar, type PracticeIdent } from './practiceCar';
+import { kombiIdentData, M3_IDENTS, NON_M3_IDENTS, practiceCar, resetPracticeCar, type PracticeIdent } from './practiceCar';
 import { practiceBus } from './practiceEcu';
 import type { TelegramTable } from './telegrams';
 import { HAVE_SHIPPED_DATA, readShipped } from './testing/shipped';
-import { FIXTURE_MODULES, FIXTURE_RULES, identFrame } from './testing/variantFixture';
+import { FIXTURE_MODULES, FIXTURE_RULES, FIXTURE_RULES_KOMBI, identFrame } from './testing/variantFixture';
 import {
     commonIdent,
     fittedFrom,
@@ -61,6 +61,38 @@ describe('the group rule', () => {
         const nul = identFrame(0x12, { hw: '1B', diag: '90' });
         nul[11] = 0x00; // HW "1\0": the key is "1" + "90"
         expect(variantOf(rule(0x12), nul)).toBeNull();
+    });
+});
+
+describe('a rule that reads a byte as a number (D_0080, the instrument cluster)', () => {
+    const kombi = FIXTURE_RULES_KOMBI.groups.find((g) => g.address === 0x80)!;
+    const answer = (data: number[], status = 0xa0) => identFrame(0x80, { data }, status);
+
+    it('reads the diagnosis index (byte 9) as the group does: high nibble times ten plus the low one', () => {
+        expect(variantOf(kombi, answer(kombiIdentData(0x50)))).toBe('KOMBI46');
+        expect(variantOf(kombi, answer(kombiIdentData(0x60)))).toBe('KOMBI46R');
+        expect(variantOf(kombi, answer(kombiIdentData(0x31)))).toBe('KOMBI39');
+        // A–F count as they are: 0x4E is 40 + 14 = 54, KOMBI46R; 0x2F is 20 + 15 = 35, no range here.
+        expect(variantOf(kombi, answer(kombiIdentData(0x4e)))).toBe('KOMBI46R');
+        expect(variantOf(kombi, answer(kombiIdentData(0x2f)))).toBeNull();
+        expect(variantOf(kombi, answer(kombiIdentData(0x99)))).toBeNull();
+    });
+
+    it('takes the other branch when byte 3’s high nibble is D, and chooses nothing past the end or on a refusal', () => {
+        const d = kombiIdentData(0x50);
+        d[0] = 0xd9; // byte 3
+        expect(variantOf(kombi, answer(d))).toBeNull();
+        d[6] = 0x02;
+        expect(variantOf(kombi, answer(d))).toBe('KOMBIR40');
+        expect(variantOf(kombi, answer(kombiIdentData(0x50).slice(0, 6)))).toBeNull(); // byte 9 not there
+        expect(variantOf(kombi, answer(kombiIdentData(0x50), 0xa2))).toBeNull();
+    });
+
+    it('chooses nothing at a step this build does not know (a newer rules file), rather than failing', () => {
+        const odd = { ...kombi, choose: { byte: 9, read: 'packed', ranges: [[0, 255, 'KOMBI46']], else: null } } as unknown as GroupRule;
+        expect(variantOf(odd, answer(kombiIdentData(0x50)))).toBeNull();
+        const stranger = { ...kombi, choose: { lookup: 'x' } } as unknown as GroupRule;
+        expect(variantOf(stranger, answer(kombiIdentData(0x50)))).toBeNull();
     });
 });
 
@@ -207,6 +239,17 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('the generated rules (variants.json) against
         expect(variantOf(at(0x32), identFrame(0x32, NON_M3_IDENTS[0x32]))).toBe('GS20');
     });
 
+    it('know the practice clusters: the M3’s is KOMBI46R, the other car’s KOMBI46 — both carried', () => {
+        const at = rules!.groups.find((g) => g.address === 0x80)!;
+        expect(at.group).toBe('D_0080');
+        expect(variantOf(at, identFrame(0x80, M3_IDENTS[0x80]))).toBe('KOMBI46R');
+        expect(variantOf(at, identFrame(0x80, NON_M3_IDENTS[0x80]))).toBe('KOMBI46');
+        const index = readShipped<EcuIndex>('index.json');
+        const modules = index.modules.map((m) => ({ id: m.id, sgbd: m.sgbd }));
+        expect(fittedFrom(rules!, modules, 0x80, identFrame(0x80, M3_IDENTS[0x80])).moduleId).toBe('kombi46r');
+        expect(fittedFrom(rules!, modules, 0x80, identFrame(0x80, NON_M3_IDENTS[0x80])).moduleId).toBe('kombi46');
+    });
+
     it('map the M3’s two SGBDs to the app’s modules, and let the common IDENT go to 0x12 and 0x32', () => {
         const index = readShipped<EcuIndex>('index.json');
         const modules = index.modules.map((m) => ({ id: m.id, sgbd: m.sgbd }));
@@ -215,7 +258,7 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('the generated rules (variants.json) against
         expect([f12.moduleId, f32.moduleId]).toEqual(['mss54', 'smg2']);
         const protocols = index.modules.map((m) => moduleProtocol(m.id, m.address, readShipped<TelegramTable>(`${m.id}.telegrams.json`)));
         const ok = identAddresses(protocols, rules!);
-        expect(ok.has(0x12) && ok.has(0x32)).toBe(true);
+        expect(ok.has(0x12) && ok.has(0x32) && ok.has(0x80)).toBe(true);
         // MK60 speaks KWP-shaped frames: the DS2 IDENT is not its own.
         expect(ok.has(0xb8)).toBe(false);
     });

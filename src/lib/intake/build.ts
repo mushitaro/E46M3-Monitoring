@@ -6,10 +6,11 @@
  * guessed. Where the scan does not know something, the report says null:
  *
  *   - the odometer: the scan does not read it;
- *   - the VIN: taken from the bytes the scan read (and anything else the page read in the same
- *     episode), by the rule the desk's redaction masks with (lib/investigation/redact). On a DS2
- *     E46 the common IDENT and the fault reads do not carry it, so on a car it is null until a read
- *     that does (KOMBI's AIF, EWS's FGNR) is part of the intake — the operator's decision;
+ *   - the VIN: the instrument cluster's own read in the scan (KOMBI46/KOMBI46R, AIF block 2;
+ *     lib/clusterVin, operator 2026-11-10) gives its last seven, `vinShort`. Neither cluster SGBD
+ *     answers with the whole seventeen, so on a DS2 E46 `vin` stays null unless some answer spells
+ *     all of it in ASCII (found by the rule the desk's redaction masks with, lib/investigation/redact).
+ *     Two sources that disagree give null for both: the store matches by it, so it is not guessed;
  *   - an identification field that is not printable text where the DS2 layout puts it;
  *   - a fault's text where the module's table has no row for its code, and every fault of a module
  *     with no decoder (its bytes are kept on the module, `faultRaw`).
@@ -140,12 +141,30 @@ function vinOf(hexes: readonly string[]): { vin: string | null; vinShort: string
     return { vin, vinShort: full.size <= 1 && short.size === 1 ? [...short][0] : null };
 }
 
+/**
+ * Where the report's VIN came from, for the screen's one line (never the VIN itself). `cluster`:
+ * the instrument cluster's read, not yet confirmed on a car (lib/clusterVin). `bytes`: an answer
+ * spelled it in ASCII. `conflict`: they disagreed, so the report carries none.
+ */
+export type IntakeVinSource = 'cluster' | 'bytes' | 'conflict' | null;
+
+/** The cluster's seven and what the bytes spell, put together; disagreement is null, not a pick. */
+function vinFrom(scan: ScanRun, hexes: readonly string[]): { vin: string | null; vinShort: string | null; source: IntakeVinSource } {
+    const spelled = vinOf(hexes);
+    const cluster = scan.vin?.vinShort ?? null;
+    if (cluster === null) return { ...spelled, source: spelled.vin || spelled.vinShort ? 'bytes' : null };
+    const disagrees = (spelled.vinShort !== null && spelled.vinShort !== cluster) || (spelled.vin !== null && spelled.vin.slice(-7) !== cluster);
+    if (disagrees) return { vin: null, vinShort: null, source: 'conflict' };
+    return { vin: spelled.vin, vinShort: cluster, source: 'cluster' };
+}
+
 /** The report and its JSON text (the bytes both tabs hash and the saved file holds). Throws if the shape is broken. */
-export function buildIntakeCheck(input: IntakeInput): { report: IntakeCheckReport; json: string } {
+export function buildIntakeCheck(input: IntakeInput): { report: IntakeCheckReport; json: string; vinSource: IntakeVinSource } {
     const { scan } = input;
     const modules = scan.results.map((x) => moduleOf(x, input));
     const at = (address: string) => modules.find((m) => m.address === address)?.sgbd ?? null;
     const read = [...scan.results.flatMap((x) => x.exchanges.flatMap((e) => (e.response ? [e.response] : []))), ...(input.alsoRead ?? [])];
+    const { source: vinSource, ...vins } = vinFrom(scan, read);
     const report: IntakeCheckReport = {
         schema: INTAKE_CHECK_SCHEMA,
         id: input.id,
@@ -156,13 +175,13 @@ export function buildIntakeCheck(input: IntakeInput): { report: IntakeCheckRepor
         clock: input.clockSet ? 'server' : 'device',
         scan: { startedAt: iso(scan.startedAt), end: scan.end },
         odometerKm: null,
-        ...vinOf(read),
+        ...vins,
         modules,
         findings: scan.results.flatMap((x) => findingsOf(x, input)).slice(0, 500),
         readings: [],
     };
     const parsed = intakeCheckReport.parse(report);
-    return { report: parsed, json: `${JSON.stringify(parsed, null, 2)}\n` };
+    return { report: parsed, json: `${JSON.stringify(parsed, null, 2)}\n`, vinSource };
 }
 
 /** SHA-256 of the report's text, as lowercase hex: what both tabs and the store name it by. */

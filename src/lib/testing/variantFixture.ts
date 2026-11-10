@@ -41,10 +41,45 @@ export const FIXTURE_RULES: VariantRules = {
     ],
 };
 
+/**
+ * The same, with D_0080's shape (a mask on byte 3, then byte 9 read as BCD) cut down to the E46's two
+ * clusters: what the instrument cluster's VIN read waits on (lib/probe/scan).
+ */
+export const FIXTURE_RULES_KOMBI: VariantRules = {
+    ...FIXTURE_RULES,
+    groups: [
+        ...FIXTURE_RULES.groups,
+        {
+            address: 0x80,
+            group: 'D_0080',
+            groupSha256: '',
+            positive: 0xa0,
+            unknown: [],
+            choose: {
+                byte: 3,
+                mask: 0xf0,
+                equals: 0xd0,
+                then: { byte: 9, read: 'bcd', ranges: [[1, 2, 'KOMBIR40']], else: null },
+                else: {
+                    byte: 9,
+                    read: 'bcd',
+                    ranges: [
+                        [30, 31, 'KOMBI39'],
+                        [48, 53, 'KOMBI46'],
+                        [54, 64, 'KOMBI46R'],
+                    ],
+                    else: null,
+                },
+            },
+        },
+    ],
+};
+
 export const FIXTURE_MODULES = [
     { id: 'mss54', sgbd: 'MSS54DS0.prg' },
     { id: 'smg2', sgbd: 'SMG2.prg' },
     { id: 'kombi46', sgbd: 'KOMBI46.prg' },
+    { id: 'kombi46r', sgbd: 'KOMBI46R.prg' },
 ];
 
 /** A whole IDENT answer frame, as the link hands it to `fittedFrom`. */

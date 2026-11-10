@@ -103,19 +103,22 @@ export function useIntakeSend(input: {
             return;
         }
         const sha = await sha256Hex(built.json);
+        // Where the VIN came from, after the outcome: the store matches the car by it.
+        const vinNote = t.intake_vin[built.vinSource ?? 'none'];
+        const withVin = (s: string) => (vinNote ? `${s} ${vinNote}` : s);
         const out = await handOff(browserWindow(), built.json, sha, { nonce: newNonce() });
         const at = Date.now();
         if (out.kind === 'received') {
             setState({ scan, phase: 'received', store: out.mainstay.name, at });
-            say(t.intake_received(out.mainstay.name, built.report.findings.length), 'info');
+            say(withVin(t.intake_received(out.mainstay.name, built.report.findings.length)), 'info');
         } else if (out.kind === 'refused') {
             setState({ scan, phase: 'refused', store: out.mainstay.name, at });
-            say(t.intake_refused(out.mainstay.name, t.intake_refusal[out.reason]), 'warn');
+            say(withVin(t.intake_refused(out.mainstay.name, t.intake_refusal[out.reason])), 'warn');
         } else {
             // No tab took it: the same text as a file, which the store can drop in instead.
             download(built.json, 'application/json', intakeFileName(built.report));
             setState({ scan, phase: 'saved', store: out.kind === 'no-answer' ? out.mainstay.name : null, at });
-            say(out.kind === 'no-answer' ? t.intake_noAnswer(out.mainstay.name) : t.intake_savedFile, out.kind === 'no-answer' ? 'warn' : 'info');
+            say(withVin(out.kind === 'no-answer' ? t.intake_noAnswer(out.mainstay.name) : t.intake_savedFile), out.kind === 'no-answer' ? 'warn' : 'info');
         }
     }, [scan, practice, index, mss54, alsoRead, say, state.scan, state.phase, lang, t]);
 

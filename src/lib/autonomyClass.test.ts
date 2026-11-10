@@ -19,11 +19,13 @@ describe('the autonomy class', () => {
 
     it('holds anything that decides what reaches the car, or what the assistant may do', () => {
         for (const p of [
-            'src/lib/runGate.ts',
-            'src/lib/ledger.ts',
+            'packages/monitoring-engine/src/runGate.ts',
+            'packages/monitoring-engine/src/ledger.ts',
+            'packages/monitoring-engine/src/link/session.ts',
             'src/hooks/useDs2Link.ts',
             'packages/ds2-core/src/link.ts',
-            'src/lib/probe/executor.ts',
+            'packages/monitoring-engine/src/probe/executor.ts',
+            'src/lib/probe/compare.ts',
             'src/lib/bridge/tools.ts',
             'src/lib/bridge/handlers.ts',
             'src/hooks/useMonitoringFacade.ts',
@@ -38,7 +40,7 @@ describe('the autonomy class', () => {
     });
 
     it('holds a change when any one of its files is held, and anything the table does not name', () => {
-        expect(cls('docs/PLAN.md', 'src/lib/runGate.ts')).toBe('human');
+        expect(cls('docs/PLAN.md', 'packages/monitoring-engine/src/runGate.ts')).toBe('human');
         expect(cls('src/views/diagnosis/DiagnosisView.tsx')).toBe('human');
         expect(cls()).toBe('human');
     });

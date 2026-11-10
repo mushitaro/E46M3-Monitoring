@@ -7,7 +7,7 @@
 同じジョブ id から事実を再導出する正規表現が、これまで6箇所にあった:
 
     gen_from_dump.py   EXCLUDE / TESTJOB / ADAPTJOB
-    src/lib/ecuCatalog.ts  jobRisk / jobPreconditions / execStyle（呼出0件）
+    packages/monitoring-engine/src/ecuCatalog.ts  jobRisk / jobPreconditions / execStyle（呼出0件）
 
 そして食い違っていた。`ABGLEICHWERTE_LESEN` は生成器が「永続書込」に分類し、
 `jobRisk` が `low`、`jobOps` が `read` と判定していた。3つが同時に正しいことは

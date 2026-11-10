@@ -26,7 +26,7 @@ import type { CatalogJob, EcuProfile } from './ecuCatalog';
  * shapes that had no coverage because they had no implementation.
  */
 
-const DATA = path.resolve(import.meta.dirname, '..', '..', 'public', 'ecu-data');
+const DATA = path.resolve(import.meta.dirname, '..', '..', '..', 'public', 'ecu-data');
 const MODULES = ['mss54', 'smg2', 'dsc_e46'] as const;
 type ModuleId = (typeof MODULES)[number];
 

@@ -10,7 +10,7 @@
  * must say so, because the owner is about to rely on it.
  */
 import { inTransaction, SESSIONS } from './db';
-import type { SavedSession } from './session';
+import type { SavedSession } from '@tsunagi/monitoring-engine';
 
 function run<T>(mode: IDBTransactionMode, op: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
     return inTransaction<T>(SESSIONS, mode, (s, done) => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { channelId } from '@tsunagi/ds2-mss54';
-import { datalogCsv } from '@/lib/download';
+import { datalogCsv } from '../logText';
 import { EXCERPT_LINES, excerpt, hasContent, isSavedSession, needsSync, parseCsv, type SavedSession } from './session';
 
 const session = (over: Partial<SavedSession> = {}): SavedSession => ({

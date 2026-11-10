@@ -2,16 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { useDs2Link } from '@/hooks/useDs2Link';
-import type { EcuIndex } from '@/lib/ecuCatalog';
-import type { Ledger } from '@/lib/ledger';
+import type { EcuIndex } from '@tsunagi/monitoring-engine';
+import type { Ledger } from '@tsunagi/monitoring-engine';
 import { runnablePlan, type NotebookEntry, type RunnablePlan } from '@/lib/notebook/rules';
 
 type RunnablePlanRefusal = Extract<RunnablePlan, { ok: false }>['reason'];
 import { listAllEntries } from '@/lib/notebook/store';
 import { probeChanged } from '@/lib/probe/boardStore';
-import { loadProbeModules } from '@/lib/probe/modules';
+import { loadProbeModules } from '@tsunagi/monitoring-engine';
 import { listRuns, putRun, type ProbeLive, type StoredRun } from '@/lib/probe/runStore';
-import { appNow } from '@/lib/clock';
+import { appNow } from '@tsunagi/monitoring-engine';
 
 export interface ProbeProgress {
     v: number;

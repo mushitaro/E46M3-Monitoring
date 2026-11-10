@@ -9,7 +9,7 @@
  * a journal that cannot be written must not stop a read — but listing rejects, because MEMORY says
  * what is there and must not say it from nothing.
  */
-import type { JournalEvent } from '../journal';
+import type { JournalEvent } from '@tsunagi/monitoring-engine';
 import { inTransaction, JOURNAL, JOURNAL_META } from './db';
 
 export interface JournalMeta {

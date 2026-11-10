@@ -35,9 +35,9 @@
  * oversight: a frame this module builds has never been sent to an ECU by anyone,
  * and the ledger is how something earns the vehicle path.
  */
-import type { CatalogArg, CatalogJob } from './ecuCatalog';
-import { telegramBytes } from './runGate';
-import type { Telegram } from './telegrams';
+import type { CatalogArg, CatalogJob } from '@tsunagi/monitoring-engine';
+import { telegramBytes } from '@tsunagi/monitoring-engine';
+import type { Telegram } from '@tsunagi/monitoring-engine';
 
 export type ArgFrameBlockKey =
     | 'argframe_noTemplate'

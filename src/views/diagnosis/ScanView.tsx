@@ -6,9 +6,9 @@ import { formatErrorCode, type ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
 import { DataList, DataRow, LABEL, Section, humanName } from '@/components/ui';
 import { normCode } from '@/lib/faultCode';
 import { useLang } from '@/lib/i18n';
-import { text as resolveText, type EcuIndex, type EcuProfile } from '@/lib/ecuCatalog';
-import type { ScanResult, ScanRun } from '@/lib/probe/scan';
-import type { RunBlockKey } from '@/lib/runGate';
+import { text as resolveText, type EcuIndex, type EcuProfile } from '@tsunagi/monitoring-engine';
+import type { ScanResult, ScanRun } from '@tsunagi/monitoring-engine';
+import type { RunBlockKey } from '@tsunagi/monitoring-engine';
 import { Awaiting } from '@/views/shared/Awaiting';
 import { CountReadout } from '@/views/shared/CountReadout';
 

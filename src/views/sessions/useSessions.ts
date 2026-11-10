@@ -27,13 +27,13 @@ import {
     sessionLabel,
     type FailureNote,
     type SavedSession,
-} from '@/lib/sync/session';
+} from '@tsunagi/monitoring-engine';
 import { deleteLocal, listLocal, putLocal } from '@/lib/sync/sessionStore';
 import { describeSave, describeSync, savePhase, syncPhase, toSend } from '@/lib/sync/status';
 import type { Datalog } from '@/views/datalog/useDatalog';
-import { toSession, type Episode } from '@/lib/journal';
+import { toSession, type Episode } from '@tsunagi/monitoring-engine';
 import type { Journal } from './useJournal';
-import { appNow } from '@/lib/clock';
+import { appNow } from '@tsunagi/monitoring-engine';
 
 /**
  * The failures of this page's session: kept for SAVE, and each one sent as an error record the

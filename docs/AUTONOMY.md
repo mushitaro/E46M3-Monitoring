@@ -102,18 +102,18 @@ guide が名乗るツールは `src/lib/bridge/tools.ts` の一覧だけ（`guid
 
 | 決まり | どこが強制するか | 状態 |
 |---|---|---|
-| 送るかを決めるのは `runGate.ts`（カタログの読取は `mayRun`、アプリが組む読取は `mayRunProtocolRead`）。ツールは K ラインに直接何も足さない | `src/lib/runGate.ts`、`src/lib/probe/executor.ts` | 済。実行器は全フレームでゲートに訊く（2026-10-27） |
-| モジュールには、そのモジュール自身の SGBD が送るものだけ | `src/lib/moduleProtocol.ts`、`link.to(address)` | 済（2026-10-27） |
-| どのモジュールがいるかは IDENT で選ぶ。非 M3 の車に M3 の電文を送らない。変種の分からないアドレスは「?」で IDENT だけ | `src/lib/variants.ts`（規則は `tools/sgbd/gen_variants.py`）、`Ds2Link.setSendGuard`、`lib/probe/scan.ts` | 0x12・0x32 は済（2026-11-10）。ほかのアドレスの規則は未 |
-| 読取は、送る直前に DME の車速が 0 と読めたときだけ。読めなければ出さない | `useDs2Link` の事前読取、`lib/vehicleState.ts` | 済（2026-10-27） |
-| 走行中に送ってよい読取はオーナーが決める。アプリもアシスタントも格上げしない | `lib/ledger.ts` の `grantMovingOk`。画面は SESSION SYNC の WHILE MOVING（`views/sessions/MovingOkSection.tsx`、確認のあと、走行中は押せない）。`monitoring_ledger` は読むだけ | 済（画面は #9、2026-10-28）。認めた分はページを開いている間だけ |
+| 送るかを決めるのは `runGate.ts`（カタログの読取は `mayRun`、アプリが組む読取は `mayRunProtocolRead`）。ツールは K ラインに直接何も足さない | `packages/monitoring-engine/src/runGate.ts`、`packages/monitoring-engine/src/probe/executor.ts` | 済。実行器は全フレームでゲートに訊く（2026-10-27） |
+| モジュールには、そのモジュール自身の SGBD が送るものだけ | `packages/monitoring-engine/src/moduleProtocol.ts`、`link.to(address)` | 済（2026-10-27） |
+| どのモジュールがいるかは IDENT で選ぶ。非 M3 の車に M3 の電文を送らない。変種の分からないアドレスは「?」で IDENT だけ | `packages/monitoring-engine/src/variants.ts`（規則は `tools/sgbd/gen_variants.py`）、`Ds2Link.setSendGuard`、`packages/monitoring-engine/src/probe/scan.ts` | 0x12・0x32 は済（2026-11-10）。ほかのアドレスの規則は未 |
+| 読取は、送る直前に DME の車速が 0 と読めたときだけ。読めなければ出さない | `packages/monitoring-engine/src/link/session.ts` の事前読取（`preflight`）、`packages/monitoring-engine/src/vehicleState.ts` | 済（2026-10-27） |
+| 走行中に送ってよい読取はオーナーが決める。アプリもアシスタントも格上げしない | `packages/monitoring-engine/src/ledger.ts` の `grantMovingOk`。画面は SESSION SYNC の WHILE MOVING（`views/sessions/MovingOkSection.tsx`、確認のあと、走行中は押せない）。`monitoring_ledger` は読むだけ | 済（画面は #9、2026-10-28）。認めた分はページを開いている間だけ |
 | 意味的失敗（0xB0 など）は再送しない。再送は transport の失敗だけ | `packages/ds2-core/src/link.ts` | 済（以前から） |
 | 読取以外は画面に置くだけ。実行は停車中に画面で人。DSC 油圧系は出さない | `mayRun`（非読取は拒否）、`monitoring_stage` | 拒否は済。stage は段 3 |
-| キルリストで任意のジョブを即時に止める | `public/kill-list.json`、`lib/ledger.ts`、SW は precache しない | 取得と適用は済。D1 からの配信は段 2 |
+| キルリストで任意のジョブを即時に止める | `public/kill-list.json`、`packages/monitoring-engine/src/ledger.ts`、SW は precache しない | 取得と適用は済。D1 からの配信は段 2 |
 | タブは新しい計画の版と新しいビルドを停車中・リンク休止中にだけ採る | 計画は `useProbe` が開始時に一度だけ読む（開始は画面の人、または AI モードでアシスタントの `monitoring_probe`。運営者 2026-11-01）。ビルドは、リンクが 1 分続けて切れていて未保存が無いときだけ（`lib/adoptBuild.ts`） | 済（ビルドは 2026-10-28） |
 | 送るのは、委任が立っている調査だけ。取り下げたら、まだ送っていないものも送らない | `lib/investigation/share.ts`（タブ・`functions/api/notebook`・`/runs`・机が同じ関数を使う） | 済（2026-10-28） |
-| 全モジュールの読取は、各モジュール自身の故障読取だけ。同じアドレスに複数の SGBD があれば、全員の表にあるフレームだけ。停車の確認は数アドレスごとに測り直す | `lib/probe/scan.ts` | 済（2026-11-01） |
-| 机が読むのは委任中の調査だけ。オーナーの ID と VIN は出さない。書くのは `desk` としての追記だけ | `workers/desk/`、`lib/investigation/redact.ts`、`deskProblem`、監査の行 | 済（2026-10-28）。配備は §6 |
+| 全モジュールの読取は、各モジュール自身の故障読取だけ。同じアドレスに複数の SGBD があれば、全員の表にあるフレームだけ。停車の確認は数アドレスごとに測り直す | `packages/monitoring-engine/src/probe/scan.ts` | 済（2026-11-01） |
+| 机が読むのは委任中の調査だけ。オーナーの ID と VIN は出さない。書くのは `desk` としての追記だけ | `workers/desk/`、`packages/monitoring-engine/src/investigation/redact.ts`、`deskProblem`、監査の行 | 済（2026-10-28）。配備は §6 |
 
 ## 5. 段取り
 

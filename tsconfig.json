@@ -23,7 +23,10 @@
       "@tsunagi/ds2-core": ["./packages/ds2-core/src/index.ts"],
       "@tsunagi/ds2-core/*": ["./packages/ds2-core/src/*"],
       "@tsunagi/ds2-mss54": ["./packages/ds2-mss54/src/index.ts"],
-      "@tsunagi/ds2-mss54/*": ["./packages/ds2-mss54/src/*"]
+      "@tsunagi/ds2-mss54/*": ["./packages/ds2-mss54/src/*"],
+      "@tsunagi/monitoring-engine": ["./packages/monitoring-engine/src/index.ts"],
+      "@tsunagi/monitoring-engine/react": ["./packages/monitoring-engine/src/react.ts"],
+      "@tsunagi/monitoring-engine/*": ["./packages/monitoring-engine/src/*"]
     }
   },
   "include": [

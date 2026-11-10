@@ -4,12 +4,12 @@ import { CircleDot, Loader2, Play, PlayCircle, PlugZap, Radar, Radio, Square, Za
 import type { HubConfig, NoticeTone } from '@/components/Hub';
 import type { useDs2Link } from '@/hooks/useDs2Link';
 import type { ProbeProgress } from '@/hooks/useProbe';
-import { hasFaultRead, hasIdent, type ModuleProtocol } from '@/lib/moduleProtocol';
+import { hasFaultRead, hasIdent, type ModuleProtocol } from '@tsunagi/monitoring-engine';
 import { hubConfigFor, hubNoticeFor } from '@/lib/hub';
-import { jobRiskOf, type CatalogJob } from '@/lib/ecuCatalog';
+import { jobRiskOf, type CatalogJob } from '@tsunagi/monitoring-engine';
 import { useLang } from '@/lib/i18n';
-import { operationFor } from '@/lib/jobOps';
-import type { RunVerdict } from '@/lib/runGate';
+import { operationFor } from '@tsunagi/monitoring-engine';
+import type { RunVerdict } from '@tsunagi/monitoring-engine';
 import type { Tab } from '@/lib/tabs';
 import { viewHubFor } from '@/lib/viewHub';
 import { hasDecoder } from '@/views/adaptation/AdaptationView';

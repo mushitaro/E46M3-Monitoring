@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { CatalogJob, EcuProfile } from './ecuCatalog';
+import type { CatalogJob, EcuProfile } from '@tsunagi/monitoring-engine';
 import {
     ECU_TIMEOUT_MS,
     STATUS_INTERVAL_MS,
@@ -10,9 +10,9 @@ import {
     planProcedure,
     stillRunning,
 } from './procedureRun';
-import { practiceEcu } from './practiceEcu';
+import { practiceEcu } from '@tsunagi/monitoring-engine';
 import type { Smg2Procedure, Smg2Workflows } from './smg2Workflows';
-import type { TelegramTable } from './telegrams';
+import type { TelegramTable } from '@tsunagi/monitoring-engine';
 
 const DATA = path.resolve(import.meta.dirname, '..', '..', 'public', 'ecu-data');
 const read = <T,>(f: string) => JSON.parse(readFileSync(path.join(DATA, f), 'utf-8')) as T;

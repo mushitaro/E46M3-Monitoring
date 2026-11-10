@@ -3,9 +3,9 @@
 import { Cpu } from 'lucide-react';
 import { LABEL, TextButton } from '@/components/ui';
 import type { LinkMode, LinkState } from '@/hooks/useDs2Link';
-import type { EcuIndex } from '@/lib/ecuCatalog';
+import type { EcuIndex } from '@tsunagi/monitoring-engine';
 import { CHROME } from '@/lib/i18n/chrome';
-import { ALL_MODULES } from '@/lib/probe/scan';
+import { ALL_MODULES } from '@tsunagi/monitoring-engine';
 import { useLang } from '@/lib/i18n';
 import { TAB_ORDER, type Tab } from '@/lib/tabs';
 

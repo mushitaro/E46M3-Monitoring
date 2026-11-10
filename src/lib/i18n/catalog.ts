@@ -1,6 +1,6 @@
-import type { Audience, JobClass, ResultDelivery, ResultRole, Actor, Termination, Risk } from '../ecuCatalog';
-import type { IrreversibleKey, OpKind, WhyKey } from '../jobOps';
-import type { RunBlockKey } from '../runGate';
+import type { Audience, JobClass, ResultDelivery, ResultRole, Actor, Termination, Risk } from '@tsunagi/monitoring-engine';
+import type { IrreversibleKey, OpKind, WhyKey } from '@tsunagi/monitoring-engine';
+import type { RunBlockKey } from '@tsunagi/monitoring-engine';
 import type { Chrome } from './chrome';
 
 /**

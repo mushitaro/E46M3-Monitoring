@@ -40,8 +40,8 @@ import {
     type CatalogJob,
     type CatalogResult,
     type EcuProfile,
-} from '@/lib/ecuCatalog';
-import { deliversResultElsewhere, hasStopControl, operationFor, type OpKind } from '@/lib/jobOps';
+} from '@tsunagi/monitoring-engine';
+import { deliversResultElsewhere, hasStopControl, operationFor, type OpKind } from '@tsunagi/monitoring-engine';
 import { cautionFor, type JobTextTable } from '@/lib/jobText';
 import { readResultsFor, type ResultBlockRef, type Smg2Procedure, type Smg2Sequence, type Smg2Workflows } from '@/lib/smg2Workflows';
 import { GATE_CODE, GATE_OF, GEARS, MEASURES, PASSES, gearWindows } from '@/lib/gearWindows';

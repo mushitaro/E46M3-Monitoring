@@ -7,7 +7,7 @@
 
 出力（どちらも BMW のグループファイル由来なので public/ecu-data/、つまり非公開のデータ repo へ）:
 
-    public/ecu-data/variants.json         アドレスごとの選び方（src/lib/variants.ts が読む）
+    public/ecu-data/variants.json         アドレスごとの選び方（packages/monitoring-engine/src/variants.ts が読む）
     public/ecu-data/variants.oracle.json  突き合わせた答えと、EDIABAS が選んだ変種（TS の試験が読む）
 
 ## なぜ「選び方」を手で書き、表をグループファイルから取るのか
@@ -25,7 +25,7 @@ EDIABAS は `D_00xx.grp` の IDENTIFIKATION（BEST/2 のバイトコード）を
      RULES の評価と一件でも食い違えば非ゼロで終わる。食い違ったまま書き出す道は無い。
 
 RULES に無いアドレスは「選び方が無い」のであって、「何でもよい」のではない。アプリはそのアドレスの
-変種を「?」のまま扱い、非 M3 の車では IDENT のほかに何も送らない（src/lib/variants.ts）。
+変種を「?」のまま扱い、非 M3 の車では IDENT のほかに何も送らない（packages/monitoring-engine/src/variants.ts）。
 
 ## 答えの番地
 
@@ -136,7 +136,7 @@ def resolve(choice, tables: dict):
     return {"key": choice["key"], "rows": rows, "else": resolve(choice.get("else"), tables)}
 
 
-# ---- 評価（src/lib/variants.ts の chooseVariant と同じ規則） ----------------------
+# ---- 評価（packages/monitoring-engine/src/variants.ts の chooseVariant と同じ規則） ----------------------
 
 def key_of(answer: bytes, slices) -> str:
     out = ""

@@ -3,7 +3,7 @@
 ブラウザから直接ケーブルに話す。**サーバもローカルホストも .NET も要らない**——理由は
 `README.md`。デスクトップは Web Serial、Android は WebUSB。
 
-> ⚠ **実車に送るのは読取だけ。** 何を送ってよいかを決めるのは `src/lib/runGate.ts` の
+> ⚠ **実車に送るのは読取だけ。** 何を送ってよいかを決めるのは `packages/monitoring-engine/src/runGate.ts` の
 > `mayRun` 一箇所で、実車では読取以外を拒否する。唯一の書込は故障メモリ消去で、確認
 > ダイアログを伴う。作動テストと SMG II の試験プログラムは **PRACTICE でのみ**動く。
 

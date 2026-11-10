@@ -21,7 +21,7 @@ import { sendableEntry, sendableRun } from '@/lib/investigation/share';
 import { listRuns, type StoredRun } from '@/lib/probe/runStore';
 import { canSync } from './cloud';
 import { api, gzipB64 } from './owner-sync';
-import { appNow } from '../clock';
+import { appNow } from '@tsunagi/monitoring-engine';
 
 export interface InvestigationSync {
     /** Entries the desk wrote that reached this device. */

@@ -33,6 +33,8 @@
  * different counts, and the sentence used the wrong one.)
  */
 
+import { readEcuData } from './ecuData';
+
 export type TelegramConfidence = 'single' | 'multiple' | 'shared';
 
 export interface Telegram {
@@ -68,7 +70,7 @@ export async function loadTelegrams(moduleId: string): Promise<TelegramTable | n
     const hit = cache.get(moduleId);
     if (hit !== undefined) return hit;
     try {
-        const res = await fetch(`./ecu-data/${moduleId}.telegrams.json`, { cache: 'no-store' });
+        const res = await readEcuData(`${moduleId}.telegrams.json`);
         if (!res.ok) {
             cache.set(moduleId, null);
             return null;

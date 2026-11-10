@@ -31,7 +31,7 @@
 import { insertEntries, recordEntries } from '../../../functions/_lib/investigation';
 import { blobBytes, type D1Database } from '../../../functions/_lib/sync';
 import { openAsks, type NotebookBody, type NotebookEntry } from '../../../src/lib/notebook/rules';
-import { redactDeep, redactResponse, redactRun, redactText } from '../../../src/lib/investigation/redact';
+import { redactDeep, redactResponse, redactRun, redactText } from '../../../packages/monitoring-engine/src/investigation/redact';
 import { delegatedWindows, deskProblem, standingMandates } from '../../../src/lib/investigation/share';
 import { audit, gunzipJson, json, tokenOf, type DeskTables } from './door';
 

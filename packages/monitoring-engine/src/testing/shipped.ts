@@ -13,7 +13,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
-export const SHIPPED_DATA = path.resolve(import.meta.dirname, '..', '..', '..', 'public', 'ecu-data');
+export const SHIPPED_DATA = path.resolve(import.meta.dirname, '..', '..', '..', '..', 'public', 'ecu-data');
 
 /** True when the private data has been placed (`E46M3-Monitoring-data/ecu-data` → `public/ecu-data`). */
 export const HAVE_SHIPPED_DATA = existsSync(path.join(SHIPPED_DATA, 'index.json'));

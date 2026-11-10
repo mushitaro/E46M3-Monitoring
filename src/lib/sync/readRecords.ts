@@ -14,8 +14,8 @@
  * Preview only, the car only (useDs2Link tells this nothing about PRACTICE), and nothing before the
  * notice is acknowledged (`canSync`): until then a batch is kept, not sent.
  */
-import type { ReadRecord } from '@/lib/investigation/readRecord';
-import { READ_LIMITS, readKey } from '@/lib/investigation/readRecord';
+import type { ReadRecord } from '@tsunagi/monitoring-engine';
+import { READ_LIMITS, readKey } from '@tsunagi/monitoring-engine';
 import { canSync } from './cloud';
 import { api, isPreviewBuild, outbox } from './owner-sync';
 

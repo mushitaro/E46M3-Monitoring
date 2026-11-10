@@ -11,13 +11,9 @@
 /scripts/desk.mjs                 @mushitaro
 /scripts/desk-token.mjs           @mushitaro
 /packages/ds2-core/               @mushitaro
+/packages/monitoring-engine/      @mushitaro
 /public/kill-list.json            @mushitaro
 /public/guide/index.md            @mushitaro
-/src/lib/runGate.ts               @mushitaro
-/src/lib/ledger.ts                @mushitaro
-/src/lib/actuationGate.ts         @mushitaro
-/src/lib/moduleProtocol.ts        @mushitaro
-/src/lib/vehicleState.ts          @mushitaro
 /src/lib/probe/                   @mushitaro
 /src/lib/investigation/           @mushitaro
 /src/lib/sync/                    @mushitaro

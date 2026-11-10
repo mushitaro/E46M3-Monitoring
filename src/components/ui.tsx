@@ -3,6 +3,7 @@
 import { useId, useState } from 'react';
 import { Info, type LucideIcon } from 'lucide-react';
 import { useLang } from '@/lib/i18n';
+import { humanName, type HumanName } from '@tsunagi/monitoring-engine';
 
 /**
  * The primitives that carry the ///M border rule.
@@ -87,25 +88,12 @@ export const WORDMARK =
 export const HUB_LABEL = 'text-[8px] font-bold uppercase tracking-widest';
 
 /**
- * Text a person can read, resolved for the current language.
- *
- * This is a brand, not a description. `DataRow`'s primary slot takes only a
- * `HumanName`, so an SGBD identifier cannot drift into it — putting one there
- * requires calling `humanName()` explicitly, which is a single greppable
- * assertion rather than a mistake anyone can make in passing.
- *
- * The mistake was not hypothetical: eight of the app's ten row types had the
- * identifier in the bright monospace slot that never truncates, and the
- * translated name in the dim one that truncates first.
- *
- * Minted here and by the catalogue resolvers (`label()`, `text()` in
- * `lib/ecuCatalog.ts`) — nowhere else.
+ * Text a person can read, resolved for the current language — the brand `DataRow`'s primary slot
+ * takes. Defined in the engine (`@tsunagi/monitoring-engine`, `humanName.ts`), whose catalogue
+ * resolvers mint it; the screen re-exports it so every row keeps taking it from here.
  */
-export type HumanName = string & { readonly __human: unique symbol };
-
-export function humanName(s: string): HumanName {
-    return s as HumanName;
-}
+export { humanName };
+export type { HumanName };
 
 type Tone = 'neutral' | 'primary' | 'danger' | 'destructive' | 'caution' | 'secondary' | 'ok';
 

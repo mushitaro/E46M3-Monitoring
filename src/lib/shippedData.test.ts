@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { assertLoadableProfile, type EcuIndex, type EcuProfile } from './ecuCatalog';
+import { assertLoadableProfile, type EcuIndex, type EcuProfile } from '@tsunagi/monitoring-engine';
 import { STRINGS } from './i18n';
-import { READ_ONLY_CONTROLS, mayRun } from './runGate';
-import { EMPTY_LEDGER } from './ledger';
+import { READ_ONLY_CONTROLS, mayRun } from '@tsunagi/monitoring-engine';
+import { EMPTY_LEDGER } from '@tsunagi/monitoring-engine';
 
 /**
  * The whole shipped catalogue, checked against the code that has to read it.

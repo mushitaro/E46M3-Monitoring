@@ -2,7 +2,7 @@
 
 import { LABEL } from '@/components/ui';
 import { useLang } from '@/lib/i18n';
-import type { RunBlockKey, RunVerdict } from '@/lib/runGate';
+import type { RunBlockKey, RunVerdict } from '@tsunagi/monitoring-engine';
 
 /**
  * Why a row cannot run, said where its control is — in a word or two.

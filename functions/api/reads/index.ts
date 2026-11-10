@@ -1,6 +1,6 @@
 import { json, ownerOf, unauthorized } from '../../_owner-gate/owner';
 import { type SyncContext, optText } from '../../_lib/sync';
-import { READ_LIMITS, readRecordProblem, type ReadRecord } from '../../../src/lib/investigation/readRecord';
+import { READ_LIMITS, readRecordProblem, type ReadRecord } from '../../../packages/monitoring-engine/src/investigation/readRecord';
 
 /**
  * Read records — what the WORKS build sent to the car and what came back, sent by the app itself,

@@ -1,11 +1,11 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { EcuIndex, EcuProfile } from './ecuCatalog';
+import type { EcuIndex, EcuProfile } from '@tsunagi/monitoring-engine';
 import { isOn, surfaceOf } from './jobSurface';
-import { EMPTY_LEDGER } from './ledger';
-import { mayRun } from './runGate';
-import { bestTelegram, type TelegramTable } from './telegrams';
+import { EMPTY_LEDGER } from '@tsunagi/monitoring-engine';
+import { mayRun } from '@tsunagi/monitoring-engine';
+import { bestTelegram, type TelegramTable } from '@tsunagi/monitoring-engine';
 
 const DATA = path.resolve(import.meta.dirname, '..', '..', 'public', 'ecu-data');
 const read = <T,>(f: string) => JSON.parse(readFileSync(path.join(DATA, f), 'utf-8')) as T;

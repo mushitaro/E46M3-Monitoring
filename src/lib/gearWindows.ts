@@ -24,7 +24,7 @@
  * defaults and go through the ordinary `SpecTable`.
  */
 
-import type { CatalogResult } from './ecuCatalog';
+import type { CatalogResult } from '@tsunagi/monitoring-engine';
 
 /** `R` last, because that is the order the ECU measures them in. */
 export const GEARS = ['1', '2', '3', '4', '5', '6', 'R'] as const;

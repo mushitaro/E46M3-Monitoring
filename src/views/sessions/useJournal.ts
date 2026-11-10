@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
 import type { LinkMode, LinkState } from '@/hooks/useDs2Link';
-import { KEEP_MS, episodes, expired, rebaseMeta, unfound, type Episode, type JournalEvent } from '@/lib/journal';
-import type { FailureNote, SavedSession } from '@/lib/sync/session';
+import { KEEP_MS, episodes, expired, rebaseMeta, unfound, type Episode, type JournalEvent } from '@tsunagi/monitoring-engine';
+import type { FailureNote, SavedSession } from '@tsunagi/monitoring-engine';
 import { appendEvent, deleteEvents, getMeta, listEvents, putMeta, rebaseEvents, type JournalMeta } from '@/lib/sync/journalStore';
-import { appNow, isAnchored, onAnchor } from '@/lib/clock';
+import { appNow, isAnchored, onAnchor } from '@tsunagi/monitoring-engine';
 
 /**
  * What the page holds of the journal: the events and the owner's joins and keeps, outside React so

@@ -31,8 +31,8 @@
  * an argument is the failure this module exists to prevent — but nothing here
  * makes an argument-taking job sendable, and nothing here should.
  */
-import type { CatalogArg, CatalogJob } from './ecuCatalog';
-import type { JobOperation } from './jobOps';
+import type { CatalogArg, CatalogJob } from '@tsunagi/monitoring-engine';
+import type { JobOperation } from '@tsunagi/monitoring-engine';
 
 export type Phase = 'pulse' | 'start' | 'stop';
 

@@ -40,29 +40,29 @@ import {
     type CatalogJob,
     type EcuIndex,
     type EcuProfile,
-} from '@/lib/ecuCatalog';
+} from '@tsunagi/monitoring-engine';
 import { useLang } from '@/lib/i18n';
-import { hasStopControl, operationFor } from '@/lib/jobOps';
+import { hasStopControl, operationFor } from '@tsunagi/monitoring-engine';
 import { loadJobText, type JobTextTable } from '@/lib/jobText';
 import { PRIVACY_PREVIEW } from '@/lib/links';
 import { loadDscHydraulics, type DscHydraulics } from '@/lib/dscHydraulics';
 import { enabledTabs, featureEnabled } from '@/lib/features';
-import { EMPTY_LEDGER, applyKillList, fetchKillList, grantMovingOk, recordClear, recordParkedObservation, type KillList, type Ledger } from '@/lib/ledger';
-import { mayRun, type RunVerdict } from '@/lib/runGate';
+import { EMPTY_LEDGER, applyKillList, fetchKillList, grantMovingOk, recordClear, recordParkedObservation, type KillList, type Ledger } from '@tsunagi/monitoring-engine';
+import { mayRun, type RunVerdict } from '@tsunagi/monitoring-engine';
 import { loadSmg2Workflows, type Smg2Workflows } from '@/lib/smg2Workflows';
 import { MODE_HOME, TAB_MODE, TAB_ORDER, type Mode, type Tab } from '@/lib/tabs';
 import { addEntries } from '@/lib/notebook/store';
 import type { NotebookEntry } from '@/lib/notebook/rules';
-import { bestTelegram, loadTelegrams, type TelegramTable } from '@/lib/telegrams';
-import { moduleProtocol, noProtocol } from '@/lib/moduleProtocol';
+import { bestTelegram, loadTelegrams, type TelegramTable } from '@tsunagi/monitoring-engine';
+import { moduleProtocol, noProtocol } from '@tsunagi/monitoring-engine';
 import { recordRead } from '@/lib/sync/readRecords';
 import { ActuatorView } from '@/views/actuator/ActuatorView';
 import { ActuatorViz } from '@/views/actuator/ActuatorViz';
 import { AdaptationView, AdaptationViz } from '@/views/adaptation/AdaptationView';
 import { DiagnosisView, DiagnosisViz } from '@/views/diagnosis/DiagnosisView';
 import { ScanList, ScanViz } from '@/views/diagnosis/ScanView';
-import { loadScanTargets } from '@/lib/probe/modules';
-import { ALL_MODULES } from '@/lib/probe/scan';
+import { loadScanTargets } from '@tsunagi/monitoring-engine';
+import { ALL_MODULES } from '@tsunagi/monitoring-engine';
 import { DatalogView, DatalogViz } from '@/views/datalog/DatalogView';
 import { useDatalog } from '@/views/datalog/useDatalog';
 import { ServiceView, ServiceViz, procedureForJob } from '@/views/service/ServiceView';

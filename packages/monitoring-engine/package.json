@@ -1,0 +1,27 @@
+{
+  "name": "@tsunagi/monitoring-engine",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "E46M3 /// MONITORING's diagnosis engine without its screens: the link session over DS2 (send guard, stationary preflight, module identification), the telegram tables and the run gate, the all-module scan and fault reads, the record shapes, the practice car. Read-only to the car but for the one confirmed fault clear. TypeScript, no build step.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./react": "./src/react.ts",
+    "./testing/*": "./src/testing/*.ts"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@tsunagi/ds2-core": "0.1.0",
+    "@tsunagi/ds2-mss54": "0.1.0"
+  },
+  "peerDependencies": {
+    "react": ">=19"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  }
+}

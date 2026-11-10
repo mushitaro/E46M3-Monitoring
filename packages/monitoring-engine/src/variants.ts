@@ -25,6 +25,8 @@
  * fails closed: no address is cleared, so only IDENTs go.
  */
 
+import { readEcuData } from './ecuData';
+
 /** A slice of the answer: `[start, length]` into the whole frame (address, length, status, data, checksum). */
 export type Slice = readonly [number, number];
 
@@ -218,7 +220,7 @@ export function identAddresses(
 /** Fetched once per page; a missing file is no rules, which clears no address (fails closed). */
 export async function loadVariantRules(): Promise<VariantRules> {
     try {
-        const res = await fetch('./ecu-data/variants.json', { cache: 'no-store' });
+        const res = await readEcuData('variants.json');
         if (!res.ok) return NO_RULES;
         const data = (await res.json()) as VariantRules;
         return data?.schema === 1 && Array.isArray(data.groups) ? data : NO_RULES;

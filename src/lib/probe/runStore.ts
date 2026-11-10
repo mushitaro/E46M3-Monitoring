@@ -8,8 +8,8 @@
  * WORKS-only, like lib/sync.
  */
 import { inTransaction, RUNS } from '../sync/db';
-import type { ProbeSample } from './criteria';
-import type { ProbeRun } from './executor';
+import type { ProbeSample } from '@tsunagi/monitoring-engine';
+import type { ProbeRun } from '@tsunagi/monitoring-engine';
 
 export interface StoredRun extends ProbeRun {
     id: string;

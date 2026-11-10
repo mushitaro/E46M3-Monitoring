@@ -7,7 +7,7 @@ import { EMPTY_LEDGER } from './ledger';
 import { mayRun } from './runGate';
 import type { Telegram } from './telegrams';
 
-const DATA = path.resolve(import.meta.dirname, '..', '..', 'public', 'ecu-data');
+const DATA = path.resolve(import.meta.dirname, '..', '..', '..', 'public', 'ecu-data');
 const read = <T,>(f: string) => JSON.parse(readFileSync(path.join(DATA, f), 'utf-8')) as T;
 const mss54 = read<EcuProfile>('mss54.jobs.json');
 const index = read<EcuIndex>('index.json');

@@ -14,7 +14,7 @@ import { EMPTY_LEDGER, type Ledger } from './ledger';
 import { bestTelegram, type Telegram, type TelegramTable } from './telegrams';
 import type { CatalogJob, EcuProfile } from './ecuCatalog';
 
-const DATA = path.resolve(import.meta.dirname, '..', '..', 'public', 'ecu-data');
+const DATA = path.resolve(import.meta.dirname, '..', '..', '..', 'public', 'ecu-data');
 const MODULES = ['mss54', 'smg2', 'dsc_e46'] as const;
 
 /**

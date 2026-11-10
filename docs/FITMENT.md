@@ -61,7 +61,7 @@
 > 下の「DS2 しか話さないので届かない」は**半分違った**——回線は同じで、違うのは電文の形（長さが
 > 4 バイト目、答えは `byte[3] + 5`）だけである。0xB8 は線上の先頭バイト（DS2 の宛先の位置）、
 > KWP の宛先は 0x29。証拠はデータリポジトリの `sgbd-dumps/DSC_MK60.telegrams.json`。
-> アプリは識別と故障の読み取りだけを、停車中だけ送る（`src/lib/kwpOnDs2.ts`）。答えは実車でまだ見ていない。
+> アプリは識別と故障の読み取りだけを、停車中だけ送る（`packages/monitoring-engine/src/kwpOnDs2.ts`）。答えは実車でまだ見ていない。
 
 63 件のうち 61 の IDENT が 3 バイトの DS2（`<アドレス> 04 00`）なのに対し、
 KWP2000 を送るのは 2 件だけで、そのうちの 1 つがこれである:
@@ -169,7 +169,7 @@ EDIABAS はアドレスごとのグループファイル（`D_0012.grp` など�
   1,309 件）を作り、`SgbdDump --ident` で EdiabasLib にグループファイルそのものを走らせ、規則の評価と
   一件でも食い違えば書かない。2026-11-10 の生成で食い違い 0 件（乱数を 5,000 に増やした 10,509 件でも 0 件）。
   突き合わせた答えは `variants.oracle.json` に残り、TS の規則も同じ答えで試験している。
-- **送るもの**（`src/lib/variants.ts`、`lib/probe/scan.ts`、`useDs2Link`）:
+- **送るもの**（`packages/monitoring-engine/src/variants.ts`、`packages/monitoring-engine/src/probe/scan.ts`、`packages/monitoring-engine/src/link/session.ts`）:
   - 規則のあるアドレス（今は 0x12 と 0x32）には、IDENT が選んだ SGBD をアプリが載せているときだけ、
     そのモジュールの電文を送る。MS43（MS430DS0）や GS20 は名前を出し、IDENT のほかは送らない。
   - 0x12 が MSS54DS0 と答えた車（M3）では、規則の無いアドレスは M3 の装備として、これまでどおり読む。

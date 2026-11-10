@@ -6,11 +6,11 @@ import { DialogFrame } from '@/components/DialogFrame';
 import { DialogButton, Field, LABEL, MicroLabel, Provenance, Well, emphasise } from '@/components/ui';
 import { useProcedureRun } from '@/hooks/useProcedureRun';
 import type { JobRunResult } from '@/hooks/useDs2Link';
-import type { CatalogJob } from '@/lib/ecuCatalog';
+import type { CatalogJob } from '@tsunagi/monitoring-engine';
 import { useLang } from '@/lib/i18n';
 import { planProcedure, type ProcedureBlockKey } from '@/lib/procedureRun';
 import type { Smg2Procedure, Smg2Workflows } from '@/lib/smg2Workflows';
-import type { TelegramTable } from '@/lib/telegrams';
+import type { TelegramTable } from '@tsunagi/monitoring-engine';
 import {
     WIZARD_STEPS,
     canAdvance,

@@ -19,7 +19,7 @@ import type { ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
 import type { RawFaultRead } from '@/hooks/useDs2Link';
 import { normCode } from '@/lib/faultCode';
 import { useLang, type Lang } from '@/lib/i18n';
-import { text as resolveText, type EcuProfile } from '@/lib/ecuCatalog';
+import { text as resolveText, type EcuProfile } from '@tsunagi/monitoring-engine';
 import { Awaiting } from '@/views/shared/Awaiting';
 import { CountReadout } from '@/views/shared/CountReadout';
 

@@ -17,8 +17,8 @@
  *     are what an error record carries too.
  */
 import type { ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
-import type { CommsLogLine } from '@/hooks/useDs2Link';
-import { logLine } from '@/lib/download';
+import type { CommsLogLine } from '../link/types';
+import { logLine } from '../logText';
 
 /** How many comms-log lines are kept before (and including) a failure. */
 export const EXCERPT_LINES = 40;

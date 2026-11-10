@@ -40,7 +40,8 @@
  * not shown is a made-up correspondence between them.
  */
 
-import { humanName, type HumanName } from '@/components/ui';
+import { readEcuData } from './ecuData';
+import { humanName, type HumanName } from './humanName';
 
 export type { HumanName };
 
@@ -456,7 +457,7 @@ export type { OpKind };
 const cache = new Map<string, EcuProfile>();
 
 export async function loadEcuIndex(): Promise<EcuIndex> {
-    const res = await fetch('./ecu-data/index.json', { cache: 'no-store' });
+    const res = await readEcuData('index.json');
     if (!res.ok) throw new Error(`Could not load the ECU index (HTTP ${res.status})`);
     const index = (await res.json()) as EcuIndex;
     // A schema check at the door, not a crash three screens later. The array form has no
@@ -470,7 +471,7 @@ export async function loadEcuIndex(): Promise<EcuIndex> {
 export async function loadEcuCatalog(id: string): Promise<EcuProfile> {
     const cached = cache.get(id);
     if (cached) return cached;
-    const res = await fetch(`./ecu-data/${id}.jobs.json`, { cache: 'no-store' });
+    const res = await readEcuData(`${id}.jobs.json`);
     if (!res.ok) throw new Error(`Could not load the catalogue for ${id} (HTTP ${res.status})`);
     const profile = (await res.json()) as EcuProfile;
     assertLoadableProfile(profile);

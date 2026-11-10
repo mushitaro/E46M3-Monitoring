@@ -5,14 +5,14 @@ import { useMemo, useState } from 'react';
 import { DialogFrame } from '@/components/DialogFrame';
 import { DialogButton, LABEL, MicroLabel, Pill, Well, emphasise } from '@/components/ui';
 import { planLines, type Phase } from '@/lib/actuatorArgs';
-import type { CatalogJob } from '@/lib/ecuCatalog';
+import type { CatalogJob } from '@tsunagi/monitoring-engine';
 import { execStyleOf } from '@/lib/execStyle';
 import { allChecked, requiredChecks } from '@/lib/gateChecks';
 import { TEST_ID, tid } from '@/lib/testIds';
 import { useLang } from '@/lib/i18n';
-import { operationFor } from '@/lib/jobOps';
-import type { RunVerdict } from '@/lib/runGate';
-import type { ActuationMode } from '@/lib/actuationGate';
+import { operationFor } from '@tsunagi/monitoring-engine';
+import type { RunVerdict } from '@tsunagi/monitoring-engine';
+import type { ActuationMode } from '@tsunagi/monitoring-engine';
 
 /**
  * The confirmation between pressing RUN and bytes leaving.

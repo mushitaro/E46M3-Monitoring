@@ -26,7 +26,7 @@
  * rules, so a rule cannot hold in one place and not another.
  */
 
-import { hypothesesProblem, judgesProblem, modulesOf, stepsProblem, type Hypothesis, type Judge, type ProbeStep } from '../probe/plan';
+import { hypothesesProblem, judgesProblem, modulesOf, stepsProblem, type Hypothesis, type Judge, type ProbeStep } from '@tsunagi/monitoring-engine';
 
 export type NotebookAuthor = 'driver' | 'chat' | 'desk' | 'owner';
 

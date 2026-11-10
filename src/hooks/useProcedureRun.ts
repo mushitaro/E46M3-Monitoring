@@ -10,7 +10,7 @@ import {
     stillRunning,
     type ProcedurePlan,
 } from '@/lib/procedureRun';
-import type { SendRequirement } from '@/lib/runGate';
+import type { SendRequirement } from '@tsunagi/monitoring-engine';
 
 /**
  * Driving one SMG II test program, and knowing when it is over.

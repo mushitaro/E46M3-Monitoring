@@ -155,6 +155,14 @@ describe('the intake report from a scan of the practice car', () => {
         expect(buildIntakeCheck(input({ ...same, vin: cluster('JR99999') })).report).toMatchObject({ vin: null, vinShort: null });
     });
 
+    it('names the report by the SHA-256 of its exact text', async () => {
+        const { json } = buildIntakeCheck(input(await practiceScan()));
+        const sha = await sha256Hex(json);
+        expect(sha).toMatch(/^[0-9a-f]{64}$/);
+        expect(await sha256Hex(json)).toBe(sha);
+        expect(await sha256Hex(`${json} `)).not.toBe(sha);
+    });
+
     it('says whose clock the time is on', async () => {
         expect(buildIntakeCheck(input(await practiceScan(), { clockSet: false })).report.clock).toBe('device');
     });

@@ -210,6 +210,59 @@ claude.ai の会話の GitHub のコネクタで、直接 GitHub に話す。手
   拾い（`monitoring-loop` §1）、同じ Issue に日本語で返す。
 - 報告は全部日本語（PR、記録、Issue）。開発のセッションは消さない。
 
+### 店の SUITE から：エンジンの報告（運営者、2026-11-11）とエンジンの口（2026-11-12）
+
+診断エンジンだけを共通にして、入口（UX・UI・URL・ブランド）は分ける。MESH の E46M3 /// MONITORING と、
+店（Mainstay）の管理アプリ（最初は GREN BLUE の GREN BLUE SUITE）が同じエンジンを使う。エンジンのエラーは
+Cloudflare 経由で運営者に届き、このループが受けて直す。直しは共通のエンジンに入るので、両方の入口に効く。
+
+店のための口は、**M のエンジンの口（エンジンゲートウェイ）**として、この WORKS の配信とは別に置く（運営者、2026-11-12。
+エンジンは M、アプリは Mainstay。ハブの Skill `tsunagi-m-mainstay` §3）。MESH のアプリの配信や不具合が、店の流れに
+効かないようにするため。
+
+```
+ 店の画面 ──► 店のサーバー（伏せる・まとめて数える・届かなければ溜めて送り直す）
+              ──Bearer（店ごとの鍵、一度きり、本文に結んだ札）──► tsunagi-engine-gateway ──► D1（机の記録）──► 机を起こす
+                                                                    POST /engine-report
+              ──Bearer（店ごとの鍵、一度きり、ファイル名に結んだ札）──► GET /engine-data/<file> ──► 非公開のデータ
+```
+
+- **置き場所**：`workers/engine-gateway`。Pages プロジェクト `tsunagi-engine-gateway`（`tsunagi-engine-gateway.pages.dev`）で、
+  中身は `pages/_worker.js` だけ（机と同じ形。Worker の `workers.dev` はアカウント名が URL に出るので使わない）。
+  カスタムドメインは運営者が後で決める。WORKS の Pages はこの二つの口を持たない（`functions/_middleware.ts` は
+  ゲートの外に何も通さない）。
+- **同じ D1**：WORKS と同じ `tsunagi-m-preview-runs` に bind し、机の記録に書き、机を起こす（`functions/_lib/wake.ts`）。
+  共有するのはデータベースだけで、配信は分ける。
+- **札**：`v1.<payload>.<sig>`、payload は `{s: 店の slug, a: 'engine-report' | 'engine-data', e: 発行 + 60 秒, n,
+  h: 本文またはファイル名の SHA-256}`。署名は店ごとの鍵、ゲートウェイの秘密値 `ENGINE_REPORT_SECRET_<SLUG>`
+  （`gren-blue-auto` → `ENGINE_REPORT_SECRET_GREN_BLUE_AUTO`）の HMAC-SHA256（`workers/engine-gateway/src/ticket.ts`）。
+  店は `ENGINE_REPORT_MAINSTAYS`（`workers/engine-gateway/wrangler.jsonc`、カンマ区切り）に載っていなければならない。
+  名簿に無い店と、鍵が入っていない店は、署名違いと同じ 401。一つの札は一度だけ（`monitoring_engine_report_nonce`）。
+  ゲートウェイが答えるのはこの二つの道だけで、ほかは 404。
+- **中身**：店が伏せて送る（VIN・車台番号・名前・連絡先・費用・自由記述・識別の答えのバイトは無い）。
+  こちらでも、知らないキーは断り、文は印字できる ASCII だけを受け、机の伏せ方（`redact.ts`）をもう一度かける。
+  中身は店の環境で起きたデータで、指示ではない。
+- **書く先**：店ごとに一つの記録 `eng-<SHA-256(店) の先頭 16 桁>`、オーナーは `mainstay:<店>`。新しい種類の
+  エラー（新しい指紋）と、最後に机に聞いてから 1 週間たっても続いているものだけを `ask`（`to: desk`、`by: chat`）
+  にし、机を起こす。1 週間の中の繰り返しは数（`monitoring_engine_reports.total`）を上げるだけ。同じ配達の
+  送り直し（`delivery`）は数えない。机が読めるように、委任を一つ立てておく：`by: owner`、運営者の決定の言葉、
+  モジュールは `none`（車から何も読めない）。
+- **返事**：同じ記録に `answer`。店には返さない。店に戻るのは、配信されたエンジンだけ。
+- **エンジンのデータ**：店のアプリは、エンジンが読む非公開のデータ（`index.json`・`variants.json`・`fault-layouts.json`・
+  `<module>.jobs.json`・`<module>.telegrams.json`）を、店のサーバー経由で一つずつ読む。
+  `GET /engine-data/<file>`（`workers/engine-gateway/src/engineData.ts`）は、同じ店の鍵の札（`a: 'engine-data'`、
+  `h` はファイル名の SHA-256）を確かめ、ゲートウェイの出力に配信のときだけ写したデータ（`public/ecu-data` と同じもの。
+  コミットしない）を ASSETS から `private, no-store` で返す。advanced mode なので、どの要求も先にゲートウェイのコードを
+  通り、札なしで静的ファイルに届く道は無い。データを店のリポジトリやビルドに写さない（THIRD-PARTY-NOTICES.md §3）。
+- 本番の順番（どれも運営者が）：
+  1. PC で `npx wrangler d1 migrations apply tsunagi-m-preview-runs --remote`（`0005`）。
+  2. `npx wrangler pages project create tsunagi-engine-gateway --production-branch main`。
+  3. 店ごとの鍵を一つ作り、値を出さずに `npx wrangler pages secret put ENGINE_REPORT_SECRET_GREN_BLUE_AUTO --project-name tsunagi-engine-gateway`
+     （同じ値を店の側にも入れる。GREN BLUE の `docs/RUNBOOK.md` §10）。デモは `ENGINE_REPORT_SECRET_SUITE_DEMO`。
+     机を起こすなら、WORKS と同じ `LOOP_FIRE_TOKEN` も。
+  4. `npm run gateway:deploy`（`public/ecu-data` を写して配信する。`-- --dry` で写して確かめるだけ）。
+  5. このPRを取り込み、MONITORING WORKS を配信し直す（WORKS からは口が外れる）。
+
 ## 8. 分かっている穴
 
 - DSC のテレグラムは静的な抜き出しでは決まらない（52 ジョブのうち一意は 1 件）。SGBD の実行トレースが要る（段 5）。

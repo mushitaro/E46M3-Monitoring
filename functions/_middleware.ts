@@ -50,6 +50,10 @@ const gate = createGate({
 // every response it passes by rebuilding it, and a 101 does not survive being rebuilt — so the gate
 // is handed a stand-in to re-mark, and the real answer is returned instead. It is only ever the
 // answer of a request the gate let through: refused, the gate never calls next().
+//
+// Nothing of this origin is served without the gate. The doors a Mainstay's server uses (engine
+// reports, the engine's data) are not here: they are M's engine gateway, deployed apart from this
+// WORKS build (workers/engine-gateway, operator 2026-11-12).
 export const onRequest = async (context: GateContext): Promise<Response> => {
     let upgrade: Response | null = null;
     const res = await gate({

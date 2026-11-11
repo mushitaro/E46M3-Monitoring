@@ -151,9 +151,9 @@ GREN BLUE のリポジトリにもビルドにも写さない。
 
 読み口は M のエンジンの口（**エンジンゲートウェイ**）で、MESH の道具である E46M3 /// MONITORING の WORKS の配信とは
 別に置く（運営者 2026-11-12。エンジンは M、アプリは Mainstay。ハブの Skill `tsunagi-m-mainstay` §3）。MESH のアプリの
-配信や不具合が、店の流れに効かないようにするため。コードは `feat/engine-report-inbox` の `workers/engine-gateway`
+配信や不具合が、店の流れに効かないようにするため。コードは `workers/engine-gateway`
 （Pages プロジェクト `tsunagi-engine-gateway` → `tsunagi-engine-gateway.pages.dev`、中身は `_worker.js` だけ。
-カスタムドメインは運営者が後で決める）で、こちらを正とする（このブランチには置かない）。エンジンの報告の受け口
+カスタムドメインは運営者が後で決める）。エンジンの報告の受け口
 `POST /engine-report` も同じゲートウェイにある。WORKS の Pages は、どちらの口も持たない。
 
 ```

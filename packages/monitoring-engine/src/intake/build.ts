@@ -31,8 +31,15 @@ export interface IntakeInput {
     id: string;
     scan: ScanRun;
     practice: boolean;
-    /** The build-id the page carries; `dev` when it carries none. */
-    build: string;
+    /** The build-id the page carries; `dev` when it carries none. Used when `producer.version` is not given. */
+    build?: string;
+    /**
+     * Which app wrote the report, as the store will read it: E46M3 /// MONITORING by default; an app with
+     * its own name and brand that runs this engine (GREN BLUE SUITE; operator 2026-11-11: the entrances and
+     * brands are separate) names itself here. `version` goes where the report keeps the build
+     * (`producer.build`); the report's shape does not change.
+     */
+    producer?: { app: string; version?: string };
     /** Which generated SGBD set the page loaded (the index's generatedAt). */
     sgbdSet: string;
     /** The page had heard the server's time (lib/clock `isAnchored`). */
@@ -189,7 +196,7 @@ export function buildIntakeCheck(input: IntakeInput): { report: IntakeCheckRepor
     const report: IntakeCheckReport = {
         schema: INTAKE_CHECK_SCHEMA,
         id: input.id,
-        producer: { app: PRODUCER_APP, build: input.build || 'dev', sgbdSet: input.sgbdSet },
+        producer: { app: input.producer?.app || PRODUCER_APP, build: input.producer?.version || input.build || 'dev', sgbdSet: input.sgbdSet },
         practice: input.practice,
         profile: { engine: at('0x12'), gearbox: at('0x32') },
         measuredAt: iso(scan.endedAt),

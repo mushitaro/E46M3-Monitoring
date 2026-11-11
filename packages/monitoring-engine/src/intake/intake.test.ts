@@ -163,6 +163,15 @@ describe('the intake report from a scan of the practice car', () => {
         expect(await sha256Hex(`${json} `)).not.toBe(sha);
     });
 
+    it('names the app that wrote it: E46M3 /// MONITORING unless another app says its own name', async () => {
+        const scan = await practiceScan();
+        expect(buildIntakeCheck(input(scan)).report.producer).toMatchObject({ app: 'E46M3 /// MONITORING', build: '150.abc1234' });
+        const suite = buildIntakeCheck(input(scan, { producer: { app: 'GREN BLUE SUITE', version: '2026.11.11' } })).report;
+        expect(suite.producer).toEqual({ app: 'GREN BLUE SUITE', build: '2026.11.11', sgbdSet: 'ecu-data@2026-11-10T01:00:37+00:00' });
+        expect(buildIntakeCheck(input(scan, { producer: { app: 'GREN BLUE SUITE' } })).report.producer.build).toBe('150.abc1234');
+        expect(buildIntakeCheck(input(scan, { build: undefined })).report.producer.build).toBe('dev');
+    });
+
     it('says whose clock the time is on', async () => {
         expect(buildIntakeCheck(input(await practiceScan(), { clockSet: false })).report.clock).toBe('device');
     });

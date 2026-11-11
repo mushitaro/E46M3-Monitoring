@@ -234,6 +234,12 @@ Cloudflare 経由で運営者に届き、このループが受けて直す。直
   送り直し（`delivery`）は数えない。机が読めるように、委任を一つ立てておく：`by: owner`、運営者の決定の言葉、
   モジュールは `none`（車から何も読めない）。
 - **返事**：同じ記録に `answer`。店には返さない。店に戻るのは、配信されたエンジンだけ。
+- **エンジンのデータ**：店のアプリは、エンジンが読む非公開のデータ（`index.json`・`variants.json`・
+  `<module>.jobs.json`・`<module>.telegrams.json`）を、店のサーバー経由で一つずつ読む。
+  `GET /api/bridge/engine-data/<file>`（`functions/api/bridge/engine-data/[file].ts`）は、同じ店の鍵の札
+  （`a: 'engine-data'`、`h` はファイル名の SHA-256）を確かめ、ゲートの内側の静的ファイルを ASSETS から
+  `private, no-store` で返す。ゲートの外に出るのはこの四種類の名前のパスだけで、`/ecu-data/` そのものは
+  今までどおりゲートの内側。データを店のリポジトリやビルドに写さない（THIRD-PARTY-NOTICES.md §3）。
 - 本番の順番（どれも運営者が）：
   1. PC で `npx wrangler d1 migrations apply tsunagi-m-preview-runs --remote`（`0005`）。
   2. 店と共有する鍵を一つ作り、値を出さずに `npx wrangler pages secret put ENGINE_REPORT_SECRET_GREN_BLUE_AUTO --project-name e46m3-monitoring-preview`

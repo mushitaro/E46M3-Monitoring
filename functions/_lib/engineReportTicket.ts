@@ -1,6 +1,11 @@
 /**
- * The ticket a Mainstay's engine report carries (operator, 2026-11-11: the diagnostic engine's
- * errors reach the operator through Cloudflare and the autonomous loop fixes them).
+ * The ticket a Mainstay's server carries (operator, 2026-11-11: the diagnostic engine's errors reach
+ * the operator through Cloudflare and the autonomous loop fixes them; the store runs the engine with
+ * the data it reads from here). Two uses, told apart by `a` and by what `h` is bound to:
+ *
+ *   'engine-report'  POST /api/bridge/engine-report        h = SHA-256 of the body
+ *   'engine-data'    GET  /api/bridge/engine-data/<file>   h = SHA-256 of the file name
+ *
  *
  * The same make as the relay's development ticket (PR #42, functions/_lib/devTicket.ts), with the
  * body bound in:
@@ -8,10 +13,11 @@
  *     Authorization: Bearer v1.<base64url(JSON {s, a, e, n, h})>.<base64url(HMAC-SHA256)>
  *
  *   s  the Mainstay: a store slug on ENGINE_REPORT_MAINSTAYS (wrangler vars, comma-separated)
- *   a  'engine-report'
+ *   a  'engine-report' or 'engine-data'
  *   e  expiry in seconds; the store mints for sixty
  *   n  a nonce; each ticket is good once (monitoring_engine_report_nonce)
- *   h  base64url SHA-256 of the exact body, so a ticket cannot carry another report
+ *   h  base64url SHA-256 of what it is for (the exact body; the file name), so a ticket cannot
+ *      carry another report or fetch another file
  *
  * signed over `v1.<payload>` with that Mainstay's own key, the Pages secret
  * ENGINE_REPORT_SECRET_<SLUG> (`gren-blue-auto` → ENGINE_REPORT_SECRET_GREN_BLUE_AUTO). One key per
@@ -32,6 +38,7 @@ export interface EngineReportEnv {
 }
 
 export const ENGINE_REPORT_AUDIENCE = 'engine-report';
+export const ENGINE_DATA_AUDIENCE = 'engine-data';
 /** The store mints for sixty seconds; a little more is allowed for the clocks between. */
 const MAX_TTL_S = 90;
 const SECRET_MIN = 32;
@@ -66,7 +73,13 @@ export function rosterOf(env: Pick<EngineReportEnv, 'ENGINE_REPORT_MAINSTAYS'>):
  * the store is on the roster and has a key, the signature, the audience, the time, the body, unused.
  * An unknown store is the same 401 as a bad signature: the roster is not told to strangers.
  */
-export async function verifyEngineReportTicket(env: EngineReportEnv, header: string | null, body: string, nowSec = Date.now() / 1000): Promise<EngineReportAuth> {
+export async function verifyEngineReportTicket(
+    env: EngineReportEnv,
+    header: string | null,
+    body: string,
+    nowSec = Date.now() / 1000,
+    audience: typeof ENGINE_REPORT_AUDIENCE | typeof ENGINE_DATA_AUDIENCE = ENGINE_REPORT_AUDIENCE,
+): Promise<EngineReportAuth> {
     const roster = rosterOf(env);
     if (roster.length === 0) return { error: 'engine_report_unavailable', status: 503 };
 
@@ -92,7 +105,7 @@ export async function verifyEngineReportTicket(env: EngineReportEnv, header: str
     // verify() compares in constant time.
     if (!(await crypto.subtle.verify('HMAC', key, sigBytes, enc.encode(`v1.${payload}`)))) return { error: 'auth', status: 401 };
 
-    if (a !== ENGINE_REPORT_AUDIENCE || typeof e !== 'number' || e <= nowSec || e > nowSec + MAX_TTL_S) return { error: 'auth', status: 401 };
+    if (a !== audience || typeof e !== 'number' || e <= nowSec || e > nowSec + MAX_TTL_S) return { error: 'auth', status: 401 };
     if (typeof n !== 'string' || !/^[A-Za-z0-9_-]{8,64}$/.test(n)) return { error: 'auth', status: 401 };
     const digest = b64url(new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(body))));
     if (h !== digest) return { error: 'auth', status: 401 };

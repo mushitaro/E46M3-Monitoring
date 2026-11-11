@@ -194,3 +194,50 @@ describe('the middleware', () => {
         for (const p of ['/api/bridge/engine-reports', '/api/bridge/engine-report/x', '/api/notebook', '/ecu-data/mss54.json']) expect((await at(p)).status).not.toBe(299);
     });
 });
+
+describe('GET /api/bridge/engine-data/<file>', () => {
+    const served: string[] = [];
+    const ASSETS = {
+        fetch: async (req: Request) => {
+            const path = new URL(req.url).pathname;
+            served.push(path);
+            return path === '/ecu-data/index.json' ? new Response('{"schema":1}', { status: 200 }) : new Response('nope', { status: 404 });
+        },
+    };
+    async function get(file: string, bearer: string | null, env: Record<string, unknown> = {}) {
+        const { d1 } = sqliteD1();
+        const { onRequestGet } = await import('../../../functions/api/bridge/engine-data/[file]');
+        const res = await onRequestGet({
+            request: new Request(`https://e46m3-monitoring-preview.pages.dev/api/bridge/engine-data/${file}`, { headers: bearer ? { authorization: `Bearer ${bearer}` } : {} }),
+            env: { RUNS_DB: d1, ENGINE_REPORT_MAINSTAYS: STORE, [secretNameOf(STORE)]: SECRET, ASSETS, ...env } as never,
+            params: { file },
+        });
+        return { status: res.status, text: await res.text(), cache: res.headers.get('cache-control') };
+    }
+
+    it('serves a file the engine reads, to a store ticket for exactly that file name, without caching', async () => {
+        const ok = await get('index.json', await ticket('index.json', { a: 'engine-data' }));
+        expect(ok).toEqual({ status: 200, text: '{"schema":1}', cache: 'private, no-store' });
+        expect(served).toContain('/ecu-data/index.json');
+    });
+
+    it('refuses a ticket for another file, for the other use, from no one, and a name the engine does not read', async () => {
+        expect((await get('index.json', await ticket('variants.json', { a: 'engine-data' }))).status).toBe(401);
+        expect((await get('index.json', await ticket('index.json'))).status).toBe(401); // audience engine-report
+        expect((await get('index.json', null)).status).toBe(401);
+        expect((await get('mss54.prg', await ticket('mss54.prg', { a: 'engine-data' }))).status).toBe(404);
+        expect((await get('mss54.jobs.json', await ticket('mss54.jobs.json', { a: 'engine-data' }))).status).toBe(404); // not in ASSETS here
+    });
+
+    it('is the only data path past the gate: /ecu-data/ itself stays behind it', async () => {
+        const { onRequest, ENGINE_DATA_PATH } = await import('../../../functions/_middleware');
+        const mark = new Response('route', { status: 299 });
+        const at = (path: string) => onRequest({ request: new Request(`https://e46m3-monitoring-preview.pages.dev${path}`), env: {} as never, data: {}, next: async () => mark });
+        expect((await at('/api/bridge/engine-data/mss54.telegrams.json')).status).toBe(299);
+        expect((await at('/api/bridge/engine-data/index.json')).status).toBe(299);
+        for (const p of ['/ecu-data/index.json', '/api/bridge/engine-data/', '/api/bridge/engine-data/../ecu-data/index.json', '/api/bridge/engine-data/x.prg']) {
+            expect((await at(p)).status).not.toBe(299);
+        }
+        expect(ENGINE_DATA_PATH.test('/api/bridge/engine-data/variants.json')).toBe(true);
+    });
+});

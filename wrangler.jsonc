@@ -51,6 +51,8 @@
     // (functions/api/bridge/engine-report.ts, operator 2026-11-11). Each also needs its own key, the
     // Pages secret ENGINE_REPORT_SECRET_<SLUG> (gren-blue-auto → ENGINE_REPORT_SECRET_GREN_BLUE_AUTO);
     // until it is set, that store's reports are refused and wait on the store's side.
-    "ENGINE_REPORT_MAINSTAYS": "gren-blue-auto"
+    // `suite-demo` is GREN BLUE SUITE's demo (a fictional store, its own key
+    // ENGINE_REPORT_SECRET_SUITE_DEMO): it reads the engine's data and sends no reports.
+    "ENGINE_REPORT_MAINSTAYS": "gren-blue-auto,suite-demo"
   }
 }

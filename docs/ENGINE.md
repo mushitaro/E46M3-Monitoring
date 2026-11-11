@@ -29,6 +29,7 @@ E46M3 /// MONITORING の診断エンジンを、画面から切り離した部�
 | SGBD の分類を読む（`classify.py` の結果） | `ecuCatalog.ts`、`jobOps.ts`、`humanName.ts` |
 | 変種の選び方 | `variants.ts`、`identity.ts` |
 | 全モジュールの走査、故障の読み・解読 | `probe/scan.ts`、`probe/modules.ts`、（PROBE の実行器）`probe/executor.ts`・`plan.ts`・`criteria.ts` |
+| MSS54 以外の故障コードの読み方（各モジュール自身の SGBD が読む場所。`fault-layouts.json`、実車未確認） | `faultLayouts.ts` |
 | 記録の形 | `journal.ts`、`sync/session.ts`、`investigation/readRecord.ts`、`investigation/redact.ts`、`logText.ts` |
 | 点検報告 `e46.intake-check.v1` の形と組み立て、メーターの VIN の下 7 桁 | `intake/intakeCheck.ts`、`intake/build.ts`、`clusterVin.ts` |
 | 練習用の車（PRACTICE） | `practiceCar.ts`、`practiceEcu.ts` |
@@ -77,6 +78,7 @@ MSS54 の表と解読は `packages/ds2-mss54`。エンジンはこの二つに�
 | 車の状態 | `vehicleStateFrom`、`motionOf`、`VEHICLE_STATE_MAX_AGE_MS` |
 | 変種 | `loadIdentity`、`loadVariantRules`、`fittedFrom`、`isM3`、`mayModuleBeSent`、`frameVerdict`、`commonIdent`、`isCommonIdent`、`DME_ADDRESS` |
 | 走査 | `loadScanTargets`、`scanTargets`、`runScan`、`scanCounts`、`ALL_MODULES` |
+| 故障の読み方 | `loadFaultLayouts`、`decodeFaultRead(layout, reads)` → `DecodedFault[]`（`{ code: '0x2A', count, present }`）。読取の `RawFaultRead.decoded`、走査の `ScanResult.faults` に入る |
 | PROBE | `runProbe`、`probeBlocks`、`loadProbeModules`、`judge`、`stepsProblem`・`judgesProblem`・`hypothesesProblem` |
 | 記録の形 | `episodes`、`toSession`、`expired`、`SavedSession`・`FailureNote`・`excerpt`・`isSavedSession`、`ReadRecord`・`readRecordProblem`、`redactText`・`redactHex`・`redactResponse`・`redactDeep`、`logLine`、`datalogCsv` |
 | 点検報告 | `buildIntakeCheck`、`intakeCheckReport`（zod）、`INTAKE_CHECK_SCHEMA`、`decodeIdent`、`sha256Hex`、`intakeFileName`、`clusterVinShort` |
@@ -94,9 +96,9 @@ MSS54 の表と解読は `packages/ds2-mss54`。エンジンはこの二つに�
 
 ### GREN BLUE での取り込み（e46-maintenance と同じ形）
 
-1. git submodule：`vendor/E46M3-Monitoring` ← `https://github.com/mushitaro/E46M3-Monitoring.git`（公開。
+1. git submodule：`vendor/e46m3-monitoring` ← `https://github.com/mushitaro/E46M3-Monitoring.git`（公開。
    認証は要らない）。
-2. root の npm workspaces に `vendor/E46M3-Monitoring/packages/*` を足す（`@tsunagi/ds2-core`・
+2. root の npm workspaces に `vendor/e46m3-monitoring/packages/*` を足す（`@tsunagi/ds2-core`・
    `@tsunagi/ds2-mss54`・`@tsunagi/monitoring-engine` の三つが入る）。
 3. 使うアプリの `dependencies` に `@tsunagi/monitoring-engine`、`next.config.ts` の `transpilePackages` に
    三つ全部。ビルドなしの TS（`exports` は `src/*.ts`）。
@@ -141,44 +143,32 @@ configureEcuData((file) => fetch(`/api/monitoring/ecu-data/${file}`, { cache: 'n
 - `link/session.test.ts` が、ディスクから読む口を渡して練習の車につなぎ、IDENT・故障の読み・走行中の拒否まで
   通ることを確かめる。
 
-### 実装した：運営者の Cloudflare に置いたまま、m3 で確かめて読む（運営者 2026-11-11）
+### 店のサーバーへの読み口：`GET /api/bridge/engine-data/<file>`（運営者 2026-11-11）
 
 データは BMW SGBD 由来と逆コンパイル由来で、`THIRD-PARTY-NOTICES.md` §3 が配信を閉じた内側と定めている。
 GREN BLUE のリポジトリにもビルドにも写さない。
 
+読み口は `feat/engine-report-inbox`（e194995、GREN BLUE SUITE のセッションが作った）の
+`functions/api/bridge/engine-data/[file].ts` で、こちらを正とする（このブランチには置かない）。
+
 ```
- GREN BLUE SUITE（ブラウザ）── 同じオリジン ──► GREN BLUE の Pages Function（GREN BLUE 側で作る）
-   configureEcuData(f => fetch(`/api/monitoring/ecu-data/${f}`))     /api/monitoring/ecu-data/:file
-                                                                      │ Authorization: Bearer <m3 のトークン、
-                                                                      │   このアプリ（monitoring-preview）宛て>
+ GREN BLUE SUITE（ブラウザ）── 同じオリジン ──► GREN BLUE のサーバー（スタッフのサインインは店のもの）
+   configureEcuData(f => fetch(`<店のサーバーの口>/${f}`))         店の鍵で一回きりの札を作る
+                                                                      Authorization: Bearer v1.<{s, a:'engine-data', e, n, h}>.<HMAC>
+                                                                      h = ファイル名の SHA-256
                                                                       ▼
-                     e46m3-monitoring-preview  GET /api/engine-data/:file（functions/api/engine-data/[file].ts）
-                       ① ファイル名は index.json・variants.json・<id>.jobs.json・<id>.telegrams.json だけ
-                       ② m3 の /api/access/introspect に、このアプリのクライアントと M3_CLIENT_SECRET で訊く
-                       ③ active で、利用権 `monitoring_engine` を持つアカウントだけ（肯定は 60 秒覚える、否定は覚えない）
-                       ④ ASSETS の ecu-data/<file> を返す。Cache-Control: private, no-store。CORS なし
+                       e46m3-monitoring-preview  GET /api/bridge/engine-data/<file>
+                         ① ファイル名は index.json・variants.json・<id>.jobs.json・<id>.telegrams.json だけ
+                         ② 店（ENGINE_REPORT_MAINSTAYS）の鍵 ENGINE_REPORT_SECRET_<SLUG> で札を確かめる（60 秒、一回きり）
+                         ③ ASSETS の ecu-data/<file> を返す。Cache-Control: private, no-store
 ```
 
-- クッキーのゲート（`functions/_middleware.ts`）は、この接頭辞の**データのファイル名だけ**を通し、確かめは
-  関数に任せる。同じ接頭辞のほかのパスと、ほかの全部は今までどおりゲートの内側。ゲートの正本（`_owner-gate/`）は
-  変えていない（`gate:verify` が見る）。
-- 確かめられないとき（秘密値が無い・m3 に届かない・答えが読めない）は 503 で、何も返さない。
-- 試験は `src/lib/sync/engineData.test.ts`。
-
-#### m3 と GREN BLUE に要るもの（このリポジトリの外。まだ無い）
-
-m3 はセッションを、発行したクライアントにしか「有効」と答えない（`readSession` の `client_id`）。そしてトークンは
-サービスからサービスへ渡さない（`tsunagi-m-access` §3-3）。だから GREN BLUE のスタッフの、GREN BLUE 宛ての
-トークンをこちらへ回すことはしない。GREN BLUE のサーバーは m3 から**このアプリ宛て**のトークンを得る：
-
-1. **m3（tsunagi-m3）**：トークン交換（RFC 8693、`grant_type=urn:ietf:params:oauth:grant-type:token-exchange`）。
-   GREN BLUE の機密クライアントが、スタッフの自分宛てのトークン（`subject_token`）を出し、`audience=monitoring-preview`
-   で短い寿命のトークンを受け取る。m3 は交換を許すクライアントの組を `access_clients` に持つ。
-2. **m3**：利用権 `monitoring_engine` を `Scope` に足し、運営者が店のスタッフのアカウントに付ける。
-3. **GREN BLUE**：自分の Pages Function が交換したトークンをサーバーの中だけで持ち、上の図の一本を作る。
-
-それまではこのアプリ宛てで `monitoring_engine` を持つトークンが無いので、`/api/engine-data/` は全部 401 か 403 で
-閉じている。秘密値は今の `M3_CLIENT_SECRET` だけで、新しいものは無い。
+- 店のスタッフのうち誰が読めるかは店のサインイン、どの店が読めるかはこちらの `ENGINE_REPORT_MAINSTAYS` と店の鍵。
+  m3 のトークンは使わない（SUITE はスタッフの m3 トークンを持たない。マネージャー 2026-11-11）。
+- **足りないもの**：エンジンは今 `fault-layouts.json`（各モジュール自身の SGBD が故障コードを読む場所）も読む。
+  読み口の名前の表（`ENGINE_DATA_FILE`、`_middleware.ts` の `ENGINE_DATA_PATH`）に `fault-layouts.json` を足すまで、
+  SUITE ではその読み込みが 404 になり、故障コードの解読だけが無い（ほかは動く。`loadFaultLayouts` は無いものを
+  「解読しない」として扱う）。
 
 ## 5. 公開の範囲
 
@@ -191,7 +181,7 @@ m3 はセッションを、発行したクライアントにしか「有効」�
 
 `.github/workflows/notify-gren-blue.yml`。エンジンに触れる変更（`packages/monitoring-engine/**`・`packages/ds2-core/**`・
 `packages/ds2-mss54/**`）が main に入ると、GREN BLUE（`mushitaro/tsunagi-gren-blue-private`）の main に、
-`vendor/E46M3-Monitoring` の gitlink だけを新しい SHA にするコミットを API で作る（早送りだけ。間に main が進んだら
+`vendor/e46m3-monitoring` の gitlink だけを新しい SHA にするコミットを API で作る（早送りだけ。間に main が進んだら
 作り直す、3 回まで）。GREN BLUE の Cloudflare のビルドがその push で走り、試験とビルドが通れば配信、落ちれば前の
 配信のまま。エンジンは人の承認のクラスなので、届くのは人が見た変更だけ。
 
@@ -205,7 +195,7 @@ m3 はセッションを、発行したクライアントにしか「有効」�
 
 GREN BLUE 側に要るもの（GREN BLUE の仕事）：
 
-- submodule `vendor/E46M3-Monitoring`（このリポジトリは公開なので認証は要らない）と workspaces（§3）。
+- submodule `vendor/e46m3-monitoring`（このリポジトリは公開なので認証は要らない）と workspaces（§3）。
 - Cloudflare の Git 連携のビルド。ビルドコマンドに**試験を含める**（例：`npm ci && npm test && npm run build -w apps/admin`）。
   今は手元の `npm run deploy` で出している。私的な `e46-maintenance` の submodule が Git 連携のビルドで取れるかは未確認。
 

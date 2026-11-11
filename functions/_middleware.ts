@@ -15,7 +15,6 @@
  * see its comment below.
  */
 import { createGate, type GateContext } from './_owner-gate/gate';
-import { engineDataFile } from './_lib/engineData';
 
 const gate = createGate({
     clientId: 'monitoring-preview',
@@ -51,14 +50,7 @@ const gate = createGate({
 // every response it passes by rebuilding it, and a 101 does not survive being rebuilt — so the gate
 // is handed a stand-in to re-mark, and the real answer is returned instead. It is only ever the
 // answer of a request the gate let through: refused, the gate never calls next().
-//
-// The other thing: `/api/engine-data/` is not behind the cookie. It answers another app's server
-// (GREN BLUE SUITE, docs/ENGINE.md §4), which has no session cookie here, and it checks an m3 token
-// itself — at m3, with this app's client, for the `monitoring_engine` right — and fails closed
-// (functions/api/engine-data/[file].ts, functions/_lib/engineData.ts). Only the data's own file names
-// under that prefix; any other path there, and everything else, stays behind the gate.
 export const onRequest = async (context: GateContext): Promise<Response> => {
-    if (engineDataFile(new URL(context.request.url).pathname) !== null) return context.next();
     let upgrade: Response | null = null;
     const res = await gate({
         ...context,

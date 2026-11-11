@@ -33,7 +33,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GREN_BLUE_PIN_TOKEN }}
           REPO: mushitaro/tsunagi-gren-blue-private
-          PATH_IN_REPO: vendor/E46M3-Monitoring
+          PATH_IN_REPO: vendor/e46m3-monitoring
           SHA: ${{ github.sha }}
         run: |
           set -euo pipefail

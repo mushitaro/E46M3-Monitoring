@@ -1,8 +1,8 @@
 /**
  * What the app may send to ONE module on its own, outside the job catalogue.
  *
- * IDENT, the fault-memory read, the heartbeat, the session end and the fault-memory clear are
- * frames the app builds itself rather than running a job. The app built them for the MSS54 and
+ * IDENT, the fault-memory read, the heartbeat, the session end, the fault-memory clear and the
+ * instrument cluster's VIN read are frames the app builds itself rather than running a job. The app built them for the MSS54 and
  * sent them to 0x12 whichever module was selected, and decoded every answer as an MSS54 answer.
  *
  * The rule here is one sentence: **send a module only what its own SGBD sends it.** Each frame is
@@ -17,6 +17,7 @@
  * and a layout guessed from the MSS54's would be a reading of fiction.
  */
 
+import { CLUSTER_VIN_BLOCK, CLUSTER_VIN_CONTROL, CLUSTER_VIN_JOBS } from './clusterVin';
 import { kwpFrameOf, type KwpFrame } from './kwpOnDs2';
 import { telegramBytes } from './runGate';
 import type { TelegramTable } from './telegrams';
@@ -39,6 +40,14 @@ export interface ModuleProtocol {
     clear: ProtocolFrame | null;
     keepAlive: ProtocolFrame | null;
     endSession: ProtocolFrame | null;
+    /**
+     * The read that answers with the VIN's last seven (lib/clusterVin): the instrument cluster's own
+     * AIF block 2, `80 05 02 02`, taken from its own table. Only KOMBI46 and KOMBI46R, whose SGBDs
+     * were read for where the answer keeps it; null for every other module. Its answer is the car's
+     * identity: it goes on the scan's run, apart from the results, and nowhere the assistant reads
+     * (lib/probe/scan).
+     */
+    vin: (ProtocolFrame & { job: string }) | null;
     /** Which decoder reads this module's answers. Null: none, and the bytes are the answer. */
     decoder: 'mss54' | null;
     /**
@@ -101,10 +110,20 @@ export function moduleProtocol(moduleId: string, address: number, table: Telegra
             clear: null,
             keepAlive: null,
             endSession: null,
+            vin: null,
             decoder: null,
             kwp: { ident: frames('IDENT', 0x1a)[0] ?? null, faults: frames('FS_LESEN', 0x18) },
         };
     }
+
+    // Exactly the frame the SGBD was read for: AIF block 2, from the module's own job, by exact bytes.
+    const vinFrame = (): (ProtocolFrame & { job: string }) | null => {
+        for (const job of CLUSTER_VIN_JOBS[moduleId] ?? []) {
+            const f = find([job], CLUSTER_VIN_CONTROL, 1).find((x) => x.payload.length === 1 && x.payload[0] === CLUSTER_VIN_BLOCK);
+            if (f) return { ...f, job };
+        }
+        return null;
+    };
 
     const measured = MEASURED_KEEP_ALIVE[moduleId];
     const measuredBytes = measured ? telegramBytes(measured) : null;
@@ -120,6 +139,7 @@ export function moduleProtocol(moduleId: string, address: number, table: Telegra
                 ? { hex: measured!, control: C.KEEP_ALIVE, payload: new Uint8Array(0), source: 'measured on the car (TUNER)' }
                 : (find(['DIAGNOSE_AUFRECHT'], C.KEEP_ALIVE, 0)[0] ?? null),
         endSession: find(['DIAGNOSE_ENDE'], C.END_SESSION, 0)[0] ?? null,
+        vin: vinFrame(),
         decoder: moduleId === 'mss54' ? 'mss54' : null,
         kwp: null,
     };

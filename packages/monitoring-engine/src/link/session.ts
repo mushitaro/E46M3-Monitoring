@@ -67,6 +67,7 @@ import { practiceCar } from '../practiceCar';
 import { runProbe, type ProbeDeps, type ProbePlan, type ProbeRun } from '../probe/executor';
 import { modulesOf } from '../probe/plan';
 import { runScan, type ScanRun, type ScanTarget } from '../probe/scan';
+import { CLUSTER_VIN_UNVERIFIED } from '../clusterVin';
 import { EMPTY_IDENTITY, loadIdentity, type Identity } from '../identity';
 import { DME_ADDRESS, commonIdent, fittedFrom, frameVerdict, isCommonIdent, isM3, mayModuleBeSent, ruleFor, type Fitment, type Fitted } from '../variants';
 import type { Ledger } from '../ledger';
@@ -1222,6 +1223,14 @@ export class LinkSession {
                     });
                 }
                 this.update({ scan: result });
+                // The cluster's VIN read (clusterVin): whether it was read, never what it said.
+                if (result.vin) {
+                    const v = result.vin;
+                    this.append(
+                        v.vinShort ? 'info' : 'warn',
+                        `${v.address} ${v.moduleId}: VIN (last seven) ${v.vinShort ? 'read' : `not read — ${v.outcome}${v.reason ? `, ${v.reason}` : ''}`} by ${v.job}${CLUSTER_VIN_UNVERIFIED ? ' — not confirmed on a car yet' : ''}.`,
+                    );
+                }
                 this.append('info', `Scan ended (${result.end}).`);
                 return result;
             } finally {

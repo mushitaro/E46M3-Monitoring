@@ -14,6 +14,7 @@ export * from './jobOps';
 export * from './ecuCatalog';
 export * from './moduleProtocol';
 export * from './kwpOnDs2';
+export * from './clusterVin';
 export * from './variants';
 export * from './identity';
 export * from './ledger';

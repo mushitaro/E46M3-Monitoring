@@ -24,7 +24,7 @@ import {
 } from '@tsunagi/ds2-mss54';
 import { SimulatedSerialPort, type ExchangeBehavior, type SerialOptions, type SerialPortLike, type SimulatedEcuOptions } from '@tsunagi/ds2-core';
 import { KWP_FORMAT, KWP_TESTER, xorOf } from './kwpOnDs2';
-import { CLEAN, ds2IdentData, practiceCar } from './practiceCar';
+import { CLEAN, clusterVinAnswer, ds2IdentData, practiceCar } from './practiceCar';
 
 const START = Date.now();
 
@@ -182,6 +182,11 @@ function practiceModule(address: number): SimulatedEcuOptions {
             if (request.controlOrStatus === 0x00) return { payload: new Uint8Array(ds2IdentData(practiceCar.idents[address] ?? { hw: '00', diag: '00' })) };
             if (request.controlOrStatus === Ds2Control.READ_ERROR_MEMORY) {
                 return { payload: new Uint8Array(practiceCar.moduleFaults[address] ?? CLEAN) };
+            }
+            // The instrument cluster's VIN read (AIF block 2), answered as the SGBD reads it; refused without one.
+            if (address === 0x80 && request.controlOrStatus === 0x02 && request.payload.length === 1 && request.payload[0] === 0x02) {
+                practiceCar.clusterVinReads++;
+                return practiceCar.clusterVin ? { payload: new Uint8Array(clusterVinAnswer(practiceCar.clusterVin)) } : { status: Ds2Status.REJECTED };
             }
             // The clear empties this module's memory, as a car's does.
             if (request.controlOrStatus === Ds2Control.CLEAR_ERROR_MEMORY) {

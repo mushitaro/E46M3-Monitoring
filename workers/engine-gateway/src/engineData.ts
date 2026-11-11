@@ -1,21 +1,22 @@
-import { json } from '../../../_owner-gate/owner';
-import { ENGINE_DATA_AUDIENCE, verifyEngineReportTicket, type EngineReportEnv } from '../../../_lib/engineReportTicket';
+import { json } from './json';
+import { ENGINE_DATA_AUDIENCE, verifyEngineReportTicket, type EngineReportEnv } from './ticket';
 
 /**
- * GET /api/bridge/engine-data/<file> — one file of the diagnostic engine's data, for a Mainstay's
+ * GET /engine-data/<file> — one file of the diagnostic engine's data, for a Mainstay's
  * server (operator, 2026-11-11: GREN BLUE SUITE uses this repository's engine, and only it).
  *
  * The data is BMW-derived and decompiled (THIRD-PARTY-NOTICES.md §3): it is served only inside a
  * closed delivery, and never leaves for another repository or build. A store's app reads it through
  * its own server, file by file, the way the engine's loader asks for it (packages/monitoring-engine
  * ecuData.ts `configureEcuData`): that server signs a ticket for exactly this file name with the
- * store's own key (functions/_lib/engineReportTicket.ts, audience `engine-data`), and passes the
+ * store's own key (workers/engine-gateway/src/ticket.ts, audience `engine-data`), and passes the
  * answer to its signed-in staff with no-store. Who of the store's staff may read is the store's
  * sign-in; which store may read is ENGINE_REPORT_MAINSTAYS and that store's key, here.
  *
- * Not behind the owner gate (functions/_middleware.ts lets these exact file paths through, and not
- * /ecu-data/ itself): the answer is read from the same static files the gate guards, through ASSETS,
- * which serves them without passing the middleware again.
+ Served by the engine gateway (./index.ts), M's door for Mainstays, deployed apart from the WORKS
+ * build: the data is the same files (public/ecu-data, copied into the gateway's output at deploy and
+ * never committed), read through ASSETS only after the ticket holds — in advanced mode no request
+ * reaches a static file except through this code.
  *
  * 200 the file, `Cache-Control: private, no-store`; 404 a name the engine does not read or no such
  * file; 401/503 from the ticket.

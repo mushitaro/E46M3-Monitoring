@@ -1,13 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { sqliteD1 } from '../testing/sqliteD1';
-import { deskProblem, standingMandates } from '../investigation/share';
-import { recordEntries } from '../../../functions/_lib/investigation';
-import { secretNameOf } from '../../../functions/_lib/engineReportTicket';
-import * as route from '../../../functions/api/bridge/engine-report';
-import type { NotebookEntry } from '../notebook/rules';
+import { sqliteD1 } from '../../src/lib/testing/sqliteD1';
+import { deskProblem, standingMandates } from '../../src/lib/investigation/share';
+import { recordEntries } from '../../functions/_lib/investigation';
+import { secretNameOf } from './src/ticket';
+import * as route from './src/engineReport';
+import { handle } from './src/index';
+import type { NotebookEntry } from '../../src/lib/notebook/rules';
 
 /**
- * A Mainstay's door to the desk (functions/api/bridge/engine-report.ts). The ticket is signed here
+ * M's engine gateway for Mainstays (workers/engine-gateway): the engine-report door to the desk, the
+ * engine's data, and nothing else — apart from the WORKS build (operator, 2026-11-12). The ticket is signed here
  * exactly as GREN BLUE signs it (tsunagi_gren-blue packages/api-kit/src/engineReport/ticket.ts), so a
  * change to either side's format fails this file.
  */
@@ -59,14 +61,14 @@ function setup(env: Record<string, unknown> = {}) {
     const post = async (body: unknown, auth?: string | null) => {
         const raw = typeof body === 'string' ? body : JSON.stringify(body);
         const bearer = auth === undefined ? await ticket(raw) : auth;
-        const res = await route.onRequestPost({
-            request: new Request('https://e46m3-monitoring-preview.pages.dev/api/bridge/engine-report', {
+        const res = await handle(
+            new Request('https://tsunagi-engine-gateway.pages.dev/engine-report', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json', ...(bearer ? { authorization: `Bearer ${bearer}` } : {}) },
                 body: raw,
             }),
-            env: base as never,
-        });
+            base as never,
+        );
         return { status: res.status, body: (await res.json()) as Record<string, unknown> };
     };
     return { d1, post };
@@ -100,7 +102,7 @@ describe('the store ticket', () => {
     });
 });
 
-describe('POST /api/bridge/engine-report', () => {
+describe('POST /engine-report', () => {
     it('puts a new error to the desk, naming the store and the entrance, under a mandate that reads nothing from any car', async () => {
         const { d1, post } = setup();
         const r = await post(delivery());
@@ -185,17 +187,18 @@ describe('POST /api/bridge/engine-report', () => {
     });
 });
 
-describe('the middleware', () => {
-    it('lets the engine-report path past the gate, and nothing beside it', async () => {
-        const { onRequest } = await import('../../../functions/_middleware');
+describe('the WORKS build', () => {
+    it('serves none of the Mainstay doors: they are the gateway\'s, deployed apart', async () => {
+        const { onRequest } = await import('../../functions/_middleware');
         const mark = new Response('route', { status: 299 });
         const at = (path: string) => onRequest({ request: new Request(`https://e46m3-monitoring-preview.pages.dev${path}`), env: {} as never, data: {}, next: async () => mark });
-        expect((await at('/api/bridge/engine-report')).status).toBe(299);
-        for (const p of ['/api/bridge/engine-reports', '/api/bridge/engine-report/x', '/api/notebook', '/ecu-data/mss54.json']) expect((await at(p)).status).not.toBe(299);
+        for (const p of ['/api/bridge/engine-report', '/api/bridge/engine-data/index.json', '/api/bridge/engine-data/fault-layouts.json', '/ecu-data/index.json']) {
+            expect((await at(p)).status, p).not.toBe(299);
+        }
     });
 });
 
-describe('GET /api/bridge/engine-data/<file>', () => {
+describe('GET /engine-data/<file>', () => {
     const served: string[] = [];
     const ASSETS = {
         fetch: async (req: Request) => {
@@ -206,12 +209,10 @@ describe('GET /api/bridge/engine-data/<file>', () => {
     };
     async function get(file: string, bearer: string | null, env: Record<string, unknown> = {}) {
         const { d1 } = sqliteD1();
-        const { onRequestGet } = await import('../../../functions/api/bridge/engine-data/[file]');
-        const res = await onRequestGet({
-            request: new Request(`https://e46m3-monitoring-preview.pages.dev/api/bridge/engine-data/${file}`, { headers: bearer ? { authorization: `Bearer ${bearer}` } : {} }),
-            env: { RUNS_DB: d1, ENGINE_REPORT_MAINSTAYS: STORE, [secretNameOf(STORE)]: SECRET, ASSETS, ...env } as never,
-            params: { file },
-        });
+        const res = await handle(
+            new Request(`https://tsunagi-engine-gateway.pages.dev/engine-data/${file}`, { headers: bearer ? { authorization: `Bearer ${bearer}` } : {} }),
+            { RUNS_DB: d1, ENGINE_REPORT_MAINSTAYS: STORE, [secretNameOf(STORE)]: SECRET, ASSETS, ...env } as never,
+        );
         return { status: res.status, text: await res.text(), cache: res.headers.get('cache-control') };
     }
 
@@ -237,19 +238,15 @@ describe('GET /api/bridge/engine-data/<file>', () => {
         expect((await get('mss54.jobs.json', await ticket('mss54.jobs.json', { a: 'engine-data' }))).status).toBe(404); // not in ASSETS here
     });
 
-    it('is the only data path past the gate: /ecu-data/ itself stays behind it', async () => {
-        const { onRequest, ENGINE_DATA_PATH } = await import('../../../functions/_middleware');
-        const mark = new Response('route', { status: 299 });
-        const at = (path: string) => onRequest({ request: new Request(`https://e46m3-monitoring-preview.pages.dev${path}`), env: {} as never, data: {}, next: async () => mark });
-        expect((await at('/api/bridge/engine-data/mss54.telegrams.json')).status).toBe(299);
-        expect((await at('/api/bridge/engine-data/index.json')).status).toBe(299);
-        for (const p of ['/ecu-data/index.json', '/api/bridge/engine-data/', '/api/bridge/engine-data/../ecu-data/index.json', '/api/bridge/engine-data/x.prg']) {
-            expect((await at(p)).status).not.toBe(299);
+    it('answers its two doors and nothing else', async () => {
+        const { d1 } = sqliteD1();
+        const env = { RUNS_DB: d1, ENGINE_REPORT_MAINSTAYS: STORE, [secretNameOf(STORE)]: SECRET, ASSETS } as never;
+        for (const path of ['/', '/ecu-data/index.json', '/engine-data/', '/engine-data/x.prg', '/api/bridge/engine-report', '/engine-reports']) {
+            expect((await handle(new Request(`https://tsunagi-engine-gateway.pages.dev${path}`), env)).status, path).toBe(404);
         }
-        expect(ENGINE_DATA_PATH.test('/api/bridge/engine-data/variants.json')).toBe(true);
-        // The fault layouts the engine decodes non-MSS54 fault memories with (Phase 4).
-        expect(ENGINE_DATA_PATH.test('/api/bridge/engine-data/fault-layouts.json')).toBe(true);
-        expect((await at('/api/bridge/engine-data/fault-layouts.json')).status).toBe(299);
-        expect(ENGINE_DATA_PATH.test('/api/bridge/engine-data/fault-layouts.json.bak')).toBe(false);
+        expect((await handle(new Request(`https://tsunagi-engine-gateway.pages.dev/engine-report`), env)).status).toBe(405);
+        expect((await handle(new Request(`https://tsunagi-engine-gateway.pages.dev/engine-data/index.json`, { method: 'POST' }), env)).status).toBe(405);
+        // A path that climbs out of the data stays a name the gateway does not read.
+        expect((await handle(new Request(`https://tsunagi-engine-gateway.pages.dev/engine-data/..%2Fsecrets.json`), env)).status).toBe(404);
     });
 });

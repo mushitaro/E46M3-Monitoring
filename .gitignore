@@ -84,3 +84,5 @@ desk-work/
 
 # End-to-end demo test reports (npm run e2e)
 /e2e-report/
+# The engine gateway's copy of the private data, made at deploy (scripts/gateway-deploy.mjs). Never committed.
+workers/engine-gateway/pages/ecu-data/

@@ -51,18 +51,10 @@ const gate = createGate({
 // is handed a stand-in to re-mark, and the real answer is returned instead. It is only ever the
 // answer of a request the gate let through: refused, the gate never calls next().
 //
-// And two doors are left outside the gate, for a Mainstay's server (GREN BLUE SUITE runs this
-// repository's diagnostic engine): /api/bridge/engine-report, and /api/bridge/engine-data/<file> for
-// the engine's own data files by name. A server calls them, not a browser, so there is no cookie to
-// show — each request carries the store's own one-time ticket instead, bound to its body or to the
-// file name, and the route refuses anything else (functions/_lib/engineReportTicket.ts). Exact paths:
-// the report's, and the data's for the five kinds of file the engine reads. Nothing else of this
-// origin — /ecu-data/ itself included — is served without the gate.
-export const ENGINE_DATA_PATH = /^\/api\/bridge\/engine-data\/(?:[a-z0-9_]+\.(?:jobs|telegrams)\.json|index\.json|variants\.json|fault-layouts\.json)$/;
-const outsideGate = (path: string) => path === '/api/bridge/engine-report' || ENGINE_DATA_PATH.test(path);
-
+// Nothing of this origin is served without the gate. The doors a Mainstay's server uses (engine
+// reports, the engine's data) are not here: they are M's engine gateway, deployed apart from this
+// WORKS build (workers/engine-gateway, operator 2026-11-12).
 export const onRequest = async (context: GateContext): Promise<Response> => {
-    if (outsideGate(new URL(context.request.url).pathname)) return context.next();
     let upgrade: Response | null = null;
     const res = await gate({
         ...context,

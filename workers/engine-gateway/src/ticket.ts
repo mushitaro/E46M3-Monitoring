@@ -3,8 +3,8 @@
  * the operator through Cloudflare and the autonomous loop fixes them; the store runs the engine with
  * the data it reads from here). Two uses, told apart by `a` and by what `h` is bound to:
  *
- *   'engine-report'  POST /api/bridge/engine-report        h = SHA-256 of the body
- *   'engine-data'    GET  /api/bridge/engine-data/<file>   h = SHA-256 of the file name
+ *   'engine-report'  POST /engine-report        h = SHA-256 of the body
+ *   'engine-data'    GET  /engine-data/<file>     h = SHA-256 of the file name
  *
  *
  * The same make as the relay's development ticket (PR #42, functions/_lib/devTicket.ts), with the
@@ -27,7 +27,7 @@
  * The copy of this format that SIGNS is the store's (GREN BLUE: packages/api-kit/src/engineReport/
  * ticket.ts in tsunagi_gren-blue); change both.
  */
-import type { D1Database } from './sync';
+import type { D1Database } from '../../../functions/_lib/sync';
 
 export interface EngineReportEnv {
     RUNS_DB: D1Database;

@@ -1,22 +1,23 @@
-import { json } from '../../_owner-gate/owner';
-import { deliveryProblem, askTextOf, redactReport, type EngineReportDelivery } from '../../_lib/engineReport';
-import { verifyEngineReportTicket, type EngineReportEnv } from '../../_lib/engineReportTicket';
-import { insertEntries, recordEntries } from '../../_lib/investigation';
-import { wakeDesk, type WakeEnv } from '../../_lib/wake';
+import { json } from './json';
+import { deliveryProblem, askTextOf, redactReport, type EngineReportDelivery } from './report';
+import { verifyEngineReportTicket, type EngineReportEnv } from './ticket';
+import { insertEntries, recordEntries } from '../../../functions/_lib/investigation';
+import { wakeDesk, type WakeEnv } from '../../../functions/_lib/wake';
 import { addProblem, NOTEBOOK_LIMITS, type NotebookEntry } from '../../../src/lib/notebook/rules';
 import { standingMandates } from '../../../src/lib/investigation/share';
 
 /**
- * POST /api/bridge/engine-report — a Mainstay's diagnostic-engine error, for the desk
+ * POST /engine-report — a Mainstay's diagnostic-engine error, for the desk
  * (operator, 2026-11-11: 「エンジンのエラーは Cloudflare 経由で運営者に届き、運営者の Claude Code の
  * 自律ループが受けて直す」).
  *
  * A store runs this repository's diagnostic engine in its own app — GREN BLUE SUITE is the first —
  * and its server sends what the engine could not handle: a telegram a module refused, an answer the
  * engine cannot read, a fault with no text, an exception. Redacted by the store, checked and redacted
- * again here (functions/_lib/engineReport.ts). Not behind the owner gate (functions/_middleware.ts
- * lets this one exact path through): a store's server has no owner cookie, so the store's own
- * one-time ticket says who is sending (functions/_lib/engineReportTicket.ts).
+ * again here (./report.ts). It is M's engine door (tsunagi-m-mainstay §3 接点), deployed on its own —
+ * the engine gateway (./index.ts), not the WORKS build, so MESH's app and its releases never stand in
+ * a Mainstay's way. A store's server has no owner cookie: the store's own one-time ticket says who is
+ * sending (./ticket.ts).
  *
  * Where it goes: one CO-WORK record per store, `eng-<SHA-256(store) first 16 hex>`, under the owner
  * `mainstay:<store>`. A new kind of error (a new fingerprint), or one still happening a week after the

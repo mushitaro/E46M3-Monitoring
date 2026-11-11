@@ -1,4 +1,4 @@
--- Engine reports from the Mainstays (functions/api/bridge/engine-report.ts, operator 2026-11-11).
+-- Engine reports from the Mainstays (workers/engine-gateway, M's engine door for Mainstays; operator 2026-11-11/12).
 --
 -- A store that runs this repository's diagnostic engine in its own app (GREN BLUE SUITE is the
 -- first) sends the engine's errors here — refused telegrams, answers the engine cannot read, faults

@@ -1,6 +1,6 @@
 /**
  * A Mainstay's engine report, as this side accepts it, and the desk question it becomes
- * (functions/api/bridge/engine-report.ts, operator 2026-11-11).
+ * (workers/engine-gateway/src/engineReport.ts, operator 2026-11-11).
  *
  * The store redacts before it sends (GREN BLUE: packages/core/src/domain/engineReport.ts in
  * tsunagi_gren-blue): no VIN, chassis number, name, contact, cost, free text or identification
@@ -9,7 +9,7 @@
  * redaction (src/lib/investigation/redact.ts) runs over it again: an identification job's answer is
  * dropped and any VIN, full or short, becomes `[VIN]`, before anything is stored.
  */
-import { isIdentification, redactText } from '../../src/lib/investigation/redact';
+import { isIdentification, redactText } from '../../../src/lib/investigation/redact';
 
 export const ENGINE_REPORT_KINDS = ['rejected_telegram', 'unknown_answer', 'undecodable_fault', 'exception'] as const;
 export type EngineReportKind = (typeof ENGINE_REPORT_KINDS)[number];

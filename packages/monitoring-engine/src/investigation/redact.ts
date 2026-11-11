@@ -39,23 +39,13 @@ export function redactText(s: string): string {
 const isAscii = (b: number, re: RegExp) => b >= 0x20 && b < 0x7f && re.test(String.fromCharCode(b));
 const isAlnum = (b: number | undefined) => b !== undefined && isAscii(b, /[A-Za-z0-9]/);
 
-/**
- * Bytes as `toHex` writes them (`12 05 0b`), with any VIN they spell in ASCII masked to `*`.
- * Accepts the hex with or without spaces; anything that is not hex comes back as it was.
- */
-export function redactHex(hex: string): { hex: string; masked: boolean } {
-    const compact = hex.replace(/\s+/g, '');
-    if (compact.length % 2 !== 0 || !/^[0-9a-fA-F]*$/.test(compact)) return { hex, masked: false };
-    const bytes = Array.from({ length: compact.length / 2 }, (_, i) => parseInt(compact.slice(i * 2, i * 2 + 2), 16));
-    let masked = false;
-    const mask = (from: number, n: number) => {
-        for (let k = from; k < from + n; k++) bytes[k] = 0x2a;
-        masked = true;
-    };
+/** Where a VIN is spelled in ASCII in these bytes: the 17 characters, or the 7-character short form. */
+function vinSpans(bytes: readonly number[]): Array<{ at: number; length: 17 | 7 }> {
+    const out: Array<{ at: number; length: 17 | 7 }> = [];
     for (let i = 0; i < bytes.length; i++) {
         const run17 = bytes.slice(i, i + 17);
         if (run17.length === 17 && run17.every((b) => isAscii(b, VIN_CHAR)) && run17.some((b) => b >= 0x30 && b <= 0x39) && run17.some((b) => b >= 0x41)) {
-            mask(i, 17);
+            out.push({ at: i, length: 17 });
             i += 16;
             continue;
         }
@@ -67,12 +57,46 @@ export function redactHex(hex: string): { hex: string; masked: boolean } {
             !isAlnum(bytes[i - 1]) &&
             !isAlnum(bytes[i + 7])
         ) {
-            mask(i, 7);
+            out.push({ at: i, length: 7 });
             i += 6;
         }
     }
+    return out;
+}
+
+/** Hex with or without spaces as bytes; null when it is not hex. */
+function bytesOf(hex: string): number[] | null {
+    const compact = hex.replace(/\s+/g, '');
+    if (compact.length % 2 !== 0 || !/^[0-9a-fA-F]*$/.test(compact)) return null;
+    return Array.from({ length: compact.length / 2 }, (_, i) => parseInt(compact.slice(i * 2, i * 2 + 2), 16));
+}
+
+/**
+ * Bytes as `toHex` writes them (`12 05 0b`), with any VIN they spell in ASCII masked to `*`.
+ * Accepts the hex with or without spaces; anything that is not hex comes back as it was.
+ */
+export function redactHex(hex: string): { hex: string; masked: boolean } {
+    const bytes = bytesOf(hex);
+    if (bytes === null) return { hex, masked: false };
+    const spans = vinSpans(bytes);
+    for (const { at, length } of spans) for (let k = at; k < at + length; k++) bytes[k] = 0x2a;
     const out = bytes.map((b) => b.toString(16).padStart(2, '0'));
-    return { hex: hex.includes(' ') || compact.length === 0 ? out.join(' ') : out.join(''), masked };
+    return { hex: hex.includes(' ') || bytes.length === 0 ? out.join(' ') : out.join(''), masked: spans.length > 0 };
+}
+
+/**
+ * The VINs these bytes spell in ASCII, by the same rule `redactHex` masks with: what the intake
+ * report (lib/intake) matches the car by. Full ones and short ones apart, each once.
+ */
+export function vinsInHex(hex: string): { full: string[]; short: string[] } {
+    const bytes = bytesOf(hex) ?? [];
+    const full = new Set<string>();
+    const short = new Set<string>();
+    for (const { at, length } of vinSpans(bytes)) {
+        const text = String.fromCharCode(...bytes.slice(at, at + length));
+        (length === 17 ? full : short).add(text);
+    }
+    return { full: [...full], short: [...short] };
 }
 
 /** One answer for the desk: withheld when it is an identity, masked otherwise. */

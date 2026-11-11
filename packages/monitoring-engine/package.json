@@ -14,7 +14,8 @@
   "types": "./src/index.ts",
   "dependencies": {
     "@tsunagi/ds2-core": "0.1.0",
-    "@tsunagi/ds2-mss54": "0.1.0"
+    "@tsunagi/ds2-mss54": "0.1.0",
+    "zod": "^4.6.7"
   },
   "peerDependencies": {
     "react": ">=19"

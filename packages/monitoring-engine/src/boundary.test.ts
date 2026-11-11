@@ -21,12 +21,13 @@ function files(dir: string): string[] {
     });
 }
 
-const SPECIFIER = /(?:from\s+|import\s*\(\s*|^import\s+)['"]([^'"]+)['"]/gm;
+// A module name or path, not any quoted text: a regex literal in a test (`from '([^']+)'`) is not an import.
+const SPECIFIER = /(?:from\s+|import\s*\(\s*|^import\s+)['"]([\w@./:-]+)['"]/gm;
 
 describe('the engine stands on its own', () => {
     const all = files(SRC).filter((f) => !f.endsWith('boundary.test.ts'));
 
-    it('imports nothing of the app, and nothing outside itself but the DS2 packages', () => {
+    it('imports nothing of the app, and nothing outside itself but the DS2 packages and zod', () => {
         const problems: string[] = [];
         for (const f of all) {
             for (const m of readFileSync(f, 'utf-8').matchAll(SPECIFIER)) {
@@ -36,7 +37,7 @@ describe('the engine stands on its own', () => {
                 else if (spec.startsWith('.')) {
                     const target = path.resolve(path.dirname(f), spec);
                     if (path.relative(SRC, target).startsWith('..')) problems.push(`${where}: ${spec} leaves the package`);
-                } else if (!/^(@tsunagi\/ds2-(core|mss54)|react|vitest|node:[a-z]+)$/.test(spec)) {
+                } else if (!/^(@tsunagi\/ds2-(core|mss54)|react|vitest|zod|node:[a-z]+)$/.test(spec)) {
                     problems.push(`${where}: ${spec}`);
                 }
             }

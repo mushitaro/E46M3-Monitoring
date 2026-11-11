@@ -56,9 +56,9 @@ const gate = createGate({
 // the engine's own data files by name. A server calls them, not a browser, so there is no cookie to
 // show — each request carries the store's own one-time ticket instead, bound to its body or to the
 // file name, and the route refuses anything else (functions/_lib/engineReportTicket.ts). Exact paths:
-// the report's, and the data's for the four kinds of file the engine reads. Nothing else of this
+// the report's, and the data's for the five kinds of file the engine reads. Nothing else of this
 // origin — /ecu-data/ itself included — is served without the gate.
-export const ENGINE_DATA_PATH = /^\/api\/bridge\/engine-data\/(?:[a-z0-9_]+\.(?:jobs|telegrams)\.json|index\.json|variants\.json)$/;
+export const ENGINE_DATA_PATH = /^\/api\/bridge\/engine-data\/(?:[a-z0-9_]+\.(?:jobs|telegrams)\.json|index\.json|variants\.json|fault-layouts\.json)$/;
 const outsideGate = (path: string) => path === '/api/bridge/engine-report' || ENGINE_DATA_PATH.test(path);
 
 export const onRequest = async (context: GateContext): Promise<Response> => {

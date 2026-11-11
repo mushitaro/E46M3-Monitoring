@@ -215,6 +215,14 @@ describe('GET /api/bridge/engine-data/<file>', () => {
         return { status: res.status, text: await res.text(), cache: res.headers.get('cache-control') };
     }
 
+    it('serves the fault layouts too, to a ticket for that name', async () => {
+        const res = await get('fault-layouts.json', await ticket('fault-layouts.json', { a: 'engine-data' }));
+        // Not in this test's ASSETS stand-in: past the name check and the ticket, it is a 404 from the files.
+        expect(res.status).toBe(404);
+        expect(served).toContain('/ecu-data/fault-layouts.json');
+        expect((await get('fault-layouts.json', await ticket('index.json', { a: 'engine-data' }))).status).toBe(401);
+    });
+
     it('serves a file the engine reads, to a store ticket for exactly that file name, without caching', async () => {
         const ok = await get('index.json', await ticket('index.json', { a: 'engine-data' }));
         expect(ok).toEqual({ status: 200, text: '{"schema":1}', cache: 'private, no-store' });
@@ -239,5 +247,9 @@ describe('GET /api/bridge/engine-data/<file>', () => {
             expect((await at(p)).status).not.toBe(299);
         }
         expect(ENGINE_DATA_PATH.test('/api/bridge/engine-data/variants.json')).toBe(true);
+        // The fault layouts the engine decodes non-MSS54 fault memories with (Phase 4).
+        expect(ENGINE_DATA_PATH.test('/api/bridge/engine-data/fault-layouts.json')).toBe(true);
+        expect((await at('/api/bridge/engine-data/fault-layouts.json')).status).toBe(299);
+        expect(ENGINE_DATA_PATH.test('/api/bridge/engine-data/fault-layouts.json.bak')).toBe(false);
     });
 });

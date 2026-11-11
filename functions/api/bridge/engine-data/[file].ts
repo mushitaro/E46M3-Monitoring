@@ -30,7 +30,7 @@ interface Ctx {
     params: { file?: string | string[] };
 }
 
-export const ENGINE_DATA_FILE = /^(?:[a-z0-9_]+\.(?:jobs|telegrams)\.json|index\.json|variants\.json)$/;
+export const ENGINE_DATA_FILE = /^(?:[a-z0-9_]+\.(?:jobs|telegrams)\.json|index\.json|variants\.json|fault-layouts\.json)$/;
 
 export const onRequestGet = async (ctx: Ctx): Promise<Response> => {
     const file = typeof ctx.params.file === 'string' ? ctx.params.file : '';

@@ -30,6 +30,7 @@ E46M3 /// MONITORING の診断エンジンを、画面から切り離した部�
 | 変種の選び方 | `variants.ts`、`identity.ts` |
 | 全モジュールの走査、故障の読み・解読 | `probe/scan.ts`、`probe/modules.ts`、（PROBE の実行器）`probe/executor.ts`・`plan.ts`・`criteria.ts` |
 | 記録の形 | `journal.ts`、`sync/session.ts`、`investigation/readRecord.ts`、`investigation/redact.ts`、`logText.ts` |
+| 点検報告 `e46.intake-check.v1` の形と組み立て、メーターの VIN の下 7 桁 | `intake/intakeCheck.ts`、`intake/build.ts`、`clusterVin.ts` |
 | 練習用の車（PRACTICE） | `practiceCar.ts`、`practiceEcu.ts` |
 | 時計 | `clock.ts` |
 | 非公開データの受け取り口 | `ecuData.ts`（§4） |
@@ -78,6 +79,7 @@ MSS54 の表と解読は `packages/ds2-mss54`。エンジンはこの二つに�
 | 走査 | `loadScanTargets`、`scanTargets`、`runScan`、`scanCounts`、`ALL_MODULES` |
 | PROBE | `runProbe`、`probeBlocks`、`loadProbeModules`、`judge`、`stepsProblem`・`judgesProblem`・`hypothesesProblem` |
 | 記録の形 | `episodes`、`toSession`、`expired`、`SavedSession`・`FailureNote`・`excerpt`・`isSavedSession`、`ReadRecord`・`readRecordProblem`、`redactText`・`redactHex`・`redactResponse`・`redactDeep`、`logLine`、`datalogCsv` |
+| 点検報告 | `buildIntakeCheck`、`intakeCheckReport`（zod）、`INTAKE_CHECK_SCHEMA`、`decodeIdent`、`sha256Hex`、`intakeFileName`、`clusterVinShort` |
 | 練習の車 | `practiceCar`、`resetPracticeCar`、`PracticePort`、`practiceBus` |
 | 時計 | `appNow`、`learnServerTime`、`isAnchored`、`onAnchor`、`PLAUSIBLE_FROM` |
 
@@ -106,15 +108,16 @@ bundler`）では通るが、`node --experimental-strip-types --test` では解�
 
 ### 点検報告 `e46.intake-check.v1`
 
-`feat/intake-check-send`（e2610ba、まだマージ前）の `src/lib/intake/intakeCheck.ts`（形、zod）と `build.ts`
-（走査からの組み立て）は**エンジン**に入る。依存は `probe/scan`・`runGate`・`variants`・
-`investigation/redact`・`@tsunagi/ds2-mss54`・zod だけで、全部エンジンの中にある。このブランチの土台
-（b132df7）にはまだ無いので、移していない。どちらかが先に main に入ったら、もう一方を載せ直すときに：
+形（`intake/intakeCheck.ts`、zod だけに依る。E46 /// MAINTENANCE の `packages/contract` と同じバイト）と、走査からの
+組み立て（`intake/build.ts` の `buildIntakeCheck`・`decodeIdent`・`sha256Hex`・`intakeFileName`）はエンジンにある。
+JSON Schema は `docs/schemas/e46.intake-check.v1.schema.json`（`node scripts/gen-intake-schema.mjs` が書く）。
 
-- `src/lib/intake/intakeCheck.ts`・`build.ts`（と `intake.test.ts`）→ `packages/monitoring-engine/src/intake/`、
-  `index.ts` に `export * from './intake/intakeCheck'` と `'./intake/build'`、パッケージの `dependencies` に zod。
-- `handoff.ts`（MAINTENANCE のタブへの postMessage）と SEND の画面（`useIntakeSend`、`/intake`）は画面に残す。
-- 同じブランチのジャーナルの `scan`（`journal.ts`）と `redact.ts` の変更は、エンジンの同じファイルに当たる。
+- `vinShort` は走査の `vin.vinShort`（メーターが自分で答えた下 7 桁、`clusterVin.ts`）。読んだバイトが別の VIN を
+  綴っていたら、`vin` も `vinShort` も null にして選ばない。17 桁の `vin` は、読んだバイトに一つだけ綴られていたとき
+  だけ（DS2 の E46 では null）。
+- 渡し方は画面のもの。E46M3 /// MONITORING では `feat/intake-check-send` の SEND（MAINTENANCE のタブへの postMessage、
+  `handoff.ts`）で、GREN BLUE SUITE では SUITE の中で渡す。どちらもエンジンには入れない。
+- ジャーナルの `scan`（走査を記録に残す）は、プライバシーポリシーの改訂と組なので `feat/intake-check-send` に残した。
 
 ## 4. 非公開データ（ecu-data）の受け取り方
 
@@ -136,40 +139,44 @@ configureEcuData((file) => fetch(`/api/monitoring/ecu-data/${file}`, { cache: 'n
 - `link/session.test.ts` が、ディスクから読む口を渡して練習の車につなぎ、IDENT・故障の読み・走行中の拒否まで
   通ることを確かめる。
 
-### 設計案（実装しない）：運営者の Cloudflare に置いたまま、m3 のサインインで読む
+### 実装した：運営者の Cloudflare に置いたまま、m3 で確かめて読む（運営者 2026-11-11）
 
 データは BMW SGBD 由来と逆コンパイル由来で、`THIRD-PARTY-NOTICES.md` §3 が配信を閉じた内側と定めている。
 GREN BLUE のリポジトリにもビルドにも写さない。
 
 ```
- GREN BLUE SUITE（ブラウザ）── 同じオリジン ──► GREN BLUE の Pages Function
+ GREN BLUE SUITE（ブラウザ）── 同じオリジン ──► GREN BLUE の Pages Function（GREN BLUE 側で作る）
    configureEcuData(f => fetch(`/api/monitoring/ecu-data/${f}`))     /api/monitoring/ecu-data/:file
-                                                                      │ スタッフの m3 トークン（サーバーが持つ）
+                                                                      │ Authorization: Bearer <m3 のトークン、
+                                                                      │   このアプリ（monitoring-preview）宛て>
                                                                       ▼
-                                   e46m3-monitoring-preview の Pages Function /api/engine-data/:file
-                                     ① Authorization: Bearer を m3 の /api/access/introspect で確かめる
-                                     ② 利用権を確かめる（下の「決めること」）
-                                     ③ ASSETS から ecu-data/<file> を返す。Cache-Control: private, no-store
+                     e46m3-monitoring-preview  GET /api/engine-data/:file（functions/api/engine-data/[file].ts）
+                       ① ファイル名は index.json・variants.json・<id>.jobs.json・<id>.telegrams.json だけ
+                       ② m3 の /api/access/introspect に、このアプリのクライアントと M3_CLIENT_SECRET で訊く
+                       ③ active で、利用権 `monitoring_engine` を持つアカウントだけ（肯定は 60 秒覚える、否定は覚えない）
+                       ④ ASSETS の ecu-data/<file> を返す。Cache-Control: private, no-store。CORS なし
 ```
 
-- **本人と利用権は m3 だけ**（`tsunagi-m-access` §3-1）。GREN BLUE は m3 のクライアントとして登録し
-  （`npm run access:client`、機密クライアント、`M3_CLIENT_SECRET`）、スタッフは m3 でサインインする。GREN BLUE
-  にはすでに m3 アカウントの結び付けがある。
-- **トークンを素通しさせない**（同 §3-3）。m3 のトークンは GREN BLUE のサーバー側だけが持ち、ブラウザには
-  渡さない。ブラウザは自分のオリジンの `/api/monitoring/ecu-data/*` だけを読むので、CORS も要らない。
-- MONITORING 側の新しい受け口は、ゲートの `publicPaths` に足さず、ゲートと別の確かめ方（Bearer と
-  introspect）をする一本の Function。ファイル名は `^[a-z0-9_]+\.(jobs|telegrams)\.json$|^index\.json$|^variants\.json$`
-  だけを通す。
-- データの版：GREN BLUE は `index.json` の `generatedAt` をエンジンの記録（`sgbdSet`）に残す。
+- クッキーのゲート（`functions/_middleware.ts`）は、この接頭辞の**データのファイル名だけ**を通し、確かめは
+  関数に任せる。同じ接頭辞のほかのパスと、ほかの全部は今までどおりゲートの内側。ゲートの正本（`_owner-gate/`）は
+  変えていない（`gate:verify` が見る）。
+- 確かめられないとき（秘密値が無い・m3 に届かない・答えが読めない）は 503 で、何も返さない。
+- 試験は `src/lib/sync/engineData.test.ts`。
 
-運営者に決めてもらうこと（選べる道・起きること・推す道）：
+#### m3 と GREN BLUE に要るもの（このリポジトリの外。まだ無い）
 
-| 決めること | 道 | 起きること | 推す |
-|---|---|---|---|
-| 誰が読めるか | 甲：既存の `owner_preview` | 店のスタッフ全員に WORKS の全部も開く | |
-| | 乙：新しい利用権 `monitoring_engine`（運営者が店のスタッフに付ける） | データだけが読める。WORKS の画面は開かない | **乙**。用途ごとに分けると、取り消しも分けられる |
-| どこから配るか | 甲：MONITORING WORKS の Pages（`e46m3-monitoring-preview`）の Function | データの置き場は一つのまま。WORKS の配信と同じ更新で GREN BLUE も新しいデータを読む | **甲** |
-| | 乙：R2 に置き、別の Worker が配る | 置き場が二つになり、データの更新を二か所に出す | |
+m3 はセッションを、発行したクライアントにしか「有効」と答えない（`readSession` の `client_id`）。そしてトークンは
+サービスからサービスへ渡さない（`tsunagi-m-access` §3-3）。だから GREN BLUE のスタッフの、GREN BLUE 宛ての
+トークンをこちらへ回すことはしない。GREN BLUE のサーバーは m3 から**このアプリ宛て**のトークンを得る：
+
+1. **m3（tsunagi-m3）**：トークン交換（RFC 8693、`grant_type=urn:ietf:params:oauth:grant-type:token-exchange`）。
+   GREN BLUE の機密クライアントが、スタッフの自分宛てのトークン（`subject_token`）を出し、`audience=monitoring-preview`
+   で短い寿命のトークンを受け取る。m3 は交換を許すクライアントの組を `access_clients` に持つ。
+2. **m3**：利用権 `monitoring_engine` を `Scope` に足し、運営者が店のスタッフのアカウントに付ける。
+3. **GREN BLUE**：自分の Pages Function が交換したトークンをサーバーの中だけで持ち、上の図の一本を作る。
+
+それまではこのアプリ宛てで `monitoring_engine` を持つトークンが無いので、`/api/engine-data/` は全部 401 か 403 で
+閉じている。秘密値は今の `M3_CLIENT_SECRET` だけで、新しいものは無い。
 
 ## 5. 公開の範囲
 
@@ -178,103 +185,26 @@ GREN BLUE のリポジトリにもビルドにも写さない。
 - 試験が読む `testing/shipped.ts` は、リポジトリの `public/ecu-data/` があれば読み、無ければ試験を飛ばす。
   GREN BLUE の `vendor/` の中には無いので、そこでは飛ぶ。
 
-## 6. 更新の知らせ（案。まだ置いていない）
+## 6. 更新の知らせ：pin bump（運営者 2026-11-11）
 
-エンジンに触れる変更（`packages/monitoring-engine/**`・`packages/ds2-core/**`・`packages/ds2-mss54/**`）が
-main に入ったら、GREN BLUE に知らせる。エンジンは人の承認のクラスなので、届くのは人が見た変更だけ。
+`.github/workflows/notify-gren-blue.yml`。エンジンに触れる変更（`packages/monitoring-engine/**`・`packages/ds2-core/**`・
+`packages/ds2-mss54/**`）が main に入ると、GREN BLUE（`mushitaro/tsunagi-gren-blue-private`）の main に、
+`vendor/E46M3-Monitoring` の gitlink だけを新しい SHA にするコミットを API で作る（早送りだけ。間に main が進んだら
+作り直す、3 回まで）。GREN BLUE の Cloudflare のビルドがその push で走り、試験とビルドが通れば配信、落ちれば前の
+配信のまま。エンジンは人の承認のクラスなので、届くのは人が見た変更だけ。
 
-GREN BLUE 側の GitHub Actions は支払いの件で止まっている。受け取る側は Cloudflare のビルド（Git 連携）を
-使う前提で、二つの道がある。
-
-| | 甲：submodule の pin を上げるコミット（推す） | 乙：`repository_dispatch` |
-|---|---|---|
-| MONITORING がすること | GREN BLUE の main に、`vendor/E46M3-Monitoring` の gitlink だけを新しい SHA にするコミットを API で作る | GREN BLUE に `monitoring-engine-updated`（SHA つき）を送るだけ |
-| GREN BLUE がすること | Cloudflare のビルドが push で走り、試験とビルドが通れば配信。落ちれば前の配信のまま | 受け取った Actions が pin を上げて試験する |
-| 今動くか | 動く（GitHub Actions は MONITORING 側だけで足りる） | **動かない**（GREN BLUE の Actions が止まっている） |
-| 壊れた組み合わせ | Cloudflare のビルドコマンドに試験を入れておけば、落ちたビルドは配信されない | GREN BLUE の Actions の試験次第 |
-| 書き込む権限 | MONITORING の秘密値が GREN BLUE の Contents に書ける | Contents に書ける（dispatch に要る）が、ファイルは書かない |
-| 履歴 | GREN BLUE の main に bot のコミットが積もる（エンジンの変更の数だけ） | GREN BLUE 側が決める |
-
-甲の前に確かめること（未確認）：
-
-- GREN BLUE は今、`npm run deploy`（手元の wrangler）で出していて、Cloudflare の Git 連携のビルドはまだ無い。
-  `gren-blue-auto-admin` に Git 連携を付け、ビルドコマンドを `npm ci && npm test && npm run build -w apps/admin`
-  のように**試験を含めて**組む。
-- Cloudflare のビルドが submodule を取ること（このリポジトリは公開なので認証は要らない見込み）。
-- `e46-maintenance` は私的なリポジトリなので、Git 連携のビルドでその submodule が取れるか。
-
-運営者が入れる秘密値（名前だけ。値は運営者が入れる）：
+運営者が入れる秘密値（名前だけ）：
 
 | 名前 | 置き場 | 中身 |
 |---|---|---|
 | `GREN_BLUE_PIN_TOKEN` | このリポジトリの Environment `gren-blue`（Deployment branches は `main` だけ） | GitHub の fine-grained トークン。`mushitaro/tsunagi-gren-blue-private` だけ、Contents: Read and write、期限つき |
 
-甲のワークフロー（`.github/workflows/notify-gren-blue.yml` に置くときの案）：
+秘密値が無いとき、GREN BLUE にまだ submodule が無いときは、警告を出して何もしない。
 
-```yaml
-name: notify-gren-blue
-# エンジンに触れる変更が main に入ったら、GREN BLUE の submodule の pin を上げる（docs/ENGINE.md §6）。
-on:
-  push:
-    branches: [main]
-    paths:
-      - 'packages/monitoring-engine/**'
-      - 'packages/ds2-core/**'
-      - 'packages/ds2-mss54/**'
-permissions:
-  contents: read
-concurrency:
-  group: notify-gren-blue
-  cancel-in-progress: false
-jobs:
-  pin:
-    runs-on: ubuntu-latest
-    environment: gren-blue
-    steps:
-      - name: GREN BLUE の main に pin を上げるコミットを作る
-        env:
-          GH_TOKEN: ${{ secrets.GREN_BLUE_PIN_TOKEN }}
-          REPO: mushitaro/tsunagi-gren-blue-private
-          PATH_IN_REPO: vendor/E46M3-Monitoring
-          SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          for attempt in 1 2 3; do
-            head=$(gh api "repos/$REPO/git/ref/heads/main" --jq .object.sha)
-            base_tree=$(gh api "repos/$REPO/git/commits/$head" --jq .tree.sha)
-            current=$(gh api "repos/$REPO/contents/$PATH_IN_REPO?ref=$head" --jq .sha)
-            if [ "$current" = "$SHA" ]; then echo "already at $SHA"; exit 0; fi
-            tree=$(gh api "repos/$REPO/git/trees" -f base_tree="$base_tree" \
-              -f "tree[][path]=$PATH_IN_REPO" -f "tree[][mode]=160000" -f "tree[][type]=commit" -f "tree[][sha]=$SHA" --jq .sha)
-            commit=$(gh api "repos/$REPO/git/commits" -f tree="$tree" -f "parents[]=$head" \
-              -f message="E46M3 /// MONITORING のエンジンを ${SHA:0:7} に上げる（mushitaro/E46M3-Monitoring@$SHA）" --jq .sha)
-            # 早送りだけ。間に誰かが main を進めたら、作り直す。
-            if gh api -X PATCH "repos/$REPO/git/refs/heads/main" -f sha="$commit" -F force=false >/dev/null; then
-              echo "pinned $PATH_IN_REPO to $SHA"; exit 0
-            fi
-            sleep 5
-          done
-          echo "could not fast-forward GREN BLUE main" >&2; exit 1
-```
+GREN BLUE 側に要るもの（GREN BLUE の仕事）：
 
-乙のワークフロー（GREN BLUE の Actions が動くようになったとき）：
+- submodule `vendor/E46M3-Monitoring`（このリポジトリは公開なので認証は要らない）と workspaces（§3）。
+- Cloudflare の Git 連携のビルド。ビルドコマンドに**試験を含める**（例：`npm ci && npm test && npm run build -w apps/admin`）。
+  今は手元の `npm run deploy` で出している。私的な `e46-maintenance` の submodule が Git 連携のビルドで取れるかは未確認。
 
-```yaml
-name: notify-gren-blue
-on:
-  push:
-    branches: [main]
-    paths: ['packages/monitoring-engine/**', 'packages/ds2-core/**', 'packages/ds2-mss54/**']
-permissions:
-  contents: read
-jobs:
-  dispatch:
-    runs-on: ubuntu-latest
-    environment: gren-blue
-    steps:
-      - env:
-          GH_TOKEN: ${{ secrets.GREN_BLUE_PIN_TOKEN }}
-        run: |
-          gh api repos/mushitaro/tsunagi-gren-blue-private/dispatches \
-            -f event_type=monitoring-engine-updated -f "client_payload[sha]=${{ github.sha }}"
-```
+`repository_dispatch` の道は採らない：GREN BLUE の GitHub Actions が止まっていて、受け取る側が無いため。

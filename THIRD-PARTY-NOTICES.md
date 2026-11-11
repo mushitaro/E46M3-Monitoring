@@ -182,6 +182,14 @@ arrangement is stated here as it actually is rather than as a plan.
   manifest and its icons are the only files it serves without a session, because a
   browser fetches those without cookies when it installs the app. `npm run deploy`
   refuses to ship without the gate.
+- **One more way to the tables, for another app's server, still closed to anyone m3
+  has not named** (operator, 2026-11-11). `GET /api/engine-data/<file>` serves the
+  same files to GREN BLUE SUITE's server, which uses this app's diagnosis engine. It
+  takes no cookie; it takes an m3 token issued for this app, asks m3 about it on every
+  request (a yes is kept 60 seconds), and serves only to an account holding the
+  separate right `monitoring_engine`, never cached and with no CORS, so a browser
+  cannot read it. Anything it cannot confirm is refused. Only the data's own file names
+  pass the gate this way (`functions/_lib/engineData.ts`, `docs/ENGINE.md` §4).
 - **The deployments that used to sit outside the gate are gone.** The old production
   project `e46m3-monitoring.pages.dev` was behind Cloudflare Access with
   `ALLOW include: everyone` (a one-time PIN to any email address), and the staging

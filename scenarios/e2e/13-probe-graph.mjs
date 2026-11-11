@@ -65,6 +65,13 @@ const scenario = {
         { ai: 'monitoring_stop_log', args: { confirmed: true }, means: '止める（復唱のあと）', expect: (r) => (JSON.stringify(r).includes('probe') ? true : JSON.stringify(r)) },
         { wait: 1500 },
         { screen: { desc: '止めたあとは、その回の記録からグラフを描く（LIVE ではない）', has: ['吸気VANOS バンク1 実角', 'AI の決めた幅'], hasNot: ['LIVE'] } },
+        { say: '保存して' },
+        {
+            ai: 'monitoring_save',
+            args: { confirmed: true },
+            means: '保存の答えが、PROBE の回は調査の側に残っていると言う（サンプル 0 件を「消えた」と読ませない）',
+            expect: (r) => (r?.probeRuns?.runs >= 1 && r.probeRuns.samples > 0 && /not part of this save/.test(r.probeRuns.note) ? true : JSON.stringify(r).slice(0, 400)),
+        },
     ],
 };
 

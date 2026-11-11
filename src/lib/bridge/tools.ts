@@ -290,7 +290,7 @@ export const MONITORING_TOOLS = {
     monitoring_save: {
         scope: 'control',
         description:
-            "Save on this device (the screen's SAVE): the episode in progress — identity, faults, recordings, learned values, procedures and failures — or, with episode, one from the not-kept list (monitoring_sessions). For \"save the one just now\", read the list, say which episode you mean (its time and what it holds), then save it. Returns what was kept.",
+            "Save on this device (the screen's SAVE): the episode in progress — identity, faults, recordings, learned values, procedures and failures — or, with episode, one from the not-kept list (monitoring_sessions). For \"save the one just now\", read the list, say which episode you mean (its time and what it holds), then save it. Returns what was kept. PROBE runs are not in it and need no save: they are kept with their investigation as they end (probeRuns in the answer says how many), so sampleCount 0 after a PROBE run is not a loss.",
         inputSchema: obj({ confirmed: CONFIRMED, episode: num('The start of a not-kept episode, from monitoring_sessions. Omit for the one in progress.') }, ['confirmed']),
     },
     monitoring_sync_upload: {

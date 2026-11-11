@@ -144,13 +144,17 @@ configureEcuData((file) => fetch(`/api/monitoring/ecu-data/${file}`, { cache: 'n
 - `link/session.test.ts` が、ディスクから読む口を渡して練習の車につなぎ、IDENT・故障の読み・走行中の拒否まで
   通ることを確かめる。
 
-### 店のサーバーへの読み口：`GET /api/bridge/engine-data/<file>`（運営者 2026-11-11）
+### 店のサーバーへの読み口：エンジンゲートウェイ `GET /engine-data/<file>`（運営者 2026-11-11、2026-11-12）
 
 データは BMW SGBD 由来と逆コンパイル由来で、`THIRD-PARTY-NOTICES.md` §3 が配信を閉じた内側と定めている。
 GREN BLUE のリポジトリにもビルドにも写さない。
 
-読み口は `feat/engine-report-inbox`（e194995、GREN BLUE SUITE のセッションが作った）の
-`functions/api/bridge/engine-data/[file].ts` で、こちらを正とする（このブランチには置かない）。
+読み口は M のエンジンの口（**エンジンゲートウェイ**）で、MESH の道具である E46M3 /// MONITORING の WORKS の配信とは
+別に置く（運営者 2026-11-12。エンジンは M、アプリは Mainstay。ハブの Skill `tsunagi-m-mainstay` §3）。MESH のアプリの
+配信や不具合が、店の流れに効かないようにするため。コードは `feat/engine-report-inbox` の `workers/engine-gateway`
+（Pages プロジェクト `tsunagi-engine-gateway` → `tsunagi-engine-gateway.pages.dev`、中身は `_worker.js` だけ。
+カスタムドメインは運営者が後で決める）で、こちらを正とする（このブランチには置かない）。エンジンの報告の受け口
+`POST /engine-report` も同じゲートウェイにある。WORKS の Pages は、どちらの口も持たない。
 
 ```
  GREN BLUE SUITE（ブラウザ）── 同じオリジン ──► GREN BLUE のサーバー（スタッフのサインインは店のもの）
@@ -158,18 +162,18 @@ GREN BLUE のリポジトリにもビルドにも写さない。
                                                                       Authorization: Bearer v1.<{s, a:'engine-data', e, n, h}>.<HMAC>
                                                                       h = ファイル名の SHA-256
                                                                       ▼
-                       e46m3-monitoring-preview  GET /api/bridge/engine-data/<file>
-                         ① ファイル名は index.json・variants.json・<id>.jobs.json・<id>.telegrams.json だけ
+                       tsunagi-engine-gateway  GET /engine-data/<file>
+                         ① ファイル名は index.json・variants.json・fault-layouts.json・<id>.jobs.json・<id>.telegrams.json だけ
                          ② 店（ENGINE_REPORT_MAINSTAYS）の鍵 ENGINE_REPORT_SECRET_<SLUG> で札を確かめる（60 秒、一回きり）
-                         ③ ASSETS の ecu-data/<file> を返す。Cache-Control: private, no-store
+                         ③ 配信のときに写した ecu-data/<file> を ASSETS から返す。Cache-Control: private, no-store
 ```
 
-- 店のスタッフのうち誰が読めるかは店のサインイン、どの店が読めるかはこちらの `ENGINE_REPORT_MAINSTAYS` と店の鍵。
-  m3 のトークンは使わない（SUITE はスタッフの m3 トークンを持たない。マネージャー 2026-11-11）。
-- **足りないもの**：エンジンは今 `fault-layouts.json`（各モジュール自身の SGBD が故障コードを読む場所）も読む。
-  読み口の名前の表（`ENGINE_DATA_FILE`、`_middleware.ts` の `ENGINE_DATA_PATH`）に `fault-layouts.json` を足すまで、
-  SUITE ではその読み込みが 404 になり、故障コードの解読だけが無い（ほかは動く。`loadFaultLayouts` は無いものを
-  「解読しない」として扱う）。
+- 店のスタッフのうち誰が読めるかは店のサインイン、どの店が読めるかはゲートウェイの `ENGINE_REPORT_MAINSTAYS` と
+  店の鍵。m3 のトークンは使わない（SUITE はスタッフの m3 トークンを持たない。マネージャー 2026-11-11）。
+- データは WORKS と同じ `public/ecu-data`（E46M3-Monitoring-data から）を、`npm run gateway:deploy` が配信のときだけ
+  ゲートウェイの出力に写す。コミットしない。advanced mode なので、札なしで静的ファイルに届く道は無い。
+- ゲートウェイは WORKS と同じ D1（`tsunagi-m-preview-runs`、机の記録）に bind し、エンジンの報告を机の記録に書いて
+  机を起こす。共有するのはデータベースだけで、配信は分ける。
 
 ## 5. 公開の範囲
 

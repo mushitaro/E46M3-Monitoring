@@ -10,7 +10,7 @@
   "envField",
   "vocabulary"
  ],
- "total": 2511,
+ "total": 489,
  "modules": {
   "alc_ds2": {
    "argComment": 1
@@ -29,33 +29,22 @@
    "faultText": 1
   },
   "bms43ds0": {
-   "argComment": 1,
-   "desc": 33,
-   "envField": 3,
-   "faultText": 29,
-   "label": 12,
-   "resultComment": 120
+   "desc": 1,
+   "resultComment": 1
   },
   "bms46ds0": {
-   "argComment": 2,
-   "desc": 49,
-   "faultText": 34,
-   "label": 13,
-   "resultComment": 104
+   "desc": 1,
+   "resultComment": 1
   },
   "bms46ds1": {
-   "argComment": 2,
-   "desc": 52,
-   "faultText": 45,
-   "label": 13,
-   "resultComment": 131
+   "desc": 1,
+   "resultComment": 1
   },
   "cdc_46": {
    "faultText": 2
   },
   "cvm_ii": {
-   "argComment": 1,
-   "resultComment": 7
+   "argComment": 1
   },
   "dsc_e46": {
    "faultText": 5,
@@ -69,7 +58,6 @@
    "resultComment": 37
   },
   "ews3": {
-   "argComment": 1,
    "desc": 1,
    "faultText": 3,
    "resultComment": 1
@@ -79,11 +67,9 @@
    "resultComment": 2
   },
   "gs20": {
-   "argComment": 4,
-   "desc": 5,
-   "envField": 3,
-   "faultText": 34,
-   "resultComment": 229
+   "argComment": 1,
+   "faultText": 1,
+   "resultComment": 1
   },
   "ihka46": {
    "faultText": 8
@@ -97,12 +83,12 @@
   "kombi46": {
    "argComment": 2,
    "faultText": 3,
-   "resultComment": 3
+   "resultComment": 2
   },
   "kombi46r": {
    "argComment": 2,
    "faultText": 2,
-   "resultComment": 3
+   "resultComment": 2
   },
   "lsz": {
    "faultText": 2
@@ -123,28 +109,20 @@
    "faultText": 12
   },
   "ms420ds0": {
-   "argComment": 6,
-   "desc": 110,
-   "envField": 7,
-   "faultText": 124,
-   "label": 28,
-   "resultComment": 169
+   "desc": 4,
+   "label": 2,
+   "resultComment": 1
   },
   "ms430ds0": {
-   "argComment": 16,
-   "desc": 128,
-   "envField": 17,
-   "faultText": 126,
-   "label": 45,
-   "resultComment": 294,
-   "vocabulary": 18
+   "desc": 1,
+   "resultComment": 6
   },
   "mss54": {
    "desc": 1,
    "envField": 8,
-   "faultText": 42,
+   "faultText": 39,
    "label": 1,
-   "resultComment": 8,
+   "resultComment": 1,
    "vocabulary": 20
   },
   "nav_jap": {
@@ -152,29 +130,20 @@
    "resultComment": 1
   },
   "navmk3": {
-   "desc": 1,
-   "faultText": 1,
-   "label": 1
+   "faultText": 1
   },
   "navmk4": {
-   "desc": 1,
-   "faultText": 1,
-   "label": 1
+   "faultText": 1
   },
   "navmk4_2": {
-   "desc": 1,
-   "faultText": 1,
-   "label": 1
+   "faultText": 1
   },
   "pdcact": {
-   "desc": 3,
+   "desc": 2,
    "faultText": 1,
-   "label": 1,
-   "resultComment": 3
+   "resultComment": 1
   },
   "pdce38": {
-   "desc": 1,
-   "label": 1,
    "resultComment": 1
   },
   "radio": {
@@ -212,13 +181,6 @@
    "label": 3,
    "resultComment": 44
   },
-  "ueb2": {
-   "desc": 1,
-   "label": 1
-  },
-  "videomod": {
-   "faultText": 1
-  },
   "xenon_l": {
    "faultText": 3
   },
@@ -229,14 +191,14 @@
    "desc": 1,
    "faultText": 23,
    "label": 1,
-   "resultComment": 3
+   "resultComment": 1
   },
   "zke5_s12": {
    "argComment": 1,
    "desc": 1,
    "faultText": 27,
    "label": 1,
-   "resultComment": 3
+   "resultComment": 1
   }
  }
 }

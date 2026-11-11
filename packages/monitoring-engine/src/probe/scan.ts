@@ -183,7 +183,9 @@ export function scanTargets(protocols: readonly ModuleProtocol[]): ScanTarget[] 
             frames,
             byModule: Object.fromEntries(group.map((p) => [p.moduleId, p.faults])),
             ...(group.some((p) => p.vin) ? { vinByModule: Object.fromEntries(group.flatMap((p) => (p.vin ? [[p.moduleId, p.vin]] : []))) } : {}),
-            decoder: group.length === 1 && first.decoder === 'mss54' ? 'mss54' : null,
+            // The MSS54 is decoded wherever it is a candidate: its IDENT says whether it is the one here
+            // (since 2026-11-11 0x12 also carries the non-M3 DMEs), and only then are its entries decoded.
+            decoder: group.some((p) => p.decoder === 'mss54') ? 'mss54' : null,
             ...(group.some((p) => p.kwp) ? { kwp: true } : {}),
         });
     }
@@ -221,7 +223,10 @@ export async function runScan(targets: readonly ScanTarget[], deps: ScanDeps): P
             break;
         }
         const base = { address: hex2(t.address), modules: t.modules };
-        if (t.frames.length === 0) {
+        // No frame common to every candidate is no obstacle where the address's rule will name the one
+        // that answers and each has its own (0x32: SMG II or GS20): its IDENT is asked first, below.
+        const chosenByRule = !!ruleFor(deps.identity.rules, t.address) && t.modules.every((m) => (t.byModule[m] ?? []).length > 0);
+        if (t.frames.length === 0 && (t.kwp || !chosenByRule)) {
             push({
                 ...base,
                 outcome: 'refused',
@@ -320,7 +325,7 @@ export async function runScan(targets: readonly ScanTarget[], deps: ScanDeps): P
         // Decoded only when the module that answered is the decoded one, as its IDENT chose.
         if (outcome === 'answered' && t.decoder && deps.decode && verdict.basis === 'identified' && chosen === 'mss54') {
             try {
-                result.decoded = deps.decode(t, frames);
+                result.decoded = deps.decode({ ...t, frames: toSend }, frames);
             } catch (e) {
                 result.reason = `decoder: ${e instanceof Error ? e.message : String(e)}`;
             }

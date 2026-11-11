@@ -4,7 +4,7 @@ import { formatErrorCode, type ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
 import type { RawFaultRead, useDs2Link } from '@/hooks/useDs2Link';
 import type { useProbe } from '@/hooks/useProbe';
 import type { FreshFaults, TabFacade } from '@/lib/bridge/handlers';
-import { jobRiskOf, loadEcuCatalog, text as resolveText, type EcuIndex, type EcuProfile, type JobClass } from '@tsunagi/monitoring-engine';
+import { jobRiskOf, loadEcuCatalog, text as resolveText, type DecodedFault, type EcuIndex, type EcuProfile, type JobClass } from '@tsunagi/monitoring-engine';
 import { normCode } from '@/lib/faultCode';
 import { en } from '@/lib/i18n/en';
 import { TUNER_WORKS } from '@/lib/links';
@@ -31,6 +31,9 @@ import type { Datalog } from '@/views/datalog/useDatalog';
 import type { Sessions } from '@/views/sessions/useSessions';
 import { appNow } from '@tsunagi/monitoring-engine';
 
+
+/** What the assistant is told with codes read from a module's own layout (engine faultLayouts). */
+const UNVERIFIED_LAYOUT = "Codes read where this module's own SGBD reads them (checked against EDIABAS in simulation); not yet confirmed on a car. The bytes are the answer.";
 /**
  * The page, as the assistant bridge sees it (lib/bridge/handlers `TabFacade`).
  *
@@ -125,9 +128,23 @@ export function useMonitoringFacade(input: {
                 });
                 return { module: ecuId, read: true, decoded: false, estimated: true, note: 'Codes read as ISO 14230 lays out a $58 answer; not yet confirmed on a MK60. The bytes are the answer.', codes, raw };
             }
+            // Another module's codes, read where its own SGBD reads them (engine faultLayouts): checked
+            // against EDIABAS in simulation, not yet on a car; the bytes stay the answer.
+            if (rows.some((r) => r.decoded)) {
+                return { module: ecuId, read: true, decoded: false, unverified: true, note: UNVERIFIED_LAYOUT, codes: codesOf(rows.flatMap((r) => r.decoded ?? []), catalog), raw };
+            }
             return { module: ecuId, read: true, decoded: false, note: 'No decoder for this module: the answer is kept as bytes.', raw };
         }
         return { module: ecuId, read: false, reason: 'Not read yet in this session.' };
+    };
+
+    /** Decoded codes with their module's own fault text (FORTTEXTE), in English. */
+    const codesOf = (faults: readonly DecodedFault[], profile: EcuProfile | null) => {
+        const byCode = new Map((profile?.faultText ?? []).map((f) => [normCode(f.code), f]));
+        return faults.map((f) => {
+            const known = byCode.get(normCode(f.code));
+            return { code: f.code, text: known && profile ? resolveText(profile, known.text, 'en').text : null, count: f.count, present: f.present };
+        });
     };
 
     /** A scan result's fault reads, without the IDENT that chose its module. */
@@ -136,6 +153,12 @@ export function useMonitoringFacade(input: {
     /** A scan, module by module: what answered, with the MSS54's codes decoded and the rest as bytes. */
     const describeScan = async (r: ScanRun) => {
         const mss54 = ecuId === 'mss54' && catalog ? catalog : await loadEcuCatalog('mss54').catch(() => null);
+        // The catalogue of each module whose codes were read from its own layout, for their text.
+        const profiles = new Map<string, EcuProfile | null>();
+        for (const x of r.results) {
+            const id = x.faults ? (x.variant?.moduleId ?? (x.modules.length === 1 ? x.modules[0] : null)) : null;
+            if (id) profiles.set(x.address, await loadEcuCatalog(id).catch(() => null));
+        }
         return {
             end: r.end,
             at: new Date(r.endedAt).toISOString(),
@@ -150,7 +173,10 @@ export function useMonitoringFacade(input: {
                 // read stays with the owner (lib/investigation/redact), so only the fault reads go as bytes.
                 ...(x.variant ? { variant: { sgbd: x.variant.sgbd ?? '?', carried: x.variant.moduleId !== null, ...(x.variant.basis ? { basis: x.variant.basis } : {}) } } : {}),
                 ...(x.decoded ? { faults: describeEntries(x.decoded as ErrorMemoryEntry[], mss54) } : {}),
-                ...(!x.decoded && reads(x).some((e) => e.response !== null) ? { raw: reads(x), note: 'No decoder for this module: the answer is kept as bytes.' } : {}),
+                ...(x.faults ? { codes: codesOf(x.faults, profiles.get(x.address) ?? null), unverified: true } : {}),
+                ...(!x.decoded && reads(x).some((e) => e.response !== null)
+                    ? { raw: reads(x), note: x.faults ? UNVERIFIED_LAYOUT : 'No decoder for this module: the answer is kept as bytes.' }
+                    : {}),
             })),
         };
     };

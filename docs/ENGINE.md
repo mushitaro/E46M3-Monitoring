@@ -78,6 +78,7 @@ MSS54 の表と解読は `packages/ds2-mss54`。エンジンはこの二つに�
 | 車の状態 | `vehicleStateFrom`、`motionOf`、`VEHICLE_STATE_MAX_AGE_MS` |
 | 変種 | `loadIdentity`、`loadVariantRules`、`fittedFrom`、`isM3`、`mayModuleBeSent`、`frameVerdict`、`commonIdent`、`isCommonIdent`、`DME_ADDRESS` |
 | 走査 | `loadScanTargets`、`scanTargets`、`runScan`、`scanCounts`、`ALL_MODULES` |
+| 速度源 | `SPEED_SOURCES`、`usableSpeedSource(dmeModuleId)`（M3 の MSS54 ブロック 19 だけが使える。非 M3 の候補は名前だけで、実車まで閉じている） |
 | 故障の読み方 | `loadFaultLayouts`、`decodeFaultRead(layout, reads)` → `DecodedFault[]`（`{ code: '0x2A', count, present }`）。読取の `RawFaultRead.decoded`、走査の `ScanResult.faults` に入る |
 | PROBE | `runProbe`、`probeBlocks`、`loadProbeModules`、`judge`、`stepsProblem`・`judgesProblem`・`hypothesesProblem` |
 | 記録の形 | `episodes`、`toSession`、`expired`、`SavedSession`・`FailureNote`・`excerpt`・`isSavedSession`、`ReadRecord`・`readRecordProblem`、`redactText`・`redactHex`・`redactResponse`・`redactDeep`、`logLine`、`datalogCsv` |

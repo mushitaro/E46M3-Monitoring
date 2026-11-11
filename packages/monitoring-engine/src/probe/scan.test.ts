@@ -47,6 +47,8 @@ function deps(
         rules?: VariantRules;
         /** What the cluster answers its VIN read with. */
         vin?: 'ok' | 'rejected' | 'silent' | 'junk';
+        /** The modules the app carries, when not the fixture's. */
+        modules?: ReadonlyArray<{ id: string; sgbd: string }>;
     } = {},
 ) {
     const sent: string[] = [];
@@ -64,7 +66,7 @@ function deps(
                 if (known) return known;
                 sent.push(`${address.toString(16).padStart(2, '0')} 04 00 ${(address ^ 4).toString(16).padStart(2, '0')}`);
                 const i = idents[address] ?? { hw: '00', diag: '00' };
-                const f = fittedFrom(opts.rules ?? FIXTURE_RULES, FIXTURE_MODULES, address, i === 'silent' || opts.answers?.[address] === 'silent' ? null : identFrame(address, i));
+                const f = fittedFrom(opts.rules ?? FIXTURE_RULES, opts.modules ?? FIXTURE_MODULES, address, i === 'silent' || opts.answers?.[address] === 'silent' ? null : identFrame(address, i));
                 if (f.answer !== null) fitment.set(address, f);
                 return f;
             },
@@ -109,6 +111,39 @@ describe('scan targets', () => {
     it('asks nothing of an address whose candidates share no frame', () => {
         const [mfl] = scanTargets([P.mfl, P.mfl2]);
         expect(mfl.frames).toEqual([]);
+    });
+});
+
+describe('an address two modules share with no common frame, which its IDENT tells apart (2026-11-11)', () => {
+    // GS20 beside SMG II at 0x32, and the MS43 beside the MSS54 at 0x12: the non-M3 E46's modules.
+    const gs20 = moduleProtocol('gs20', 0x32, table('gs20', 0x32, ['32 05 04 02 31']));
+    const ms43 = moduleProtocol('ms430ds0', 0x12, table('ms430ds0', 0x12, ['12 05 04 00 13', '12 05 04 01 12']));
+    const modules = [...FIXTURE_MODULES, { id: 'ms430ds0', sgbd: 'MS430DS0.prg' }, { id: 'gs20', sgbd: 'GS20.prg' }];
+
+    it('asks the IDENT, then sends the chosen module its own frames — not refused for want of a common one', async () => {
+        const { d, sent } = deps({ idents: { ...NON_M3_IDENTS }, modules });
+        const run = await runScan(scanTargets([P.mss54, ms43, P.smg2, gs20]), d);
+        const at32 = run.results.find((r) => r.address === '0x32')!;
+        expect(at32.variant?.sgbd).toBe('GS20');
+        expect(at32.outcome).toBe('answered');
+        expect(beyondIdent(sent)).toContain('32 05 04 02 31');
+        expect(beyondIdent(sent)).not.toContain('32 05 04 01 32');
+    });
+
+    it('still decodes an M3’s MSS54 when other DMEs share its address', async () => {
+        const { d } = deps({ modules });
+        const ts = scanTargets([P.mss54, ms43]);
+        expect(ts[0].decoder).toBe('mss54');
+        const run = await runScan(ts, d);
+        expect(run.results[0].variant?.moduleId).toBe('mss54');
+        expect(run.results[0].decoded).toEqual({ entries: 2 });
+    });
+
+    it('decodes nothing as an MSS54 when the IDENT says the DME is an MS43', async () => {
+        const { d } = deps({ idents: { ...NON_M3_IDENTS }, modules });
+        const run = await runScan(scanTargets([P.mss54, ms43]), d);
+        expect(run.results[0].variant?.moduleId).toBe('ms430ds0');
+        expect(run.results[0].decoded).toBeUndefined();
     });
 });
 

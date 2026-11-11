@@ -5,7 +5,7 @@ Web Serial、Android は WebUSB（Chrome for Android の `navigator.serial` は 
 シリアルポート模倣しか列挙しないので、USB ケーブルはそちらの選択肢に現れない）。
 サーバもローカルホストも無い（理由は `README.md`）。
 
-対象は **E46 M3 の 52 モジュール**。エンジン MSS54 `0x12` / 変速機 SMG II `0x32` から
+対象は **E46 M3 の 52 モジュール**と、**M3 でない DS2 の E46 の DME 5 つと GS20**（2026-11-11、`fit: nonm3`）。エンジン MSS54 `0x12` / 変速機 SMG II `0x32` から
 ボディ・快適装備・AV まで、INPA の E46 メニュー × M3 の装備で列挙してある
 （`tools/gen_ecu_data.py` の `MODULES`）。`0x56` は年式で中身が入れ替わる: 前期は
 ASCMK20、後期は DSC_E46 で、同時装着は無い。**DSC MK60**（運営者の車の DSC、2026-11-10）だけは
@@ -40,7 +40,10 @@ Next.js 16 / React 19 / Tailwind v4、`output: 'export'` の静的書き出し�
   ここを迂回する経路を作らない。故障メモリ消去だけが唯一の書き込みで、確認ダイアログを伴う。
 - **モジュールには、そのモジュール自身の SGBD が送るものだけを送る。** 宛先は送るたびに名前で
   言う（`link.to(address)`）。IDENT・故障読取・消去・ハートビートは `packages/monitoring-engine/src/moduleProtocol.ts` が
-  そのモジュールのテレグラム表から完全一致で取る。解読器があるのは MSS54 だけで、他はバイトのまま。
+  そのモジュールのテレグラム表から完全一致で取る。解読器があるのは MSS54 だけ。ほかのモジュール（KOMBI・DSC・
+  非 M3 の DME・GS20）の故障は、そのモジュール自身の SGBD の FS_LESEN が読む場所から読む（`faultLayouts.ts`、
+  `tools/sgbd/gen_fault_layouts.py` が EDIABAS の模擬で確かめた `fault-layouts.json`）。実車未確認と画面と報告が言い、
+  生のバイトは答えとして残す。それ以外はバイトのまま。
 - **どのモジュールがいるかは、そのアドレスの IDENT が決める。** 一覧は E46 M3 のもので、非 M3 の E46
   では同じアドレスに別のモジュールがいる（0x12 に MS43、0x32 に GS20）。共通の IDENT（`<addr> 04 00`）の
   答えから、グループファイル（`D_00xx.grp`）と同じ選び方で SGBD を選び（`packages/monitoring-engine/src/variants.ts`、規則は

@@ -230,6 +230,8 @@ export const ja: Localised = {
         faults: (n) => `故障 ${n}`,
         clean: '故障なし',
         undecoded: '未解読',
+        faultsUnverified: (n) => `故障 ${n}（実車未確認）`,
+        cleanUnverified: '故障なし（実車未確認）',
         identified: '識別のみ',
         silent: '応答なし',
         rejected: '拒否',

@@ -231,6 +231,8 @@ export const en: Localised = {
         faults: (n) => `${n} fault${n === 1 ? '' : 's'}`,
         clean: 'No faults',
         undecoded: 'Undecoded',
+        faultsUnverified: (n) => `${n} fault${n === 1 ? '' : 's'} (unconfirmed on a car)`,
+        cleanUnverified: 'no faults (unconfirmed on a car)',
         identified: 'IDENT only',
         silent: 'No answer',
         rejected: 'Refused',

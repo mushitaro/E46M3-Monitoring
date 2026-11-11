@@ -202,7 +202,7 @@ export interface Localised {
     /** Behind the ⓘ: how the scan asks, what it can decode, what silence means. */
     scan_info: string;
     /** The one or two words a row ends with. */
-    scan_outcome: { faults: (n: number) => string; clean: string; undecoded: string; identified: string; silent: string; rejected: string; refused: string; skipped: string };
+    scan_outcome: { faults: (n: number) => string; clean: string; undecoded: string; faultsUnverified: (n: number) => string; cleanUnverified: string; identified: string; silent: string; rejected: string; refused: string; skipped: string };
     /**
      * Which module an address's IDENT chose (lib/variants), under its opened row: the SGBD, or `?`;
      * and when nothing but the IDENT went, why.

@@ -219,9 +219,18 @@ export function practiceEcu(): SimulatedEcuOptions {
                 case Ds2Control.CLEAR_ERROR_MEMORY:
                     // The clear empties the DME's memory; the next read finds none.
                     practiceCar.dmeFaults = [];
+                    if (practiceCar.ms43Faults) practiceCar.ms43Faults = [];
                     return { payload: new Uint8Array(0) };
 
                 case Ds2Control.READ_ERROR_MEMORY:
+                    if (practiceCar.ms43Faults) {
+                        // A non-M3 car's MS43, in the layout its own SGBD reads (practiceCar `ms43Faults`).
+                        const fs = practiceCar.ms43Faults;
+                        if (arg === 0x00) return { payload: new Uint8Array([fs.length]) };
+                        const out = [0x00];
+                        for (const f of fs) out.push(f.code, f.present ? 0x40 : 0x00, f.count, 0, 0, 0, 0, 0, 0, 0);
+                        return { payload: new Uint8Array(out) };
+                    }
                     return arg === 0x00
                         ? { payload: new Uint8Array([0x02, 0x00, 0x02, 0x00, 0x00]) } // quicktest
                         : { payload: faultPayload() };

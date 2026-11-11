@@ -40,6 +40,12 @@ export function standing(r: ScanResult, t: ReturnType<typeof useLang>['t']): { w
                     ? { word: t.scan_outcome.faults(entries.length), tone: 'text-red-400', rank: 0, entries }
                     : { word: t.scan_outcome.clean, tone: 'text-emerald-400', rank: 1, entries };
             }
+            // Read where the module's own SGBD reads it (engine faultLayouts): said, and said unconfirmed.
+            if (r.faults) {
+                return r.faults.length > 0
+                    ? { word: t.scan_outcome.faultsUnverified(r.faults.length), tone: 'text-red-400', rank: 0, entries: null }
+                    : { word: t.scan_outcome.cleanUnverified, tone: 'text-slate-400', rank: 2, entries: null };
+            }
             return { word: t.scan_outcome.undecoded, tone: 'text-slate-400', rank: 2, entries: null };
         case 'identified':
             return { word: t.scan_outcome.identified, tone: 'text-slate-400', rank: 2, entries: null };

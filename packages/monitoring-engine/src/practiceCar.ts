@@ -95,6 +95,12 @@ export interface PracticeCar {
      */
     dscMk60: { code: number; status: number }[] | null;
     /**
+     * A DME that is an MS43 (a non-M3 E46; the IDENT is `idents[0x12]`): its fault memory, answered in the
+     * MS43's own layout (fault-layouts.json `ms430ds0`: the count in the quick test, then 10-byte records —
+     * code, type bits with 0x40 "present now", frequency). Null: the DME answers as the M3's MSS54.
+     */
+    ms43Faults: { code: number; present: boolean; count: number }[] | null;
+    /**
      * What each address answers to its IDENT, where it matters (lib/variants). An address not listed
      * answers with `00`/`00`, which no group rule maps to anything this app carries.
      */
@@ -156,6 +162,7 @@ function defaults(): PracticeCar {
         // The owner's car (2026-11-10): a MK60 with one code stored. Its layout is ISO 14230's, which is
         // what the app reads it as; the real one has not answered yet.
         dscMk60: [{ code: 0x5d90, status: 0x24 }],
+        ms43Faults: null,
         idents: { ...M3_IDENTS },
         clusterVin: PRACTICE_VIN_SHORT,
         clusterVinReads: 0,

@@ -1,11 +1,11 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { mayActuate, whyNotSendable } from './actuationGate';
-import type { EcuIndex, EcuProfile } from './ecuCatalog';
-import { EMPTY_LEDGER } from './ledger';
-import { mayRun } from './runGate';
-import type { Telegram } from './telegrams';
+import { mayActuate, whyNotSendable } from './actuationGate.ts';
+import type { EcuIndex, EcuProfile } from './ecuCatalog.ts';
+import { EMPTY_LEDGER } from './ledger.ts';
+import { mayRun } from './runGate.ts';
+import type { Telegram } from './telegrams.ts';
 
 const DATA = path.resolve(import.meta.dirname, '..', '..', '..', 'public', 'ecu-data');
 const read = <T,>(f: string) => JSON.parse(readFileSync(path.join(DATA, f), 'utf-8')) as T;

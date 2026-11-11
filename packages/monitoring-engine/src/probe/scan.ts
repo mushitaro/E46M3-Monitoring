@@ -51,11 +51,11 @@
  * Pure apart from its deps, so the rules hold in a test with a simulated K-line.
  */
 import { isDs2Error, isPositiveResponse, toHex, type Ds2Frame, type RetryOptions } from '@tsunagi/ds2-core';
-import type { Ledger } from '../ledger';
-import { clusterVinShort } from '../clusterVin';
-import type { ModuleProtocol, ProtocolFrame } from '../moduleProtocol';
-import { mayRunProtocolRead, type RunBlockKey } from '../runGate';
-import { commonIdent, isM3, mayModuleBeSent, ruleFor, type Fitment, type Fitted, type VariantRules } from '../variants';
+import type { Ledger } from '../ledger.ts';
+import { clusterVinShort } from '../clusterVin.ts';
+import type { ModuleProtocol, ProtocolFrame } from '../moduleProtocol.ts';
+import { mayRunProtocolRead, type RunBlockKey } from '../runGate.ts';
+import { commonIdent, isM3, mayModuleBeSent, ruleFor, type Fitment, type Fitted, type VariantRules } from '../variants.ts';
 
 export interface ScanTarget {
     address: number;

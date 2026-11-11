@@ -1,5 +1,5 @@
-import { Ds2Error } from './errors';
-import type { LinkTiming } from './timing';
+import { Ds2Error } from './errors.ts';
+import type { LinkTiming } from './timing.ts';
 
 /**
  * The half of a byte transport that has nothing to do with how the bytes arrive.

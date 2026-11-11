@@ -10,8 +10,8 @@ import {
     operationFor,
     procedureOperation,
     reportsProgress,
-} from './jobOps';
-import type { CatalogJob, EcuProfile } from './ecuCatalog';
+} from './jobOps.ts';
+import type { CatalogJob, EcuProfile } from './ecuCatalog.ts';
 
 /**
  * These tests used to build fake `CatalogJob`s and assert what the classifier in

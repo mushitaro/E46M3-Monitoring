@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isIdentification, redactDeep, redactHex, redactResponse, redactRun, redactText } from './redact';
+import { isIdentification, redactDeep, redactHex, redactResponse, redactRun, redactText } from './redact.ts';
 
 /** The VIN, taken out of what the desk reads — in bytes, in words, and whole for an identity read. */
 

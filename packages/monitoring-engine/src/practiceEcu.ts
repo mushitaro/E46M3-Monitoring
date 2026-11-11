@@ -23,8 +23,8 @@ import {
     type LiveValueBlock,
 } from '@tsunagi/ds2-mss54';
 import { SimulatedSerialPort, type ExchangeBehavior, type SerialOptions, type SerialPortLike, type SimulatedEcuOptions } from '@tsunagi/ds2-core';
-import { KWP_FORMAT, KWP_TESTER, xorOf } from './kwpOnDs2';
-import { CLEAN, clusterVinAnswer, ds2IdentData, practiceCar } from './practiceCar';
+import { KWP_FORMAT, KWP_TESTER, xorOf } from './kwpOnDs2.ts';
+import { CLEAN, clusterVinAnswer, ds2IdentData, practiceCar } from './practiceCar.ts';
 
 const START = Date.now();
 

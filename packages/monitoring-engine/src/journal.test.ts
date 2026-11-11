@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { IDLE_MS, KEEP_MS, episodes, expired, expiresAt, rebaseMeta, toSession, unfound, type JournalEvent } from './journal';
+import { IDLE_MS, KEEP_MS, episodes, expired, expiresAt, rebaseMeta, toSession, unfound, type JournalEvent } from './journal.ts';
 
 const MIN = 60_000;
 /** 2026-11-04 09:00 UTC: a time the WORKS build can have recorded. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { classifyEchoMismatch } from './echo';
-import { Ds2Address, Ds2Status } from './frame';
+import { classifyEchoMismatch } from './echo.ts';
+import { Ds2Address, Ds2Status } from './frame.ts';
 
 // The request the tuner's captures were taken against: read I/O status block 6
 // from the DME.

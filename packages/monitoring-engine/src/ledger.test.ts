@@ -11,7 +11,7 @@ import {
     recordParkedObservation,
     withdrawn,
     type Ledger,
-} from './ledger';
+} from './ledger.ts';
 
 const ledgerWith = (records: Ledger['records']): Ledger => ({ version: 1, records });
 

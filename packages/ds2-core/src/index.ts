@@ -36,13 +36,13 @@ export {
     toHex,
     type Ds2Frame,
     type Ds2AddressValue,
-} from './frame';
+} from './frame.ts';
 
 export {
     classifyEchoMismatch,
     ELECTRICAL_FAULT_CHECKLIST,
     type EchoMismatchAnalysis,
-} from './echo';
+} from './echo.ts';
 
 export {
     calculateLoginKey,
@@ -53,7 +53,7 @@ export {
     DS2_DEFAULT_ACCESS_LEVEL,
     DS2_SEED_FRAME_LENGTH,
     DS2_ALREADY_UNLOCKED_LENGTH,
-} from './login';
+} from './login.ts';
 
 export {
     buildReadMemoryPayload,
@@ -63,7 +63,7 @@ export {
     isVerifyByteOk,
     DS2_MAX_WRITE_COUNT,
     type Ds2WriteResult,
-} from './memory';
+} from './memory.ts';
 
 export {
     decodeField,
@@ -72,25 +72,25 @@ export {
     minPayloadLength,
     type FieldDef,
     type FieldFormat,
-} from './blockDecoder';
+} from './blockDecoder.ts';
 
-export { Ds2Error, isDs2Error, type Ds2ErrorCode, type Ds2ErrorKind } from './errors';
+export { Ds2Error, isDs2Error, type Ds2ErrorCode, type Ds2ErrorKind } from './errors.ts';
 
 export {
     WebSerialTransport,
     RX_BUFFER_BYTES,
     DS2_SERIAL_DEFAULTS,
     type TransportOptions,
-} from './transport';
+} from './transport.ts';
 
-export type { Ds2ByteTransport } from './byteTransport';
+export type { Ds2ByteTransport } from './byteTransport.ts';
 
 export {
     WebUsbFtdiTransport,
     FtdiLineError,
     FTDI_DATA_8E1_TX_BREAK,
     FTDI_VENDOR_ID,
-} from './webUsbFtdiTransport';
+} from './webUsbFtdiTransport.ts';
 
 export {
     createDs2Transport,
@@ -100,10 +100,10 @@ export {
     latencyTimerOf,
     type TransportKind,
     type TransportEnv,
-} from './transportSelect';
+} from './transportSelect.ts';
 
-export { isWebUsbSupported, getUsb } from './webUsbTypes';
-export type { USBDevice, USBLike, USBConnectionEvent } from './webUsbTypes';
+export { isWebUsbSupported, getUsb } from './webUsbTypes.ts';
+export type { USBDevice, USBLike, USBConnectionEvent } from './webUsbTypes.ts';
 
 export {
     Ds2Link,
@@ -113,9 +113,9 @@ export {
     type Ds2Target,
     type RetryOptions,
     type SendGuard,
-} from './link';
+} from './link.ts';
 
-export { isWebSerialSupported, getSerial } from './webSerialTypes';
+export { isWebSerialSupported, getSerial } from './webSerialTypes.ts';
 export type {
     SerialPortLike,
     SerialLike,
@@ -123,9 +123,9 @@ export type {
     SerialOutputSignals,
     SerialPortInfo,
     SerialPortFilter,
-} from './webSerialTypes';
+} from './webSerialTypes.ts';
 
-export type { LinkTiming } from './timing';
+export type { LinkTiming } from './timing.ts';
 
 // Test-time only, but exported so the app's own integration tests can drive the
 // real stack too. Simulating the DEVICE beats mocking the link.
@@ -139,7 +139,7 @@ export {
     type SimulatedEcuOptions,
     type SimulatedDevice,
     type TraceEntry,
-} from './simulator';
+} from './simulator.ts';
 
 // The FTDI bench, for the same reason: the packet framing is the part of the WebUSB backend that
 // cannot be checked by reading it.
@@ -148,4 +148,4 @@ export {
     SimulatedUsb,
     type SimulatedFtdiOptions,
     type ControlRecord,
-} from './ftdiSimulator';
+} from './ftdiSimulator.ts';

@@ -11,8 +11,8 @@
  * protocol core and with the timing constants surfaced as options.
  */
 
-import type { Ds2ByteTransport } from './byteTransport';
-import { Ds2Error } from './errors';
+import type { Ds2ByteTransport } from './byteTransport.ts';
+import { Ds2Error } from './errors.ts';
 import {
     DS2_MIN_FRAME_LENGTH,
     Ds2Control,
@@ -23,8 +23,8 @@ import {
     parseDs2Frame,
     toHex,
     type Ds2Frame,
-} from './frame';
-import { classifyEchoMismatch } from './echo';
+} from './frame.ts';
+import { classifyEchoMismatch } from './echo.ts';
 import {
     DS2_DEFAULT_ACCESS_LEVEL,
     buildKeyPayload,
@@ -32,8 +32,8 @@ import {
     calculateLoginKey,
     isAlreadyUnlockedResponse,
     isSeedResponse,
-} from './login';
-import type { LinkTiming } from './timing';
+} from './login.ts';
+import type { LinkTiming } from './timing.ts';
 
 /**
  * Every timing constant, in one overridable object.

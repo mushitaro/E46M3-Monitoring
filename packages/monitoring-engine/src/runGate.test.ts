@@ -3,17 +3,17 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { Ds2Control, Ds2Status, buildDs2Frame, toHex } from '@tsunagi/ds2-core';
 import { MSS54_ADAPTATION_BLOCKS } from '@tsunagi/ds2-mss54';
-import { practiceEcu } from './practiceEcu';
+import { practiceEcu } from './practiceEcu.ts';
 import {
     READ_ONLY_CONTROLS,
     clearFaultsCommand,
     mayRun,
     mayRunProtocolRead,
     telegramBytes,
-} from './runGate';
-import { EMPTY_LEDGER, type Ledger } from './ledger';
-import { bestTelegram, type Telegram, type TelegramTable } from './telegrams';
-import type { CatalogJob, EcuProfile } from './ecuCatalog';
+} from './runGate.ts';
+import { EMPTY_LEDGER, type Ledger } from './ledger.ts';
+import { bestTelegram, type Telegram, type TelegramTable } from './telegrams.ts';
+import type { CatalogJob, EcuProfile } from './ecuCatalog.ts';
 
 const DATA = path.resolve(import.meta.dirname, '..', '..', '..', 'public', 'ecu-data');
 const MODULES = ['mss54', 'smg2', 'dsc_e46'] as const;

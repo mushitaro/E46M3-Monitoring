@@ -6,7 +6,7 @@
  * of this text and must not reach into a screen to write it.
  */
 import type { ChannelId } from '@tsunagi/ds2-mss54';
-import type { CommsLogLine, LiveSample } from './link/types';
+import type { CommsLogLine, LiveSample } from './link/types.ts';
 
 /**
  * One comms-log line as text. Shared with the saved sessions and the error records

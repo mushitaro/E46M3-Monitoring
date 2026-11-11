@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Ds2Link, DS2_DEFAULT_TIMINGS } from './link';
-import { WebSerialTransport } from './transport';
-import { WebUsbFtdiTransport } from './webUsbFtdiTransport';
-import { simulatedFtdiEcu, simulatedPort, type ExchangeBehavior, type TraceEntry } from './simulator';
-import { Ds2Address, Ds2Control, Ds2Status, toHex } from './frame';
-import { isDs2Error } from './errors';
+import { Ds2Link, DS2_DEFAULT_TIMINGS } from './link.ts';
+import { WebSerialTransport } from './transport.ts';
+import { WebUsbFtdiTransport } from './webUsbFtdiTransport.ts';
+import { simulatedFtdiEcu, simulatedPort, type ExchangeBehavior, type TraceEntry } from './simulator.ts';
+import { Ds2Address, Ds2Control, Ds2Status, toHex } from './frame.ts';
+import { isDs2Error } from './errors.ts';
 
 /**
  * Every test here drives the REAL transport and Ds2Link against a simulated device. Nothing is

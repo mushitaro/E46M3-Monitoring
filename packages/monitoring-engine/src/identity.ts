@@ -7,10 +7,10 @@
  * the link then sends IDENTs only where every candidate's own table carries the common one, and
  * nothing else to any module (fails closed).
  */
-import { loadEcuIndex } from './ecuCatalog';
-import { moduleProtocol } from './moduleProtocol';
-import { loadTelegrams } from './telegrams';
-import { identAddresses, loadVariantRules, NO_RULES, type VariantRules } from './variants';
+import { loadEcuIndex } from './ecuCatalog.ts';
+import { moduleProtocol } from './moduleProtocol.ts';
+import { loadTelegrams } from './telegrams.ts';
+import { identAddresses, loadVariantRules, NO_RULES, type VariantRules } from './variants.ts';
 
 export interface Identity {
     rules: VariantRules;

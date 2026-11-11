@@ -3,8 +3,8 @@
  * D_0032's nested branch and its "XYZ"), cut down to a few rows, for tests that must run on a clone
  * without the private data. The codes are the ones the practice cars answer with (lib/practiceCar).
  */
-import { ds2IdentData, type PracticeIdent } from '../practiceCar';
-import type { VariantRules } from '../variants';
+import { ds2IdentData, type PracticeIdent } from '../practiceCar.ts';
+import type { VariantRules } from '../variants.ts';
 
 export const FIXTURE_RULES: VariantRules = {
     schema: 1,

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { Ds2Error, toHex, type Ds2ByteTransport } from '@tsunagi/ds2-core';
-import { kwpExchange, kwpFrameOf, kwpRequest, parseDtcsByStatus, xorOf } from './kwpOnDs2';
-import { moduleProtocol } from './moduleProtocol';
-import { practiceKwpAnswer } from './practiceEcu';
-import { practiceCar, resetPracticeCar } from './practiceCar';
-import type { TelegramTable } from './telegrams';
+import { kwpExchange, kwpFrameOf, kwpRequest, parseDtcsByStatus, xorOf } from './kwpOnDs2.ts';
+import { moduleProtocol } from './moduleProtocol.ts';
+import { practiceKwpAnswer } from './practiceEcu.ts';
+import { practiceCar, resetPracticeCar } from './practiceCar.ts';
+import type { TelegramTable } from './telegrams.ts';
 
 /**
  * DSC MK60's frames (lib/kwpOnDs2). The bytes on the wire are pinned to the SGBD's own execution

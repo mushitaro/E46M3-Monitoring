@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { appNow, isAnchored, learnServerTime, onAnchor, resetClock } from './clock';
+import { appNow, isAnchored, learnServerTime, onAnchor, resetClock } from './clock.ts';
 
 afterEach(resetClock);
 

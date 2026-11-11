@@ -12,7 +12,7 @@
  * business importing.
  */
 
-import { Ds2Error } from './errors';
+import { Ds2Error } from './errors.ts';
 
 /**
  * DS2 slave addresses for the E46 M3 modules this project speaks to.

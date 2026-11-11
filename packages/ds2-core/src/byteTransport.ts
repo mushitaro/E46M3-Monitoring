@@ -1,4 +1,4 @@
-import type { LinkTiming } from './timing';
+import type { LinkTiming } from './timing.ts';
 
 /**
  * The contract `Ds2Link` needs from whatever moves bytes.

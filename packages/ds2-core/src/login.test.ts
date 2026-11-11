@@ -8,8 +8,8 @@ import {
     calculateLoginKey,
     isAlreadyUnlockedResponse,
     isSeedResponse,
-} from './login';
-import { Ds2Address, Ds2Status, buildDs2Frame, parseDs2Frame, toHex } from './frame';
+} from './login.ts';
+import { Ds2Address, Ds2Status, buildDs2Frame, parseDs2Frame, toHex } from './frame.ts';
 
 /**
  * Builds a 46-byte seed frame with known bytes at the four offset triples the

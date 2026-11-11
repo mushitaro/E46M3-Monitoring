@@ -17,10 +17,10 @@
  * and a layout guessed from the MSS54's would be a reading of fiction.
  */
 
-import { CLUSTER_VIN_BLOCK, CLUSTER_VIN_CONTROL, CLUSTER_VIN_JOBS } from './clusterVin';
-import { kwpFrameOf, type KwpFrame } from './kwpOnDs2';
-import { telegramBytes } from './runGate';
-import type { TelegramTable } from './telegrams';
+import { CLUSTER_VIN_BLOCK, CLUSTER_VIN_CONTROL, CLUSTER_VIN_JOBS } from './clusterVin.ts';
+import { kwpFrameOf, type KwpFrame } from './kwpOnDs2.ts';
+import { telegramBytes } from './runGate.ts';
+import type { TelegramTable } from './telegrams.ts';
 
 /** One frame the app may send to this module, with where it came from. */
 export interface ProtocolFrame {

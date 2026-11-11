@@ -28,7 +28,7 @@
  * fails closed: no address is cleared, so only IDENTs go.
  */
 
-import { readEcuData } from './ecuData';
+import { readEcuData } from './ecuData.ts';
 
 /** A slice of the answer: `[start, length]` into the whole frame (address, length, status, data, checksum). */
 export type Slice = readonly [number, number];

@@ -33,7 +33,7 @@
  * different counts, and the sentence used the wrong one.)
  */
 
-import { readEcuData } from './ecuData';
+import { readEcuData } from './ecuData.ts';
 
 export type TelegramConfidence = 'single' | 'multiple' | 'shared';
 

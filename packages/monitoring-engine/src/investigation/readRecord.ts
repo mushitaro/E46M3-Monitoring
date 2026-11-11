@@ -6,7 +6,7 @@
  * The shape is shared by the tab (lib/sync/readRecords), the route that stores it
  * (functions/api/reads) and the desk Worker that reads it back, so all three agree on it. Pure.
  */
-import type { Motion } from '../vehicleState';
+import type { Motion } from '../vehicleState.ts';
 
 export type ReadOutcome = 'ok' | 'rejected' | 'failed';
 

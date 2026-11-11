@@ -63,10 +63,10 @@
  */
 
 import { Ds2Control } from '@tsunagi/ds2-core';
-import type { CatalogJob } from './ecuCatalog';
-import { mayReadWhileMoving, mayRunOnVehicle, withdrawn, type Ledger } from './ledger';
-import { telegramIsCertain, type Telegram } from './telegrams';
-import type { Motion } from './vehicleState';
+import type { CatalogJob } from './ecuCatalog.ts';
+import { mayReadWhileMoving, mayRunOnVehicle, withdrawn, type Ledger } from './ledger.ts';
+import { telegramIsCertain, type Telegram } from './telegrams.ts';
+import type { Motion } from './vehicleState.ts';
 
 /**
  * Control bytes that read and do not write.

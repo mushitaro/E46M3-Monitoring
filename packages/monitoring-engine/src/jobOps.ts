@@ -30,7 +30,7 @@
  * all.
  */
 
-import type { Actor, CatalogJob, JobOperationData, ResultDelivery, Termination } from './ecuCatalog';
+import type { Actor, CatalogJob, JobOperationData, ResultDelivery, Termination } from './ecuCatalog.ts';
 
 /**
  * The operation shapes, and why each is distinct.

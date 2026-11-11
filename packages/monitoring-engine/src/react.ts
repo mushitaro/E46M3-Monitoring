@@ -11,8 +11,8 @@
  * `useDs2Link`.
  */
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { KEEP_ALIVE_INTERVAL_MS, LinkSession, type LinkHandlers, type LinkSnapshot } from './link/session';
-import type { ModuleProtocol } from './moduleProtocol';
+import { KEEP_ALIVE_INTERVAL_MS, LinkSession, type LinkHandlers, type LinkSnapshot } from './link/session.ts';
+import type { ModuleProtocol } from './moduleProtocol.ts';
 
 /**
  * One session for the component's life. `target` and the handlers are read at send time, so they

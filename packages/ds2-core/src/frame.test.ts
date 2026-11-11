@@ -10,8 +10,8 @@ import {
     isPositiveResponse,
     parseDs2Frame,
     toHex,
-} from './frame';
-import { Ds2Error } from './errors';
+} from './frame.ts';
+import { Ds2Error } from './errors.ts';
 
 describe('ds2Checksum', () => {
     it('is the XOR of every byte', () => {

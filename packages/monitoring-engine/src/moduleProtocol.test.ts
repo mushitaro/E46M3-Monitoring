@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { moduleProtocol, noProtocol } from './moduleProtocol';
-import type { TelegramTable } from './telegrams';
-import { HAVE_SHIPPED_DATA, readShipped } from './testing/shipped';
-import type { EcuIndex } from './ecuCatalog';
+import { moduleProtocol, noProtocol } from './moduleProtocol.ts';
+import type { TelegramTable } from './telegrams.ts';
+import { HAVE_SHIPPED_DATA, readShipped } from './testing/shipped.ts';
+import type { EcuIndex } from './ecuCatalog.ts';
 
 const table = (address: number, jobs: Record<string, string[]>): TelegramTable => ({
     module: 'x',

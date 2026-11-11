@@ -22,8 +22,8 @@
  * 2026-11-02). Pure: the store is lib/sync/journalStore.ts and the recording is the shell's.
  */
 import type { ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
-import { PLAUSIBLE_FROM } from './clock';
-import { sessionLabel, type FailureNote, type SavedSession } from './sync/session';
+import { PLAUSIBLE_FROM } from './clock.ts';
+import { sessionLabel, type FailureNote, type SavedSession } from './sync/session.ts';
 
 /** Nothing recorded for this long ends an episode. */
 export const IDLE_MS = 10 * 60_000;

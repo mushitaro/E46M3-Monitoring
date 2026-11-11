@@ -7,7 +7,7 @@
  * failing.
  */
 
-import type { Clause, Judge, Op } from './plan';
+import type { Clause, Judge, Op } from './plan.ts';
 
 export type Values = Readonly<Record<string, number | null | undefined>>;
 

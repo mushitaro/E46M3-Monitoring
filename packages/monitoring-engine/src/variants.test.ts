@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { Ds2Address, Ds2Link, WebSerialTransport, isDs2Error, simulatedPort, toHex } from '@tsunagi/ds2-core';
 import { blockBySelection, liveBlockRequest } from '@tsunagi/ds2-mss54';
-import type { EcuIndex } from './ecuCatalog';
-import { moduleProtocol } from './moduleProtocol';
-import { kombiIdentData, M3_IDENTS, NON_M3_IDENTS, practiceCar, resetPracticeCar, type PracticeIdent } from './practiceCar';
-import { practiceBus } from './practiceEcu';
-import type { TelegramTable } from './telegrams';
-import { HAVE_SHIPPED_DATA, readShipped } from './testing/shipped';
-import { FIXTURE_MODULES, FIXTURE_RULES, FIXTURE_RULES_KOMBI, identFrame } from './testing/variantFixture';
+import type { EcuIndex } from './ecuCatalog.ts';
+import { moduleProtocol } from './moduleProtocol.ts';
+import { kombiIdentData, M3_IDENTS, NON_M3_IDENTS, practiceCar, resetPracticeCar, type PracticeIdent } from './practiceCar.ts';
+import { practiceBus } from './practiceEcu.ts';
+import type { TelegramTable } from './telegrams.ts';
+import { HAVE_SHIPPED_DATA, readShipped } from './testing/shipped.ts';
+import { FIXTURE_MODULES, FIXTURE_RULES, FIXTURE_RULES_KOMBI, identFrame } from './testing/variantFixture.ts';
 import {
     commonIdent,
     fittedFrom,
@@ -20,7 +20,7 @@ import {
     type Fitted,
     type GroupRule,
     type VariantRules,
-} from './variants';
+} from './variants.ts';
 
 /**
  * Which module is at an address, and what may be sent to it before and after it has said so.

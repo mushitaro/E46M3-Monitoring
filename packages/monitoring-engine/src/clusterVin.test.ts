@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { CLUSTER_VIN_JOBS, CLUSTER_VIN_UNVERIFIED, clusterVinShort } from './clusterVin';
-import { moduleProtocol } from './moduleProtocol';
-import { clusterVinAnswer, PRACTICE_VIN_SHORT } from './practiceCar';
-import type { EcuIndex } from './ecuCatalog';
-import type { TelegramTable } from './telegrams';
-import { HAVE_SHIPPED_DATA, readShipped } from './testing/shipped';
+import { CLUSTER_VIN_JOBS, CLUSTER_VIN_UNVERIFIED, clusterVinShort } from './clusterVin.ts';
+import { moduleProtocol } from './moduleProtocol.ts';
+import { clusterVinAnswer, PRACTICE_VIN_SHORT } from './practiceCar.ts';
+import type { EcuIndex } from './ecuCatalog.ts';
+import type { TelegramTable } from './telegrams.ts';
+import { HAVE_SHIPPED_DATA, readShipped } from './testing/shipped.ts';
 
 /**
  * The instrument cluster's VIN read (operator, 2026-11-10): where KOMBI46's and KOMBI46R's own SGBDs

@@ -102,9 +102,11 @@ MSS54 の表と解読は `packages/ds2-mss54`。エンジンはこの二つに�
    三つ全部。ビルドなしの TS（`exports` は `src/*.ts`）。
 4. 起動のはじめに一度、`configureEcuData(...)`（§4）。
 
-注意（未確認）：エンジンの相対 import は拡張子なし（`'./runGate'`）で、Next・vitest・`tsc`（`moduleResolution:
-bundler`）では通るが、`node --experimental-strip-types --test` では解決できない。GREN BLUE の `node --test`
-の試験からエンジンを直接 import するなら、vitest で回すか、拡張子をそろえる別の変更が要る。
+エンジンと `@tsunagi/ds2-core`・`@tsunagi/ds2-mss54` の相対 import は `.ts` を名指し、構文は消すだけの TypeScript
+（`erasableSyntaxOnly`・`verbatimModuleSyntax`。各パッケージの `tsconfig.json` が GREN BLUE の設定と同じ）なので、
+バンドラなしの `node --experimental-strip-types --test` からも読める（`boundary.test.ts` が Node で入口を読み込んで
+確かめる）。各パッケージの `npm run typecheck` は試験を除いて型を見る（GREN BLUE には vitest が無いため）。
+`"test"` の script は置かない：GREN BLUE の `npm test --workspaces` に私たちの vitest の試験を走らせないため。
 
 ### 点検報告 `e46.intake-check.v1`
 

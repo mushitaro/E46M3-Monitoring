@@ -1,11 +1,11 @@
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { configureEcuData, fetchEcuDataFromPage, type EcuDataLoader } from '../ecuData';
-import type { EcuIndex } from '../ecuCatalog';
-import { moduleProtocol } from '../moduleProtocol';
-import { practiceCar, resetPracticeCar } from '../practiceCar';
-import type { TelegramTable } from '../telegrams';
-import { HAVE_SHIPPED_DATA, readShipped } from '../testing/shipped';
-import { LinkSession, type LinkSnapshot } from './session';
+import { configureEcuData, fetchEcuDataFromPage, type EcuDataLoader } from '../ecuData.ts';
+import type { EcuIndex } from '../ecuCatalog.ts';
+import { moduleProtocol } from '../moduleProtocol.ts';
+import { practiceCar, resetPracticeCar } from '../practiceCar.ts';
+import type { TelegramTable } from '../telegrams.ts';
+import { HAVE_SHIPPED_DATA, readShipped } from '../testing/shipped.ts';
+import { LinkSession, type LinkSnapshot } from './session.ts';
 
 /**
  * The link session with no screen: what the app's hook and another app's screens drive. Run here

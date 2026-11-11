@@ -15,7 +15,7 @@
  * SMG (0x32) and DSC (0x56).
  */
 
-import { Ds2Status } from './frame';
+import { Ds2Status } from './frame.ts';
 
 export interface EchoMismatchAnalysis {
     /** Byte offset at which `got` best lines up with `sent` (0 = same position, 1 = one byte lost). */

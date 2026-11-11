@@ -6,12 +6,12 @@
  * reads). A module missing from the index stays out of the map, and the executor refuses its steps
  * as `unknown module` rather than guessing an address.
  */
-import { jobIndex, loadEcuCatalog, type EcuIndex } from '../ecuCatalog';
-import { moduleProtocol } from '../moduleProtocol';
-import { bestTelegram, loadTelegrams } from '../telegrams';
-import type { ProbeModule } from './executor';
-import { modulesOf, type ProbeStep } from './plan';
-import { scanTargets, type ScanTarget } from './scan';
+import { jobIndex, loadEcuCatalog, type EcuIndex } from '../ecuCatalog.ts';
+import { moduleProtocol } from '../moduleProtocol.ts';
+import { bestTelegram, loadTelegrams } from '../telegrams.ts';
+import type { ProbeModule } from './executor.ts';
+import { modulesOf, type ProbeStep } from './plan.ts';
+import { scanTargets, type ScanTarget } from './scan.ts';
 
 export async function loadProbeModules(steps: readonly ProbeStep[], index: EcuIndex): Promise<Map<string, ProbeModule>> {
     const ids = [...new Set(['mss54', ...modulesOf(steps)])];

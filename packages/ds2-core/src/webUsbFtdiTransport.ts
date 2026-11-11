@@ -1,13 +1,13 @@
-import { BufferedByteTransport, delay, now } from './bufferedByteTransport';
-import type { Ds2ByteTransport } from './byteTransport';
-import { Ds2Error } from './errors';
+import { BufferedByteTransport, delay, now } from './bufferedByteTransport.ts';
+import type { Ds2ByteTransport } from './byteTransport.ts';
+import { Ds2Error } from './errors.ts';
 import {
     getUsb,
     isWebUsbSupported,
     type USBConnectionEvent,
     type USBDevice,
     type USBInTransferResult,
-} from './webUsbTypes';
+} from './webUsbTypes.ts';
 
 /**
  * The FTDI vendor protocol over WebUSB — the Android backend.

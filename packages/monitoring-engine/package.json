@@ -12,6 +12,9 @@
   },
   "main": "./src/index.ts",
   "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
   "dependencies": {
     "@tsunagi/ds2-core": "0.1.0",
     "@tsunagi/ds2-mss54": "0.1.0",

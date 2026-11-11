@@ -39,11 +39,11 @@
  * claimed about a simulator, and refusing it here would be inventing a rule the
  * app never told the operator about.
  */
-import type { CatalogJob } from './ecuCatalog';
-import type { Ledger } from './ledger';
-import { mayRun, READ_ONLY_CONTROLS, telegramBytes, type RunVerdict } from './runGate';
-import type { Telegram } from './telegrams';
-import type { Motion } from './vehicleState';
+import type { CatalogJob } from './ecuCatalog.ts';
+import type { Ledger } from './ledger.ts';
+import { mayRun, READ_ONLY_CONTROLS, telegramBytes, type RunVerdict } from './runGate.ts';
+import type { Telegram } from './telegrams.ts';
+import type { Motion } from './vehicleState.ts';
 
 export type ActuationMode = 'vehicle' | 'practice';
 

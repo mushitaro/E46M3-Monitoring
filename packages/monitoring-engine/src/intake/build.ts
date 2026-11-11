@@ -17,11 +17,11 @@
  *     with no decoder (its bytes are kept on the module, `faultRaw`).
  */
 import { formatErrorCode, type ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
-import { vinsInHex } from '../investigation/redact';
-import type { ScanResult, ScanRun } from '../probe/scan';
-import { telegramBytes } from '../runGate';
-import { isCommonIdent } from '../variants';
-import { INTAKE_CHECK_SCHEMA, intakeCheckReport, type IntakeCheckReport, type IntakeFinding, type IntakeIdent, type IntakeModule } from './intakeCheck';
+import { vinsInHex } from '../investigation/redact.ts';
+import type { ScanResult, ScanRun } from '../probe/scan.ts';
+import { telegramBytes } from '../runGate.ts';
+import { isCommonIdent } from '../variants.ts';
+import { INTAKE_CHECK_SCHEMA, intakeCheckReport, type IntakeCheckReport, type IntakeFinding, type IntakeIdent, type IntakeModule } from './intakeCheck.ts';
 
 export const PRODUCER_APP = 'E46M3 /// MONITORING';
 

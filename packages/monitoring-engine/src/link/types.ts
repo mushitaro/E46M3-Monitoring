@@ -8,7 +8,7 @@
  */
 import type { Ds2ErrorKind, TransportKind } from '@tsunagi/ds2-core';
 import type { ChannelId, DecodedAdaptation } from '@tsunagi/ds2-mss54';
-import type { KwpDtc } from '../kwpOnDs2';
+import type { KwpDtc } from '../kwpOnDs2.ts';
 
 export type LinkState = 'disconnected' | 'connecting' | 'connected' | 'busy' | 'logging';
 export type LinkMode = 'vehicle' | 'practice';

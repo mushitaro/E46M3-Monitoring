@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { Ds2Error, Ds2Status, type Ds2Frame } from '@tsunagi/ds2-core';
-import { EMPTY_LEDGER, type Ledger } from '../ledger';
-import { moduleProtocol } from '../moduleProtocol';
-import { clusterVinAnswer, kombiIdentData, M3_IDENTS, NON_M3_IDENTS, PRACTICE_VIN_SHORT, type PracticeIdent } from '../practiceCar';
-import type { TelegramTable } from '../telegrams';
-import { FIXTURE_MODULES, FIXTURE_RULES, FIXTURE_RULES_KOMBI, identFrame } from '../testing/variantFixture';
-import { fittedFrom, type Fitted, type VariantRules } from '../variants';
-import { runScan, scanTargets, type ScanDeps } from './scan';
+import { EMPTY_LEDGER, type Ledger } from '../ledger.ts';
+import { moduleProtocol } from '../moduleProtocol.ts';
+import { clusterVinAnswer, kombiIdentData, M3_IDENTS, NON_M3_IDENTS, PRACTICE_VIN_SHORT, type PracticeIdent } from '../practiceCar.ts';
+import type { TelegramTable } from '../telegrams.ts';
+import { FIXTURE_MODULES, FIXTURE_RULES, FIXTURE_RULES_KOMBI, identFrame } from '../testing/variantFixture.ts';
+import { fittedFrom, type Fitted, type VariantRules } from '../variants.ts';
+import { runScan, scanTargets, type ScanDeps } from './scan.ts';
 
 /**
  * The all-module scan: which frames each address may be sent, and what it does when the car moves,

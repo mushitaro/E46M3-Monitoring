@@ -1,0 +1,20 @@
+{
+  "//": "The same settings GREN BLUE type-checks its own workspace packages with (verbatimModuleSyntax, explicit .ts imports), so this package passes there too. The tests (vitest) are left to the root tsconfig, which checks them with the app; GREN BLUE has no vitest.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx",
+    "types": ["node"]
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"]
+}

@@ -40,8 +40,8 @@
  * not shown is a made-up correspondence between them.
  */
 
-import { readEcuData } from './ecuData';
-import { humanName, type HumanName } from './humanName';
+import { readEcuData } from './ecuData.ts';
+import { humanName, type HumanName } from './humanName.ts';
 
 export type { HumanName };
 
@@ -447,7 +447,7 @@ export interface EcuIndex {
 }
 
 /** Re-exported so `jobOps` stays the one place that names the operation shapes. */
-import type { OpKind } from './jobOps';
+import type { OpKind } from './jobOps.ts';
 export type { OpKind };
 
 // ---------------------------------------------------------------------------

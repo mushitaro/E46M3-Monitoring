@@ -6,8 +6,8 @@ import {
     describeVerifyByte,
     isVerifyByteOk,
     parseWriteResult,
-} from './memory';
-import { Ds2Address, Ds2Control, Ds2Status, buildDs2Frame, parseDs2Frame, toHex } from './frame';
+} from './memory.ts';
+import { Ds2Address, Ds2Control, Ds2Status, buildDs2Frame, parseDs2Frame, toHex } from './frame.ts';
 
 describe('buildReadMemoryPayload', () => {
     it('lays out [segment, addr24 big-endian, count]', () => {

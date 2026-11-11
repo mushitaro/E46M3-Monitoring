@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { VEHICLE_STATE_MAX_AGE_MS, motionOf, vehicleStateFrom } from './vehicleState';
+import { VEHICLE_STATE_MAX_AGE_MS, motionOf, vehicleStateFrom } from './vehicleState.ts';
 
 const at = 1_000_000;
 const state = (speedKmh: number | null, speedCanKmh: number | null) => ({ speedKmh, speedCanKmh, rpm: null, voltageV: null, at });

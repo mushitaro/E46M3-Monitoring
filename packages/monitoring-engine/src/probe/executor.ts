@@ -35,14 +35,14 @@ import {
     type ChannelId,
     type LiveValueBlock,
 } from '@tsunagi/ds2-mss54';
-import type { CatalogJob } from '../ecuCatalog';
-import type { Ledger } from '../ledger';
-import type { ModuleProtocol } from '../moduleProtocol';
-import { mayRun, mayRunProtocolRead, telegramBytes, type RunBlockKey } from '../runGate';
-import type { Telegram } from '../telegrams';
-import { motionOf, vehicleStateFrom, type Motion } from '../vehicleState';
-import { holds, judge, type JudgeResult, type ProbeSample } from './criteria';
-import { ramSegment, type Judge, type ProbeStep } from './plan';
+import type { CatalogJob } from '../ecuCatalog.ts';
+import type { Ledger } from '../ledger.ts';
+import type { ModuleProtocol } from '../moduleProtocol.ts';
+import { mayRun, mayRunProtocolRead, telegramBytes, type RunBlockKey } from '../runGate.ts';
+import type { Telegram } from '../telegrams.ts';
+import { motionOf, vehicleStateFrom, type Motion } from '../vehicleState.ts';
+import { holds, judge, type JudgeResult, type ProbeSample } from './criteria.ts';
+import { ramSegment, type Judge, type ProbeStep } from './plan.ts';
 
 const SPEED_CHANNELS: ChannelId[] = ['19:v' as ChannelId, '19:v_asc' as ChannelId];
 /** Live-lane transport failures in a row that end the run: the cable or the DME has gone. */

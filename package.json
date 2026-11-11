@@ -14,7 +14,7 @@
     "build:e2e": "NEXT_PUBLIC_MONITORING_E2E=1 npm run build:preview",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && npm run typecheck --workspaces --if-present",
     "test": "vitest run",
     "test:watch": "vitest",
     "gate:verify": "node scripts/gate-verify.mjs --functions functions --client src/lib/sync/owner-sync.ts",

@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { Ds2Address, Ds2Link, WebSerialTransport, simulatedPort } from '@tsunagi/ds2-core';
 import { blockBySelection, channelId, decodeLiveBlock, liveBlockRequest } from '@tsunagi/ds2-mss54';
-import { moduleProtocol } from './moduleProtocol';
-import { practiceBus } from './practiceEcu';
-import type { TelegramTable } from './telegrams';
-import { HAVE_SHIPPED_DATA, readShipped } from './testing/shipped';
-import type { EcuIndex } from './ecuCatalog';
-import { motionOf, vehicleStateFrom } from './vehicleState';
+import { moduleProtocol } from './moduleProtocol.ts';
+import { practiceBus } from './practiceEcu.ts';
+import type { TelegramTable } from './telegrams.ts';
+import { HAVE_SHIPPED_DATA, readShipped } from './testing/shipped.ts';
+import type { EcuIndex } from './ecuCatalog.ts';
+import { motionOf, vehicleStateFrom } from './vehicleState.ts';
 
 /**
  * The frames a module's own SGBD gives the app, sent the way the app sends them, over PRACTICE.

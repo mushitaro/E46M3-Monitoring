@@ -57,21 +57,21 @@ import {
     type ErrorMemoryEntry,
     type ErrorMemoryQuickTest,
 } from '@tsunagi/ds2-mss54';
-import { appNow } from '../clock';
-import { kwpExchange, parseDtcsByStatus, type KwpFrame } from '../kwpOnDs2';
-import { whyNotSendable } from '../actuationGate';
-import type { ReadRecord } from '../investigation/readRecord';
-import type { ModuleProtocol } from '../moduleProtocol';
-import { PracticePort } from '../practiceEcu';
-import { practiceCar } from '../practiceCar';
-import { runProbe, type ProbeDeps, type ProbePlan, type ProbeRun } from '../probe/executor';
-import { modulesOf } from '../probe/plan';
-import { runScan, type ScanRun, type ScanTarget } from '../probe/scan';
-import { CLUSTER_VIN_UNVERIFIED } from '../clusterVin';
-import { EMPTY_IDENTITY, loadIdentity, type Identity } from '../identity';
-import { DME_ADDRESS, commonIdent, fittedFrom, frameVerdict, isCommonIdent, isM3, mayModuleBeSent, ruleFor, type Fitment, type Fitted } from '../variants';
-import type { Ledger } from '../ledger';
-import { clearFaultsCommand, telegramBytes, type SendRequirement } from '../runGate';
+import { appNow } from '../clock.ts';
+import { kwpExchange, parseDtcsByStatus, type KwpFrame } from '../kwpOnDs2.ts';
+import { whyNotSendable } from '../actuationGate.ts';
+import type { ReadRecord } from '../investigation/readRecord.ts';
+import type { ModuleProtocol } from '../moduleProtocol.ts';
+import { PracticePort } from '../practiceEcu.ts';
+import { practiceCar } from '../practiceCar.ts';
+import { runProbe, type ProbeDeps, type ProbePlan, type ProbeRun } from '../probe/executor.ts';
+import { modulesOf } from '../probe/plan.ts';
+import { runScan, type ScanRun, type ScanTarget } from '../probe/scan.ts';
+import { CLUSTER_VIN_UNVERIFIED } from '../clusterVin.ts';
+import { EMPTY_IDENTITY, loadIdentity, type Identity } from '../identity.ts';
+import { DME_ADDRESS, commonIdent, fittedFrom, frameVerdict, isCommonIdent, isM3, mayModuleBeSent, ruleFor, type Fitment, type Fitted } from '../variants.ts';
+import type { Ledger } from '../ledger.ts';
+import { clearFaultsCommand, telegramBytes, type SendRequirement } from '../runGate.ts';
 import {
     VEHICLE_STATE_MAX_AGE_MS,
     motionOf,
@@ -79,7 +79,7 @@ import {
     type LiveValues,
     type Motion,
     type VehicleState,
-} from '../vehicleState';
+} from '../vehicleState.ts';
 import type {
     AdaptationRead,
     CommsLogLine,
@@ -90,7 +90,7 @@ import type {
     LiveSample,
     ParkedObservation,
     RawFaultRead,
-} from './types';
+} from './types.ts';
 
 /** How often the hook calls `heartbeat`. */
 export const KEEP_ALIVE_INTERVAL_MS = 2000;

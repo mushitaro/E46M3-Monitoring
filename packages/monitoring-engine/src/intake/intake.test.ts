@@ -4,15 +4,15 @@ import { describe, expect, it } from 'vitest';
 import { Ds2Error, Ds2Status, type Ds2Frame } from '@tsunagi/ds2-core';
 import type { ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
 import { z } from 'zod';
-import { EMPTY_LEDGER } from '../ledger';
-import { moduleProtocol } from '../moduleProtocol';
-import { M3_IDENTS, NON_M3_IDENTS, PRACTICE_PART_NUMBER, type PracticeIdent } from '../practiceCar';
-import { runScan, scanTargets, type ScanRun } from '../probe/scan';
-import type { TelegramTable } from '../telegrams';
-import { FIXTURE_MODULES, FIXTURE_RULES, identFrame } from '../testing/variantFixture';
-import { fittedFrom, type Fitted } from '../variants';
-import { buildIntakeCheck, decodeIdent, intakeFileName, sha256Hex, type IntakeInput } from './build';
-import { INTAKE_CHECK_SCHEMA, intakeCheckReport } from './intakeCheck';
+import { EMPTY_LEDGER } from '../ledger.ts';
+import { moduleProtocol } from '../moduleProtocol.ts';
+import { M3_IDENTS, NON_M3_IDENTS, PRACTICE_PART_NUMBER, type PracticeIdent } from '../practiceCar.ts';
+import { runScan, scanTargets, type ScanRun } from '../probe/scan.ts';
+import type { TelegramTable } from '../telegrams.ts';
+import { FIXTURE_MODULES, FIXTURE_RULES, identFrame } from '../testing/variantFixture.ts';
+import { fittedFrom, type Fitted } from '../variants.ts';
+import { buildIntakeCheck, decodeIdent, intakeFileName, sha256Hex, type IntakeInput } from './build.ts';
+import { INTAKE_CHECK_SCHEMA, intakeCheckReport } from './intakeCheck.ts';
 
 /**
  * The intake report end to end below the screen: a scan of the practice car's modules (the K-line a

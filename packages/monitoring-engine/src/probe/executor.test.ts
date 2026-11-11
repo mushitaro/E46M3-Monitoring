@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { Ds2Link, Ds2Status, WebSerialTransport, minPayloadLength, simulatedPort, type SimulatedEcuOptions } from '@tsunagi/ds2-core';
 import { MSS54_ADAPTATION_BLOCKS, blockBySelection } from '@tsunagi/ds2-mss54';
-import type { CatalogJob } from '../ecuCatalog';
-import { EMPTY_LEDGER, type Ledger } from '../ledger';
-import { moduleProtocol } from '../moduleProtocol';
-import type { TelegramTable } from '../telegrams';
-import { runProbe, type ProbeDeps, type ProbePlan } from './executor';
-import type { ProbeStep } from './plan';
+import type { CatalogJob } from '../ecuCatalog.ts';
+import { EMPTY_LEDGER, type Ledger } from '../ledger.ts';
+import { moduleProtocol } from '../moduleProtocol.ts';
+import type { TelegramTable } from '../telegrams.ts';
+import { runProbe, type ProbeDeps, type ProbePlan } from './executor.ts';
+import type { ProbeStep } from './plan.ts';
 
 /**
  * The executor against a K-line of simulated modules, with the car's speed in the test's hand.

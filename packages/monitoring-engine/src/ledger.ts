@@ -15,7 +15,7 @@
  * already a lookup by the time there is something to ask it about — retrofitting
  * a gate around code that already runs is how gates end up with holes.
  */
-import { appNow, learnServerTime } from './clock';
+import { appNow, learnServerTime } from './clock.ts';
 
 export type VerificationStatus =
     /** Never confirmed against a vehicle. The default, and where everything is now. */

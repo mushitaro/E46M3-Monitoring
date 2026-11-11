@@ -81,9 +81,10 @@ describe('PRACTICE opens the actuator surface, with three refusals kept', () => 
         }
     });
 
-    it('leaves 63 actuator jobs actually runnable, so the surface is not empty', () => {
+    it('leaves 104 actuator jobs actually runnable, so the surface is not empty', () => {
         // The refusals above are only meaningful if something survives them. All
-        // 63 are zero-argument test jobs with one certain telegram, and the
+        // 104 (63 until the non-M3 DMEs and GS20 arrived, 2026-11-11; PRACTICE only — a car is never sent
+        // one) are zero-argument test jobs with one certain telegram, and the
         // STEUERN_EKP pair among them exercises the two-button hold path. It was
         // 55 until the telegram extractor stopped filtering frames through a
         // command whitelist written for MSS54 — the eight that arrived are jobs
@@ -100,7 +101,7 @@ describe('PRACTICE opens the actuator surface, with three refusals kept', () => 
                 if (mayActuate(j, t, EMPTY_LEDGER, { moduleId: m.id, mode: 'practice', motion: 'parked' }).allowed) n++;
             }
         }
-        expect(n).toBe(63);
+        expect(n).toBe(104);
     });
 
     it('refuses when the telegram is missing or not certain', () => {

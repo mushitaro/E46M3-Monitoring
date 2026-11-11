@@ -13,8 +13,9 @@
  *     reads do not carry one, so `vin` is null on a car. Where the cluster's seven and a VIN the bytes
  *     spell disagree, both are null: the report does not pick one;
  *   - an identification field that is not printable text where the DS2 layout puts it;
- *   - a fault's text where the module's table has no row for its code, and every fault of a module
- *     with no decoder (its bytes are kept on the module, `faultRaw`).
+ *   - a fault's text where the module's table has no row for its code. A module with no decoder of its
+ *     own is read where its own SGBD reads its faults (../faultLayouts), unverified on a car; one with no
+ *     proved layout keeps only its bytes (`faultRaw`).
  */
 import { formatErrorCode, type ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
 import { vinsInHex } from '../investigation/redact.ts';
@@ -103,9 +104,35 @@ function moduleOf(x: ScanResult, input: IntakeInput): IntakeModule {
     };
 }
 
+/**
+ * Another module's faults, read where its own SGBD reads them (../faultLayouts): its own fault-text
+ * table names them, and every one is unverified until a car has answered.
+ */
+function layoutFindingsOf(x: ScanResult, input: IntakeInput): IntakeFinding[] {
+    if (!x.faults) return [];
+    const moduleId = x.variant?.moduleId ?? (x.modules.length === 1 ? x.modules[0] : null);
+    const from = x.exchanges.find((e) => !isIdentRequest(e.request) && e.response !== null && telegramBytes(e.request)?.[3] === 0x01);
+    const raw = from ? compact(from.response as string) : '';
+    const seen = new Map<string, number>();
+    return x.faults.map((f) => {
+        const n = (seen.get(f.code) ?? 0) + 1;
+        seen.set(f.code, n);
+        return {
+            id: `${x.address}:${f.code}${n > 1 ? `#${n}` : ''}`,
+            address: x.address,
+            code: f.code,
+            text: moduleId ? (input.faultText(moduleId, f.code)?.slice(0, 200) ?? null) : null,
+            state: f.present === true ? 'present' : f.present === false ? 'stored' : 'unknown',
+            count: f.count,
+            unverified: true,
+            raw: raw.length <= 4096 ? raw : '',
+        };
+    });
+}
+
 /** The MSS54's entries, decoded from the frame whose argument is 01 (the error memory). */
 function findingsOf(x: ScanResult, input: IntakeInput): IntakeFinding[] {
-    if (!Array.isArray(x.decoded)) return [];
+    if (!Array.isArray(x.decoded)) return layoutFindingsOf(x, input);
     const from = x.exchanges.find((e) => !isIdentRequest(e.request) && e.response !== null && telegramBytes(e.request)?.[3] === 0x01);
     const raw = from ? compact(from.response as string) : '';
     const seen = new Map<string, number>();

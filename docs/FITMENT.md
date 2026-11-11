@@ -188,6 +188,28 @@ EDIABAS はアドレスごとのグループファイル（`D_0012.grp` など�
 
 ---
 
+## 5b. M3 でない E46 の DME と AT（2026-11-11）
+
+運営者の決定（2026-10-30・11-11）：MONITORING のエンジンは DS2 の E46 全部を読む。入口（E46M3 /// MONITORING と
+GREN BLUE SUITE）は分け、どちらにも車種を選ぶ操作は置かない。0x12・0x32 に何がいるかは IDENT が決める（§5）。
+
+| アドレス | 載せた（module id） | ECU の名乗り | 載せない | 理由 |
+|---|---|---|---|---|
+| 0x12 | `ms420ds0`（MS42、M52TU） | "MS 42.0 fuer M52 mit EWS 3" | `MS420DS1` | D_0012 の選び方に名前が無く、IDENT から選ばれない |
+| 0x12 | `ms430ds0`（MS43、M54） | "MS 43.0 fuer M54 mit EWS 3" | `MS43_SP2` | 同上（ジョブ 20 個の特別版） |
+| 0x12 | `bms43ds0`・`bms46ds0`・`bms46ds1`（M43） | "BMS 43 fuer M43 mit ASC" ほか | | |
+| 0x32 | `gs20`（5 速 AT） | "Getriebesteuerung GS20" | | |
+
+- アドレスは `dump_modules.py` の実送信 IDENT（`12 04 00`・`32 04 00`）。`fit` は `nonm3`（「M3 以外の E46」）。
+- 送るのは今までどおり、選ばれたモジュール自身の SGBD の電文だけ。M3 にこれらの電文は行かない。
+- 読取は `runGate` の判断のまま。これらの車の速度源（MS42・MS43 は DME か KOMBI、M43 は KOMBI）は実車で
+  確かめるまで使わないので、停車を要る読取・故障の消去は閉じたまま（IDENT と故障の読み取りは速度を待たない）。
+- 故障の文：`tools/sgbd/gen_fault_layouts.py` が、各モジュール自身の FS_LESEN を EdiabasLib の模擬で走らせて
+  故障コードの場所を確かめ（`fault-layouts.json`）、その SGBD の FORTTEXTE で名前を付ける。KOMBI46・46R・
+  DSC_E46・ASCMK20・MS42・MS43・BMS43・BMS46（DS0・DS1）・GS20。**実車ではまだ確かめていない**（画面と点検報告が
+  そう言う）。BMS43 の「現在あり」のビットは模擬で確かめられず、言わない。
+- 訳：新しい 6 モジュールの独語 2,006 件は未訳のまま台帳（`tools/translation_baseline.json`）に載せた。
+
 ## 6. 除外していないもの
 
 `$SGBD_DUMP_DIR` の残り 21 ファイルは ECU のダンプではない:

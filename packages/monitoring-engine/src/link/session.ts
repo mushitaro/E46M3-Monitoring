@@ -69,6 +69,7 @@ import { modulesOf } from '../probe/plan.ts';
 import { runScan, type ScanRun, type ScanTarget } from '../probe/scan.ts';
 import { CLUSTER_VIN_UNVERIFIED } from '../clusterVin.ts';
 import { EMPTY_IDENTITY, loadIdentity, type Identity } from '../identity.ts';
+import { NO_FAULT_LAYOUTS, decodeFaultRead, loadFaultLayouts, type FaultLayouts } from '../faultLayouts.ts';
 import { DME_ADDRESS, commonIdent, fittedFrom, frameVerdict, isCommonIdent, isM3, mayModuleBeSent, ruleFor, type Fitment, type Fitted } from '../variants.ts';
 import type { Ledger } from '../ledger.ts';
 import { clearFaultsCommand, telegramBytes, type SendRequirement } from '../runGate.ts';
@@ -285,6 +286,9 @@ export class LinkSession {
     /** The group rules and the module map, loaded once a page; connect waits for them. */
     private identity: Identity = EMPTY_IDENTITY;
     private identityLoad: Promise<Identity> | null = null;
+    /** Where each module's own SGBD reads its fault codes (faultLayouts), loaded once a page with the identity. */
+    private faultLayouts: FaultLayouts = NO_FAULT_LAYOUTS;
+    private faultLayoutsLoad: Promise<FaultLayouts> | null = null;
     private vehicleNow: VehicleState | null = null;
 
     private link: Ds2Link | null = null;
@@ -676,6 +680,7 @@ export class LinkSession {
             // Which module is where is asked again on every link, and nothing but a common IDENT
             // goes anywhere until it has been (variants): the guard is on before the port opens.
             this.identity = await (this.identityLoad ??= loadIdentity());
+            this.faultLayouts = await (this.faultLayoutsLoad ??= loadFaultLayouts());
             this.fitmentNow = new Map();
             this.update({ fitment: this.fitmentNow });
             link.setSendGuard((frame) => frameVerdict(frame, this.fitmentNow, this.identity.rules, this.identity.identOk));
@@ -831,6 +836,7 @@ export class LinkSession {
                     this.append('rx', `${frame.payload.length} bytes — no decoder for this module`);
                     out.push({ request: f.hex, response: toHex(frame.payload), source: f.source });
                 }
+                this.withDecoded(target.moduleId, out);
                 this.update({ faults: null, quickTest: null, rawFaults: out });
                 return out;
             }
@@ -849,6 +855,22 @@ export class LinkSession {
             this.update({ rawFaults: null, faults: entries });
             return entries;
         });
+
+    /**
+     * The faults in a module's raw fault read, where its own SGBD reads them (faultLayouts), put on the
+     * entries read. Nothing where the module has no proved layout or the read is partial.
+     */
+    private withDecoded(moduleId: string, reads: RawFaultRead[]): void {
+        const layout = this.faultLayouts.modules[moduleId];
+        if (!layout) return;
+        const decoded = decodeFaultRead(layout, reads);
+        const compact = (h: string) => h.replace(/\s+/g, '').toLowerCase();
+        const entries = reads.find((r) => layout.entries !== null && compact(r.request).slice(0, -2) === compact(layout.entries));
+        if (decoded && entries) {
+            entries.decoded = decoded;
+            this.append('rx', `${decoded.length} code(s), read where ${layout.sgbd}'s own FS_LESEN reads them — not yet confirmed on a car`);
+        }
+    }
 
     /**
      * The learned values: lambda trim, throttle and pedal zeroes, crank-wheel
@@ -1214,13 +1236,19 @@ export class LinkSession {
                 if (own && Array.isArray(own.decoded)) {
                     this.update({ rawFaults: null, quickTest: null, faults: own.decoded as ErrorMemoryEntry[] });
                 } else if (own) {
-                    this.update({
-                        faults: null,
-                        quickTest: null,
-                        rawFaults: own.exchanges
-                            .filter((x) => !isCommonIdent(telegramBytes(x.request) ?? new Uint8Array(0)))
-                            .map((x) => ({ request: x.request, response: x.response ?? '', source: 'FS_LESEN (SGBD telegram)' })),
-                    });
+                    const reads: RawFaultRead[] = own.exchanges
+                        .filter((x) => !isCommonIdent(telegramBytes(x.request) ?? new Uint8Array(0)))
+                        .map((x) => ({ request: x.request, response: x.response ?? '', source: 'FS_LESEN (SGBD telegram)' }));
+                    this.withDecoded(this.target.moduleId, reads);
+                    this.update({ faults: null, quickTest: null, rawFaults: reads });
+                }
+                // Each other module's faults, where its own SGBD reads them (faultLayouts; not yet on a car).
+                for (const r of result.results) {
+                    if (r.outcome !== 'answered' || Array.isArray(r.decoded)) continue;
+                    const id = r.variant?.moduleId ?? (r.modules.length === 1 ? r.modules[0] : null);
+                    const layout = id ? this.faultLayouts.modules[id] : undefined;
+                    const decoded = layout ? decodeFaultRead(layout, r.exchanges) : null;
+                    if (decoded) r.faults = decoded;
                 }
                 this.update({ scan: result });
                 // The cluster's VIN read (clusterVin): whether it was read, never what it said.

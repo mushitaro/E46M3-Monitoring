@@ -363,6 +363,11 @@ export interface Localised {
     /** The head unit's settings, through the launcher (lib/launcherDoors). */
     /** DSC MK60's codes read as ISO 14230's $58 layout, not yet confirmed on the car (lib/kwpOnDs2). */
     faults_kwp_estimated: string;
+    /** Another module's codes, read where its own SGBD reads them (fault-layouts.json), not yet confirmed on a car. */
+    faults_layout_unverified: string;
+    /** The code is present now / stored from before, as the module's own record says. */
+    fault_present_now: string;
+    fault_stored: string;
     door_wifi: string;
     door_datetime: string;
     board_up: string;

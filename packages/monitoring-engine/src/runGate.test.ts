@@ -182,7 +182,8 @@ describe('the run gate', () => {
                 expect(READ_ONLY_CONTROLS.has(v.control), `${m}.${j.id}`).toBe(true);
             }
         }
-    });
+        // Every job of every module (2,297 since 2026-11-11): past vitest's 5 s when the suite runs in parallel.
+    }, 30_000);
 
     // A ledger entry unlocks a non-read. Proves the gate is a gate and not a
     // permanent wall — the wall is the empty shipped ledger.

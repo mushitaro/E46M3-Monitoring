@@ -111,6 +111,7 @@ public repo を clone した人が、**何がどれだけ欠けているか**を
 | `extract_telegrams.py` | #1 | `public/ecu-data/<id>.telegrams.json`（51 モジュール） |
 | `sgbd/gen_variants.py` | #1 の `D_00xx.grp`（`SgbdDump --tables`）＋ `RULES`（逆アセンブルを読んで書いた選び方）。`SgbdDump --ident` で EdiabasLib にグループファイルそのものを走らせ、食い違えば書かない | `public/ecu-data/variants.json`, `variants.oracle.json` |
 | `gen_ecu_data.py` | ダンプ ＋ `sgbd/*` ＋ `translate.py` | `public/ecu-data/<id>.jobs.json`, `index.json` |
+| `sgbd/gen_fault_layouts.py` | #1 の各モジュールの FS_LESEN（`SgbdDump --exec` を EdiabasLib の模擬で走らせる。答えは使い捨ての `.sim`）。乱数の答えで EdiabasLib と一致しなければ書かない | `public/ecu-data/fault-layouts.json` |
 | `gen_smg2_workflows.py` | `SMG2.json` | `public/ecu-data/smg2-workflows.json` |
 | `gen_dsc_hydraulics.py` | `DSC_E46.json` ＋ `dsc_e46.telegrams.json` | `public/ecu-data/dsc_e46.hydraulics.json` |
 | `jobtext/gen_jobtext.py` | `<id>.jobs.json` ＋ `cautions.py` | `public/ecu-data/<id>.jobtext.json` |

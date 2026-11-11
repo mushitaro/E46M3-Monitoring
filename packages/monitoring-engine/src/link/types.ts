@@ -9,6 +9,7 @@
 import type { Ds2ErrorKind, TransportKind } from '@tsunagi/ds2-core';
 import type { ChannelId, DecodedAdaptation } from '@tsunagi/ds2-mss54';
 import type { KwpDtc } from '../kwpOnDs2.ts';
+import type { DecodedFault } from '../faultLayouts.ts';
 
 export type LinkState = 'disconnected' | 'connecting' | 'connected' | 'busy' | 'logging';
 export type LinkMode = 'vehicle' | 'practice';
@@ -84,6 +85,11 @@ export interface RawFaultRead {
     source: string;
     /** A KWP-on-DS2 `$58` answer read as ISO 14230 lays it out (kwpOnDs2); not yet confirmed on a MK60. */
     kwpDtcs?: KwpDtc[];
+    /**
+     * The faults in this read, where the module's own SGBD reads them (faultLayouts; on the entries read
+     * only). Not yet confirmed on a car: the bytes stay the answer.
+     */
+    decoded?: DecodedFault[];
 }
 
 /**

@@ -15,6 +15,7 @@ export * from './ecuCatalog.ts';
 export * from './moduleProtocol.ts';
 export * from './kwpOnDs2.ts';
 export * from './clusterVin.ts';
+export * from './faultLayouts.ts';
 export * from './variants.ts';
 export * from './identity.ts';
 export * from './ledger.ts';

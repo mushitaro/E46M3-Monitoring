@@ -53,6 +53,7 @@
 import { isDs2Error, isPositiveResponse, toHex, type Ds2Frame, type RetryOptions } from '@tsunagi/ds2-core';
 import type { Ledger } from '../ledger.ts';
 import { clusterVinShort } from '../clusterVin.ts';
+import type { DecodedFault } from '../faultLayouts.ts';
 import type { ModuleProtocol, ProtocolFrame } from '../moduleProtocol.ts';
 import { mayRunProtocolRead, type RunBlockKey } from '../runGate.ts';
 import { commonIdent, isM3, mayModuleBeSent, ruleFor, type Fitment, type Fitted, type VariantRules } from '../variants.ts';
@@ -98,6 +99,11 @@ export interface ScanResult {
     reason?: string;
     /** The MSS54's decoded entries, as the decoder gives them. */
     decoded?: unknown;
+    /**
+     * Another module's faults, read from these exchanges where its own SGBD reads them (../faultLayouts):
+     * not yet confirmed on a car. Absent where the module has no proved layout.
+     */
+    faults?: DecodedFault[];
     /**
      * What the address's IDENT said, when one was sent or was already known: the SGBD its group
      * chose (null: `?`), the module that is, and on what ground the fault read went (`m3-fitment`:

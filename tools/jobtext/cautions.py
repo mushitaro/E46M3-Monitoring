@@ -130,6 +130,13 @@ _RAW: list[tuple[str, str, str]] = [
      "消す前に必ず読み出して控えてください。",
      "This initialises the fault memory in NVRAM — stronger than FS_LOESCHEN, and the record is gone entirely. "
      "Read and note it first."),
+    # MS43（M54）が持つ、故障メモリとは別の記録の消去。ペダルの誤操作の記録と、クルーズが切れた条件の記録。
+    # SGBD の COMMENT は二つとも "Eintraege Fusshebelfehlbedienung loeschen"（FGR の方は写し違いと見られる）。
+    (r"^(FUSSHEBELFEHLBEDIENUNG|ABSCHALTBEDINGUNG_FGR)_LOESCHEN$",
+     "DME が残している記録（ペダルの誤操作、またはクルーズが切れた条件）を消します。消す前に、対の `_LESEN` で読んで"
+     "控えてください。消した記録は戻りません。",
+     "This erases a record the DME keeps (pedal misuse, or the conditions under which cruise control switched off). "
+     "Read it with the matching `_LESEN` job and note it first; an erased record does not come back."),
     (r"^FS_LOESCHEN$",
      "故障の履歴が失われます。消す前に控えてください。原因が直っていなければ、走行後にまた記録されます。",
      "The fault history is lost. Note it before erasing. If the cause is not fixed, it will be recorded again "

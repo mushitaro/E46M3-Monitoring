@@ -178,26 +178,31 @@ GREN BLUE のリポジトリにもビルドにも写さない。
 - 試験が読む `testing/shipped.ts` は、リポジトリの `public/ecu-data/` があれば読み、無ければ試験を飛ばす。
   GREN BLUE の `vendor/` の中には無いので、そこでは飛ぶ。
 
-## 6. 更新の知らせ：pin bump（運営者 2026-11-11）
+## 6. 更新の知らせ：Mainstay へ「エンジンの版を上げる PR」（運営者 2026-11-12）
 
-`.github/workflows/notify-gren-blue.yml`。エンジンに触れる変更（`packages/monitoring-engine/**`・`packages/ds2-core/**`・
-`packages/ds2-mss54/**`）が main に入ると、GREN BLUE（`mushitaro/tsunagi-gren-blue-private`）の main に、
-`vendor/e46m3-monitoring` の gitlink だけを新しい SHA にするコミットを API で作る（早送りだけ。間に main が進んだら
-作り直す、3 回まで）。GREN BLUE の Cloudflare のビルドがその push で走り、試験とビルドが通れば配信、落ちれば前の
-配信のまま。エンジンは人の承認のクラスなので、届くのは人が見た変更だけ。
+正本は `tsunagi-m-mainstay` §6。エンジンは M のリポジトリだけで直し、M の main に入ると、M の CI が各 Mainstay の
+リポジトリへ **エンジンの版を上げる PR** を出す。Mainstay の CI（必須のチェック）が適合の試験と自分の試験を回し、通れば入って
+配信され、落ちれば前の版のまま。M は Mainstay の main に直接書かない：Mainstay のリポジトリは引き渡しの後は店のものになるから。
 
-運営者が入れる秘密値（名前だけ）：
+- ワークフロー：`.github/workflows/engine-to-mainstays.yml`。エンジンに触れる変更（`packages/monitoring-engine/**`・
+  `packages/ds2-core/**`・`packages/ds2-mss54/**`）が main に入ると走る。エンジンは人の承認のクラスなので、届くのは人が見た変更だけ。
+- 宛先の表：`.github/mainstays.json`（Mainstay ごとに `repo`・`path`（このリポジトリの submodule の場所。GREN BLUE は
+  `vendor/e46m3-monitoring`）・`base`・`tokenSecret`）。引き渡しで宛先が変わったら、この表を直す（人の承認）。
+- Mainstay ごとにすること：`base` の先頭の上に、submodule の gitlink だけを新しい SHA にするコミットを置いた枝
+  `engine/e46m3-monitoring-<sha7>` を作り、PR を開き、**自動マージを有効にする**。同じ枝の名前の前の PR がまだ開いていれば閉じる
+  （新しい方が置き換える）。すでにその SHA なら何もしない。
+- 秘密値（名前だけ。値は運営者が入れる）：Environment `mainstays`（Deployment branches は `main` だけ）に、Mainstay ごとに一つ。
 
-| 名前 | 置き場 | 中身 |
-|---|---|---|
-| `GREN_BLUE_PIN_TOKEN` | このリポジトリの Environment `gren-blue`（Deployment branches は `main` だけ） | GitHub の fine-grained トークン。`mushitaro/tsunagi-gren-blue-private` だけ、Contents: Read and write、期限つき |
+| 名前 | 中身 |
+|---|---|
+| `MAINSTAY_PR_TOKEN_GREN_BLUE_AUTO` | GitHub の fine-grained トークン。`mushitaro/tsunagi-gren-blue-private` だけ。Contents: Read and write（PR の枝を置くため）、Pull requests: Read and write。期限つき |
 
-秘密値が無いとき、GREN BLUE にまだ submodule が無いときは、警告を出して何もしない。
+  トークンが無いとき、submodule がまだ無いときは、警告を出して何もしない。
 
-GREN BLUE 側に要るもの（GREN BLUE の仕事）：
+Mainstay の側に要るもの（Mainstay の仕事）：
 
 - submodule `vendor/e46m3-monitoring`（このリポジトリは公開なので認証は要らない）と workspaces（§3）。
-- Cloudflare の Git 連携のビルド。ビルドコマンドに**試験を含める**（例：`npm ci && npm test && npm run build -w apps/admin`）。
-  今は手元の `npm run deploy` で出している。私的な `e46-maintenance` の submodule が Git 連携のビルドで取れるかは未確認。
-
-`repository_dispatch` の道は採らない：GREN BLUE の GitHub Actions が止まっていて、受け取る側が無いため。
+- `base` の枝の保護：PR を必須にし、**必須のチェック**に Cloudflare のビルド（Git 連携。適合の試験と自分の試験を含む）を入れる。
+  この保護が、上のトークンで main に直接書けないことを保つ。
+- リポジトリの設定で「Allow auto-merge」。無いと PR は開いたまま（ワークフローは警告を出す）。
+- `vendor/` の中は直さない。直してほしいことは、エンジンの報告（`/api/bridge/engine-report`）か運営者への頼みで届ける。

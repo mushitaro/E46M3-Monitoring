@@ -166,6 +166,151 @@ def jobtable(raw):
     return out
 
 
+# ============================================================================
+#  最初の送信を、ジョブの先頭から読む（分岐の無い道だけ）
+# ----------------------------------------------------------------------------
+#  リテラルの走査は「ひな形」しか見えない。SMG II の状態読取 4 ジョブは同じ
+#  `32 05 0B 03` を文字列レジスタに置き、**送る前に 4 バイト目を書き換える**:
+#
+#      move S1, {32 05 0b 03} / move S6, S1 / move L0, #4 / move S6[L1], B0 / xsend S2, S6
+#
+#  走査はこれを 4 ジョブ共有のテレグラム（`shared`）と読み、どれも送れなかった。
+#  ここではジョブの先頭から最初の `xsend` までを命令ごとに読み、レジスタの中身を
+#  追って、実際に送られるバイトを出す。
+#
+#  命令の形（命令 1 バイト、アドレッシング 1 バイト＝上位が第 1・下位が第 2
+#  オペランド、続いてオペランド）と命令番号は、実車の EdiabasLib トレース
+#  （データリポジトリ `evidence/ifh.trc`、MSS54DS0 の IDENT）の番地と命令名を
+#  `MSS54DS0.prg` のバイトに突き合わせて確かめたもの。オペランドの長さは
+#  アドレッシングだけで決まるので、知らない命令でも読み飛ばしは狂わない——が、
+#  読み飛ばさない。**分かっている命令だけの、分岐の無い道**でなければ結果を
+#  出さず、そのジョブは今までどおり走査の結果のまま残る。条件分岐・サブルーチン・
+#  引数の読み出し・知らない命令のどれかに当たったら、そこで「分からない」。
+# ============================================================================
+OP_MOVE, OP_CLEAR, OP_NOP, OP_PUSH, OP_POP, OP_XSEND = 0x00, 0x01, 0x1C, 0x1E, 0x1F, 0x2A
+
+# オペランドの長さ（アドレッシングの値 → バイト数）。8（文字列リテラル）だけは
+# 2 バイトの長さ＋本体。
+_ARG_LEN = {0: 0, 1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 2, 7: 4,
+            9: 3, 10: 2, 11: 4, 12: 5, 13: 4, 14: 4, 15: 3}
+_S_REGS = range(0x1C, 0x24)          # S0..S7
+
+
+def _num_span(reg):
+    """数値レジスタ → (バイトレジスタ上の先頭, 幅)。B0..BF / I0..I7 / L0..L3。"""
+    if 0x00 <= reg <= 0x0F:
+        return reg, 1
+    if 0x10 <= reg <= 0x17:
+        return (reg - 0x10) * 2, 2
+    if 0x18 <= reg <= 0x1B:
+        return (reg - 0x18) * 4, 4
+    return None
+
+
+def first_send(dec, start, end, addr):
+    """ジョブの先頭から最初の xsend までを読み、送られるバイト（チェックサム抜き）と、
+    そのバイトの元になったひな形リテラルの位置を返す。確かめられなければ None。"""
+    regs = [None] * 16                # バイトレジスタ。None は「分からない」
+    sreg = {}                         # 文字列レジスタ → bytearray（無ければ分からない）
+    origin = {}                       # 文字列レジスタ → 中身の元になったリテラルの位置
+    stack = []
+    p = start
+
+    def get(reg):
+        span = _num_span(reg)
+        if span is None:
+            return None
+        vals = regs[span[0]:span[0] + span[1]]
+        if any(v is None for v in vals):
+            return None
+        return int.from_bytes(bytes(vals), "little")
+
+    def put(reg, value):
+        span = _num_span(reg)
+        if span is None:
+            return False
+        for k in range(span[1]):
+            regs[span[0] + k] = None if value is None else (value >> (8 * k)) & 0xFF
+        return True
+
+    while p + 2 <= end:
+        op, mode = dec[p], dec[p + 1]
+        m0, m1 = mode >> 4, mode & 0x0F
+        q = p + 2
+        args = []
+        for m in (m0, m1):
+            if m == 8:
+                if q + 2 > end:
+                    return None
+                n = struct.unpack_from("<H", dec, q)[0]
+                args.append((q + 2, bytes(dec[q + 2:q + 2 + n])))
+                q += 2 + n
+            elif m in _ARG_LEN:
+                args.append((q, bytes(dec[q:q + _ARG_LEN[m]])))
+                q += _ARG_LEN[m]
+            else:
+                return None
+        if q > end:
+            return None
+        (_, a0), (pos1, a1) = args
+
+        if op == OP_NOP and mode == 0:
+            pass
+        elif op == OP_CLEAR and m1 == 0 and m0 == 1 and a0[0] in _S_REGS:
+            sreg[a0[0]] = bytearray()
+            origin.pop(a0[0], None)
+        elif op == OP_CLEAR and m1 == 0 and m0 in (2, 3, 4):
+            if not put(a0[0], 0):
+                return None
+        elif op == OP_PUSH and m1 == 0 and m0 == 7:
+            stack.append(struct.unpack("<I", a0)[0])
+        elif op == OP_PUSH and m1 == 0 and m0 == 4:
+            stack.append(get(a0[0]))
+        elif op == OP_POP and m1 == 0 and m0 == 4:
+            if not stack or not put(a0[0], stack.pop()):
+                return None
+        elif op == OP_MOVE and m0 == 1 and a0[0] in _S_REGS and m1 == 8:
+            sreg[a0[0]] = bytearray(a1)
+            origin[a0[0]] = pos1
+        elif op == OP_MOVE and m0 == 1 and a0[0] in _S_REGS and m1 == 1 and a1[0] in _S_REGS:
+            if a1[0] in sreg:
+                sreg[a0[0]] = bytearray(sreg[a1[0]])
+            else:
+                sreg.pop(a0[0], None)
+            if a1[0] in origin:
+                origin[a0[0]] = origin[a1[0]]
+            else:
+                origin.pop(a0[0], None)
+        elif op == OP_MOVE and m0 == 4 and m1 == 7:
+            if not put(a0[0], struct.unpack("<I", a1)[0]):
+                return None
+        elif op == OP_MOVE and m0 == 10 and m1 == 2 and a0[0] in _S_REGS:
+            # S[Ln] <- Bn：ひな形の 1 バイトを書き換える。位置か値が分からない、
+            # あるいは今の長さの外なら、その文字列は「分からない」。
+            idx, val, s = get(a0[1]), get(a1[0]), sreg.get(a0[0])
+            if s is None or idx is None or val is None or idx >= len(s):
+                sreg.pop(a0[0], None)
+            else:
+                s[idx] = val
+        elif op == OP_XSEND and m0 == 1:
+            if m1 == 8:
+                sent, src = a1, pos1
+            elif m1 == 1 and a1[0] in sreg and a1[0] in origin:
+                sent, src = bytes(sreg[a1[0]]), origin[a1[0]]
+            else:
+                return None
+            # 形の確かめ：宛先、長さ（チェックサム込みの全長）、窓。
+            if len(sent) < 3 or sent[0] != addr or sent[1] != len(sent) + 1:
+                return None
+            if not MIN_LEN <= sent[1] <= MAX_LEN:
+                return None
+            return sent, src
+        else:
+            return None                # 分岐・呼び出し・引数・知らない命令
+        p = q
+    return None
+
+
 def owner(jobs, pos):
     name = "?"
     for off, nm in jobs:
@@ -176,7 +321,7 @@ def owner(jobs, pos):
     return name
 
 
-def extract(path, addr, arg_counts=None):
+def extract(path, addr, arg_counts=None, resolve_first_send=False):
     arg_counts = arg_counts or {}
     raw = open(path, "rb").read()
     dec = dexor(raw)
@@ -200,6 +345,32 @@ def extract(path, addr, arg_counts=None):
         tel = stored + bytes([xorck(stored)])
         seen.setdefault((owner(jobs, i), tel), 0)
         seen[(owner(jobs, i), tel)] += 1
+
+    # 最初の送信が確かめられたジョブは、道の上のひな形をその結果で置き換える。
+    # ひな形と同じバイトが送られるジョブ（書き換えの無いもの）は何も変わらない。
+    #
+    # 直すのは、走査がこのジョブのものとして既に拾っていたひな形だけ。走査が何も
+    # 拾わなかったジョブ（宛先を `FF` で置いて後から埋めるひな形など）に新しい行を
+    # 足すことはしない——それは IDENT・消去・ハートビートの行を増やし、
+    # `moduleProtocol` が車に送るものを変えるので、モジュールごとに別に決める。
+    resolved = {}
+    for k, (off, name) in enumerate(jobs if resolve_first_send else []):
+        end = jobs[k + 1][0] if k + 1 < len(jobs) else len(dec)
+        hit = first_send(dec, off, end, addr)
+        if hit is None:
+            continue
+        sent, src = hit
+        template = dec[src:src + dec[src + 1] - 1] if dec[src] == addr else b""
+        key = (name, template + bytes([xorck(template)]))
+        if key not in seen:
+            continue
+        tel = sent + bytes([xorck(sent)])
+        resolved[name] = tel
+        if key[1] != tel:
+            seen[key] -= 1
+            if seen[key] == 0:
+                del seen[key]
+            seen.setdefault((name, tel), 1)
 
     byjob = {}
     for (job, tel), count in seen.items():
@@ -244,6 +415,9 @@ def extract(path, addr, arg_counts=None):
                 "declaredArgs": declared,
                 "argsAgree": None if declared is None else declared == payload,
             })
+            # このジョブが最初に送るフレームだと、先頭からの読みで確かめたもの。
+            if resolved.get(job) == tel:
+                entries[-1]["firstSend"] = True
         out[job] = entries
     return out
 
@@ -253,6 +427,12 @@ def extract(path, addr, arg_counts=None):
 #  断片を拾っていた。代わりに、データリポジトリの実行トレース（EDIABAS のシミュレーションで、各ジョブが
 #  最初に送ったフレーム）から、**読み取りだけ**（IDENT と FS_LESEN）を表にする。
 KWP_ON_DS2 = {"dsc_mk60": ("DSC_MK60", ("IDENT", "FS_LESEN"))}
+
+#  最初の送信を先頭から読んで、ひな形を直すモジュール（`first_send`）。モジュールごとに
+#  結果を見てから足す：表が変わると、そのモジュールで送れるものが変わる。
+#  SMG II（2026-11-12）：状態読取の 4 ジョブが `32 05 0B 03` を共有して見えていたのは、
+#  3 ジョブが 4 バイト目を 04・02・05 に書き換えてから送るため。
+FIRST_SEND = {"smg2"}
 DUMP_DIR = os.environ.get("SGBD_DUMP_DIR", r"C:\EDIABAS-derived\sgbd-dumps")
 
 
@@ -296,13 +476,15 @@ if __name__ == "__main__":
                 raise FileNotFoundError(path)
             kwp = mid in KWP_ON_DS2
             table = kwp_table(mid, prg, addr) if kwp else None
-            data = table["jobs"] if kwp else extract(path, addr, arg_counts(prg))
+            data = table["jobs"] if kwp else extract(path, addr, arg_counts(prg), mid in FIRST_SEND)
             dest = os.path.join(OUT, f"{mid}.telegrams.json")
             tmp = dest + ".tmp"
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(table if kwp else {
                     "module": mid, "sgbd": prg, "address": addr,
-                    "source": "static extraction of XOR-0xF7 job bytecode (NOT an execution trace)",
+                    "source": "static extraction of XOR-0xF7 job bytecode (NOT an execution trace)" + (
+                        "; `firstSend` marks a frame read instruction by instruction from the job's "
+                        "start to its first send, on a path with no branch" if mid in FIRST_SEND else ""),
                     "jobs": data,
                 }, f, ensure_ascii=False, indent=1)
                 f.write("\n")

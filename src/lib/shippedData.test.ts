@@ -291,14 +291,19 @@ describe('what a real car would accept today', () => {
         }
     }
 
-    it('is 96 jobs across 36 modules', () => {
+    it('is 100 jobs across 36 modules', () => {
         // Was 86 across 36. The ten that arrived are seven `IS_LESEN` /
         // `FS_SHADOW_LESEN` (control 0x14) and two
         // `STATUS_AUSSCHWINGZEIT_LESEN` (0x0d) — both control bytes already
         // named in `READ_ONLY_CONTROLS`, whose frames the extractor had been
         // dropping. Nothing was lost, and the policy did not move: the gate was
         // already willing to send these, and now their frames exist.
-        expect(allowed.length).toBe(96);
+        //
+        // Then 96 -> 100: SMG II's STATUS_IO_LESEN, STATUS_IO_STATI_LESEN,
+        // STATUS_HARDWARE_STATI_LESEN and STATUS_FAHRZEUGTESTER_LESEN (control 0x0b, blocks
+        // 3, 4, 2 and 5). The scrape saw one template under four names; the extractor now
+        // follows each job to its first send (tools/extract_telegrams.py, `first_send`).
+        expect(allowed.length).toBe(100);
         expect(new Set(allowed.map((a) => a.split('.')[0])).size).toBe(36);
     });
 

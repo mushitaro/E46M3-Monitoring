@@ -188,6 +188,12 @@ function practiceModule(address: number): SimulatedEcuOptions {
                 delete practiceCar.moduleFaults[address];
                 return { payload: new Uint8Array(0) };
             }
+            // A status block (0x0B) of another module is not one of the DME's live blocks. Its
+            // layout is not known here, so the answer is zeros of an arbitrary length: the app
+            // shows it as bytes it cannot decode, and nobody can take a zero for a reading. Before,
+            // SMG II's STATUS_IO_LESEN (selection 3) came back as the DME's block 3, and a
+            // selection the DME has no block for (SMG II's 5) was refused.
+            if (request.controlOrStatus === Ds2Control.READ_IO_STATUS) return { payload: new Uint8Array(16) };
             return dme.respond!(request);
         },
     };

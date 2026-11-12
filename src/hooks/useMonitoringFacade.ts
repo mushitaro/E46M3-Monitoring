@@ -104,6 +104,18 @@ export function useMonitoringFacade(input: {
     const moduleName = (id: string) => ecuIndex?.modules.find((m) => m.id === id)?.name_en ?? id;
     const running = probe.progress !== null;
 
+    /**
+     * The screen follows what the assistant was asked to do (operator, 2026-11-12: 「ユーザーの指示によって
+     * 何か作業をするとき、その目的に合った画面を自動で切り替えて表示するようにしてほしい」). A PROBE run in
+     * progress keeps its board: nothing the assistant does beside it takes the screen away from it.
+     */
+    const show = (where: Tab, pane: 'list' | 'visu') => {
+        if (running && where !== 'probe') return;
+        // Always asked, not compared with `tab`: this facade may be a render behind a switch just made.
+        input.changeTab(where);
+        input.showPane(pane);
+    };
+
     /** The module on the screen, as far as it has been read. */
     const inSession = (moduleId?: string, fresh?: FreshFaults) => {
         if (moduleId && moduleId !== ecuId) {
@@ -206,6 +218,7 @@ export function useMonitoringFacade(input: {
             const ident = mayRunProtocolRead(`${ecuId}:IDENT`, 'fault-read', ledger, link.motion);
             const fs = mayRunProtocolRead(`${ecuId}:FS_LESEN`, 'fault-read', ledger, link.motion);
             if (!fs.allowed) return en.runBlock[fs.reason];
+            show('diagnosis', 'list');
             try {
                 // The link reports a refused or failed read as null and keeps its sentence: a read the
                 // preflight stopped (the car moving) must reach the assistant as not sent, and why.
@@ -338,7 +351,7 @@ export function useMonitoringFacade(input: {
             if (datalog.current().length === 0) return 'No DATALOG channel is selected: choose them first (monitoring_log_channels).';
             datalog.start();
             // The owner asked for the values and the trace while a recording runs, not the fault list.
-            input.showPane('visu');
+            show('datalog', 'visu');
             return null;
         },
 
@@ -457,6 +470,7 @@ export function useMonitoringFacade(input: {
         scan: async () => {
             const r = await input.startScan();
             if (typeof r === 'string') return { started: false, reason: r };
+            show('diagnosis', 'list');
             return {
                 started: true,
                 addresses: r.addresses,
@@ -468,12 +482,18 @@ export function useMonitoringFacade(input: {
 
         switchModule: async (id) => {
             const reason = await input.switchModule(id);
+            if (!reason) show('diagnosis', 'list');
             return reason ? { switched: false, reason } : { switched: true, module: { id, name: moduleName(id) }, note: 'The screen shows it; an open link was opened again for it.' };
         },
 
         probe: async (record) => {
             if (link.state !== 'connected') return { started: false, reason: `The link is ${link.state}; PROBE starts from connected and idle.` };
             const r = await probe.start(record);
+            if (r.started) {
+                // Its board, with the values and the trace (show() lets a run keep it from here on).
+                input.changeTab('probe');
+                input.showPane('visu');
+            }
             if (r.started) return { started: true, record: r.record, plan: r.v, run: r.n, stop: 'monitoring_stop_log, after a read-back' };
             const why: Record<typeof r.reason, string> = {
                 off: 'PROBE is not in this build, or the module index has not loaded.',

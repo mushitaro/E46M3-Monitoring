@@ -1,0 +1,83 @@
+name: Deploy desk
+
+# Deploys the desk's door (workers/desk → the `monitoring-desk` Pages project) from main, with
+# `npm run desk:deploy`, which used to be run by hand and fell behind: on 2026-11-12 the door still
+# refused a plan's `adapt` step and the `module:JOB:RESULT` channels the WORKS build already took,
+# because the rules it checks a plan by (src/lib/notebook, src/lib/probe/plan.ts) are bundled into it
+# at deploy time and it had not been deployed since.
+#
+# Runs when what the door bundles changes, and by hand. The same `works` environment and Cloudflare
+# token as Deploy WORKS (deployment branches: main alone; the token is Cloudflare Pages: Edit). The
+# door reads the WORKS database (workers/desk/wrangler.jsonc) and applies no migration.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'workers/desk/**'
+      - 'src/lib/notebook/**'
+      - 'src/lib/investigation/**'
+      - 'src/lib/probe/plan.ts'
+      - 'src/lib/probe/board.ts'
+      - '.github/workflows/deploy-desk.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-desk
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: works
+    env:
+      HAVE_DEPLOY: ${{ secrets.CLOUDFLARE_API_TOKEN_MONITORING != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+    steps:
+      - name: Not configured
+        if: env.HAVE_DEPLOY != 'true'
+        run: echo "::notice::Deploy desk needs CLOUDFLARE_API_TOKEN_MONITORING and CLOUDFLARE_ACCOUNT_ID in the works environment. Nothing was deployed."
+
+      - uses: actions/checkout@v4
+        if: env.HAVE_DEPLOY == 'true'
+      - uses: actions/setup-node@v4
+        if: env.HAVE_DEPLOY == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - if: env.HAVE_DEPLOY == 'true'
+        run: npm ci
+
+      # The door's own tests, before anything is deployed.
+      - if: env.HAVE_DEPLOY == 'true'
+        run: npx vitest run workers/desk src/lib/notebook src/lib/probe/plan
+
+      - name: Deploy
+        if: env.HAVE_DEPLOY == 'true'
+        env:
+          PASTED_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_MONITORING }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          # As in Deploy WORKS: the secret is pasted by hand, so take the one line shaped like a token
+          # (or the token inside Cloudflare's test command), and never print a character of it.
+          lines="$(printf '%s\n' "$PASTED_TOKEN" | tr -d '\r' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+          token="$(printf '%s\n' "$lines" | grep -E '^[A-Za-z0-9_-]{20,}$' | sort -u || true)"
+          if [ -z "$token" ]; then
+            token="$(printf '%s\n' "$lines" | grep -oE 'Bearer [A-Za-z0-9_-]{20,}' | cut -d' ' -f2 | sort -u || true)"
+          fi
+          if [ -z "$token" ] || [ "$(printf '%s\n' "$token" | wc -l)" -ne 1 ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN_MONITORING does not hold one token."
+            exit 1
+          fi
+          export CLOUDFLARE_API_TOKEN="$token"
+          npm run desk:deploy
+
+      # The door is up and still closed to anyone without a desk token.
+      - name: Served
+        if: env.HAVE_DEPLOY == 'true'
+        run: |
+          code="$(curl -s -o /dev/null -w '%{http_code}' https://monitoring-desk.pages.dev/records)"
+          echo "monitoring-desk without a token: HTTP ${code}"
+          [ "$code" = "401" ] || { echo "::error::expected 401 without a desk token, got ${code}"; exit 1; }

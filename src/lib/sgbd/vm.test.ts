@@ -14,7 +14,7 @@ const TRACE = path.join(DATA, 'evidence', 'ifh.trc');
 const PRG = path.join(DATA, 'sgbd', 'prg', 'MSS54DS0.prg');
 const HAVE = existsSync(TRACE) && existsSync(PRG);
 
-const hexBytes = (s: string) => Uint8Array.from(s.trim().split(/\s+/), (x) => parseInt(x, 16));
+const hexBytes = (s: string) => Uint8Array.from(s.trim().split(/\s+/).filter(Boolean), (x) => parseInt(x, 16));
 
 /** The job table of a PRG: name → [start, end) in the de-scrambled file. */
 export function prgJob(prg: Uint8Array, name: string): SgbdJobCode {
@@ -50,8 +50,9 @@ describe.skipIf(!HAVE)('the interpreter replays the car trace of MSS54 IDENT', (
         .filter((m): m is RegExpExecArray => !!m)
         .map((m) => parseInt(m[1], 16))
         .filter((a) => a >= job.base && a < end);
-    const sent = hexBytes(lines.find((l) => l.startsWith(' (Send):'))!.slice(8));
-    const answer = hexBytes(lines.find((l) => l.startsWith(' (Resp):'))!.slice(8));
+    // describe.skipIf still runs this body to collect the tests: nothing here may assume the trace.
+    const sent = hexBytes(lines.find((l) => l.startsWith(' (Send):'))?.slice(8) ?? '');
+    const answer = hexBytes(lines.find((l) => l.startsWith(' (Resp):'))?.slice(8) ?? '');
     const traceResults = lines
         .map((l) => /^>[0-9A-F]{8}: erg(\w) #"(\w+)", \w+: (.*)$/.exec(l))
         .filter((m): m is RegExpExecArray => !!m && m[2] !== 'DONE')

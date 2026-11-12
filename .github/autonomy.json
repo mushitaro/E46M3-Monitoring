@@ -19,6 +19,8 @@
     "scripts/deploy.mjs",
     "scripts/desk.mjs",
     "scripts/desk-token.mjs",
+    "scripts/autonomy-class.mjs",
+    "scripts/owner-ok.mjs",
     "packages/ds2-core/**",
     "public/kill-list.json",
     "public/guide/index.md",
@@ -39,5 +41,23 @@
     "tools/sgbd/**",
     "tools/extract_telegrams.py",
     "scenarios/capabilities.json"
+  ],
+  "_owner": "Of the `human` paths, the ones a spoken OK does not release (scripts/owner-ok.mjs, docs/AUTONOMY.md §5): the rules themselves, the gate, the ledger, the link and the kill list. Only the owner's own account takes these in.",
+  "owner": [
+    ".github/**",
+    ".claude/**",
+    "CLAUDE.md",
+    "scripts/autonomy-class.mjs",
+    "scripts/owner-ok.mjs",
+    "scripts/desk.mjs",
+    "scripts/desk-token.mjs",
+    "workers/**",
+    "functions/_middleware.ts",
+    "packages/ds2-core/**",
+    "public/kill-list.json",
+    "src/lib/runGate.ts",
+    "src/lib/ledger.ts",
+    "src/lib/actuationGate.ts",
+    "src/lib/vehicleState.ts"
   ]
 }

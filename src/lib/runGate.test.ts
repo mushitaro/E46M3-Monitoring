@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { Ds2Control, Ds2Status, buildDs2Frame, toHex } from '@tsunagi/ds2-core';
 import { MSS54_ADAPTATION_BLOCKS } from '@tsunagi/ds2-mss54';
-import { practiceEcu } from './practiceEcu';
+import { practiceBus, practiceEcu } from './practiceEcu';
 import {
     READ_ONLY_CONTROLS,
     clearFaultsCommand,
@@ -254,7 +254,11 @@ describe('PRACTICE answers everything the gate permits', () => {
                 const v = mayRun(j, bestTelegram(telegrams(m), j.id), EMPTY_LEDGER, ctx(m));
                 if (!v.allowed) continue;
                 const bytes = telegramBytes(v.telegram.hex)!;
-                const answer = ecu.respond!({
+                // The module's own responder on the PRACTICE line, as the app reaches it. This
+                // asked the DME's responder for every module, which answered SMG II's status
+                // blocks 2-4 with the DME's blocks and refused block 5.
+                const own = practiceBus([bytes[0]]).find((e) => e.address === bytes[0])!;
+                const answer = own.respond!({
                     address: bytes[0],
                     controlOrStatus: bytes[2],
                     payload: bytes.slice(3, bytes.length - 1),

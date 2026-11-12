@@ -73,6 +73,10 @@ describe('SERVICE carries the whole of what a real car will accept', () => {
         // command whitelist written for MSS54. The ten that arrived are reads
         // on control bytes `READ_ONLY_CONTROLS` already named — 0x14 and 0x0d —
         // whose frames had simply never been recovered.
-        expect(runnable.length).toBe(96);
+        //
+        // 96 until the extractor read SMG II's four status reads from the job's start to its
+        // first send: three of them patch the block number into a shared template
+        // (`32 05 0B 03` -> 04, 02, 05), so all four had looked like one shared frame.
+        expect(runnable.length).toBe(100);
     });
 });

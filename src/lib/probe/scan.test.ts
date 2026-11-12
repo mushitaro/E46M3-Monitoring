@@ -72,6 +72,113 @@ describe('scan targets', () => {
     });
 });
 
+/**
+ * What the car said on 2026-11-12, as the frames went: the driver's door mirror (SPM46FT, 0x9B)
+ * answered `04 00` with one byte `00` and refused `04 01` with 0xb1; the steering-angle sensor
+ * (LWS5, 0x57) refused `04 01` with 0xb0 in a scan and answered the same frame on DIAGNOSIS, where
+ * its IDENT had gone first.
+ */
+describe('scan: the identity first, and an answer kept', () => {
+    const withIdent = (module: string, address: number, ident: string, fs: string[]): TelegramTable => ({
+        ...table(module, address, fs),
+        jobs: {
+            IDENT: [{ hex: ident, cmd: 0, cmdName: '', occurrences: 1, confidence: 'shared' as const }],
+            FS_LESEN: fs.map((hex) => ({ hex, cmd: 4, cmdName: '', occurrences: 1, confidence: 'shared' as const })),
+        },
+    });
+    const lws5 = moduleProtocol('lws5', 0x57, withIdent('lws5', 0x57, '57 04 00 53', ['57 05 04 01 57']));
+    const mrs3 = moduleProtocol('mrs3', 0xa4, withIdent('mrs3', 0xa4, 'a4 04 00 a0', ['a4 05 04 00 a5']));
+    const mrs4 = moduleProtocol('mrs4', 0xa4, withIdent('mrs4', 0xa4, 'a4 04 00 a0', ['a4 05 04 00 a5']));
+    const spm = moduleProtocol('spm46ft', 0x9b, table('spm46ft', 0x9b, ['9b 05 04 00 9a', '9b 05 04 01 9b']));
+    const status = (s: number): Ds2Frame => ({ address: 0, length: 0, controlOrStatus: s, payload: new Uint8Array(0), checksum: 0 }) as Ds2Frame;
+
+    /** Answers by the frame sent; anything not listed is silence. */
+    function car(answers: Record<string, Ds2Frame>, ledger: Ledger = EMPTY_LEDGER) {
+        const sent: Array<[string, string]> = [];
+        const d: ScanDeps = {
+            ledger: () => ledger,
+            measure: async () => 'parked',
+            exchange: async (_a, _m, job, f) => {
+                sent.push([job, f.hex]);
+                const a = answers[f.hex];
+                if (!a) throw new Ds2Error('READ_TIMEOUT', 'no answer', { kind: 'timeout' });
+                return a;
+            },
+            stopped: () => false,
+            pause: async () => {},
+            now: () => 0,
+        };
+        return { d, sent };
+    }
+
+    it('sends a module its own IDENT before its fault read, and keeps the identity out of the result', async () => {
+        const { d, sent } = car({ '57 04 00 53': ok([0x11, 0x22, 0x33]), '57 05 04 01 57': ok(new Array(16).fill(0)) });
+        const run = await runScan(scanTargets([lws5]), d);
+        expect(sent).toEqual([
+            ['IDENT', '57 04 00 53'],
+            ['FS_LESEN', '57 05 04 01 57'],
+        ]);
+        expect(run.results[0]).toMatchObject({ outcome: 'answered', ident: { request: '57 04 00 53', outcome: 'answered', bytes: 3 } });
+        expect(run.results[0].exchanges).toEqual([{ request: '57 05 04 01 57', response: new Array(16).fill('00').join(' ') }]);
+        expect(JSON.stringify(run.results[0])).not.toContain('11 22 33');
+    });
+
+    it('sends a shared address the IDENT its candidates agree on, and none when they differ', async () => {
+        expect(scanTargets([mrs3, mrs4])[0].ident?.hex).toBe('a4 04 00 a0');
+        const other = moduleProtocol('mrs4', 0xa4, withIdent('mrs4', 0xa4, 'a4 05 00 01 a0', ['a4 05 04 00 a5']));
+        expect(scanTargets([mrs3, other])[0].ident).toBeNull();
+        expect(scanTargets([P.mfl, P.mfl2])[0].ident).toBeNull();
+    });
+
+    it('takes silence to the IDENT as the module’s absence, and does not wait a second time', async () => {
+        const { d, sent } = car({});
+        const run = await runScan(scanTargets([lws5]), d);
+        expect(sent).toEqual([['IDENT', '57 04 00 53']]);
+        expect(run.results[0]).toMatchObject({ outcome: 'silent', exchanges: [] });
+    });
+
+    it('still reads the faults of a module that refuses its IDENT', async () => {
+        const { d, sent } = car({ '57 04 00 53': status(Ds2Status.REJECTED), '57 05 04 01 57': ok([0x00]) });
+        const run = await runScan(scanTargets([lws5]), d);
+        expect(sent.map((x) => x[0])).toEqual(['IDENT', 'FS_LESEN']);
+        expect(run.results[0]).toMatchObject({ outcome: 'answered', ident: { outcome: 'rejected' } });
+    });
+
+    it('does not send an IDENT the ledger has withdrawn', async () => {
+        const ledger: Ledger = { version: 1, records: { 'lws5:IDENT': { id: 'lws5:IDENT', status: 'revoked', reason: 'test' } as never } };
+        const { d, sent } = car({ '57 05 04 01 57': ok([0x00]) }, ledger);
+        const run = await runScan(scanTargets([lws5]), d);
+        expect(sent).toEqual([['FS_LESEN', '57 05 04 01 57']]);
+        expect(run.results[0].outcome).toBe('answered');
+    });
+
+    it('keeps the answer of a module that refuses a later frame (the door mirror, 2026-11-12)', async () => {
+        const { d, sent } = car({ '9b 05 04 00 9a': ok([0x00]), '9b 05 04 01 9b': status(Ds2Status.FUNCTION_ERROR) });
+        const run = await runScan(scanTargets([spm]), d);
+        expect(sent.map((x) => x[1])).toEqual(['9b 05 04 00 9a', '9b 05 04 01 9b']);
+        expect(run.results[0].outcome).toBe('answered');
+        expect(run.results[0].exchanges).toEqual([
+            { request: '9b 05 04 00 9a', response: '00' },
+            { request: '9b 05 04 01 9b', response: null, refused: 'status 0xb1' },
+        ]);
+        expect(run.results[0].reason).toBe('answered 1 of 2 frames; 9b 05 04 01 9b refused (status 0xb1)');
+    });
+
+    it('calls a module that refuses its first fault-read frame rejected, as before', async () => {
+        const { d } = car({ '9b 05 04 00 9a': status(Ds2Status.REJECTED) });
+        const run = await runScan(scanTargets([spm]), d);
+        expect(run.results[0]).toMatchObject({ outcome: 'rejected', reason: 'status 0xa2' });
+    });
+
+    it('does not decode the MSS54 from half an answer', async () => {
+        const { d } = car({ '12 05 04 00 13': ok([0x02]) });
+        const run = await runScan(scanTargets([P.mss54]), { ...d, decode: () => ({ entries: 1 }) });
+        expect(run.results[0].outcome).toBe('answered');
+        expect(run.results[0].reason).toMatch(/answered 1 of 2 frames; 12 05 04 01 12 got no answer/);
+        expect(run.results[0].decoded).toBeUndefined();
+    });
+});
+
 describe('scan run', () => {
     it('reads every address on a car measured stationary, and decodes only the MSS54', async () => {
         const { d, sent } = deps();

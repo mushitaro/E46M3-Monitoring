@@ -4,7 +4,7 @@ import { EMPTY_LEDGER, type Ledger } from '../ledger';
 import { moduleProtocol } from '../moduleProtocol';
 import type { TelegramTable } from '../telegrams';
 import type { Motion } from '../vehicleState';
-import { KWP_NOT_PARKED, runScan, scanTargets, type ScanDeps } from './scan';
+import { runScan, scanTargets, type ScanDeps } from './scan';
 
 /**
  * The all-module scan: which frames each address may be sent, and what it does when the car moves,
@@ -234,18 +234,19 @@ describe('scan run', () => {
     });
 });
 
-describe('scan: the DSC MK60 (KWP-on-DS2), parked only', () => {
+describe('scan: the DSC MK60 (KWP-on-DS2)', () => {
     it('lists it with its own frames, apart from DS2\'s', () => {
         const mk60 = scanTargets([P.mss54, P.mk60]).find((t) => t.address === 0xb8)!;
         expect(mk60.frames).toEqual([]);
         expect(mk60.kwp?.faults.map((f) => f.hex)).toEqual([MK60_FS]);
     });
 
-    it('reads it on a car measured parked, and keeps the codes as an estimate beside the bytes', async () => {
+    it('reads it, and keeps the codes as an estimate beside the bytes', async () => {
         const { d, sent, measuredCount } = deps();
         const run = await runScan(scanTargets([P.mss54, P.mk60, P.kombi]), d);
         expect(sent).toEqual(['12 05 04 00 13', '12 05 04 01 12', '80 05 04 01 80', MK60_FS]);
-        expect(measuredCount()).toBe(1);
+        // Nothing is measured for it: its fault read goes whatever the speed, as every module's does.
+        expect(measuredCount()).toBe(0);
         const r = run.results.find((x) => x.address === '0xB8')!;
         expect(r.outcome).toBe('answered');
         expect(r.exchanges).toEqual([{ request: MK60_FS, response: '58 01 5d 90 24' }]);
@@ -253,11 +254,11 @@ describe('scan: the DSC MK60 (KWP-on-DS2), parked only', () => {
         expect(r.decoded).toBeUndefined();
     });
 
-    it.each(['moving', 'unknown'] as const)('sends it nothing on a car that is %s, says why, and goes on', async (motion) => {
+    it.each(['moving', 'unknown'] as const)('reads it on a car that is %s too (operator, 2026-11-12)', async (motion) => {
         const { d, sent } = deps({ motions: [motion] });
         const run = await runScan(scanTargets([P.mk60, P.kombi]), d);
-        expect(sent).toEqual(['80 05 04 01 80']);
-        expect(run.results.find((x) => x.address === '0xB8')).toMatchObject({ outcome: 'refused', reason: KWP_NOT_PARKED, exchanges: [] });
+        expect(sent).toEqual(['80 05 04 01 80', MK60_FS]);
+        expect(run.results.find((x) => x.address === '0xB8')).toMatchObject({ outcome: 'answered', kwpDtcs: [{ code: '0x5d90', status: 0x24 }] });
         expect(run.end).toBe('done');
     });
 

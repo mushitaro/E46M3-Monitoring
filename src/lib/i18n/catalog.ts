@@ -205,7 +205,6 @@ export interface Localised {
     scan_outcome: { faults: (n: number) => string; clean: string; undecoded: string; silent: string; rejected: string; refused: string; skipped: string };
     /** A shared address: which of its SGBDs is fitted is chosen on the select. */
     scan_shared: string;
-    scan_kwpNotParked: string;
     /** The hub's notice while it runs. */
     scan_progress: (done: number, total: number) => string;
     awaiting_scan: string;

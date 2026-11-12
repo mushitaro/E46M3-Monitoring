@@ -15,6 +15,14 @@
  * its own. Most shared addresses agree byte for byte; where none is common (0x50: MFL carries one,
  * MFL2 none), the address is not asked, and says so.
  *
+ * ## The DSC MK60 is in it, parked
+ *
+ * The MK60's frames are KWP2000-shaped on the same line (lib/kwpOnDs2), and it is read parked only
+ * (operator, 2026-11-10). The scan asks it too (operator, 2026-11-12):
+ * the DME's speed is measured when its turn comes, and only 0 km/h lets its frames go.
+ * On a moving car, or one whose speed cannot be read, it is `refused` with that reason and the scan
+ * goes on — the answer says to scan again once stopped. Its codes are an estimate, kept beside the bytes.
+ *
  * ## What it never does
  *
  *   - Wait for the car to stop. A fault read is a read, and it goes while the car moves too
@@ -27,6 +35,7 @@
  * Pure apart from its deps, so the rules hold in a test with a simulated K-line.
  */
 import { isDs2Error, isPositiveResponse, toHex, type Ds2Frame, type RetryOptions } from '@tsunagi/ds2-core';
+import { parseDtcsByStatus, type KwpDtc, type KwpFrame } from '../kwpOnDs2';
 import type { Ledger } from '../ledger';
 import type { ModuleProtocol, ProtocolFrame } from '../moduleProtocol';
 import { mayRunProtocolRead, type RunBlockKey } from '../runGate';
@@ -40,8 +49,8 @@ export interface ScanTarget {
     frames: ProtocolFrame[];
     /** The MSS54 alone is decoded. */
     decoder: 'mss54' | null;
-    /** A KWP-on-DS2 module (DSC MK60): not in the scan, which runs while moving — it is read on its own screen, parked. */
-    kwp?: boolean;
+    /** A KWP-on-DS2 module (DSC MK60): its own fault-read frames, sent only on a car measured parked. */
+    kwp?: { faults: KwpFrame[] };
 }
 
 export type ScanOutcome =
@@ -64,6 +73,8 @@ export interface ScanResult {
     reason?: string;
     /** The MSS54's decoded entries, as the decoder gives them. */
     decoded?: unknown;
+    /** A KWP-on-DS2 answer read as ISO 14230 lays a $58 out (lib/kwpOnDs2): an estimate, the bytes stay the answer. */
+    kwpDtcs?: KwpDtc[];
 }
 
 export interface ScanRun {
@@ -80,6 +91,11 @@ export interface ScanDeps {
     measure(): Promise<Motion>;
     /** One exchange, told to the read record; the hook's readFrame. */
     exchange(address: number, moduleId: string, job: string, f: ProtocolFrame, options: RetryOptions): Promise<Ds2Frame>;
+    /**
+     * One KWP-on-DS2 exchange (the hook's kwpRead, which measures parked itself before it sends).
+     * Absent: a KWP module is not asked.
+     */
+    kwpExchange?(moduleId: string, job: string, f: KwpFrame): Promise<{ data: Uint8Array }>;
     decode?(target: ScanTarget, responses: Ds2Frame[]): unknown;
     stopped(): boolean;
     pause(): Promise<void>;
@@ -108,7 +124,7 @@ export function scanTargets(protocols: readonly ModuleProtocol[]): ScanTarget[] 
             modules: group.map((p) => p.moduleId),
             frames,
             decoder: group.length === 1 && first.decoder === 'mss54' ? 'mss54' : null,
-            ...(group.some((p) => p.kwp) ? { kwp: true } : {}),
+            ...(group.length === 1 && first.kwp ? { kwp: { faults: first.kwp.faults } } : {}),
         });
     }
     // The DME first: it is the one decoded, and the speed comes from it anyway.
@@ -133,13 +149,20 @@ export async function runScan(targets: readonly ScanTarget[], deps: ScanDeps): P
             break;
         }
         const base = { address: hex2(t.address), modules: t.modules };
+        if (t.kwp && t.kwp.faults.length > 0 && deps.kwpExchange) {
+            const result = await readKwp(t, t.kwp.faults, base, deps);
+            lostInARow = 0;
+            push(result);
+            await deps.pause();
+            continue;
+        }
         if (t.frames.length === 0) {
             push({
                 ...base,
                 outcome: 'refused',
                 exchanges: [],
                 reason: t.kwp
-                    ? 'KWP2000-shaped frames on the DS2 line: read on its own screen, parked, not in the scan'
+                    ? 'KWP2000-shaped frames on the DS2 line: no fault-read frame for it on this link'
                     : t.modules.length > 1
                         ? `no fault-read frame is common to ${t.modules.join(', ')}; which one is fitted is chosen on the screen, then read`
                         : 'its SGBD carries no short fault-read frame',
@@ -207,6 +230,42 @@ export async function runScan(targets: readonly ScanTarget[], deps: ScanDeps): P
     }
     run.endedAt = deps.now();
     return run;
+}
+
+/** Why a KWP-on-DS2 module was not asked: the car is not measured parked. The answer's reader acts on it. */
+export const KWP_NOT_PARKED = 'read parked only: the car is moving or its speed could not be read — stop, then scan again';
+
+/**
+ * The DSC MK60's turn. Parked only, measured now; a withdrawal holds it back like any read. One
+ * silence does not count toward a lost line: this module's answer has not been seen on a car yet.
+ */
+async function readKwp(t: ScanTarget, faults: readonly KwpFrame[], base: { address: string; modules: string[] }, deps: ScanDeps): Promise<ScanResult> {
+    const moduleId = t.modules[0];
+    const gate = mayRunProtocolRead(`${moduleId}:FS_LESEN`, 'fault-read', deps.ledger(), 'unknown');
+    if (!gate.allowed) return { ...base, outcome: 'refused', exchanges: [], reason: gate.reason };
+    if ((await deps.measure()) !== 'parked') return { ...base, outcome: 'refused', exchanges: [], reason: KWP_NOT_PARKED };
+    const exchanges: ScanResult['exchanges'] = [];
+    const dtcs: KwpDtc[] = [];
+    let shaped = true;
+    for (const f of faults) {
+        try {
+            const answer = await deps.kwpExchange!(moduleId, 'FS_LESEN', f);
+            exchanges.push({ request: f.hex, response: toHex(answer.data) });
+            const read = parseDtcsByStatus(answer.data);
+            if (read) dtcs.push(...read);
+            else shaped = false;
+        } catch (e) {
+            exchanges.push({ request: f.hex, response: null });
+            return {
+                ...base,
+                // Not a line error: the read's own preflight held it back (the car moved off between the two measurements).
+                outcome: !isDs2Error(e) ? 'refused' : e.code === 'NEGATIVE_RESPONSE' ? 'rejected' : 'silent',
+                exchanges,
+                reason: e instanceof Error ? e.message.slice(0, 200) : String(e),
+            };
+        }
+    }
+    return { ...base, outcome: 'answered', exchanges, ...(shaped ? { kwpDtcs: dtcs } : {}) };
 }
 
 /** A line per outcome, for the answer and the log: `answered 21 · silent 14 · refused 2`. */

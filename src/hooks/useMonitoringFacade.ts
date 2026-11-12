@@ -13,6 +13,7 @@ import { hasFaultRead, hasIdent, type ModuleProtocol } from '@/lib/moduleProtoco
 import { addEntries, listAllEntries } from '@/lib/notebook/store';
 import { getBoard, putBoard } from '@/lib/probe/boardStore';
 import { listRuns } from '@/lib/probe/runStore';
+import { probeKept } from '@/lib/probeKept';
 import { scanCounts, type ScanRun } from '@/lib/probe/scan';
 import type { RunBlockKey } from '@/lib/runGate';
 import { mayRun, mayRunProtocolRead } from '@/lib/runGate';
@@ -376,7 +377,13 @@ export function useMonitoringFacade(input: {
                 await sessions.save();
             }
             const s = (await listLocal().catch(() => [])).sort((a, b) => b.updatedAt - a.updatedAt)[0];
-            return s ? { saved: true, label: s.label, ...summarise(s) } : { saved: false, reason: 'Nothing was written to this device.' };
+            // PROBE's samples are the investigation's, never MEMORY's: say where they are, so a
+            // count of 0 here is not read as a loss.
+            const record = input.probeSessions.opened();
+            const probeRuns = probeKept(record, record ? await listRuns(record).catch(() => []) : []);
+            return s
+                ? { saved: true, label: s.label, ...summarise(s), ...(probeRuns ? { probeRuns } : {}) }
+                : { saved: false, reason: 'Nothing was written to this device.', ...(probeRuns ? { probeRuns } : {}) };
         },
 
         connect: async () => {

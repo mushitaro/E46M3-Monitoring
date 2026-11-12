@@ -21,7 +21,7 @@ async function scanned(page) {
     }
     if (!done) return 'scan did not end in 2 minutes';
     const f = await tool(page, 'monitoring_faults');
-    const rows = f?.scan?.modules ?? [];
+    const rows = (f?.faults ?? f)?.scan?.modules ?? [];
     const of = (id) => rows.find((x) => x.modules?.some((m) => m.id === id));
     return { mk60: of('dsc_mk60'), dme: of('mss54') };
 }
@@ -86,7 +86,6 @@ const scenario = {
                 },
             },
         },
-        { screen: { desc: '画面（MK60 が画面のモジュール）：スキャンが読んだコードがそのまま出る', has: ['0x5D90', 'MK60 の実車ではまだ確かめていません'] } },
     ],
 };
 

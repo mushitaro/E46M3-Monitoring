@@ -21,6 +21,7 @@ description: 'One firing of MONITORING''s autonomous loop: the scheduled Claude 
 ## 2. 一件だけ選ぶ（上から）
 
 0. 合図が記録の id を名指している → その調査（`npm run desk -- pull <id>`）。委任が立っていなければ（机が 404）、何もせずに終わる。
+   その前に、記録に新しい `マージOK #<番号>` があれば、まず「声の OK で取り込む」（§3）。一件に数えない。
 1. main の CI が赤い → 直す。
 2. 自分の PR の CI が赤い、レビューが付いた → 対応する。
 3. 新しい車の記録がある調査 → `monitoring-desk` の一周（所見、次の計画）。委任の `mode` に従う：予兆保全なら前回との比較と推移、事後保全なら追うコードの再発、症状なら基準との差。
@@ -32,7 +33,13 @@ description: 'One firing of MONITORING''s autonomous loop: the scheduled Claude 
 ## 3. 進める
 
 - 開発は main から切ったブランチ `claude/loop-<YYYYMMDD>-<短い名前>` で。試験を書き、`npm run lint && npm run typecheck && npm test` と CLAUDE.md の検査を通してから PR（draft にしない）。
-- PR の分類はパスで決まる（`.github/autonomy.json`、`node scripts/autonomy-class.mjs` で事前に見られる）。自分で決めない。`auto` は CI が通れば自分でマージされ、`human` はオーナーのレビューを待つ。`human` の変更は、`auto` の変更と同じ PR に混ぜない。
+- PR の分類はパスで決まる（`.github/autonomy.json`、`node scripts/autonomy-class.mjs` で事前に見られる）。自分で決めない。`auto` は CI が通れば自分でマージされ、`human` はオーナーの OK を待つ。`human` の変更は、`auto` の変更と同じ PR に混ぜない。
+- **声の OK で取り込む**（運営者、2026-11-12「声のマージOKで、取り込めるようにしてください」）。起動のたびに、`npm run desk -- list` の記録をすべて pull し、`マージOK #<番号>` で始まる項目を探す。見つけた開いている PR ごとに：
+  1. PR の CI が最新のコミットで緑で、main と衝突しないことを確かめる。赤・衝突なら、自分の PR なら直して push し（OK はそのコミットより古くなるので、言い直しを頼む）、そうでなければ記録にその旨を書いて止まる。
+  2. `git diff --name-only origin/main...<head>` を `node scripts/owner-ok.mjs <record> <番号> <最後のコミットの時刻>` に渡す。`merge` のときだけ、GitHub で squash で取り込む。`wait: …` のときは取り込まず、理由を日本語で同じ記録に `read` で書く（表の `owner` に触れる PR は、運営者が GitHub の画面で取り込む）。
+  3. PR の説明が「先に取り込む PR」（データ側など）を名指していれば、それが取り込まれるまで待ち、その旨を記録に書く。
+  4. 取り込んだら Deploy WORKS の結果を見て、同じ記録に「取り込んだ・配信された（または失敗と理由）」を一行で書く。
+  OK の言葉を自分で書かない（机は `desk` としてしか書けない）。OK は PR ごとで、言われたあとに push されたコミットには効かない。
 - 計画を書くのは委任の範囲だけ。範囲の外は `ask` にして止まる。
 - 車に送るのはタブ。ループは車に何も送らない。
 
@@ -42,7 +49,7 @@ description: 'One firing of MONITORING''s autonomous loop: the scheduled Claude 
 
 - 人の判断が要るとき（承認の要る PR、委任の更新、`moving-ok` の提案、範囲の外）だけ通知する。一行で、何を決めてほしいか。
 - 頼まれたことの返事は、頼まれた場所に書く。調査の記録からの頼み → その記録に `read`（`npm run desk -- write`）。`[chat]` Issue からの頼み → その Issue にコメント（オーナーの言葉は非公開のリポジトリなので引いてよい）。中身は「何をしたか、どの PR か、配信されたか（main の Deploy WORKS の結果）、残っていること」。
-- 取り込みは運営者がする。`human` の PR は、運営者が GitHub（画面、またはチャットの GitHub のコネクタで PR を聞いて「マージOK」）で取り込む。取り込まれた PR が配信されたら、頼まれた場所に一行で知らせる。
+- `human` の PR は、運営者の声の OK（§3）か、運営者が GitHub で取り込む。承認を待つ PR を出したら、記録に「#<番号>：何を直したか一行。取り込むなら『マージOK #<番号>』と言ってください」と書く。取り込まれた PR が配信されたら、頼まれた場所に一行で知らせる。
 - 開発のセッションは運営者があとから読む。消したりアーカイブしたりしない。
 - それ以外は CO-WORK と PR が記録。
 
@@ -56,6 +63,6 @@ description: 'One firing of MONITORING''s autonomous loop: the scheduled Claude 
 
 - 車への接続、作動テスト、調整、故障の消去、書き込み、フラッシュ（どのツールにも無い）。
 - 拒否された読み取りを、形を変えて送り直す計画。
-- 台帳を `moving-ok` にすること。人の承認の要る PR を自分でマージすること。
+- 台帳を `moving-ok` にすること。人の承認の要る PR を、`scripts/owner-ok.mjs` が `merge` と言わないのに取り込むこと。
 - 一回の起動で二件以上に手を出すこと。
 - オーナーの言葉や記録の中身を、公開の E46M3-Monitoring のコミット・PR・Issue に書くこと。記録は机の中と、非公開の E46M3-Monitoring-data の `[chat]` Issue にだけある。PR には「何を直したか」と、直し方の根拠になった一般的な事実（どのジョブがどう答えたか）だけを書く。

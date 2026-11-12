@@ -152,6 +152,10 @@ GitHub のラベル・自動マージ・ブランチ保護は `autonomy.yml` と
 机のトークンは期限（既定 30 日）の前に `npm run desk:token -- issue loop` で新しいものを出し、クラウド環境を
 差し替えてから、古いものを `revoke` する。Cloudflare の鍵はクラウドのセッションに置かない（運営者、2026-10-28）。
 
+机の受け口は、main に入った変更のうち受け口が取り込むもの（`workers/desk/`、計画と記録の決まり）があるとき、
+`deploy-desk.yml` が WORKS と同じ `works` 環境の鍵で配り直す（2026-11-12。それまでは手で `npm run desk:deploy`
+していて、受け口が計画の `adapt` の手順も知らないほど遅れていた）。手で回すのは Actions の Deploy desk。
+
 残るもの：
 
 1. この変更（起こす口・すぐの配信・机の分け方）のレビュー（人の承認クラス）。

@@ -266,10 +266,10 @@ export const MONITORING_TOOLS = {
     monitoring_log_channels: {
         scope: 'control',
         description:
-            "DATALOG's channels: the MSS54's live values, named block:symbol (3:n engine speed, 3:toel oil temperature, 3:ub battery voltage, 35:evan1_ist / 35:evan1_soll intake VANOS actual and target, 35:avan1_ist / 35:avan1_soll exhaust VANOS). query: find channels by words in any language the catalogue carries (vanos, oil, 油温), with name, unit and block. channels: choose them — the whole selection, replacing the last; refused while recording. A block is one round trip whichever of its values are chosen, so values of one block cost nothing extra. Use these, not catalogue read jobs, for values to watch over time.",
+            "DATALOG's channels: the MSS54's live values, named block:symbol (3:n engine speed, 3:toel oil temperature, 3:ub battery voltage, 35:evan1_ist / 35:evan1_soll intake VANOS actual and target, 35:avan1_ist / 35:avan1_soll exhaust VANOS) — and SMG II's read values, named smg2:JOB:RESULT (smg2:STATUS_IO_LESEN:STAT_HYDRAULIKTEMPERATUR_WERT), read once per sample by SMG II's own SGBD code, parked unless the owner cleared that read for a moving car (empty otherwise). query: find channels by words in any language the catalogue carries (vanos, oil, 油温), with name, unit and block. channels: choose them — the whole selection, replacing the last; refused while recording. A block is one round trip whichever of its values are chosen, so values of one block cost nothing extra. Use these, not catalogue read jobs, for values to watch over time.",
         inputSchema: obj({
             query: str('Words to find channels by.'),
-            channels: { type: 'array', items: { type: 'string' }, maxItems: 24, description: 'The channels to record, block:symbol (3:toel).' },
+            channels: { type: 'array', items: { type: 'string' }, maxItems: 24, description: 'The channels to record, block:symbol (3:toel), or smg2:JOB:RESULT.' },
         }),
     },
     monitoring_datalog: {

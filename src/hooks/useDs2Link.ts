@@ -62,6 +62,7 @@ import { appNow } from '@/lib/clock';
 import { kwpExchange, parseDtcsByStatus, type KwpDtc, type KwpFrame } from '@/lib/kwpOnDs2';
 import { whyNotSendable } from '@/lib/actuationGate';
 import { answerFrame, decodeRead, loadSgbdResults, type DecodedRead } from '@/lib/sgbd/results';
+import { moduleLogGate, moduleLogValues, type ModuleLogRead } from '@/lib/sgbd/logChannels';
 import type { ReadRecord } from '@/lib/investigation/readRecord';
 import type { ModuleProtocol } from '@/lib/moduleProtocol';
 import { PracticePort } from '@/lib/practiceEcu';
@@ -1079,6 +1080,12 @@ export function useDs2Link(options: {
             channels: readonly ChannelId[],
             onSample: (s: LiveSample) => void,
             onEnd: (failure: string | null) => void,
+            /**
+             * Other modules' read values the run records too (lib/sgbd/logChannels), and the ledger
+             * their gate reads. Each goes once per sample as the gate lets it — parked unless the
+             * owner cleared it for a moving car — measured on the DME's speed read in that sample.
+             */
+            modules?: { reads: readonly ModuleLogRead[]; ledger: () => Ledger },
         ) => {
             const link = linkRef.current;
             if (!link || pollingRef.current) return;
@@ -1091,7 +1098,12 @@ export function useDs2Link(options: {
                 failWith(e);
                 return;
             }
-            const { blocks } = planBlockReads(channels);
+            const moduleReads = [...(modules?.reads ?? [])];
+            const planned = planBlockReads(channels).blocks;
+            // A module read goes on the speed measured in the same sample: block 19 is read with it.
+            const speedBlock = blockBySelection(SPEED_BLOCK);
+            const blocks =
+                moduleReads.length > 0 && speedBlock && !planned.some((b) => b.selection === SPEED_BLOCK) ? [...planned, speedBlock] : planned;
             if (blocks.length === 0) return;
             const wanted = new Set<ChannelId>(channels);
 
@@ -1099,7 +1111,7 @@ export function useDs2Link(options: {
             finishedRef.current = false;
             setState('logging');
             const t0 = performance.now();
-            append('info', `Recording ${channels.length} channel(s) across ${blocks.length} block(s).`);
+            append('info', `Recording ${channels.length} channel(s) across ${blocks.length} block(s)${moduleReads.length ? ` and ${moduleReads.length} module read(s)` : ''}.`);
 
             // Arm the low latency timer for the duration of the run.
             //
@@ -1121,6 +1133,7 @@ export function useDs2Link(options: {
                 try {
                     while (pollingRef.current && linkRef.current) {
                         const values: Partial<Record<ChannelId, number | null>> = {};
+                        let speed: LiveValues | null = null;
                         let incomplete = false;
                         for (const block of blocks) {
                             const req = liveBlockRequest(block.selection);
@@ -1162,10 +1175,49 @@ export function useDs2Link(options: {
                             if (block.selection === 3 || block.selection === SPEED_BLOCK) {
                                 const all: LiveValues = {};
                                 for (const v of decoded) all[channelId(block.selection, v.symbol)] = v.value;
-                                if (block.selection === SPEED_BLOCK) noteVehicle(all);
+                                if (block.selection === SPEED_BLOCK) {
+                                    noteVehicle(all);
+                                    speed = all;
+                                }
                                 else if (vehicleStateRef.current) {
                                     vehicleStateRef.current = { ...vehicleStateRef.current, rpm: all['3:n'] ?? null, voltageV: all['3:ub'] ?? null };
                                 }
+                            }
+                        }
+                        // Other modules' reads: on the car as measured in this sample, through the gate.
+                        if (!incomplete && moduleReads.length > 0 && modules) {
+                            const now = appNow();
+                            const motion = speed ? motionOf(vehicleStateFrom(speed, now), now) : 'unknown';
+                            for (const read of [...moduleReads]) {
+                                for (const r of read.wanted) values[`${read.module}:${read.job.id}:${r}` as ChannelId] = null;
+                                const gate = moduleLogGate(read, modules.ledger(), motion);
+                                if ('refused' in gate) {
+                                    moduleReads.splice(moduleReads.indexOf(read), 1);
+                                    append('info', `${read.module} ${read.job.id}: not recorded (${gate.refused}).`);
+                                    continue;
+                                }
+                                if (!gate.frame) continue;
+                                const bytes = gate.frame;
+                                const mod = link.to(read.address);
+                                let frame: Ds2Frame | null = null;
+                                for (let attempt = 0; attempt < 3 && frame === null; attempt++) {
+                                    try {
+                                        frame = await mod.exchangeWithRetry(bytes[2], bytes.slice(3, bytes.length - 1), { attempts: 2 });
+                                    } catch (e) {
+                                        if (!isDs2Error(e) || e.code !== 'GATE_HELD') throw e;
+                                        await new Promise((r) => setTimeout(r, 20));
+                                    }
+                                }
+                                // The gate stayed held: this sample goes without it.
+                                if (frame === null) continue;
+                                noteRead(mod, read.module, read.job.id, bytes[2], bytes.slice(3, bytes.length - 1), { frame });
+                                if (!isPositiveResponse(frame)) {
+                                    // The module said no: this read stops, the run goes on. Not retried.
+                                    moduleReads.splice(moduleReads.indexOf(read), 1);
+                                    append('info', `${read.module} ${read.job.id}: refused by the module (status 0x${frame.controlOrStatus.toString(16)}); no longer recorded.`);
+                                    continue;
+                                }
+                                Object.assign(values, moduleLogValues(read, bytes, frame));
                             }
                         }
                         if (!incomplete) onSample({ time: (performance.now() - t0) / 1000, values });

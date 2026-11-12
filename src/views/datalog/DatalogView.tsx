@@ -61,20 +61,22 @@ export function DatalogView({ datalog }: { datalog: Datalog }) {
                 <DataList>
                     {datalog.selected.map((id) => {
                         const ch = MSS54_CHANNELS.get(id);
+                        const other = ch ? null : datalog.moduleInfo(id);
                         const v = datalog.latest[id];
                         return (
                             <DataRow
                                 key={id}
                                 name={humanName(
-                                    ch ? (lang === 'en' ? ch.field.name : ch.field.ja) : '',
+                                    ch ? (lang === 'en' ? ch.field.name : ch.field.ja) : other ? (lang === 'en' ? other.name : other.ja) : '',
                                 )}
-                                ident={ch?.field.symbol ?? id}
+                                ident={ch?.field.symbol ?? (other ? `${other.module} · ${other.result}` : id)}
                                 // The block is part of the channel's identity, so
                                 // it is shown where the identity is shown.
                                 code={ch ? String(ch.block.selection) : undefined}
                                 trailing={
                                     <span className="shrink-0 font-mono text-xs tabular-nums text-slate-200">
                                         {v == null ? '—' : v.toFixed(2)}
+                                        {other?.unit && <span className="ml-1 text-slate-500">{other.unit}</span>}
                                     </span>
                                 }
                             />
@@ -84,6 +86,36 @@ export function DatalogView({ datalog }: { datalog: Datalog }) {
             </Section>
 
             <ChannelPicker selected={datalog.selected} disabled={datalog.running} onToggle={datalog.toggle} />
+            {datalog.moduleInfos.length > 0 && (
+                <Section title={t.channels_other} count={datalog.moduleInfos.length} note={t.channels_otherNote}>
+                    <DataList>
+                        {datalog.moduleInfos.map((i) => {
+                            const id = i.channel as ChannelId;
+                            const on = datalog.selected.includes(id);
+                            return (
+                                <DataRow
+                                    key={i.channel}
+                                    selected={on}
+                                    onSelect={datalog.running ? undefined : () => datalog.toggle(id, !on)}
+                                    leading={
+                                        <input
+                                            type="checkbox"
+                                            checked={on}
+                                            disabled={datalog.running}
+                                            readOnly
+                                            tabIndex={-1}
+                                            className="size-3 shrink-0 accent-blue-500"
+                                        />
+                                    }
+                                    name={humanName(lang === 'en' ? i.name : i.ja)}
+                                    ident={`${i.job} · ${i.result}`}
+                                    trailing={i.unit ? <span className="shrink-0 font-mono text-[11px] text-slate-500">{i.unit}</span> : undefined}
+                                />
+                            );
+                        })}
+                    </DataList>
+                </Section>
+            )}
         </Pane>
     );
 }

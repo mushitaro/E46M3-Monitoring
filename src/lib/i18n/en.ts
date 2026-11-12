@@ -34,6 +34,8 @@ export const en: Localised = {
     faults_freezeFrames: 'Freeze frames',
 
     channels: 'Channels',
+    channels_other: 'SMG II values',
+    channels_otherNote: "SMG II's read goes once per sample and its own SGBD code reads the answer. Parked only — empty while the car moves, unless the ledger clears that read for a moving car.",
     channels_pick: 'Choose what to record',
     datalog_run: 'Recording',
     channels_search: 'Search (symbol, name)',

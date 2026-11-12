@@ -349,7 +349,7 @@ export function useMonitoringFacade(input: {
                 cost: selectionCost(datalog.current()),
                 running: link.state === 'logging' && !running,
                 recorded: snap.recorded,
-                ...datalogSummary(snap.recorded, snap.samples, opts),
+                ...datalogSummary(snap.recorded, snap.samples, opts, datalog.moduleInfo),
                 ...(snap.samples.length === 0 ? { note: 'Nothing recorded yet on this page: choose channels (monitoring_log_channels), then monitoring_start_log.' } : {}),
             };
         },
@@ -357,15 +357,27 @@ export function useMonitoringFacade(input: {
         logChannels: ({ query, channels }) => {
             if (channels) {
                 if (link.state === 'logging') return { selected: datalog.current(), changed: false, reason: 'A recording is going; channels change once it is stopped.' };
-                const unknown = unknownChannels(channels);
+                // Another module's read values (smg2:JOB:RESULT) are channels where DATALOG offers them.
+                const unknown = unknownChannels(channels).filter((c) => !datalog.moduleInfo(c));
                 if (unknown.length) {
                     return { changed: false, reason: `Not a live channel of the MSS54: ${unknown.join(', ')}.`, suggestions: unknown.flatMap((u) => { const byJob = channelsForJob(u); return byJob.length ? byJob : findChannels(u.split(':').pop() ?? u, 5); }) };
                 }
                 if (channels.length === 0) return { changed: false, reason: 'Choose at least one channel.' };
                 datalog.select(channels as ChannelId[]);
-                return { changed: true, selected: channels, cost: selectionCost(channels as ChannelId[]), then: 'monitoring_start_log records them.' };
+                const others = channels.filter((c) => datalog.moduleInfo(c));
+                return {
+                    changed: true,
+                    selected: channels,
+                    cost: selectionCost(channels.filter((c) => !datalog.moduleInfo(c)) as ChannelId[]),
+                    ...(others.length ? { otherModules: { channels: others, note: 'Read once per sample by the module’s own SGBD code, parked unless the owner cleared that read for a moving car; empty while it may not go.' } } : {}),
+                    then: 'monitoring_start_log records them.',
+                };
             }
-            return { selected: datalog.current(), found: query ? findChannels(query) : [] };
+            const words = (query ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+            const others = words.length
+                ? datalog.moduleInfos.filter((i) => words.every((w) => `${i.channel} ${i.name} ${i.ja} ${i.module}`.toLowerCase().includes(w))).slice(0, 20)
+                : [];
+            return { selected: datalog.current(), found: query ? [...findChannels(query), ...others] : [] };
         },
 
         stopLog: () => {

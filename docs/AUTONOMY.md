@@ -208,6 +208,33 @@ claude.ai の会話の GitHub のコネクタで、直接 GitHub に話す。手
   拾い（`monitoring-loop` §1）、同じ Issue に日本語で返す。
 - 報告は全部日本語（PR、記録、Issue）。開発のセッションは消さない。
 
+### 中継から開発へ（運営者、2026-11-10）
+
+claude.ai の標準の GitHub 連携は Issue を作れなかったので、Matrix の中継（`monitoring-works` のコネクタ）に、
+タブが無くても答える道具を二つ足した（中継の側は matrix-tsunagi の bridge）。
+
+```
+ 会話 ── monitoring_dev_request / monitoring_dev_status ──► 中継 ──Bearer（一度きりの札）──► /api/bridge/dev-*（WORKS）──► D1
+```
+
+- **札**：`v1.<payload>.<sig>`、payload は `{o: m3 の account_id, a: 'monitoring-dev', e: 発行 + 60 秒, n}`、署名は
+  `RELAY_DEV_SECRET` の HMAC-SHA256（`functions/_lib/devTicket.ts`）。タブの札とは鍵も向きも別。`o` が
+  `DEV_REQUEST_OWNERS`（カンマ区切り）に無ければ 403。一つの札は一度だけ（`monitoring_dev_nonce`）。
+  この二つの道だけがオーナーのゲートの外にある（`functions/_middleware.ts`、完全一致）。
+- **書く先**：オーナーごとに一つの記録 `dev-<SHA-256(account_id) の先頭 16 桁>`。頼みごとは `ask`（`to: desk`、
+  `by: chat`）で、アシスタントの補足は「（補足）」のあと。机は委任の立つ記録しか読まないので、最初の頼みごと
+  （と 30 日ごと）に委任を一つ書く：`by: owner`、頼みごとの言葉そのまま、モジュールは `none`。机はこの記録を
+  読んで答えられるが、この委任の下では車から何も読めない。
+- **起こす**：書いたらすぐ `wakeDesk`。答えの `say` は、起こせたかどうかで変わる。
+- **返事**：机は同じ記録に `answer`（`re` は頼みごと）を日本語で書く。`monitoring_dev_status` がそれを新しい順に返す。
+- 使えるのは運営者だけ（運営者、2026-11-10「この形で作る」）。ほかのオーナーに開くなら、先にプライバシー
+  ポリシーを直す。
+- 本番の順番（どれも運営者が）：
+  1. PC で `npx wrangler d1 migrations apply tsunagi-m-preview-runs --remote`（`0004`、使った札の表）。
+  2. 中継のデプロイと `node scripts/setup-secrets.mjs --monitoring-dev --owner <account_id>`（matrix-tsunagi。
+     中継と WORKS の両方に `RELAY_DEV_SECRET` と `DEV_REQUEST_OWNERS` を、値を出さずに入れる）。
+  3. MONITORING WORKS の再デプロイ（秘密を読み直すため）。
+
 ## 8. 分かっている穴
 
 - DSC のテレグラムは静的な抜き出しでは決まらない（52 ジョブのうち一意は 1 件）。SGBD の実行トレースが要る（段 5）。

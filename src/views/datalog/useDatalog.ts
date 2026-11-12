@@ -1,9 +1,12 @@
 'use client';
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { channelId, planBlockReads, type ChannelId } from '@tsunagi/ds2-mss54';
 import type { LiveSample, useDs2Link } from '@/hooks/useDs2Link';
 import { datalogCsv, download, stamp } from '@/lib/download';
+import type { EcuIndex } from '@/lib/ecuCatalog';
+import { EMPTY_LEDGER, type Ledger } from '@/lib/ledger';
+import { LOG_MODULES, isModuleChannel, moduleChannels, moduleLogData, moduleLogReads, type ModuleChannelInfo } from '@/lib/sgbd/logChannels';
 import { useLang } from '@/lib/i18n';
 
 type Link = ReturnType<typeof useDs2Link>;
@@ -20,8 +23,31 @@ const FLUSH_INTERVAL_MS = 500;
  * trace, the hub keeps offering STOP (`lib/viewHub`), and a tab change must not
  * be the thing that ends a recording.
  */
-export function useDatalog(link: Link) {
+export function useDatalog(link: Link, others: { ledger: Ledger; index: EcuIndex | null } = { ledger: EMPTY_LEDGER, index: null }) {
     const { t } = useLang();
+    // Read when a run starts and on every sample, never captured at render.
+    const othersRef = useRef(others);
+    useEffect(() => {
+        othersRef.current = others;
+    }, [others]);
+    /** Other modules' channels DATALOG offers (SMG II's read values), once the module index is here. */
+    const [moduleInfos, setModuleInfos] = useState<ModuleChannelInfo[]>([]);
+    useEffect(() => {
+        const index = others.index;
+        if (!index) return;
+        let live = true;
+        void Promise.all(
+            LOG_MODULES.map(async (m) => {
+                const address = index.modules.find((x) => x.id === m)?.address;
+                const d = address === undefined ? null : await moduleLogData(m, address);
+                return d ? moduleChannels(m, d) : [];
+            }),
+        ).then((lists) => live && setModuleInfos(lists.flat()));
+        return () => {
+            live = false;
+        };
+    }, [others.index]);
+    const moduleInfo = useCallback((c: string) => moduleInfos.find((i) => i.channel === c) ?? null, [moduleInfos]);
     // Engine speed and coolant temperature, both from block 3 — one round trip.
     // Written as channel ids, not symbols: `n` alone does not say which block,
     // and block 35 carries an `n` too.
@@ -52,7 +78,7 @@ export function useDatalog(link: Link) {
     const recordedRef = useRef<ChannelId[]>([]);
     const [recorded, setRecorded] = useState<ChannelId[]>([]);
 
-    const plan = useMemo(() => planBlockReads(selected), [selected]);
+    const plan = useMemo(() => planBlockReads(selected.filter((c) => !isModuleChannel(c))), [selected]);
     const running = link.state === 'logging';
 
     const rateHz = useMemo(() => {
@@ -76,7 +102,7 @@ export function useDatalog(link: Link) {
         setSamples(buf.slice());
     }, []);
 
-    const start = useCallback(() => {
+    const start = useCallback(async () => {
         samplesRef.current.length = 0;
         flushAtRef.current = 0;
         setSamples([]);
@@ -88,7 +114,19 @@ export function useDatalog(link: Link) {
         setRecorded([...chosen]);
         // Both endings land in the same place: the stop button and a link
         // failure. A run that dies must not leave the view looking live.
-        link.startLog(chosen, onSample, () => setSamples(samplesRef.current.slice()));
+        const end = () => setSamples(samplesRef.current.slice());
+        const own = chosen.filter((c) => !isModuleChannel(c));
+        const others = chosen.filter((c) => isModuleChannel(c));
+        if (others.length === 0) {
+            link.startLog(own, onSample, end);
+            return;
+        }
+        // Another module's channels: their reads (catalogue, frame, the SGBD code that reads the
+        // answer) are loaded first; a channel none of them can give is left empty, not guessed.
+        const addressOf = (m: string) => othersRef.current.index?.modules.find((x) => x.id === m)?.address ?? null;
+        await moduleLogReads(others, addressOf).then(({ reads }) =>
+            link.startLog(own, onSample, end, { reads, ledger: () => othersRef.current.ledger }),
+        );
     }, [link, onSample]);
 
     const toggle = useCallback(
@@ -148,6 +186,9 @@ export function useDatalog(link: Link) {
         snapshot,
         exportCsv,
         capture,
+        /** Other modules' channels (SMG II), and one by its id. */
+        moduleInfos,
+        moduleInfo,
         // The cost model, stated: one round trip per BLOCK, not per channel.
         costNotice: t.channels_selected(selected.length, plan.blocks.length),
     };

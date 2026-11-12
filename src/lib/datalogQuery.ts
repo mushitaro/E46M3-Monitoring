@@ -76,7 +76,13 @@ interface Sample {
  * A recording, summed up: per channel the count, mean, min and max over the window, and the samples
  * in it thinned evenly to at most `max`. `seconds` takes the last so many seconds; absent, the whole run.
  */
-export function datalogSummary(recorded: readonly ChannelId[], samples: readonly Sample[], opts: { channels?: readonly string[]; seconds?: number; max?: number } = {}) {
+export function datalogSummary(
+    recorded: readonly ChannelId[],
+    samples: readonly Sample[],
+    opts: { channels?: readonly string[]; seconds?: number; max?: number } = {},
+    /** Another module's channel (`smg2:JOB:RESULT`) by its id: its name and unit (lib/sgbd/logChannels). */
+    other: (c: string) => { name: string; ja: string; unit: string | null } | null = () => null,
+) {
     const end = samples.length ? samples[samples.length - 1].time : 0;
     const from = opts.seconds !== undefined ? end - opts.seconds : -Infinity;
     const window = samples.filter((s) => s.time >= from);
@@ -94,7 +100,7 @@ export function datalogSummary(recorded: readonly ChannelId[], samples: readonly
             min = Math.min(min, v);
             max = Math.max(max, v);
         }
-        const i = info(c);
+        const i = info(c) ?? other(c);
         const r = (v: number) => Math.round(v * 1000) / 1000;
         return { channel: c, name: i?.name ?? null, ja: i?.ja ?? null, unit: i?.unit ?? null, n, mean: n ? r(sum / n) : null, min: n ? r(min) : null, max: n ? r(max) : null };
     });

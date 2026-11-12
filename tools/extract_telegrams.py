@@ -188,6 +188,9 @@ def jobtable(raw):
 #  引数の読み出し・知らない命令のどれかに当たったら、そこで「分からない」。
 # ============================================================================
 OP_MOVE, OP_CLEAR, OP_NOP, OP_PUSH, OP_POP, OP_XSEND = 0x00, 0x01, 0x1C, 0x1E, 0x1F, 0x2A
+OP_JUMP, OP_JZ, OP_JNZ, OP_ETAG = 0x0B, 0x10, 0x11, 0x41
+# 結果を出すだけの命令（ergb ergw ergd ergi ergr ergs ergy）。送るバイトには触れない。
+OP_ERG = {0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3F}
 
 # オペランドの長さ（アドレッシングの値 → バイト数）。8（文字列リテラル）だけは
 # 2 バイトの長さ＋本体。
@@ -214,7 +217,9 @@ def first_send(dec, start, end, addr):
     sreg = {}                         # 文字列レジスタ → bytearray（無ければ分からない）
     origin = {}                       # 文字列レジスタ → 中身の元になったリテラルの位置
     stack = []
+    z = None                          # ゼロフラグ。None は「分からない」
     p = start
+    steps = 0
 
     def get(reg):
         span = _num_span(reg)
@@ -234,6 +239,9 @@ def first_send(dec, start, end, addr):
         return True
 
     while p + 2 <= end:
+        steps += 1
+        if steps > 10000:
+            return None
         op, mode = dec[p], dec[p + 1]
         m0, m1 = mode >> 4, mode & 0x0F
         q = p + 2
@@ -267,8 +275,24 @@ def first_send(dec, start, end, addr):
         elif op == OP_PUSH and m1 == 0 and m0 == 4:
             stack.append(get(a0[0]))
         elif op == OP_POP and m1 == 0 and m0 == 4:
-            if not stack or not put(a0[0], stack.pop()):
+            if not stack:
                 return None
+            v = stack.pop()
+            if not put(a0[0], v):
+                return None
+            z = None if v is None else v == 0
+        elif op == OP_ETAG and m0 == 7:
+            # 結果を求められていなければ飛ぶ。EDIABAS は既定で全部の結果を求めるので、飛ばない。
+            pass
+        elif op in OP_ERG:
+            pass
+        elif op == OP_JUMP and m0 == 7:
+            q = q + struct.unpack("<i", a0)[0]
+        elif op in (OP_JZ, OP_JNZ) and m0 == 7:
+            if z is None:
+                return None
+            if z == (op == OP_JZ):
+                q = q + struct.unpack("<i", a0)[0]
         elif op == OP_MOVE and m0 == 1 and a0[0] in _S_REGS and m1 == 8:
             sreg[a0[0]] = bytearray(a1)
             origin[a0[0]] = pos1
@@ -307,6 +331,8 @@ def first_send(dec, start, end, addr):
             return sent, src
         else:
             return None                # 分岐・呼び出し・引数・知らない命令
+        if not start <= q < end:
+            return None
         p = q
     return None
 
@@ -353,6 +379,11 @@ def extract(path, addr, arg_counts=None, resolve_first_send=False):
     # 拾わなかったジョブ（宛先を `FF` で置いて後から埋めるひな形など）に新しい行を
     # 足すことはしない——それは IDENT・消去・ハートビートの行を増やし、
     # `moduleProtocol` が車に送るものを変えるので、モジュールごとに別に決める。
+    # 共有の度合いは、置き換える前の走査で数える。あるジョブのひな形を置き換えたせいで、
+    # 同じひな形を持つ別のジョブ（引数で組むもの）が「1 ジョブだけのもの」に見えては困る。
+    scraped_sharers = {}
+    for (job, tel) in seen:
+        scraped_sharers.setdefault(tel, set()).add(job)
     resolved = {}
     for k, (off, name) in enumerate(jobs if resolve_first_send else []):
         end = jobs[k + 1][0] if k + 1 < len(jobs) else len(dec)
@@ -381,13 +412,22 @@ def extract(path, addr, arg_counts=None, resolve_first_send=False):
     for job, tels in byjob.items():
         for tel, _ in tels:
             shared.setdefault(tel, set()).add(job)
+    for tel, jobs_ in scraped_sharers.items():
+        if tel in shared:
+            # ほかのジョブがこのバイトをひな形として書き換えて送るなら、これはひな形でもある。
+            shared[tel] |= {j for j in jobs_ if j in resolved and resolved[j] != tel}
 
     out = {}
     for job, tels in sorted(byjob.items()):
         entries = []
         for tel, count in sorted(set(tels)):
             sharers = len(shared[tel])
-            if sharers > 1:
+            if resolved.get(job) == tel and len(tels) == 1:
+                # 先頭から読んで、このジョブが送るのはこれだと確かめた。フレームが 1 本だけの
+                # ジョブに限る：FS_LOESCHEN のように最初に IDENT を送ってから本題を送るジョブで、
+                # 最初の IDENT を「このジョブの電文」と格上げしない。
+                confidence = "single"
+            elif sharers > 1:
                 confidence = "shared"
             elif len(tels) > 1:
                 confidence = "multiple"
@@ -416,7 +456,7 @@ def extract(path, addr, arg_counts=None, resolve_first_send=False):
                 "argsAgree": None if declared is None else declared == payload,
             })
             # このジョブが最初に送るフレームだと、先頭からの読みで確かめたもの。
-            if resolved.get(job) == tel:
+            if resolved.get(job) == tel and len(tels) == 1:
                 entries[-1]["firstSend"] = True
         out[job] = entries
     return out

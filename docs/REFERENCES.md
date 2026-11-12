@@ -112,6 +112,7 @@ public repo を clone した人が、**何がどれだけ欠けているか**を
 | `gen_ecu_data.py` | ダンプ ＋ `sgbd/*` ＋ `translate.py` | `public/ecu-data/<id>.jobs.json`, `index.json` |
 | `gen_smg2_workflows.py` | `SMG2.json` | `public/ecu-data/smg2-workflows.json` |
 | `gen_dsc_hydraulics.py` | `DSC_E46.json` ＋ `dsc_e46.telegrams.json` | `public/ecu-data/dsc_e46.hydraulics.json` |
+| `gen_sgbd_results.py` | #1（`.prg` のジョブのコード）＋ `<SGBD>.json` の `tables` | `public/ecu-data/<id>.results.json`（いまは SMG II の 6 ジョブ。アプリの `src/lib/sgbd/vm.ts` が答えを読むのに走らせる） |
 | `jobtext/gen_jobtext.py` | `<id>.jobs.json` ＋ `cautions.py` | `public/ecu-data/<id>.jobtext.json` |
 | `gen_live_blocks.py` | **#4** ＋ `MSS54DS0.json` ＋ #1 ＋ `terms/live_channels.py` | `packages/ds2-mss54/src/liveValueBlocks.generated.ts` |
 | `gen_adaptation_blocks.py` | **#4** ＋ `MSS54DS0.json` | `packages/ds2-mss54/src/adaptationBlocks.generated.ts` |

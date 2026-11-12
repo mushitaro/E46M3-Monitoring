@@ -61,6 +61,7 @@ import {
 import { appNow } from '@/lib/clock';
 import { kwpExchange, parseDtcsByStatus, type KwpDtc, type KwpFrame } from '@/lib/kwpOnDs2';
 import { whyNotSendable } from '@/lib/actuationGate';
+import { answerFrame, decodeRead, loadSgbdResults, type DecodedRead } from '@/lib/sgbd/results';
 import type { ReadRecord } from '@/lib/investigation/readRecord';
 import type { ModuleProtocol } from '@/lib/moduleProtocol';
 import { PracticePort } from '@/lib/practiceEcu';
@@ -138,6 +139,11 @@ export interface JobRunResult {
     payloadLength: number;
     at: number;
     error: string | null;
+    /**
+     * The answer as the module's own SGBD job reads it (lib/sgbd/results), where its code ships;
+     * null otherwise, and the bytes above are all there is.
+     */
+    decoded?: DecodedRead | null;
 }
 
 export interface LiveSample {
@@ -980,7 +986,7 @@ export function useDs2Link(options: {
                 // said, unchanged. The simulated ECU is where the actuator send
                 // path gets to execute before an M3 is the first thing it
                 // executes against.
-                const refusal = whyNotSendable(control, modeRef.current);
+                const refusal = whyNotSendable(control, modeRef.current, target.moduleId);
                 if (refusal) throw new Error(`${jobId}: ${refusal}`);
                 const payload = bytes.slice(3, bytes.length - 1);
                 // A read the owner has not cleared for a moving car goes only when the DME says
@@ -989,6 +995,14 @@ export function useDs2Link(options: {
                 append('tx', `${jobId}: ${hex}`);
                 const frame = await readFrame(to, target.moduleId, jobId, control, payload);
                 link.assertPositive(frame, jobId);
+                // Read by the job's own code where it ships. A failure to read is not a failure of
+                // the read: the bytes stand either way.
+                let decoded: DecodedRead | null = null;
+                try {
+                    decoded = decodeRead(await loadSgbdResults(target.moduleId), jobId, hex, answerFrame(frame.address, frame.controlOrStatus, frame.payload));
+                } catch {
+                    decoded = null;
+                }
                 const result: JobRunResult = {
                     jobId,
                     request: hex,
@@ -996,6 +1010,7 @@ export function useDs2Link(options: {
                     payloadLength: frame.payload.length,
                     at: appNow(),
                     error: null,
+                    decoded,
                 };
                 append('rx', `${frame.payload.length} bytes`);
                 setLastRun(result);
@@ -1286,7 +1301,7 @@ export function useDs2Link(options: {
     const startProbe = useCallback(
         async (
             plan: ProbePlan,
-            deps: Pick<ProbeDeps, 'module' | 'ledger' | 'onSample' | 'onExchange' | 'onStep'>,
+            deps: Pick<ProbeDeps, 'module' | 'ledger' | 'onSample' | 'onExchange' | 'onStep' | 'onStart'>,
         ): Promise<ProbeRun | null> => {
             const link = linkRef.current;
             if (!link || pollingRef.current) return null;

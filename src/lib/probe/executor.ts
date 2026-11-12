@@ -38,11 +38,13 @@ import {
 import type { CatalogJob } from '../ecuCatalog';
 import type { Ledger } from '../ledger';
 import type { ModuleProtocol } from '../moduleProtocol';
-import { mayRun, mayRunProtocolRead, telegramBytes, type RunBlockKey } from '../runGate';
+import { isReadOnlyControl, mayRun, mayRunProtocolRead, telegramBytes, type RunBlockKey } from '../runGate';
+import { answerFrame, decodeRead, foldResults, type ReadValue, type SgbdResultsTable } from '../sgbd/results';
+import { runSgbdJob } from '../sgbd/vm';
 import type { Telegram } from '../telegrams';
 import { motionOf, vehicleStateFrom, type Motion } from '../vehicleState';
 import { holds, judge, type JudgeResult, type ProbeSample } from './criteria';
-import { ramSegment, type Judge, type ProbeStep } from './plan';
+import { moduleChannel, ramSegment, type Judge, type ProbeStep } from './plan';
 
 const SPEED_CHANNELS: ChannelId[] = ['19:v' as ChannelId, '19:v_asc' as ChannelId];
 /** Live-lane transport failures in a row that end the run: the cable or the DME has gone. */
@@ -60,6 +62,8 @@ export interface ProbeModule {
     protocol: ModuleProtocol;
     /** A catalogue job of this module and its best telegram; null when the job is not in the catalogue. */
     job(jobId: string): { job: CatalogJob; telegram: Telegram | null } | null;
+    /** The module's SGBD code for reading its answers (lib/sgbd/results); null where none ships. */
+    results?: SgbdResultsTable | null;
 }
 
 export interface ProbePlan {
@@ -81,6 +85,8 @@ export interface ProbeDeps {
     /** A read that answered on a car measured stationary in the same cycle — for the ledger. */
     onObserved?(o: { id: string; telegram: string; response: string; at: number }): void;
     onSample?(s: ProbeSample): void;
+    /** The run as it is being written — its steps and exchanges, for whoever asks how it is going. */
+    onStart?(run: ProbeRun): void;
     onExchange?(e: ProbeExchange): void;
     /** A one-shot step settled: what the hub's PROBE line counts. */
     onStep?(n: number, state: StepState): void;
@@ -103,6 +109,8 @@ export interface ProbeExchange {
     /** The gate's key, the ECU's status, or the transport's message. */
     reason?: string;
     motion: Motion;
+    /** The answer as the module's own SGBD job reads it, where its code ships (lib/sgbd/results). */
+    values?: ReadValue[];
 }
 
 export type StepState = 'pending' | 'done' | 'refused' | 'rejected' | 'failed';
@@ -116,17 +124,72 @@ export interface ProbeRun {
     samples: ProbeSample[];
     exchanges: ProbeExchange[];
     captures: Array<{ step: number; at: number; from: number; to: number }>;
-    steps: Array<{ n: number; state: StepState; sent: number; reason?: string }>;
+    steps: Array<{
+        n: number;
+        state: StepState;
+        sent: number;
+        reason?: string;
+        /**
+         * A pending step that is due but held: why it has not gone yet (`parked only` — the car was
+         * measured moving, or its motion could not be measured). Cleared when it goes.
+         */
+        waiting?: string;
+    }>;
     judges: JudgeResult[];
     /**
-     * The MSS54's learned values an `adapt` step read, keyed `adapt:<selection>:<symbol>`; null where
-     * the block answered too short to hold the field. Empty when the plan has no such step; absent
-     * on runs kept before the step existed.
+     * The learned values an `adapt` step read: the MSS54's keyed `adapt:<selection>:<symbol>`, null
+     * where the block answered too short to hold the field; SMG II's keyed `adapt:smg2.<argument>:<RESULT>`
+     * (0 clutch, 1 gearbox, 2 gearbox data). Empty when the plan has no such step; absent on runs kept
+     * before the step existed.
      */
     adaptations?: Record<string, number | null>;
 }
 
 const isLive = (c: string) => /^\d{1,3}:/.test(c);
+
+/** Why a due step has not gone: the car as measured this cycle. */
+const heldFor = (motion: Motion) => (motion === 'moving' ? 'parked only: the car was measured moving' : 'parked only: the car could not be measured stationary');
+
+/** A module's read job sampled every cycle (`module:JOB:RESULT` channels), grouped per job. */
+interface ModuleLane {
+    module: string;
+    job: string;
+    /** The results asked for; `*` is every number the job reports. */
+    results: Set<string>;
+    /** No longer read this run, and why (a refusal, a rejection, repeated transport failures). */
+    dropped?: string;
+    failures: number;
+    answered: boolean;
+}
+
+function moduleLanes(steps: readonly ProbeStep[], judges: readonly Judge[]): ModuleLane[] {
+    const lanes = new Map<string, ModuleLane>();
+    const add = (c: string) => {
+        const m = moduleChannel(c);
+        if (!m) return;
+        const key = `${m.module}:${m.job}`;
+        const lane = lanes.get(key) ?? { module: m.module, job: m.job, results: new Set<string>(), failures: 0, answered: false };
+        lane.results.add(m.result);
+        lanes.set(key, lane);
+    };
+    for (const s of steps) {
+        if (s.kind === 'sample') s.channels.forEach(add);
+        if (s.kind === 'capture') s.condition.forEach((c) => add(c.channel));
+    }
+    for (const j of judges) {
+        add(j.channel);
+        j.where?.forEach((c) => add(c.channel));
+    }
+    return [...lanes.values()];
+}
+
+const hexOf = (b: ArrayLike<number>) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join(' ');
+const withChecksum = (b: Uint8Array) => {
+    let x = 0;
+    for (const v of b) x ^= v;
+    return Uint8Array.from([...b, x]);
+};
+const fromB64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 
 /**
  * `3:*` asks for the whole of block 3. A block is read whole whichever of its values is named, so
@@ -200,6 +263,8 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
     let blocks: LiveValueBlock[] = allBlocks;
     const ramSteps = plan.steps.filter((s): s is Extract<ProbeStep, { kind: 'ram' }> => s.kind === 'ram');
     const hasLiveSteps = plan.steps.some((s) => s.kind === 'sample' || s.kind === 'ram' || s.kind === 'capture');
+    const lanes = moduleLanes(plan.steps, judges);
+    deps.onStart?.(run);
     const dme = deps.link.to(Ds2Address.DME);
     let lost = 0;
     let cycle = 0;
@@ -299,6 +364,22 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
 
         const now = deps.now();
         const motion = motionOf(vehicleStateFrom(values, now), now);
+
+        // ---- the module lane: other modules' read jobs whose values the plan samples -----------
+        let moduleHeld = false;
+        for (const lane of lanes) {
+            if (lane.dropped) continue;
+            const r = await moduleRead(lane, motion, values);
+            if (r === 'held') {
+                moduleHeld = true;
+                break;
+            }
+        }
+        if (moduleHeld) {
+            await deps.pause();
+            continue;
+        }
+
         const t = secs();
         if (hasLiveSteps) {
             const sample = { t, values };
@@ -318,11 +399,18 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
         }
 
         // ---- the one-shot lane: at most one step, if its `when` is now -------------------------
-        const next = plan.steps.find((s) => stepOf(s.n).state === 'pending' && oneShotDue(s, motion));
-        if (next && next.kind === 'adapt') {
-            await adaptShot(next, motion);
-        } else if (next && (next.kind === 'faults' || next.kind === 'read')) {
-            await oneShot(next, motion);
+        // At most one step goes. A step held for a stationary car says why on itself and lets the
+        // next due step have the cycle: a parked-only read no longer stands in front of a fault read
+        // that may go while moving.
+        for (const s of plan.steps) {
+            const st = stepOf(s.n);
+            if (st.state !== 'pending' || !oneShotDue(s, motion)) continue;
+            const exchanges = run.exchanges.length;
+            const sent = st.sent;
+            if (s.kind === 'adapt') await (s.module === 'smg2' ? smgAdaptShot(s, motion) : adaptShot(s, motion));
+            else if (s.kind === 'faults' || s.kind === 'read') await oneShot(s, motion);
+            const held = st.state === 'pending' && st.sent === sent && run.exchanges.length === exchanges && st.waiting !== undefined;
+            if (!held) break;
         }
 
         if (!hasLiveSteps && run.steps.every((s) => s.state !== 'pending')) {
@@ -353,12 +441,19 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
         const blocked = gates.find((g) => !g.gate.allowed);
         if (blocked && !blocked.gate.allowed) {
             // A moving car is not a refusal: the step waits for the car to stop.
-            if (blocked.gate.reason === 'run_block_moving') return;
+            if (blocked.gate.reason === 'run_block_moving') {
+                st.waiting = heldFor(motion);
+                return;
+            }
             settle('refused', blocked.gate.reason);
             record({ step: s.n, module: 'mss54', what: `ADAPT_${blocked.block.selection}`, request: null, response: null, outcome: 'refused', reason: blocked.gate.reason, motion });
             return;
         }
-        if (gates.some((g) => g.gate.allowed && g.gate.requires === 'parked') && motion !== 'parked') return;
+        if (gates.some((g) => g.gate.allowed && g.gate.requires === 'parked') && motion !== 'parked') {
+            st.waiting = heldFor(motion);
+            return;
+        }
+        delete st.waiting;
 
         for (const { block } of gates) {
             const req = liveBlockRequest(block.selection);
@@ -379,6 +474,135 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
                 const message = e instanceof Error ? e.message : String(e);
                 const refused = isDs2Error(e) && e.code === 'NEGATIVE_RESPONSE';
                 record({ step: s.n, module: 'mss54', what, request: hex, response: null, outcome: refused ? 'rejected' : 'failed', reason: message, motion });
+                if (!refused) {
+                    const n = (failures.get(s.n) ?? 0) + 1;
+                    failures.set(s.n, n);
+                    if (n >= ONE_SHOT_ATTEMPTS) settle('failed', message);
+                    return;
+                }
+            }
+        }
+        st.sent++;
+        if (st.sent >= (s.times ?? 1)) settle('done');
+    }
+
+    /**
+     * One module read job for the sample: its gate, its frame, its answer read by the job's own SGBD
+     * code into the channels the plan named. 'held' when another frame of this tab holds the link.
+     */
+    async function moduleRead(lane: ModuleLane, motion: Motion, values: Record<string, number | null>): Promise<'ok' | 'held' | 'skipped'> {
+        const channels = [...lane.results].filter((r) => r !== '*').map((r) => `${lane.module}:${lane.job}:${r}`);
+        for (const c of channels) values[c] = null;
+        const what = lane.job;
+        const drop = (outcome: ExchangeOutcome, reason: string, request: string | null = null) => {
+            lane.dropped = reason;
+            record({ step: 0, module: lane.module, what, request, response: null, outcome, reason, motion });
+            return 'skipped' as const;
+        };
+        const mod = deps.module(lane.module);
+        if (!mod) return drop('refused', 'unknown module');
+        const hit = mod.job(lane.job);
+        if (!hit) return drop('refused', 'not in the catalogue');
+        if (!mod.results?.jobs[lane.job]) return drop('refused', 'no SGBD code ships to read this answer (tools/gen_sgbd_results.py)');
+        const verdict = mayRun(hit.job, hit.telegram, deps.ledger(), { moduleId: lane.module, motion });
+        // Moving, or not measured parked: this sample goes without it; it is read when it may be.
+        if (!verdict.allowed) return verdict.reason === 'run_block_moving' ? 'skipped' : drop('refused', verdict.reason);
+        if (verdict.requires === 'parked' && motion !== 'parked') return 'skipped';
+        const bytes = telegramBytes(verdict.telegram.hex);
+        if (!bytes || bytes[0] !== mod.protocol.address) return drop('refused', 'run_block_noTelegram');
+        const hex = verdict.telegram.hex;
+        try {
+            const frame = await deps.link.to(mod.protocol.address).exchangeWithRetry(bytes[2], bytes.slice(3, bytes.length - 1), { attempts: 2 });
+            deps.link.assertPositive(frame, `${lane.module} ${what}`);
+            lane.failures = 0;
+            const decoded = decodeRead(mod.results, what, hex, answerFrame(frame.address, frame.controlOrStatus, frame.payload));
+            for (const v of decoded?.values ?? []) {
+                if (typeof v.value !== 'number') continue;
+                const c = `${lane.module}:${lane.job}:${v.name}`;
+                if (lane.results.has('*') || lane.results.has(v.name)) values[c] = v.value;
+            }
+            // The first answer of the run is kept whole, as evidence of what this read looks like.
+            if (!lane.answered) {
+                lane.answered = true;
+                record({ step: 0, module: lane.module, what, request: hex, response: toHex(frame.payload), outcome: 'ok', motion, ...(decoded ? { values: decoded.values } : {}) });
+                if (decoded?.stopped) record({ step: 0, module: lane.module, what, request: hex, response: toHex(frame.payload), outcome: 'rejected', reason: `read stopped: ${decoded.stopped.reason}`, motion });
+            }
+            if (motion === 'parked') deps.onObserved?.({ id: `${lane.module}:${what}`, telegram: hex, response: toHex(frame.payload), at: deps.now() });
+            return 'ok';
+        } catch (e) {
+            if (gateHeld(e)) return 'held';
+            const message = e instanceof Error ? e.message : String(e);
+            if (isDs2Error(e) && e.code === 'NEGATIVE_RESPONSE') return drop('rejected', message, hex);
+            record({ step: 0, module: lane.module, what, request: hex, response: null, outcome: 'failed', reason: message, motion });
+            if (++lane.failures >= LINK_LOST_AFTER) lane.dropped = message;
+            return 'skipped';
+        }
+    }
+
+    /**
+     * SMG II's learned values: ADAPTIONSWERTE_LESEN with argument 0 (clutch), 1 (gearbox) and 2
+     * (gearbox data). The frame for each argument is built by the job's own code (a dry run of
+     * lib/sgbd/vm), must carry a control byte that reads on SMG II, and goes through the gate like
+     * the MSS54's blocks. A refusal of one argument is recorded and the others still go.
+     */
+    async function smgAdaptShot(s: Extract<ProbeStep, { kind: 'adapt' }>, motion: Motion) {
+        const st = stepOf(s.n);
+        const settle = (state: StepState, reason?: string) => {
+            st.state = state;
+            if (reason) st.reason = reason;
+            deps.onStep?.(s.n, state);
+        };
+        const job = 'ADAPTIONSWERTE_LESEN';
+        const mod = deps.module('smg2');
+        const code = mod?.results?.jobs[job];
+        if (!mod || !code || !mod.results) {
+            settle('refused', 'no SGBD code ships for SMG II learned values');
+            record({ step: s.n, module: 'smg2', what: job, request: null, response: null, outcome: 'refused', reason: st.reason, motion });
+            return;
+        }
+        const results = mod.results;
+        const gates = ['0', '1', '2'].map((arg) => ({ arg, gate: mayRunProtocolRead(`smg2:${job}:${arg}`, 'module', deps.ledger(), motion) }));
+        const blocked = gates.find((g) => !g.gate.allowed);
+        if (blocked && !blocked.gate.allowed) {
+            if (blocked.gate.reason === 'run_block_moving') {
+                st.waiting = heldFor(motion);
+                return;
+            }
+            settle('refused', blocked.gate.reason);
+            record({ step: s.n, module: 'smg2', what: `${job}(${blocked.arg})`, request: null, response: null, outcome: 'refused', reason: blocked.gate.reason, motion });
+            return;
+        }
+        if (gates.some((g) => g.gate.allowed && g.gate.requires === 'parked') && motion !== 'parked') {
+            st.waiting = heldFor(motion);
+            return;
+        }
+        delete st.waiting;
+        const to = deps.link.to(mod.protocol.address);
+        for (const { arg } of gates) {
+            const what = `${job}(${arg})`;
+            const dry = runSgbdJob({ code: fromB64(code.code), base: code.base }, { args: [arg], tables: results.tables });
+            const req = dry.request;
+            if (!req || req.length < 3 || req[0] !== mod.protocol.address || !isReadOnlyControl(req[2], 'smg2')) {
+                record({ step: s.n, module: 'smg2', what, request: req ? hexOf(req) : null, response: null, outcome: 'refused', reason: req ? 'the job builds a frame that is not a read on SMG II' : `the job built no frame (${dry.stopped?.reason ?? 'no send'})`, motion });
+                continue;
+            }
+            const sent = withChecksum(req);
+            const hex = hexOf(sent);
+            try {
+                const frame = await to.exchangeWithRetry(req[2], req.slice(3), { attempts: 2 });
+                deps.link.assertPositive(frame, `SMG II ${what}`);
+                const response = toHex(frame.payload);
+                const run2 = runSgbdJob({ code: fromB64(code.code), base: code.base }, { args: [arg], tables: results.tables, sent, answer: answerFrame(frame.address, frame.controlOrStatus, frame.payload) });
+                const folded = foldResults(run2.results);
+                record({ step: s.n, module: 'smg2', what, request: hex, response, outcome: 'ok', motion, values: folded.values });
+                if (run2.stopped) record({ step: s.n, module: 'smg2', what, request: hex, response, outcome: 'rejected', reason: `read stopped: ${run2.stopped.reason}`, motion });
+                for (const v of folded.values) if (typeof v.value === 'number') run.adaptations![`adapt:smg2.${arg}:${v.name}`] = v.value;
+                if (motion === 'parked') deps.onObserved?.({ id: `smg2:${what}`, telegram: hex, response, at: deps.now() });
+            } catch (e) {
+                if (gateHeld(e)) return;
+                const message = e instanceof Error ? e.message : String(e);
+                const refused = isDs2Error(e) && e.code === 'NEGATIVE_RESPONSE';
+                record({ step: s.n, module: 'smg2', what, request: hex, response: null, outcome: refused ? 'rejected' : 'failed', reason: message, motion });
                 if (!refused) {
                     const n = (failures.get(s.n) ?? 0) + 1;
                     failures.set(s.n, n);
@@ -441,9 +665,14 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
             frames = [{ hex: verdict.telegram.hex, control: bytes[2], payload: bytes.slice(3, bytes.length - 1) }];
             requires = verdict.requires;
         }
-        // The car as measured this cycle. Not parked: the step waits; nothing is recorded, because
-        // nothing was decided — it goes when the car stops.
-        if (requires === 'parked' && motion !== 'parked') return;
+        // The car as measured this cycle. Not parked: the step waits, and says so on the step (the
+        // run's overview shows it); no exchange is recorded, because nothing was sent — it goes when
+        // the car stops.
+        if (requires === 'parked' && motion !== 'parked') {
+            st.waiting = heldFor(motion);
+            return;
+        }
+        delete st.waiting;
 
         const to = deps.link.to(mod.protocol.address);
         for (const f of frames) {
@@ -451,7 +680,15 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
                 const frame = await to.exchangeWithRetry(f.control, f.payload);
                 deps.link.assertPositive(frame, `${s.module} ${what}`);
                 const response = toHex(frame.payload);
-                record({ step: s.n, module: s.module, what, request: f.hex, response, outcome: 'ok', motion });
+                let decoded: ReturnType<typeof decodeRead> = null;
+                if (s.kind === 'read') {
+                    try {
+                        decoded = decodeRead(mod.results ?? null, what, f.hex, answerFrame(frame.address, frame.controlOrStatus, frame.payload));
+                    } catch {
+                        decoded = null;
+                    }
+                }
+                record({ step: s.n, module: s.module, what, request: f.hex, response, outcome: 'ok', motion, ...(decoded ? { values: decoded.values } : {}) });
                 if (motion === 'parked') deps.onObserved?.({ id: `${s.module}:${what}`, telegram: f.hex, response, at: deps.now() });
             } catch (e) {
                 if (gateHeld(e)) return;
@@ -473,7 +710,10 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
 
         function refuse(reason: RunBlockKey) {
             // A moving car is not a refusal of the step — it waits for the car to stop.
-            if (reason === 'run_block_moving') return;
+            if (reason === 'run_block_moving') {
+                st.waiting = heldFor(motion);
+                return;
+            }
             settle('refused', reason);
             record({ step: s.n, module: s.module, what, request: null, response: null, outcome: 'refused', reason, motion });
         }

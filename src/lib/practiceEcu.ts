@@ -173,6 +173,9 @@ function lineScript(): ExchangeBehavior[] {
     });
 }
 
+/** The length of a PRACTICE module's status or calibration answer. */
+export const PRACTICE_MODULE_BLOCK = 128;
+
 /** A module other than the DME: its fault memory from the practice car, the rest the DME's responder. */
 function practiceModule(address: number): SimulatedEcuOptions {
     const dme = practiceEcu();
@@ -188,12 +191,16 @@ function practiceModule(address: number): SimulatedEcuOptions {
                 delete practiceCar.moduleFaults[address];
                 return { payload: new Uint8Array(0) };
             }
-            // A status block (0x0B) of another module is not one of the DME's live blocks. Its
-            // layout is not known here, so the answer is zeros of an arbitrary length: the app
-            // shows it as bytes it cannot decode, and nobody can take a zero for a reading. Before,
+            // A status block (0x0B), or SMG II's calibration and learned values (0x40), of another
+            // module is not one of the DME's blocks. The answer is zeros, long enough for the
+            // longest of SMG II's reads to reach its end (123 bytes: STATUS_FAHRZEUGTESTER_LESEN;
+            // lib/sgbd/vm.test.ts): its SGBD code reads every value from them, and every value
+            // reads as the zero of its own scale, which nobody can take for a car's. Before,
             // SMG II's STATUS_IO_LESEN (selection 3) came back as the DME's block 3, and a
             // selection the DME has no block for (SMG II's 5) was refused.
-            if (request.controlOrStatus === Ds2Control.READ_IO_STATUS) return { payload: new Uint8Array(16) };
+            if (request.controlOrStatus === Ds2Control.READ_IO_STATUS || request.controlOrStatus === 0x40) {
+                return { payload: new Uint8Array(PRACTICE_MODULE_BLOCK) };
+            }
             return dme.respond!(request);
         },
     };

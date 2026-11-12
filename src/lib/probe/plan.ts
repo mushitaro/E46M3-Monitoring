@@ -32,13 +32,21 @@ export type ProbeStep =
     /** Run one catalogue read job of a module, as mayRun allows it. */
     | { n: number; do: string; kind: 'read'; module: string; job: string; when: When; times?: number }
     /**
-     * Keep these MSS54 live channels in every sample while the run is on. `3:*` is the whole of
-     * live block 3: a block is one round trip whichever of its values are asked for, so a health
-     * check that wants everything names the blocks.
+     * Keep these live channels in every sample while the run is on. `3:*` is the whole of MSS54 live
+     * block 3: a block is one round trip whichever of its values are asked for, so a health check
+     * that wants everything names the blocks. Another module's values are named
+     * `module:JOB:RESULT` — `smg2:STATUS_IO_LESEN:STAT_HYDRAULIKTEMPERATUR_WERT`, or
+     * `smg2:STATUS_IO_LESEN:*` for all of that read — and are read by the job's own SGBD code
+     * (lib/sgbd/results); they go as the gate lets that read go (parked, unless the owner cleared it
+     * for a moving car), and are empty in a sample taken while it may not.
      */
     | { n: number; do: string; kind: 'sample'; channels: string[] }
-    /** Read the MSS54's learned values (its adaptation blocks) once, as the ADAPTATION tab does. */
-    | { n: number; do: string; kind: 'adapt'; when: When; times?: number }
+    /**
+     * Read a module's learned values once: the MSS54's adaptation blocks, as the ADAPTATION tab does,
+     * or (`module: 'smg2'`) SMG II's — clutch, gearbox and gearbox data (ADAPTIONSWERTE_LESEN with
+     * argument 0, 1, 2).
+     */
+    | { n: number; do: string; kind: 'adapt'; when: When; times?: number; module?: 'mss54' | 'smg2' }
     /** Read DME RAM (master windows only) every `every` samples, as raw bytes. */
     | { n: number; do: string; kind: 'ram'; address: string; bytes: number; every: 1 | 2 | 4 | 8; label?: string }
     /** Mark the stretch around each moment every clause holds: `preS` before, `postS` after. */
@@ -101,9 +109,17 @@ export const DME_RAM_WINDOWS = [
 export const DME_RAM_MAX_COUNT = 0x80;
 
 const HEX6 = /^[0-9A-F]{6}$/;
-const CHANNEL = /^(\d{1,3}:[A-Za-z0-9_]{1,40}|ram:[0-9A-F]{6})$/;
-/** A live channel, or a whole live block (`3:*`). */
-const SAMPLE = /^\d{1,3}:([A-Za-z0-9_]{1,40}|\*)$/;
+const CHANNEL = /^(\d{1,3}:[A-Za-z0-9_]{1,40}|ram:[0-9A-F]{6}|[a-z0-9_]{2,32}:[A-Z0-9_]{2,64}:[A-Z0-9_]{1,64})$/;
+/** A live channel, or a whole live block (`3:*`), or a module's read value (`smg2:STATUS_IO_LESEN:STAT_…`, or `:*`). */
+const SAMPLE = /^(\d{1,3}:([A-Za-z0-9_]{1,40}|\*)|[a-z0-9_]{2,32}:[A-Z0-9_]{2,64}:([A-Z0-9_]{1,64}|\*))$/;
+/** `module:JOB:RESULT` — a value another module's read job reports. */
+export const MODULE_CHANNEL = /^([a-z0-9_]{2,32}):([A-Z0-9_]{2,64}):([A-Z0-9_]{1,64}|\*)$/;
+
+/** The module and job of a `module:JOB:RESULT` channel, or null for the DME's own. */
+export function moduleChannel(c: string): { module: string; job: string; result: string } | null {
+    const m = MODULE_CHANNEL.exec(c);
+    return m && m[1] !== 'ram' ? { module: m[1], job: m[2], result: m[3] } : null;
+}
 const MODULE = /^[a-z0-9_]{2,32}$/;
 const JOB = /^[A-Z0-9_]{2,64}$/;
 const ID = /^[A-Za-z0-9_-]{1,32}$/;
@@ -126,7 +142,7 @@ function clausesProblem(c: unknown, where: string): string | null {
         return `${where} must be 1-${PROBE_LIMITS.clauses} clauses`;
     }
     for (const x of c as Clause[]) {
-        if (!x || !CHANNEL.test(x.channel)) return `${where}: a channel is named like 19:v or ram:FFD1A2`;
+        if (!x || !CHANNEL.test(x.channel)) return `${where}: a channel is named like 19:v, ram:FFD1A2 or smg2:STATUS_IO_LESEN:STAT_HYDRAULIKTEMPERATUR_WERT`;
         if (!OPS.includes(x.op)) return `${where}: op must be one of ${OPS.join(' ')}`;
         if (!num(x.value)) return `${where}: value must be a number`;
     }
@@ -162,12 +178,15 @@ export function stepsProblem(steps: unknown): string | null {
                     return `${at}: channels must be 1-${PROBE_LIMITS.sampleChannels} live channels`;
                 }
                 if (!s.channels.every((c) => typeof c === 'string' && SAMPLE.test(c))) {
-                    return `${at}: a live channel is named selection:symbol, e.g. 19:v, or 3:* for a whole block`;
+                    return `${at}: a live channel is named selection:symbol, e.g. 19:v, or 3:* for a whole block, or module:JOB:RESULT for another module's read value, e.g. smg2:STATUS_IO_LESEN:STAT_HYDRAULIKTEMPERATUR_WERT`;
                 }
                 break;
-            case 'adapt':
+            case 'adapt': {
                 if (when !== 'parked' && when !== 'moving' && when !== 'any') return `${at}: when must be parked, moving or any`;
+                const of = (s as { module?: unknown }).module;
+                if (of !== undefined && of !== 'mss54' && of !== 'smg2') return `${at}: module is mss54 (the default) or smg2`;
                 break;
+            }
             case 'ram':
                 if (++ram > PROBE_LIMITS.ramSteps) return `a plan reads at most ${PROBE_LIMITS.ramSteps} RAM addresses`;
                 if (!int(s.bytes, 1, 4)) return `${at}: bytes must be 1-4`;
@@ -231,11 +250,18 @@ export function judgesProblem(j: unknown, hypotheses: readonly Hypothesis[] = []
     return null;
 }
 
-/** The modules a plan's one-shot steps address — what a mandate has to cover. */
+/** The modules a plan's steps address — what a mandate has to cover. */
 export function modulesOf(steps: readonly ProbeStep[]): string[] {
     const out = new Set<string>();
-    for (const s of steps) if (s.kind === 'faults' || s.kind === 'read') out.add(s.module);
-    // Samples, learned values, RAM reads and captures are the DME's.
-    if (steps.some((s) => s.kind === 'sample' || s.kind === 'adapt' || s.kind === 'ram' || s.kind === 'capture')) out.add('mss54');
+    const channel = (c: string) => out.add(moduleChannel(c)?.module ?? 'mss54');
+    for (const s of steps) {
+        if (s.kind === 'faults' || s.kind === 'read') out.add(s.module);
+        // A live channel is the DME's unless it names its module (`smg2:JOB:RESULT`).
+        else if (s.kind === 'sample') s.channels.forEach(channel);
+        else if (s.kind === 'capture') s.condition.forEach((c) => channel(c.channel));
+        else if (s.kind === 'adapt') out.add(s.module ?? 'mss54');
+        // RAM reads are the DME's.
+        else if (s.kind === 'ram') out.add('mss54');
+    }
     return [...out].sort();
 }

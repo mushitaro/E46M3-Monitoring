@@ -142,6 +142,12 @@ describe('the byte-level check the link performs before sending', () => {
         expect(whyNotSendable(0x0b, 'practice')).toBeNull();
     });
 
+    it('lets SMG II’s own read (0x40) go to SMG II only', () => {
+        expect(whyNotSendable(0x40, 'vehicle', 'smg2')).toBeNull();
+        expect(whyNotSendable(0x40, 'vehicle', 'mss54')).toMatch(/not a read/);
+        expect(whyNotSendable(0x40, 'vehicle')).toMatch(/not a read/);
+    });
+
     it('names the byte it refused, in hex, so a log line is actionable', () => {
         expect(whyNotSendable(0x07, 'vehicle')).toContain('0x07');
     });

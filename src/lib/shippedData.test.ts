@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { assertLoadableProfile, type EcuIndex, type EcuProfile } from './ecuCatalog';
 import { STRINGS } from './i18n';
-import { READ_ONLY_CONTROLS, mayRun } from './runGate';
+import { isReadOnlyControl, mayRun } from './runGate';
 import { EMPTY_LEDGER } from './ledger';
 
 /**
@@ -291,7 +291,7 @@ describe('what a real car would accept today', () => {
         }
     }
 
-    it('is 100 jobs across 36 modules', () => {
+    it('is 103 jobs across 36 modules', () => {
         // Was 86 across 36. The ten that arrived are seven `IS_LESEN` /
         // `FS_SHADOW_LESEN` (control 0x14) and two
         // `STATUS_AUSSCHWINGZEIT_LESEN` (0x0d) — both control bytes already
@@ -303,7 +303,11 @@ describe('what a real car would accept today', () => {
         // STATUS_HARDWARE_STATI_LESEN and STATUS_FAHRZEUGTESTER_LESEN (control 0x0b, blocks
         // 3, 4, 2 and 5). The scrape saw one template under four names; the extractor now
         // follows each job to its first send (tools/extract_telegrams.py, `first_send`).
-        expect(allowed.length).toBe(100);
+        //
+        // Then 100 -> 103, all SMG II: GETRIEBEDATEN_LESEN (0x40, block 2 — a read on SMG II by its
+        // SGBD's own comment, runGate.MODULE_READ_ONLY_CONTROLS), and IDENT and FS_QUICK_LESEN,
+        // whose frames the extractor now follows past the result tags in front of their send.
+        expect(allowed.length).toBe(103);
         expect(new Set(allowed.map((a) => a.split('.')[0])).size).toBe(36);
     });
 
@@ -358,7 +362,8 @@ describe('reads whose control byte we cannot vouch for', () => {
             const entries = table.jobs[j.id] ?? [];
             if (entries.length !== 1 || entries[0].confidence !== 'single') continue;
             const control = Number.parseInt(entries[0].hex.split(' ')[2], 16);
-            if (READ_ONLY_CONTROLS.has(control)) continue;
+            // A module's own read (runGate.MODULE_READ_ONLY_CONTROLS: SMG II's 0x40) is vouched for there.
+            if (isReadOnlyControl(control, id)) continue;
             if (!found.has(control)) found.set(control, []);
             found.get(control)!.push(`${id}.${j.id}`);
         }

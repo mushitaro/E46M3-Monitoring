@@ -131,6 +131,9 @@ export function useProbe(input: {
                             {
                                 module: (m) => modules.get(m) ?? null,
                                 ledger: () => ledgerRef.current,
+                                onStart: (written) => {
+                                    live.run = written;
+                                },
                                 onSample: (s) => {
                                     samples++;
                                     live.samples.push(s);

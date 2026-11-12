@@ -91,6 +91,25 @@ export const READ_ONLY_CONTROLS: ReadonlySet<number> = new Set([
     0x6d, // EWS status
 ]);
 
+/**
+ * Control bytes that read on ONE module only.
+ *
+ * A control byte means what the module's own SGBD makes it mean, and some mean different things on
+ * different modules. `0x40` is SMG II's "Abgleichwerte lesen (Kontrollbyte 0x40)" — its SGBD says
+ * so in the comments of both jobs that use it (ADAPTIONSWERTE_LESEN: clutch, gearbox and gearbox
+ * data by argument 0, 1, 2; GETRIEBEDATEN_LESEN: the gearbox data without an argument). On the
+ * MSS54 the same byte heads ABGLEICHFLAG_SCHREIBEN, a write; on the navigation it reads system
+ * parameters. So it is not in the list above, and it reads only where it is listed here.
+ */
+export const MODULE_READ_ONLY_CONTROLS: Readonly<Record<string, ReadonlySet<number>>> = {
+    smg2: new Set([0x40]),
+};
+
+/** A read on this module: in the common list, or in the module's own. */
+export function isReadOnlyControl(control: number, moduleId: string): boolean {
+    return READ_ONLY_CONTROLS.has(control) || (MODULE_READ_ONLY_CONTROLS[moduleId]?.has(control) ?? false);
+}
+
 export type RunBlockKey =
     | 'run_block_programming'
     | 'run_block_identity'
@@ -202,7 +221,7 @@ export function mayRun(
 
     // The bytes have the last word. If our classification says `read` and the
     // frame says otherwise, the frame is what the car would receive.
-    if (!READ_ONLY_CONTROLS.has(control)) {
+    if (!isReadOnlyControl(control, ctx.moduleId)) {
         return { allowed: false, reason: 'run_block_controlWrites' };
     }
 

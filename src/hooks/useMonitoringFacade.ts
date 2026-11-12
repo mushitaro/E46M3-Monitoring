@@ -132,6 +132,15 @@ export function useMonitoringFacade(input: {
     /** A scan, module by module: what answered, with the MSS54's codes decoded and the rest as bytes. */
     const describeScan = async (r: ScanRun) => {
         const mss54 = ecuId === 'mss54' && catalog ? catalog : await loadEcuCatalog('mss54').catch(() => null);
+        // DSC MK60 (lib/kwpOnDs2): its codes with its own SGBD's text — an estimate, as on its screen.
+        const kwpId = r.results.find((x) => x.kwpDtcs)?.modules[0];
+        const kwpCatalog = !kwpId ? null : kwpId === ecuId && catalog ? catalog : await loadEcuCatalog(kwpId).catch(() => null);
+        const kwpText = new Map((kwpCatalog?.faultText ?? []).map((f) => [normCode(f.code), f]));
+        const kwpCodes = (dtcs: NonNullable<ScanRun['results'][number]['kwpDtcs']>) =>
+            dtcs.map((d) => {
+                const known = kwpText.get(normCode(d.code));
+                return { code: d.code, status: `0x${d.status.toString(16).padStart(2, '0')}`, text: known && kwpCatalog ? resolveText(kwpCatalog, known.text, 'en').text : null };
+            });
         return {
             end: r.end,
             at: new Date(r.endedAt).toISOString(),
@@ -143,7 +152,11 @@ export function useMonitoringFacade(input: {
                 outcome: x.outcome,
                 ...(x.reason ? { reason: en.runBlock[x.reason as RunBlockKey] ?? x.reason } : {}),
                 ...(x.decoded ? { faults: describeEntries(x.decoded as ErrorMemoryEntry[], mss54) } : {}),
-                ...(!x.decoded && x.exchanges.some((e) => e.response !== null) ? { raw: x.exchanges, note: 'No decoder for this module: the answer is kept as bytes.' } : {}),
+                ...(x.kwpDtcs
+                    ? { estimated: true, codes: kwpCodes(x.kwpDtcs), raw: x.exchanges, note: 'Codes read as ISO 14230 lays out a $58 answer; not yet confirmed on a MK60. The bytes are the answer.' }
+                    : !x.decoded && x.exchanges.some((e) => e.response !== null)
+                      ? { raw: x.exchanges, note: 'No decoder for this module: the answer is kept as bytes.' }
+                      : {}),
             })),
         };
     };

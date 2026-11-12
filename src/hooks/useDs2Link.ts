@@ -1200,6 +1200,8 @@ export function useDs2Link(options: {
                         // design, and the car's two-second wait for each would make a practice scan a minute of nothing.
                         exchange: (address, moduleId, job, f, options) =>
                             readFrame(link.to(address), moduleId, job, f.control, f.payload, modeRef.current === 'practice' ? { ...options, timeoutMs: 400 } : options),
+                        // The DSC MK60: the screen's own read, which measures parked before it sends.
+                        kwpExchange: (moduleId, job, f) => kwpRead(link, moduleId, job, f),
                         // The MSS54 alone: its entries are the frame whose argument is 01.
                         decode: (t, frames) => {
                             const i = t.frames.findIndex((f) => f.payload[0] === 0x01);
@@ -1216,6 +1218,8 @@ export function useDs2Link(options: {
                     if (modeRef.current === 'vehicle') {
                         for (const r of result.results) {
                             if (r.outcome !== 'answered' || r.modules.length !== 1) continue;
+                            // A KWP answer is not a ledger fact here, as it is not on the module's own screen.
+                            if (targets.some((t) => t.kwp && t.modules[0] === r.modules[0])) continue;
                             for (const x of r.exchanges) {
                                 if (x.response === null) continue;
                                 try {
@@ -1238,7 +1242,15 @@ export function useDs2Link(options: {
                     } else if (own) {
                         setFaults(null);
                         setQuickTest(null);
-                        setRawFaults(own.exchanges.map((x) => ({ request: x.request, response: x.response ?? '', source: 'FS_LESEN (SGBD telegram)' })));
+                        // A KWP answer's codes go on the first row, as the screen's own read lays them (one row a frame).
+                        setRawFaults(
+                            own.exchanges.map((x, i) => ({
+                                request: x.request,
+                                response: x.response ?? '',
+                                source: 'FS_LESEN (SGBD telegram)',
+                                ...(own.kwpDtcs ? { kwpDtcs: i === 0 ? own.kwpDtcs : [] } : {}),
+                            })),
+                        );
                     }
                     setScan(result);
                     append('info', `Scan ended (${result.end}).`);
@@ -1247,7 +1259,7 @@ export function useDs2Link(options: {
                     setScanProgress(null);
                 }
             }),
-        [append, measureMotion, readFrame, run],
+        [append, kwpRead, measureMotion, readFrame, run],
     );
 
     /**

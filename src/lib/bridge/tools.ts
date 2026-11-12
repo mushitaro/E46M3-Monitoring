@@ -178,7 +178,7 @@ export const MONITORING_TOOLS = {
     monitoring_scan: {
         scope: 'control',
         description:
-            "Read every module's fault memory, one address at a time, without choosing a module: each module's own fault read (its SGBD's FS_LESEN frames) at its own address, through the tab's gate, while the car moves too (operator, 2026-11-04). Where several SGBDs share an address, only frames all of them carry are sent. Starts and answers at once; it takes about a second an address. monitoring_status shows progress, monitoring_faults (no module) the result. Only the MSS54 is decoded.",
+            "Read every module's fault memory, one address at a time, without choosing a module: each module's own fault read (its SGBD's FS_LESEN frames) at its own address, through the tab's gate, while the car moves too (operator, 2026-11-04). Where several SGBDs share an address, only frames all of them carry are sent. Starts and answers at once; it takes about a second an address. monitoring_status shows progress, monitoring_faults (no module) the result. Only the MSS54 is decoded. The DSC MK60 (KWP2000-shaped frames on the same line) is asked only when the DME's speed, measured at its turn, is 0: its codes come back as an estimate (estimated: true) beside the bytes; on a moving car it alone is refused with that reason — scan again once stopped.",
         inputSchema: obj({}),
     },
     monitoring_module: {

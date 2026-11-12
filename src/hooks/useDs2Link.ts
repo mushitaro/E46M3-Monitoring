@@ -833,6 +833,12 @@ export function useDs2Link(options: {
                     for (const f of target.faults) {
                         append('tx', `FS ${f.hex} (${f.source})`);
                         const frame = await readFrame(to, target.moduleId, 'FS_LESEN', f.control, f.payload);
+                        // A refusal after an answer keeps the answer (the door mirrors answer `04 00` and
+                        // refuse `04 01`): the frames that came back are the read, and the log says where it stopped.
+                        if (out.length > 0 && !isPositiveResponse(frame)) {
+                            append('info', `FS ${f.hex} refused (status 0x${frame.controlOrStatus.toString(16).padStart(2, '0')}) after ${out.length} answered frame(s); kept what came back.`);
+                            break;
+                        }
                         link.assertPositive(frame, `Fault read ${f.hex}`);
                         append('rx', `${frame.payload.length} bytes — no decoder for this module`);
                         out.push({ request: f.hex, response: toHex(frame.payload), source: f.source });
@@ -1242,14 +1248,20 @@ export function useDs2Link(options: {
                     } else if (own) {
                         setFaults(null);
                         setQuickTest(null);
-                        // A KWP answer's codes go on the first row, as the screen's own read lays them (one row a frame).
+                        // What answered is kept; a KWP answer's codes go on its first row, as the screen's own read lays them.
                         setRawFaults(
-                            own.exchanges.map((x, i) => ({
-                                request: x.request,
-                                response: x.response ?? '',
-                                source: 'FS_LESEN (SGBD telegram)',
-                                ...(own.kwpDtcs ? { kwpDtcs: i === 0 ? own.kwpDtcs : [] } : {}),
-                            })),
+                            own.exchanges.flatMap((x, i) =>
+                                x.response === null
+                                    ? []
+                                    : [
+                                          {
+                                              request: x.request,
+                                              response: x.response,
+                                              source: 'FS_LESEN (SGBD telegram)',
+                                              ...(own.kwpDtcs ? { kwpDtcs: i === 0 ? own.kwpDtcs : [] } : {}),
+                                          },
+                                      ],
+                            ),
                         );
                     }
                     setScan(result);

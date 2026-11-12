@@ -15,6 +15,7 @@ description: 'One firing of MONITORING''s autonomous loop: the scheduled Claude 
 - 委任のある調査と、その CO-WORK の新しい項目（ドライバーの答え、タブの記録、待っている問い）：`npm run desk -- list`、`pull <record>`。`MONITORING_DESK_URL` か `MONITORING_DESK_TOKEN` が無い、あるいは 401 なら、調査は進めずにそれを一行で報告する（トークンの期限切れ。`docs/AUTONOMY.md` §6）。
 - 開いている PR（自分のもの）の CI とレビュー。
 - 例題と能力の表（`scenarios/`、`tools/scenario_coverage.mjs`）。
+- 中継からの頼みごと：`npm run desk -- list` の、id が `dev-` で始まる記録（`docs/AUTONOMY.md` §7「中継から開発へ」）。開いている `ask`（`to: desk`、`by: chat`）が運営者の言葉。直したら、同じ記録に `answer`（`re` はその `ask`）を日本語で書く（何を直したか、PR、配信したか）。この記録の委任はモジュール `none` で、計画は書けない。
 - チャットからの頼みごと：非公開の `mushitaro/E46M3-Monitoring-data` の開いている Issue で、タイトルが `[chat] ` で始まるもの。タブ（Matrix）がつながっていないときに、運営者の会話が GitHub のコネクタで書く（Skill `monitoring-dev`）。中身は調査の記録の `ask`（`to: desk`）と同じに扱う。
 
 ## 2. 一件だけ選ぶ（上から）
@@ -23,7 +24,7 @@ description: 'One firing of MONITORING''s autonomous loop: the scheduled Claude 
 1. main の CI が赤い → 直す。
 2. 自分の PR の CI が赤い、レビューが付いた → 対応する。
 3. 新しい車の記録がある調査 → `monitoring-desk` の一周（所見、次の計画）。委任の `mode` に従う：予兆保全なら前回との比較と推移、事後保全なら追うコードの再発、症状なら基準との差。
-4. ドライバーの答えが来た問い → それを前提に計画を直す。チャットからの `[chat]` Issue も、ここで同じ重さに扱う。
+4. ドライバーの答えが来た問い → それを前提に計画を直す。チャットからの `[chat]` Issue と、`dev-` の記録の `ask` も、ここで同じ重さに扱う。
 5. 開いている調査を止めている道具の穴 → 開発（`monitoring-desk` の「道具の穴」）。
 6. 例題の穴 → 開発。
 7. 手順書の評価（例題を手順書だけで解かせ、入ったトピックと「言わないこと」の違反を見る）。

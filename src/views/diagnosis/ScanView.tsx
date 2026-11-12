@@ -7,7 +7,7 @@ import { DataList, DataRow, LABEL, Section, humanName } from '@/components/ui';
 import { normCode } from '@/lib/faultCode';
 import { useLang } from '@/lib/i18n';
 import { text as resolveText, type EcuIndex, type EcuProfile } from '@/lib/ecuCatalog';
-import { KWP_NOT_PARKED, type ScanResult, type ScanRun } from '@/lib/probe/scan';
+import type { ScanResult, ScanRun } from '@/lib/probe/scan';
 import type { RunBlockKey } from '@/lib/runGate';
 import { Awaiting } from '@/views/shared/Awaiting';
 import { CountReadout } from '@/views/shared/CountReadout';
@@ -123,7 +123,7 @@ function Opened({
     lang: 'ja' | 'en';
 }) {
     const { t } = useLang();
-    const reason = r.reason && r.outcome !== 'silent' ? (r.reason === KWP_NOT_PARKED ? t.scan_kwpNotParked : (t.runBlock[r.reason as RunBlockKey] ?? r.reason)) : null;
+    const reason = r.reason && r.outcome !== 'silent' ? (t.runBlock[r.reason as RunBlockKey] ?? r.reason) : null;
     return (
         <>
             {entries?.map((f) => {

@@ -576,13 +576,14 @@ export function useDs2Link(options: {
     );
 
     /**
-     * One KWP-on-DS2 read (lib/kwpOnDs2; DSC MK60). Parked only, measured now: whether the MK60 minds
-     * being asked while it works is not known yet (operator, 2026-11-10: the first reads parked, moving
-     * once it has answered). Under the link's gate, so one frame is in flight; recorded like a read.
+     * One KWP-on-DS2 read (lib/kwpOnDs2; DSC MK60). Its identity and fault read go while the car moves,
+     * as every module's own do (operator, 2026-11-12: 「MK60 の読み取りは、走行中も取れるように」; the first
+     * reads, 2026-11-10, were parked only). A caller that holds a ledger verdict passes its `requires`.
+     * Under the link's gate, so one frame is in flight; recorded like a read.
      */
     const kwpRead = useCallback(
-        async (link: Ds2Link, moduleId: string, job: string, frame: KwpFrame) => {
-            await preflight(link, `${moduleId} ${job}`, 'parked');
+        async (link: Ds2Link, moduleId: string, job: string, frame: KwpFrame, requires: SendRequirement = 'none') => {
+            await preflight(link, `${moduleId} ${job}`, requires);
             const transport = transportRef.current ?? refuse('No open transport.');
             append('tx', `${job} ${frame.hex} (${frame.source})`);
             const record = (response: string | null, outcome: 'ok' | 'rejected' | 'failed', reason: string | null) => {
@@ -785,7 +786,7 @@ export function useDs2Link(options: {
                 const { target, to } = session(link);
                 if (target.kwp) {
                     const f = target.kwp.ident ?? refuse(`${target.moduleId}: its SGBD carries no identity frame; nothing is sent.`);
-                    const answer = await kwpRead(link, target.moduleId, 'IDENT', f);
+                    const answer = await kwpRead(link, target.moduleId, 'IDENT', f, requires);
                     const value = { hex: toHex(answer.data), length: answer.data.length };
                     identRef.current = value;
                     setIdent(value);
@@ -813,7 +814,7 @@ export function useDs2Link(options: {
                     if (target.kwp.faults.length === 0) refuse(`${target.moduleId}: its SGBD carries no fault-read frame; nothing is sent.`);
                     const out: RawFaultRead[] = [];
                     for (const f of target.kwp.faults) {
-                        const answer = await kwpRead(link, target.moduleId, 'FS_LESEN', f);
+                        const answer = await kwpRead(link, target.moduleId, 'FS_LESEN', f, requires);
                         const dtcs = parseDtcsByStatus(answer.data);
                         append('rx', dtcs ? `${dtcs.length} code(s), read as ISO 14230 lays a $58 answer out — not yet confirmed on a MK60` : `${answer.data.length} bytes — not the $58 shape`);
                         out.push({ request: f.hex, response: toHex(answer.data), source: f.source, ...(dtcs ? { kwpDtcs: dtcs } : {}) });

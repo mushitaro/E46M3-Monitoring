@@ -10,7 +10,7 @@ Web Serial、Android は WebUSB（Chrome for Android の `navigator.serial` は 
 （`tools/gen_ecu_data.py` の `MODULES`）。`0x56` は年式で中身が入れ替わる: 前期は
 ASCMK20、後期は DSC_E46 で、同時装着は無い。**DSC MK60**（運営者の車の DSC、2026-11-10）だけは
 DS2 の回線の上に KWP2000 の形の電文（`B8 29 F1 LL …`、線上の宛先 0xB8・KWP の宛先 0x29）を載せる。
-送るのは識別と故障の読み取りだけで、停車中だけ（`src/lib/kwpOnDs2.ts`）。答えの形は実車でまだ確かめていない。
+送るのは識別と故障の読み取りだけで、ほかのモジュールと同じく走行中も（運営者 2026-11-12。`src/lib/kwpOnDs2.ts`）。答えの形は実車でまだ確かめていない。
 
 Next.js 16 / React 19 / Tailwind v4、`output: 'export'` の静的書き出し。
 

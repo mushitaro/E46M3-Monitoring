@@ -41,7 +41,7 @@
  */
 import type { CatalogJob } from './ecuCatalog';
 import type { Ledger } from './ledger';
-import { mayRun, READ_ONLY_CONTROLS, telegramBytes, type RunVerdict } from './runGate';
+import { isReadOnlyControl, mayRun, READ_ONLY_CONTROLS, telegramBytes, type RunVerdict } from './runGate';
 import type { Telegram } from './telegrams';
 import type { Motion } from './vehicleState';
 
@@ -103,8 +103,10 @@ export function mayActuate(
  *
  * Returns the reason to refuse, or `null` to send.
  */
-export function whyNotSendable(control: number, mode: ActuationMode): string | null {
+export function whyNotSendable(control: number, mode: ActuationMode, moduleId?: string): string | null {
     if (READ_ONLY_CONTROLS.has(control)) return null;
+    // A module's own reads (runGate.MODULE_READ_ONLY_CONTROLS) only to that module.
+    if (moduleId && isReadOnlyControl(control, moduleId)) return null;
     if (mode === 'practice') return null;
     return `refusing to send control 0x${control.toString(16).padStart(2, '0')} — not a read`;
 }

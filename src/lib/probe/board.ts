@@ -74,7 +74,8 @@ export const emptyBoard = (record: string): Board => ({ record, parts: [], seq: 
 const RUN = (n: unknown) => n === undefined || (Number.isInteger(n) && (n as number) >= 1 && (n as number) <= 99);
 const MODULE = /^[a-z0-9_]{2,32}$/;
 const RECORD = /^[0-9A-Za-z-]{8,64}$/;
-const CHANNEL = /^[A-Za-z0-9_:*]{1,40}$/;
+/** A channel as a run records it — `19:v`, `adapt:6:lu_adapt`, or a module's read value `smg2:STATUS_IO_LESEN:STAT_…_WERT`. */
+const CHANNEL = /^[A-Za-z0-9_:.*]{1,140}$/;
 const text = (s: unknown, max: number) => typeof s === 'string' && s.trim().length > 0 && s.length <= max;
 
 /** What is wrong with a part as asked for, in a sentence the assistant can act on — or null. */

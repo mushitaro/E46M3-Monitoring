@@ -77,6 +77,8 @@ describe('SERVICE carries the whole of what a real car will accept', () => {
         // 96 until the extractor read SMG II's four status reads from the job's start to its
         // first send: three of them patch the block number into a shared template
         // (`32 05 0B 03` -> 04, 02, 05), so all four had looked like one shared frame.
-        expect(runnable.length).toBe(100);
+        //
+        // 100 -> 103: SMG II's GETRIEBEDATEN_LESEN (0x40 reads on SMG II), IDENT and FS_QUICK_LESEN.
+        expect(runnable.length).toBe(103);
     });
 });

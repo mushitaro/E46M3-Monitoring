@@ -363,6 +363,10 @@ export const ja: Localised = {
     run_result: '実行結果',
     run_request: '送信',
     run_response: '応答',
+    run_decoded:
+        'このモジュールの SGBD が自分の答えを読むコードを、そのままここで走らせて読んだ値です。値の名前・単位・倍率は SGBD のものです。この車の EDIABAS の答えとはまだ突き合わせていません。下の生バイトが送られてきたものそのものです。',
+    run_decodedBy: 'SGBD のジョブで読んだ値',
+    run_decodedStopped: (why: string) => `途中で止まりました（${why}）。ここまでの値だけを出しています。`,
     run_undecoded:
         'SGBD は結果の名前を持ちますが、バイト位置を公表していません。生バイトのまま出します——名前に当てはめるのはレイアウトの捏造になります。ライブ値・適応値・故障メモリ・識別はそれぞれ専用のデコーダを通っており、この経路ではありません。',
     adaptations: '適応値（学習値）',

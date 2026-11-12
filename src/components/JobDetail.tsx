@@ -49,6 +49,7 @@ import { stepsFromActivity, stepsFromSequence } from '@/lib/procedureSteps';
 import { StepList } from '@/components/StepList';
 import { useLang } from '@/lib/i18n';
 import type { JobRunResult } from '@/hooks/useDs2Link';
+import type { DecodedRead } from '@/lib/sgbd/results';
 
 const KIND_TONE: Record<OpKind, 'neutral' | 'primary' | 'caution' | 'danger' | 'secondary'> = {
     read: 'primary',
@@ -354,7 +355,8 @@ export function JobDetail({
 
             {/* 7. What came back, if it has been run. */}
             {lastRun && (
-                <Section title={t.run_result} info={t.run_undecoded}>
+                <Section title={t.run_result} info={lastRun.decoded ? t.run_decoded : t.run_undecoded}>
+                    {lastRun.decoded && <DecodedValues profile={profile} job={job} decoded={lastRun.decoded} />}
                     <div className="flex flex-col gap-2">
                         <Field label={t.run_request} labelKind="data" stacked value={lastRun.request} />
                         <Field
@@ -369,6 +371,40 @@ export function JobDetail({
             )}
 
             {procedure && <ProcedureDetail profile={profile} procedure={procedure} workflows={workflows} />}
+        </div>
+    );
+}
+
+/**
+ * The answer as the job's own SGBD code reads it (lib/sgbd/results): one row per value, named as the
+ * catalogue names the result, with its unit. Where the run stopped short, it says so; the values it
+ * reached are shown and the rest are not invented.
+ */
+function DecodedValues({ profile, job, decoded }: { profile: EcuProfile; job: CatalogJob; decoded: DecodedRead }) {
+    const { lang, t } = useLang();
+    const comment = (name: string) => job.results.find((r) => r.name === name)?.comment;
+    return (
+        <div className="mb-3">
+            <DataList>
+                {decoded.values.map((v) => (
+                    <DataRow
+                        key={v.name}
+                        name={resolveText(profile, comment(v.name), lang).text}
+                        ident={v.name}
+                        trailing={
+                            <span className="shrink-0 font-mono text-xs tabular-nums text-slate-200">
+                                {v.value}
+                                {v.unit && <span className="ml-1 text-slate-500">{v.unit}</span>}
+                            </span>
+                        }
+                    />
+                ))}
+            </DataList>
+            <p className="mt-1 flex flex-wrap items-baseline gap-x-3 text-[11px] text-slate-500">
+                <Provenance>{t.run_decodedBy}</Provenance>
+                {decoded.status && <span className="font-mono">{decoded.status}</span>}
+                {decoded.stopped && <span className="text-amber-400">{t.run_decodedStopped(decoded.stopped.reason)}</span>}
+            </p>
         </div>
     );
 }

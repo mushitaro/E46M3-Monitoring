@@ -34,6 +34,9 @@ def poke(s, idx, b):       return bytes([0x00, 0xA2, s, idx, b])      # S[Ln] <-
 def xsend_lit(resp, b):    return bytes([0x2A, 0x18, resp]) + lit(b)
 def xsend_s(resp, s):      return bytes([0x2A, 0x11, resp, s])
 def jz(rel):               return bytes([0x10, 0x70]) + struct.pack("<i", rel)
+def jump(rel):             return bytes([0x0B, 0x70]) + struct.pack("<i", rel)
+def etag(rel, name):       return bytes([0x41, 0x78]) + struct.pack("<i", rel) + lit(name.encode() + b"\0")
+def ergy(name, s):         return bytes([0x3F, 0x81]) + lit(name.encode() + b"\0") + bytes([s])
 
 
 def patched(template, index, value):
@@ -62,6 +65,17 @@ class FirstSend(unittest.TestCase):
         # The origin is the template literal the scrape saw.
         code = patched([0x32, 0x05, 0x0B, 0x03], 3, 4)
         self.assertEqual(code[src:src + 4].hex(" "), "32 05 0b 03")
+
+    def test_a_result_tag_before_the_send_is_followed_as_asked(self):
+        # GETRIEBEDATEN_LESEN's shape: the request is offered as a result before it goes, behind a
+        # tag; EDIABAS asks for every result, so the tag falls through, and the jz after it reads
+        # the flag the pop just set.
+        tail = clear_s(S2) + xsend_lit(S2, [0x32, 0x05, 0x40, 0x02])
+        skip = ergy("TELEGRAMM_ANF", S1)
+        body = (push_imm(1) + jump(len(push_imm(0))) + push_imm(0) + pop_l(L0) + jz(len(skip)) + skip)
+        code = etag(len(push_imm(1)) + len(jump(0)), "TELEGRAMM_ANF") + body + tail
+        sent, _ = self.run_code(code)
+        self.assertEqual(sent.hex(" "), "32 05 40 02")
 
     def test_branch_before_the_send_is_not_resolved(self):
         code = clear_s(S2) + jz(0) + xsend_lit(S2, [0x32, 0x05, 0x0B, 0x03])
@@ -105,8 +119,15 @@ class Smg2(unittest.TestCase):
         after = extract(PRG, 0x32, resolve_first_send=True)
         strip = lambda es: [(e["hex"], e["confidence"]) for e in es]
         changed = sorted(j for j in set(before) | set(after) if strip(before.get(j, [])) != strip(after.get(j, [])))
-        self.assertEqual(changed, ["STATUS_FAHRZEUGTESTER_LESEN", "STATUS_HARDWARE_STATI_LESEN",
-                                   "STATUS_IO_LESEN", "STATUS_IO_STATI_LESEN"])
+        self.assertEqual(changed, ["FS_QUICK_LESEN", "GETRIEBEDATEN_LESEN", "IDENT", "STATUS_FAHRZEUGTESTER_LESEN",
+                                   "STATUS_HARDWARE_STATI_LESEN", "STATUS_IO_LESEN", "STATUS_IO_STATI_LESEN"])
+
+    def test_the_adaptation_read_stays_a_template(self):
+        # It builds byte 3 from its argument (0 clutch, 1 gearbox, 2 gearbox data): the frame in the
+        # file is a template, whichever job it is filed under.
+        got = extract(PRG, 0x32, resolve_first_send=True)
+        self.assertEqual([(e["hex"], e["confidence"]) for e in got["ADAPTIONSWERTE_LESEN"]], [("32 05 40 00 77", "shared")])
+        self.assertEqual([(e["hex"], e["confidence"]) for e in got["GETRIEBEDATEN_LESEN"]], [("32 05 40 02 75", "single")])
 
     def test_a_job_that_reads_an_argument_first_stays_a_template(self):
         raw = open(PRG, "rb").read()

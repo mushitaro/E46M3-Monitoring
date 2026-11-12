@@ -7,6 +7,7 @@ import { practiceBus, practiceEcu } from './practiceEcu';
 import {
     READ_ONLY_CONTROLS,
     clearFaultsCommand,
+    isReadOnlyControl,
     mayRun,
     telegramBytes,
 } from './runGate';
@@ -178,7 +179,7 @@ describe('the run gate', () => {
             for (const j of profile(m).jobs) {
                 const v = mayRun(j, bestTelegram(telegrams(m), j.id), EMPTY_LEDGER, ctx(m));
                 if (!v.allowed) continue;
-                expect(READ_ONLY_CONTROLS.has(v.control), `${m}.${j.id}`).toBe(true);
+                expect(isReadOnlyControl(v.control, m), `${m}.${j.id}`).toBe(true);
             }
         }
     });
@@ -226,6 +227,15 @@ describe('clearing fault memory', () => {
 
     it('is not in the read-only set — it is a write, and named as one', () => {
         expect(READ_ONLY_CONTROLS.has(Ds2Control.CLEAR_ERROR_MEMORY)).toBe(false);
+    });
+
+    // 0x40 reads on SMG II by its SGBD's own comment. On the MSS54 the same byte heads
+    // ABGLEICHFLAG_SCHREIBEN, a write: the byte is a read only where the module's list says so.
+    it('treats 0x40 as a read on SMG II and nowhere else', () => {
+        expect(isReadOnlyControl(0x40, 'smg2')).toBe(true);
+        expect(isReadOnlyControl(0x40, 'mss54')).toBe(false);
+        expect(isReadOnlyControl(0x40, 'navmk3')).toBe(false);
+        expect(READ_ONLY_CONTROLS.has(0x40)).toBe(false);
     });
 });
 

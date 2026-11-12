@@ -18,6 +18,7 @@
  */
 import { boardLine, place, type Board } from '../probe/board';
 import { compareRuns, trend } from '../probe/compare';
+import type { ProbeExchange } from '../probe/executor';
 import type { ProbeLive, StoredRun } from '../probe/runStore';
 import { formOf, lineage, nextSession, type NextRefusal } from '../probe/sessions';
 import { TAB_ORDER, type Mode, type Tab } from '../tabs';
@@ -35,6 +36,26 @@ import {
     type NotebookEntry,
 } from '../notebook/rules';
 import type { MonitoringToolName } from './tools';
+
+
+/**
+ * The last exchanges of a run, as sent and as answered, with the values read from them where the
+ * module's SGBD code ships (lib/sgbd/results). What went on the wire is what the assistant reasons
+ * from; a count of outcomes alone could not say which frame a module refused.
+ */
+function recentExchanges(xs: readonly ProbeExchange[], n = 12) {
+    return xs.slice(-n).map((x) => ({
+        t: Math.round(x.t * 10) / 10,
+        step: x.step,
+        module: x.module,
+        what: x.what,
+        outcome: x.outcome,
+        request: x.request,
+        response: x.response,
+        ...(x.reason ? { reason: x.reason } : {}),
+        ...(x.values ? { values: x.values.slice(0, 60) } : {}),
+    }));
+}
 
 export type Handler = (args: Record<string, unknown>) => Promise<unknown>;
 
@@ -308,6 +329,9 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
                     seconds: Math.round(seconds),
                     samples: live.samples.length,
                     rateHz: seconds > 0 ? Math.round((live.samples.length / seconds) * 10) / 10 : null,
+                    // Each step's state, and for one that is due but held, why (`waiting`): a run whose
+                    // reads all wait for a stationary car used to look the same as a stuck one.
+                    ...(live.run ? { steps: live.run.steps, recent: recentExchanges(live.run.exchanges) } : {}),
                 };
             }
             const r = f.lastRun();
@@ -326,6 +350,7 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
                 rateHz: seconds > 0 ? Math.round((r.samples.length / seconds) * 10) / 10 : null,
                 steps: r.steps,
                 exchanges: outcomes,
+                recent: recentExchanges(r.exchanges),
                 captures: r.captures.length,
                 judges: r.judges,
             };

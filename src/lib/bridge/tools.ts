@@ -93,7 +93,7 @@ export const MONITORING_TOOLS = {
     monitoring_run_overview: {
         scope: 'read',
         description:
-            "The PROBE run in progress or the last one: length, samples and rate, link gaps, each step's state (done, waiting, refused with the gate's reason, rejected by the module, failed), captures taken, and the judgements the tab computed with where each threshold came from.",
+            "The PROBE run in progress or the last one: length, samples and rate, link gaps, each step's state (done, waiting — with why, e.g. parked only while the car is moving — refused with the gate's reason, rejected by the module, failed), the last exchanges as sent and answered with the values read from them, captures taken, and the judgements the tab computed with where each threshold came from.",
         inputSchema: obj({}),
     },
     monitoring_ledger: {
@@ -141,7 +141,7 @@ export const MONITORING_TOOLS = {
                     type: 'array',
                     items: { type: 'object' },
                     description:
-                        'Steps, each {n, do, kind, …}: n numbers them from 1; do says what the step is for, in a line (required). kind and its fields — faults {module, when}: a module\'s fault memory; read {module, job, when}: a catalogue read job; sample {channels}: MSS54 live channels like 35:evan1_ist, or a whole block like 3:*; adapt {when}: the MSS54\'s learned values; ram {address, bytes, every}; capture {condition: [{channel, op, value}], preS, postS}. when is parked, moving or any. Example: {"n":1,"do":"intake VANOS actual vs target","kind":"sample","channels":["35:evan1_ist","35:evan1_soll"]}.',
+                        'Steps, each {n, do, kind, …}: n numbers them from 1; do says what the step is for, in a line (required). kind and its fields — faults {module, when}: a module\'s fault memory; read {module, job, when}: a catalogue read job; sample {channels}: MSS54 live channels like 35:evan1_ist, or a whole block like 3:*, or another module\'s read values named module:JOB:RESULT (smg2:STATUS_IO_LESEN:STAT_HYDRAULIKTEMPERATUR_WERT, or smg2:STATUS_IO_LESEN:* for all of it — SMG II\'s STATUS_IO_LESEN, STATUS_IO_STATI_LESEN, STATUS_HARDWARE_STATI_LESEN, STATUS_FAHRZEUGTESTER_LESEN; read parked unless the owner cleared them for a moving car); adapt {when, module?}: learned values — the MSS54\'s, or module smg2 for SMG II\'s clutch, gearbox and gearbox data; ram {address, bytes, every}; capture {condition: [{channel, op, value}], preS, postS}. when is parked, moving or any. Example: {"n":1,"do":"intake VANOS actual vs target","kind":"sample","channels":["35:evan1_ist","35:evan1_soll"]}.',
                 },
             },
             ['mandate', 'purpose', 'steps'],

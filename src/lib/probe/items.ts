@@ -110,9 +110,12 @@ export function diffForms(a: Form, b: Form): ItemDiff {
  */
 export function measures(form: Pick<Form, 'steps'>, channel: string): boolean {
     const block = /^(\d{1,3}):/.exec(channel)?.[1];
+    // A module's read (`smg2:STATUS_IO_LESEN:*` stands for every value that job reports).
+    const read = /^([a-z0-9_]+:[A-Z0-9_]+):/.exec(channel)?.[1];
     return form.steps.some(
         (s) =>
-            (s.kind === 'sample' && s.channels.some((c) => c === channel || (block !== undefined && c === `${block}:*`))) ||
+            (s.kind === 'sample' &&
+                s.channels.some((c) => c === channel || (block !== undefined && c === `${block}:*`) || (read !== undefined && c === `${read}:*`))) ||
             (s.kind === 'ram' && channel === `ram:${s.address}`),
     );
 }

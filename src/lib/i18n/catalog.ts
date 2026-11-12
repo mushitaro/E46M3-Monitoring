@@ -444,6 +444,10 @@ export interface Localised {
     run_result: string;
     run_request: string;
     run_response: string;
+    /** A read whose answer the module's own SGBD code read (lib/sgbd/results). */
+    run_decoded: string;
+    run_decodedBy: string;
+    run_decodedStopped: (why: string) => string;
     run_undecoded: string;
     adaptations: string;
     adaptations_info: string;

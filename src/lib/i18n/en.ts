@@ -369,6 +369,10 @@ export const en: Localised = {
     run_result: 'Run result',
     run_request: 'Sent',
     run_response: 'Response',
+    run_decoded:
+        "Values read by running this module's own SGBD code for reading its answer. Names, units and scaling are the SGBD's. Not yet checked against EDIABAS's answer on this car; the bytes below are what came back.",
+    run_decodedBy: 'Read by the SGBD job',
+    run_decodedStopped: (why: string) => `Stopped part-way (${why}); only the values reached are shown.`,
     run_undecoded:
         'The SGBD names this job’s results but publishes no byte offsets for them, so the payload is shown raw — mapping it onto those names would be inventing a layout. Live values, adaptations, fault memory and ident each go through a real decoder, not this path.',
     adaptations: 'Adaptation values',

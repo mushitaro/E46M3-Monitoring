@@ -236,6 +236,7 @@ export const ja: Localised = {
         skipped: '未実施',
     },
     scan_shared: 'どれが付いているかは、MODULE で選んで開きます。',
+    scan_kwpNotParked: '停車中だけ読むモジュールです。車が動いているか、車速を読めなかったので送っていません。止まってから、もう一度読み取ってください。',
     scan_progress: (d, n) => `読取中 ${d} / ${n}`,
     awaiting_scan: '全モジュール読取待機中…',
     viz_scanAnswered: '応答したモジュール',

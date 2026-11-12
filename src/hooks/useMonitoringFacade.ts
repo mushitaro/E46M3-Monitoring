@@ -13,6 +13,7 @@ import { hasFaultRead, hasIdent, type ModuleProtocol } from '@/lib/moduleProtoco
 import { addEntries, listAllEntries } from '@/lib/notebook/store';
 import { getBoard, putBoard } from '@/lib/probe/boardStore';
 import { listRuns } from '@/lib/probe/runStore';
+import { probeKept } from '@/lib/probeKept';
 import { scanCounts, type ScanRun } from '@/lib/probe/scan';
 import type { RunBlockKey } from '@/lib/runGate';
 import { mayRun, mayRunProtocolRead } from '@/lib/runGate';
@@ -132,6 +133,15 @@ export function useMonitoringFacade(input: {
     /** A scan, module by module: what answered, with the MSS54's codes decoded and the rest as bytes. */
     const describeScan = async (r: ScanRun) => {
         const mss54 = ecuId === 'mss54' && catalog ? catalog : await loadEcuCatalog('mss54').catch(() => null);
+        // DSC MK60 (lib/kwpOnDs2): its codes with its own SGBD's text — an estimate, as on its screen.
+        const kwpId = r.results.find((x) => x.kwpDtcs)?.modules[0];
+        const kwpCatalog = !kwpId ? null : kwpId === ecuId && catalog ? catalog : await loadEcuCatalog(kwpId).catch(() => null);
+        const kwpText = new Map((kwpCatalog?.faultText ?? []).map((f) => [normCode(f.code), f]));
+        const kwpCodes = (dtcs: NonNullable<ScanRun['results'][number]['kwpDtcs']>) =>
+            dtcs.map((d) => {
+                const known = kwpText.get(normCode(d.code));
+                return { code: d.code, status: `0x${d.status.toString(16).padStart(2, '0')}`, text: known && kwpCatalog ? resolveText(kwpCatalog, known.text, 'en').text : null };
+            });
         return {
             end: r.end,
             at: new Date(r.endedAt).toISOString(),
@@ -143,7 +153,11 @@ export function useMonitoringFacade(input: {
                 outcome: x.outcome,
                 ...(x.reason ? { reason: en.runBlock[x.reason as RunBlockKey] ?? x.reason } : {}),
                 ...(x.decoded ? { faults: describeEntries(x.decoded as ErrorMemoryEntry[], mss54) } : {}),
-                ...(!x.decoded && x.exchanges.some((e) => e.response !== null) ? { raw: x.exchanges, note: 'No decoder for this module: the answer is kept as bytes.' } : {}),
+                ...(x.kwpDtcs
+                    ? { estimated: true, codes: kwpCodes(x.kwpDtcs), raw: x.exchanges, note: 'Codes read as ISO 14230 lays out a $58 answer; not yet confirmed on a MK60. The bytes are the answer.' }
+                    : !x.decoded && x.exchanges.some((e) => e.response !== null)
+                      ? { raw: x.exchanges, note: 'No decoder for this module: the answer is kept as bytes.' }
+                      : {}),
             })),
         };
     };
@@ -376,7 +390,13 @@ export function useMonitoringFacade(input: {
                 await sessions.save();
             }
             const s = (await listLocal().catch(() => [])).sort((a, b) => b.updatedAt - a.updatedAt)[0];
-            return s ? { saved: true, label: s.label, ...summarise(s) } : { saved: false, reason: 'Nothing was written to this device.' };
+            // PROBE's samples are the investigation's, never MEMORY's: say where they are, so a
+            // count of 0 here is not read as a loss.
+            const record = input.probeSessions.opened();
+            const probeRuns = probeKept(record, record ? await listRuns(record).catch(() => []) : []);
+            return s
+                ? { saved: true, label: s.label, ...summarise(s), ...(probeRuns ? { probeRuns } : {}) }
+                : { saved: false, reason: 'Nothing was written to this device.', ...(probeRuns ? { probeRuns } : {}) };
         },
 
         connect: async () => {

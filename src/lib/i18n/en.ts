@@ -237,6 +237,7 @@ export const en: Localised = {
         skipped: 'Not reached',
     },
     scan_shared: 'Which one is fitted is chosen on MODULE, then opened.',
+    scan_kwpNotParked: 'Read parked only. The car is moving or its speed could not be read, so nothing was sent. Stop, then scan again.',
     scan_progress: (d, n) => `Scanning ${d} / ${n}`,
     awaiting_scan: 'AWAITING SCAN…',
     viz_scanAnswered: 'modules answered',

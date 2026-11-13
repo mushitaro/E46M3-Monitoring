@@ -9,7 +9,7 @@ import {
     type ArmedJob,
     type ArmedMap,
 } from '@/lib/arming';
-import type { SendRequirement } from '@/lib/runGate';
+import type { SendRequirement } from '@tsunagi/monitoring-engine';
 
 /**
  * The React skin over `lib/arming`. The rules live there and are tested there;

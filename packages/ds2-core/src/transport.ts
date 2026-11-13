@@ -20,10 +20,10 @@
  * copy, not the tuner's, is the one that survived when the two backends were brought together.
  */
 
-import { BufferedByteTransport, delay, describeError, now } from './bufferedByteTransport';
-import type { Ds2ByteTransport } from './byteTransport';
-import { Ds2Error } from './errors';
-import { getSerial, type SerialPortLike } from './webSerialTypes';
+import { BufferedByteTransport, delay, describeError, now } from './bufferedByteTransport.ts';
+import type { Ds2ByteTransport } from './byteTransport.ts';
+import { Ds2Error } from './errors.ts';
+import { getSerial, type SerialPortLike } from './webSerialTypes.ts';
 
 /**
  * Receive buffer requested from the Web Serial implementation. The spec default

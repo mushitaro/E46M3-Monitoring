@@ -227,11 +227,14 @@ export const ja: Localised = {
     scan_title: '全モジュール',
     scan_note: (time) => `${time} に読取`,
     scan_info:
-        '各モジュールに、そのモジュール自身の SGBD の故障読取を、アドレスを一つずつ送ります。送るのは DME が停車を示している間だけで、数アドレスごとに測り直します。同じアドレスを複数の SGBD が使うときは、全員の表にあるフレームだけを送ります。エンジン（MSS54）は専用の解読器で、ほかの多くのモジュールはそのモジュール自身の SGBD の故障読取のコードで中身を読みます（INPA と同じ読み方。故障の場所の文は SGBD のままのドイツ語）。そう読めない答えは、返ったバイトのままです。応答なしは、その装備が無いか、眠っているか、この線から届かないかです。',
+        'アドレスを一つずつ、そのモジュール自身の SGBD の故障読取を送ります。エンジン（0x12）と変速機（0x32）は、まず共通の IDENT を訊き、その答えから EDIABAS のグループファイルと同じ選び方で変種を選び、このアプリが載せている SGBD に当たったときだけ故障読取を送ります。エンジンが MSS54（M3）と答えた車では、ほかのアドレスは M3 の装備として、それぞれ自分の IDENT を先に送ってから読みます。M3 でない車では、変種の分からないアドレスは「?」のまま、IDENT のほかは送りません。同じアドレスを複数の SGBD が使うときは、全員の表にあるフレームだけを送ります。エンジン（MSS54）は専用の解読器で、ほかの多くのモジュールはそのモジュール自身の SGBD の故障読取のコードで中身を読みます（INPA と同じ読み方。故障の場所の文は SGBD のままのドイツ語）。そう読めない答えは、返ったバイトのままです。応答なしは、その装備が無いか、眠っているか、この線から届かないかです。',
     scan_outcome: {
         faults: (n) => `故障 ${n}`,
         clean: '故障なし',
         undecoded: '未解読',
+        faultsUnverified: (n) => `故障 ${n}（実車未確認）`,
+        cleanUnverified: '故障なし（実車未確認）',
+        identified: '識別のみ',
         silent: '応答なし',
         rejected: '拒否',
         refused: '送らない',
@@ -239,6 +242,12 @@ export const ja: Localised = {
     },
     scan_shared: 'どれが付いているかは、MODULE で選んで開きます。',
     scan_sgbdRead: (sgbd, done) => (done ? `${sgbd.toUpperCase()} 自身の故障読取のコードで読みました。文は SGBD のまま。` : `${sgbd.toUpperCase()} 自身の故障読取のコードでは最後まで読めませんでした。バイトが答えです。`),
+    scan_variant: (sgbd, carried) =>
+        sgbd === null
+            ? '変種 ?：IDENT の答えからは、どのモジュールか決まりません。IDENT のほかは送っていません。'
+            : carried
+              ? `変種 ${sgbd}`
+              : `変種 ${sgbd}：この SGBD はまだ載せていないので、IDENT のほかは送っていません。`,
     scan_progress: (d, n) => `読取中 ${d} / ${n}`,
     awaiting_scan: '全モジュール読取待機中…',
     viz_scanAnswered: '応答したモジュール',
@@ -754,6 +763,9 @@ export const ja: Localised = {
     graph_band: (band) => `±${band} · AI の決めた幅`,
     graph_target: '目標',
     graph_noValue: 'この回にはまだこの値の読み取りがありません。',
+    faults_layout_unverified: '故障コードは、このモジュール自身の SGBD が読むのと同じ場所から読みました（EDIABAS の模擬で確かめた読み方）。実車ではまだ確かめていません。上のバイトが答えそのものです。',
+    fault_present_now: '現在あり',
+    fault_stored: '記録のみ',
     faults_kwp_estimated: '故障コードは ISO 14230 の答えの形として読んだ推定です。MK60 の実車ではまだ確かめていません。上のバイトが答えそのものです。',
     door_wifi: 'ナビの Wi-Fi 設定',
     door_datetime: 'ナビの日付と時刻の設定',

@@ -17,9 +17,9 @@
  *     the device at all
  */
 
-import { Ds2Status, buildDs2Frame, parseDs2Frame, type Ds2Frame } from './frame';
-import { SimulatedFtdiDevice, SimulatedUsb, type SimulatedFtdiOptions } from './ftdiSimulator';
-import type { SerialOptions, SerialPortLike } from './webSerialTypes';
+import { Ds2Status, buildDs2Frame, parseDs2Frame, type Ds2Frame } from './frame.ts';
+import { SimulatedFtdiDevice, SimulatedUsb, type SimulatedFtdiOptions } from './ftdiSimulator.ts';
+import type { SerialOptions, SerialPortLike } from './webSerialTypes.ts';
 
 /** What the device does with one incoming request. */
 export type ExchangeBehavior =
@@ -77,8 +77,13 @@ export class SimulatedEcu {
     readonly trace: TraceEntry[] = [];
     private scriptIndex = 0;
     private busyRemaining = 0;
+    private readonly options: SimulatedEcuOptions;
 
-    constructor(private readonly options: SimulatedEcuOptions) {}
+    // Spelled out rather than a parameter property: Node's type stripping (GREN BLUE's `node --test`)
+    // does not rewrite those.
+    constructor(options: SimulatedEcuOptions) {
+        this.options = options;
+    }
 
     /**
      * What the device would put on the wire in reply, in order.

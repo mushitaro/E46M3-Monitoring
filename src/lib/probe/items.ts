@@ -16,7 +16,7 @@
  *
  * Pure.
  */
-import type { Clause, Judge, ProbeStep } from './plan';
+import type { Clause, Judge, ProbeStep } from '@tsunagi/monitoring-engine';
 
 export type ItemKind = 'value' | 'judge' | 'faults' | 'read' | 'adapt' | 'ram' | 'capture';
 

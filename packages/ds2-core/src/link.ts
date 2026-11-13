@@ -11,8 +11,8 @@
  * protocol core and with the timing constants surfaced as options.
  */
 
-import type { Ds2ByteTransport } from './byteTransport';
-import { Ds2Error } from './errors';
+import type { Ds2ByteTransport } from './byteTransport.ts';
+import { Ds2Error } from './errors.ts';
 import {
     DS2_MIN_FRAME_LENGTH,
     Ds2Control,
@@ -23,8 +23,8 @@ import {
     parseDs2Frame,
     toHex,
     type Ds2Frame,
-} from './frame';
-import { classifyEchoMismatch } from './echo';
+} from './frame.ts';
+import { classifyEchoMismatch } from './echo.ts';
 import {
     DS2_DEFAULT_ACCESS_LEVEL,
     buildKeyPayload,
@@ -32,8 +32,8 @@ import {
     calculateLoginKey,
     isAlreadyUnlockedResponse,
     isSeedResponse,
-} from './login';
-import type { LinkTiming } from './timing';
+} from './login.ts';
+import type { LinkTiming } from './timing.ts';
 
 /**
  * Every timing constant, in one overridable object.
@@ -132,6 +132,13 @@ export interface Ds2Target {
     endDiagnosticSession(): Promise<boolean>;
 }
 
+/**
+ * The last check before a frame goes: null to send it, or why not. Sees the whole frame (address,
+ * length, control, payload, checksum) and nothing else, so it can only be a backstop on WHERE bytes
+ * go; which module's frames those are is the caller's to know.
+ */
+export type SendGuard = (frame: Uint8Array) => string | null;
+
 export interface RetryOptions {
     attempts?: number;
     timeoutMs?: number;
@@ -146,6 +153,7 @@ export class Ds2Link {
     private timing: LinkTiming | null;
     private gateHeld = false;
     private connected = false;
+    private sendGuard: SendGuard | null = null;
 
     constructor(transport: Ds2ByteTransport, options: Ds2LinkOptions) {
         this.transport = transport;
@@ -209,6 +217,30 @@ export class Ds2Link {
         return this.gateHeld;
     }
 
+    // ---- the send guard -----------------------------------------------------
+
+    /**
+     * Install (or clear, with null) the check every frame passes before it is written — gated
+     * exchanges, retries, heartbeats and session ends alike, since they all end in one write.
+     *
+     * The app uses it so that no path it forgets can send a module's frames to an address that has
+     * not identified itself as that module (an M3's DME frames to a non-M3's DME). A refusal throws
+     * `NOT_SENT` before the write and is not retried: the line was never touched.
+     */
+    setSendGuard(guard: SendGuard | null): void {
+        this.sendGuard = guard;
+    }
+
+    private checkGuard(frame: Uint8Array): void {
+        const reason = this.sendGuard?.(frame) ?? null;
+        if (reason !== null) {
+            throw new Ds2Error('NOT_SENT', `Not sent (${toHex(frame)}): ${reason}`, {
+                kind: 'refused',
+                detail: { frame: toHex(frame), reason },
+            });
+        }
+    }
+
     // ---- other modules ------------------------------------------------------
 
     /**
@@ -256,8 +288,9 @@ export class Ds2Link {
         payload: Uint8Array,
         timeoutMs = this.timings.responseTimeoutMs,
     ): Promise<Ds2Frame> {
-        this.timing?.exchangeStart(now());
         const request = buildDs2Frame(address, control, payload);
+        this.checkGuard(request);
+        this.timing?.exchangeStart(now());
         await this.transport.write(request);
 
         // On a half-duplex bus the ECU echoes our request back.
@@ -347,6 +380,9 @@ export class Ds2Link {
     ): Promise<Ds2Frame> {
         const attempts = options.attempts ?? 3;
         const timeoutMs = options.timeoutMs ?? this.timings.responseTimeoutMs;
+        // Before the loop: a frame the guard holds back is the app's decision, and retrying it
+        // would only pay the backoff to be refused again (and resync a line never written to).
+        this.checkGuard(buildDs2Frame(address, control, payload));
         let lastError: unknown;
 
         for (let attempt = 1; attempt <= attempts; attempt++) {

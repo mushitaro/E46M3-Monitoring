@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MSS54_LIVE_BLOCKS } from './liveValues';
+import { MSS54_LIVE_BLOCKS } from './liveValues.ts';
 import {
     MSS54_ADAPTATION_BLOCKS,
     MSS54_ADAPTATION_DIVERGENCES,
@@ -8,7 +8,7 @@ import {
     adaptationBlockBySelection,
     adaptationBlockMinLength,
     decodeAdaptationBlock,
-} from './adaptations';
+} from './adaptations.ts';
 
 describe('the radix hazard', () => {
     /**

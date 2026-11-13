@@ -18,7 +18,7 @@
  */
 import { boardLine, place, type Board } from '../probe/board';
 import { compareRuns, trend } from '../probe/compare';
-import type { ProbeExchange } from '../probe/executor';
+import type { ProbeExchange } from '@tsunagi/monitoring-engine';
 import type { ProbeLive, StoredRun } from '../probe/runStore';
 import { formOf, lineage, nextSession, type NextRefusal } from '../probe/sessions';
 import { TAB_ORDER, type Mode, type Tab } from '../tabs';

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { compareRuns, trend } from './compare';
-import type { ProbeRun } from './executor';
+import type { ProbeRun } from '@tsunagi/monitoring-engine';
 
 /** Two observations of the same car, as PROBE keeps them, and what changed between them. */
 const run = (n: number, values: Array<Record<string, number | null>>, extra: Partial<ProbeRun> = {}) => ({

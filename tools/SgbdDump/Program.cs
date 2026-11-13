@@ -80,6 +80,87 @@ if (args.Length >= 3 && args[0] == "--exec")
     return;
 }
 
+// --ident <GROUP> <answers file> : the group file's own variant choice, run by EdiabasLib in
+//   simulation. Each line of the answers file is one IDENT answer as it comes off the wire
+//   (`12 2E A0 37 … 2C`: address, length, status, data, checksum). For each, a throwaway SGBD
+//   simulation file answers the group's IDENT request with it, EdiabasLib resolves the group
+//   (which runs the group's IDENTIFIKATION job: BMW's own bytecode, not a model of it), and the
+//   chosen variant is printed as one JSON line {"answer","variant"} or {"answer","error"}.
+//   This is the oracle tools/sgbd/gen_variants.py checks its rules against; no car, no cable.
+if (args.Length >= 3 && args[0] == "--ident")
+{
+    string grp = args[1];
+    string simDir = Path.Combine(Path.GetTempPath(), "sgbddump-ident-sim");
+    Directory.CreateDirectory(simDir);
+    foreach (string f in Directory.EnumerateFiles(simPath, "*.sim"))
+        File.Copy(f, Path.Combine(simDir, Path.GetFileName(f)), true);
+    string simFile = Path.Combine(simDir, grp.ToLowerInvariant() + ".sim");
+    foreach (string raw in File.ReadAllLines(args[2]))
+    {
+        string answer = raw.Trim();
+        if (answer.Length == 0) continue;
+        string[] bytes = answer.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        string addr = bytes[0];
+        byte cs = (byte)(Convert.ToByte(addr, 16) ^ 0x04 ^ 0x00);
+        // The group's own request (`<addr> 04 00`), with and without the checksum the interface adds.
+        File.WriteAllText(simFile,
+            "[REQUEST]\r\n" +
+            $"r1 = {addr},04,00,{cs:X2}\r\n" +
+            $"r2 = {addr},04,00\r\n" +
+            "[RESPONSE]\r\n" +
+            $"r1 = {string.Join(",", bytes)}\r\n" +
+            $"r2 = {string.Join(",", bytes)}\r\n");
+        string line;
+        try
+        {
+            using var ed = new EdiabasNet(string.Empty);
+            ed.EdInterfaceClass = new EdInterfaceObd();
+            ed.SetConfigProperty("EcuPath", ecuPath);
+            ed.SetConfigProperty("Simulation", "1");
+            ed.SetConfigProperty("SimulationPath", simDir);
+            ed.ResolveSgbdFile(grp);
+            string variant = Path.GetFileNameWithoutExtension(ed.SgbdFileName ?? "").ToUpperInvariant();
+            line = JsonSerializer.Serialize(new { answer, variant });
+        }
+        catch (Exception ex)
+        {
+            string msg = ex.Message;
+            for (Exception e2 = ex.InnerException; e2 != null; e2 = e2.InnerException) msg += " / " + e2.Message;
+            line = JsonSerializer.Serialize(new { answer, error = msg });
+        }
+        Console.WriteLine(line);
+    }
+    return;
+}
+
+// --tables <GROUP> : a group file's tables as JSON ({name: [header, row, …]}), read without running
+//   its IDENTIFIKATION (opening the file directly rather than resolving it, which would need an
+//   answer). The rows tools/sgbd/gen_variants.py looks the IDENT answer up in.
+if (args.Length >= 2 && args[0] == "--tables")
+{
+    string grp = args[1];
+    string file = Directory.EnumerateFiles(ecuPath)
+        .FirstOrDefault(f => string.Equals(Path.GetFileName(f), grp + ".grp", StringComparison.OrdinalIgnoreCase));
+    if (file == null) { Console.Error.WriteLine($"no {grp}.grp in {ecuPath}"); Environment.Exit(2); }
+    using var ed = new EdiabasNet(string.Empty);
+    ed.EdInterfaceClass = new EdInterfaceObd();
+    ed.SetConfigProperty("EcuPath", ecuPath);
+    ed.SetConfigProperty("Simulation", "1");
+    ed.SetConfigProperty("SimulationPath", simPath);
+    ed.SgbdFileName = Path.GetFileName(file);
+    Sets(ed, "_JOBS", "");   // opens the file, which loads its table directory
+    var tables = new SortedDictionary<string, List<List<string>>>(StringComparer.Ordinal);
+    foreach (string tn in TableNames(ed))
+    {
+        var lines = ed.GetTableLines(tn);
+        if (lines != null && lines.Count > 0) tables[tn] = lines;
+    }
+    string grpSha = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(file))).ToLowerInvariant();
+    Console.WriteLine(JsonSerializer.Serialize(new { group = grp.ToUpperInvariant(), sha256 = grpSha, tables },
+        new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }));
+    return;
+}
+
 string[] sgbds = args.Length > 0 ? args : new[] { "SMG2" };
 
 foreach (string sgbd in sgbds)

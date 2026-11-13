@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { Ds2Link } from './link';
-import { WebSerialTransport } from './transport';
-import { simulatedPort } from './simulator';
-import { Ds2Address, Ds2Control } from './frame';
+import { Ds2Link } from './link.ts';
+import { WebSerialTransport } from './transport.ts';
+import { simulatedPort } from './simulator.ts';
+import { Ds2Address, Ds2Control } from './frame.ts';
 
 /**
  * Guards the loop against accidental per-exchange latency.

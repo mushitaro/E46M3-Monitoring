@@ -31,7 +31,7 @@ import { StepList } from '@/components/StepList';
 import { stepsFromJobFamily } from '@/lib/procedureSteps';
 import { humanName } from '@/components/ui';
 import type { DscFamily, DscHydraulics } from '@/lib/dscHydraulics';
-import type { CatalogJob } from '@/lib/ecuCatalog';
+import type { CatalogJob } from '@tsunagi/monitoring-engine';
 import { useLang } from '@/lib/i18n';
 
 export function DscHydraulicsPane({

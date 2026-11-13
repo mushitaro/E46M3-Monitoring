@@ -1,4 +1,4 @@
-import { PLAUSIBLE_FROM } from '../../src/lib/clock';
+import { PLAUSIBLE_FROM } from '../../packages/monitoring-engine/src/clock';
 import type { NotebookEntry } from '../../src/lib/notebook/rules';
 
 /**

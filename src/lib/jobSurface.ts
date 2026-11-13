@@ -17,7 +17,7 @@
  * button and its ENGAGED badge exist for. Everything else is browse-and-send,
  * which is what SERVICE's faceted list is.
  */
-import type { CatalogJob } from './ecuCatalog';
+import type { CatalogJob } from '@tsunagi/monitoring-engine';
 
 export type JobSurface = 'actuator' | 'service';
 

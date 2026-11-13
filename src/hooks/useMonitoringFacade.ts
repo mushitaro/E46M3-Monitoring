@@ -4,33 +4,37 @@ import { formatErrorCode, type ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
 import type { RawFaultRead, useDs2Link } from '@/hooks/useDs2Link';
 import type { useProbe } from '@/hooks/useProbe';
 import type { FreshFaults, TabFacade } from '@/lib/bridge/handlers';
-import { jobRiskOf, loadEcuCatalog, text as resolveText, type EcuIndex, type EcuProfile, type JobClass } from '@/lib/ecuCatalog';
+import { jobRiskOf, loadEcuCatalog, text as resolveText, type DecodedFault, type EcuIndex, type EcuProfile, type JobClass } from '@tsunagi/monitoring-engine';
 import { normCode } from '@/lib/faultCode';
 import { en } from '@/lib/i18n/en';
 import { TUNER_WORKS } from '@/lib/links';
-import type { Ledger } from '@/lib/ledger';
-import { hasIdent, mayTryFaultRead, type ModuleProtocol } from '@/lib/moduleProtocol';
+import type { Ledger } from '@tsunagi/monitoring-engine';
+import { hasIdent, mayTryFaultRead, type ModuleProtocol } from '@tsunagi/monitoring-engine';
 import { addEntries, listAllEntries } from '@/lib/notebook/store';
 import { getBoard, putBoard } from '@/lib/probe/boardStore';
 import { listRuns } from '@/lib/probe/runStore';
 import { probeKept } from '@/lib/probeKept';
-import { scanCounts, type ScanRun } from '@/lib/probe/scan';
-import type { RunBlockKey } from '@/lib/runGate';
-import { mayRun, mayRunProtocolRead } from '@/lib/runGate';
+import { scanCounts, type ScanRun } from '@tsunagi/monitoring-engine';
+import type { RunBlockKey } from '@tsunagi/monitoring-engine';
+import { mayRun, mayRunProtocolRead, telegramBytes } from '@tsunagi/monitoring-engine';
+import { isCommonIdent } from '@tsunagi/monitoring-engine';
 import { canSync } from '@/lib/sync/cloud';
-import { needsSync, sessionLabel, summarise } from '@/lib/sync/session';
-import { expiresAt } from '@/lib/journal';
+import { needsSync, sessionLabel, summarise } from '@tsunagi/monitoring-engine';
+import { expiresAt } from '@tsunagi/monitoring-engine';
 import { channelsForJob, datalogSummary, findChannels, selectionCost, unknownChannels } from '@/lib/datalogQuery';
 import type { ChannelId } from '@tsunagi/ds2-mss54';
 import { listLocal } from '@/lib/sync/sessionStore';
 import type { Mode, Tab } from '@/lib/tabs';
 import type { ProbeSessions } from '@/views/probe/useProbeSessions';
-import { bestTelegram, loadTelegrams } from '@/lib/telegrams';
+import { bestTelegram, loadTelegrams } from '@tsunagi/monitoring-engine';
 import { LAUNCHER_QUERY, deviceLabel, isHeadUnit, type DeviceKind } from '@/hooks/useAssistantBridge';
 import type { Datalog } from '@/views/datalog/useDatalog';
 import type { Sessions } from '@/views/sessions/useSessions';
-import { appNow } from '@/lib/clock';
+import { appNow } from '@tsunagi/monitoring-engine';
 
+
+/** What the assistant is told with codes read from a module's own layout (engine faultLayouts). */
+const UNVERIFIED_LAYOUT = "Codes read where this module's own SGBD reads them (checked against EDIABAS in simulation); not yet confirmed on a car. The bytes are the answer.";
 /**
  * The page, as the assistant bridge sees it (lib/bridge/handlers `TabFacade`).
  *
@@ -154,10 +158,27 @@ export function useMonitoringFacade(input: {
                     raw,
                 };
             }
+            // Another module's codes, read where its own SGBD reads them (engine faultLayouts): checked
+            // against EDIABAS in simulation, not yet on a car; the bytes stay the answer.
+            if (rows.some((r) => r.decoded)) {
+                return { module: ecuId, read: true, decoded: false, unverified: true, note: UNVERIFIED_LAYOUT, codes: codesOf(rows.flatMap((r) => r.decoded ?? []), catalog), raw };
+            }
             return { module: ecuId, read: true, decoded: false, note: 'No decoder for this module: the answer is kept as bytes.', raw };
         }
         return { module: ecuId, read: false, reason: 'Not read yet in this session.' };
     };
+
+    /** Decoded codes with their module's own fault text (FORTTEXTE), in English. */
+    const codesOf = (faults: readonly DecodedFault[], profile: EcuProfile | null) => {
+        const byCode = new Map((profile?.faultText ?? []).map((f) => [normCode(f.code), f]));
+        return faults.map((f) => {
+            const known = byCode.get(normCode(f.code));
+            return { code: f.code, text: known && profile ? resolveText(profile, known.text, 'en').text : null, count: f.count, present: f.present };
+        });
+    };
+
+    /** A scan result's fault reads, without the IDENT that chose its module. */
+    const reads = (x: ScanRun['results'][number]) => x.exchanges.filter((e) => !isCommonIdent(telegramBytes(e.request) ?? new Uint8Array(0)));
 
     /** A scan, module by module: what answered, the MSS54's codes decoded, the others read by their own SGBD's code where it can, and the bytes. */
     const describeScan = async (r: ScanRun) => {
@@ -171,6 +192,12 @@ export function useMonitoringFacade(input: {
                 const known = kwpText.get(normCode(d.code));
                 return { code: d.code, status: `0x${d.status.toString(16).padStart(2, '0')}`, text: known && kwpCatalog ? resolveText(kwpCatalog, known.text, 'en').text : null };
             });
+        // The catalogue of each module whose codes were read from its own layout, for their text.
+        const profiles = new Map<string, EcuProfile | null>();
+        for (const x of r.results) {
+            const id = x.faults ? (x.variant?.moduleId ?? (x.modules.length === 1 ? x.modules[0] : null)) : null;
+            if (id) profiles.set(x.address, await loadEcuCatalog(id).catch(() => null));
+        }
         return {
             end: r.end,
             at: new Date(r.endedAt).toISOString(),
@@ -181,6 +208,9 @@ export function useMonitoringFacade(input: {
                 modules: x.modules.map((id) => ({ id, name: moduleName(id) })),
                 outcome: x.outcome,
                 ...(x.reason ? { reason: en.runBlock[x.reason as RunBlockKey] ?? x.reason } : {}),
+                // Which module its IDENT chose (`?`: none), never the IDENT answer itself: an identity
+                // read stays with the owner (lib/investigation/redact), so only the fault reads go as bytes.
+                ...(x.variant ? { variant: { sgbd: x.variant.sgbd ?? '?', carried: x.variant.moduleId !== null, ...(x.variant.basis ? { basis: x.variant.basis } : {}) } } : {}),
                 ...(x.decoded ? { faults: describeEntries(x.decoded as ErrorMemoryEntry[], mss54) } : {}),
                 // Read by the module's own SGBD FS_LESEN code (lib/sgbd/results): its entries and its texts.
                 ...(!x.decoded && x.sgbdFaults
@@ -194,10 +224,15 @@ export function useMonitoringFacade(input: {
                           },
                       }
                     : {}),
+                // Read where its own SGBD reads the codes (engine faultLayouts): not yet confirmed on a car.
+                ...(x.faults && !x.sgbdFaults ? { codes: codesOf(x.faults, profiles.get(x.address) ?? null), unverified: true } : {}),
                 ...(x.kwpDtcs
-                    ? { estimated: true, codes: kwpCodes(x.kwpDtcs), raw: x.exchanges, note: 'Codes read as ISO 14230 lays out a $58 answer; not yet confirmed on a MK60. The bytes are the answer.' }
-                    : !x.decoded && x.exchanges.some((e) => e.response !== null)
-                      ? { raw: x.exchanges, ...(x.sgbdFaults ? {} : { note: 'No decoder for this module: the answer is kept as bytes.' }) }
+                    ? { estimated: true, codes: kwpCodes(x.kwpDtcs), raw: reads(x), note: 'Codes read as ISO 14230 lays out a $58 answer; not yet confirmed on a MK60. The bytes are the answer.' }
+                    : !x.decoded && reads(x).some((e) => e.response !== null)
+                      ? {
+                            raw: reads(x),
+                            ...(x.sgbdFaults ? {} : { note: x.faults ? UNVERIFIED_LAYOUT : 'No decoder for this module: the answer is kept as bytes.' }),
+                        }
                       : {}),
             })),
         };
@@ -218,6 +253,9 @@ export function useMonitoringFacade(input: {
             speedReadAt: link.vehicleState ? new Date(link.vehicleState.at).toISOString() : null,
             // The speed preflight's verdict: parked, moving or unknown (not read, or too old).
             car: link.motion,
+            // Which module each address said it is on this link: the SGBD its group chose, or '?'.
+            // An M3 is a car whose 0x12 said MSS54DS0; on any other, '?' addresses get their IDENT only.
+            variants: Object.fromEntries([...link.fitment.values()].map((f) => [`0x${f.address.toString(16).toUpperCase().padStart(2, '0')}`, f.sgbd ?? (f.answer === null ? 'silent' : '?')])),
             recording: link.state === 'logging' && !running,
             datalog: { selected: datalog.current(), samples: datalog.snapshot().samples.length },
             probe: running

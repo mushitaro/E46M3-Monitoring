@@ -16,7 +16,7 @@
  */
 import { previewNoticeAcknowledged } from '@/lib/previewNotice';
 import { api, gunzipB64, gzipB64, isPreviewBuild, type ApiResult } from './owner-sync';
-import { isSavedSession, summarise, type SavedSession } from './session';
+import { isSavedSession, summarise, type SavedSession } from '@tsunagi/monitoring-engine';
 
 /**
  * Whether the account half may make a request: the preview build, once its notice has been

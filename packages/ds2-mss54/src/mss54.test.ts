@@ -25,7 +25,7 @@ import {
     parseQuickTest,
     planBlockReads,
     type ChannelId,
-} from './index';
+} from './index.ts';
 
 const positive = (payload: number[]) =>
     parseDs2Frame(buildDs2Frame(Ds2Address.DME, Ds2Status.ACKNOWLEDGE, new Uint8Array(payload)));

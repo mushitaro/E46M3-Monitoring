@@ -228,11 +228,14 @@ export const en: Localised = {
     scan_title: 'All modules',
     scan_note: (time) => `Read at ${time}`,
     scan_info:
-        "Each module is sent its own SGBD's fault read, one address after another, only while the DME shows the car standing still, measured again every few addresses. Where several SGBDs use one address, only the frames all of them carry are sent. The engine (MSS54) is decoded by its own decoder; most other modules' answers are read by their own SGBD's fault-read code, the same reading INPA gives, and the location texts are the SGBD's own (German). An answer that cannot be read that way is shown as the bytes that came back. No answer means the equipment is not fitted, is asleep, or is not on this line.",
+        "One address after another, each is sent its own SGBD's fault read. For the engine (0x12) and the gearbox (0x32) the common IDENT is asked first, and its answer chooses the variant the way EDIABAS's group file does: the fault read goes only when it chose an SGBD this app carries. On a car whose engine answered as the MSS54 (an M3), the other addresses are read as the M3's equipment, each sent its own IDENT first. On any other car an address whose variant is not known stays '?' and is sent nothing but its IDENT. Where several SGBDs use one address, only the frames all of them carry are sent. The engine (MSS54) is decoded by its own decoder; most other modules' answers are read by their own SGBD's fault-read code, the same reading INPA gives, and the location texts are the SGBD's own (German). An answer that cannot be read that way is shown as the bytes that came back. No answer means the equipment is not fitted, is asleep, or is not on this line.",
     scan_outcome: {
         faults: (n) => `${n} fault${n === 1 ? '' : 's'}`,
         clean: 'No faults',
         undecoded: 'Undecoded',
+        faultsUnverified: (n) => `${n} fault${n === 1 ? '' : 's'} (unconfirmed on a car)`,
+        cleanUnverified: 'no faults (unconfirmed on a car)',
+        identified: 'IDENT only',
         silent: 'No answer',
         rejected: 'Refused',
         refused: 'Not sent',
@@ -240,6 +243,12 @@ export const en: Localised = {
     },
     scan_shared: 'Which one is fitted is chosen on MODULE, then opened.',
     scan_sgbdRead: (sgbd, done) => (done ? `Read by ${sgbd.toUpperCase()}'s own fault-read code; texts as the SGBD holds them.` : `${sgbd.toUpperCase()}'s own fault-read code did not read this answer to its end; the bytes are the answer.`),
+    scan_variant: (sgbd, carried) =>
+        sgbd === null
+            ? 'Variant ?: its IDENT answer does not say which module it is. Nothing but the IDENT was sent.'
+            : carried
+              ? `Variant ${sgbd}`
+              : `Variant ${sgbd}: this app does not carry its SGBD yet, so nothing but the IDENT was sent.`,
     scan_progress: (d, n) => `Scanning ${d} / ${n}`,
     awaiting_scan: 'AWAITING SCAN…',
     viz_scanAnswered: 'modules answered',
@@ -768,6 +777,9 @@ export const en: Localised = {
     graph_band: (band) => `±${band} · the assistant’s band`,
     graph_target: 'target',
     graph_noValue: 'No reading of this value in the run yet.',
+    faults_layout_unverified: 'Codes read where this module’s own SGBD reads them (checked against EDIABAS in simulation) — not yet confirmed on a car. The bytes above are the answer.',
+    fault_present_now: 'present now',
+    fault_stored: 'stored',
     faults_kwp_estimated: 'Codes read as ISO 14230 lays out the answer — not yet confirmed on a MK60. The bytes above are the answer.',
     door_wifi: 'Head unit Wi-Fi settings',
     door_datetime: 'Head unit date and time settings',

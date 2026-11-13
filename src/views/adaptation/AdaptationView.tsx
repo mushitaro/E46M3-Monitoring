@@ -13,14 +13,14 @@ import {
 } from '@/components/ui';
 import type { AdaptationRead } from '@/hooks/useDs2Link';
 import { resetJobsFor } from '@/lib/adaptationReset';
-import { jobIndex, label, type EcuProfile } from '@/lib/ecuCatalog';
+import { jobIndex, label, type EcuProfile } from '@tsunagi/monitoring-engine';
 import { useLang } from '@/lib/i18n';
-import type { Ledger } from '@/lib/ledger';
-import { mayRun } from '@/lib/runGate';
-import { bestTelegram, type TelegramTable } from '@/lib/telegrams';
+import type { Ledger } from '@tsunagi/monitoring-engine';
+import { mayRun } from '@tsunagi/monitoring-engine';
+import { bestTelegram, type TelegramTable } from '@tsunagi/monitoring-engine';
 import { Awaiting } from '@/views/shared/Awaiting';
 import { CountReadout } from '@/views/shared/CountReadout';
-import type { Motion } from '@/lib/vehicleState';
+import type { Motion } from '@tsunagi/monitoring-engine';
 import { ReasonGlossary, ReasonTag } from '@/views/shared/RunReason';
 
 /**

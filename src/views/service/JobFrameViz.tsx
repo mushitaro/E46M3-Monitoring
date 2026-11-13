@@ -1,10 +1,10 @@
 'use client';
 
 import { Field, LABEL, MicroLabel, Pill } from '@/components/ui';
-import type { CatalogJob } from '@/lib/ecuCatalog';
+import type { CatalogJob } from '@tsunagi/monitoring-engine';
 import { useLang } from '@/lib/i18n';
-import { telegramBytes, type RunVerdict } from '@/lib/runGate';
-import type { Telegram } from '@/lib/telegrams';
+import { telegramBytes, type RunVerdict } from '@tsunagi/monitoring-engine';
+import type { Telegram } from '@tsunagi/monitoring-engine';
 
 /**
  * The focused job, at a glance and from a distance.

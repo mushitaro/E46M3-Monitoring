@@ -19,7 +19,7 @@ import type { ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
 import type { RawFaultRead } from '@/hooks/useDs2Link';
 import { normCode } from '@/lib/faultCode';
 import { useLang, type Lang } from '@/lib/i18n';
-import { text as resolveText, type EcuProfile } from '@/lib/ecuCatalog';
+import { text as resolveText, type EcuProfile } from '@tsunagi/monitoring-engine';
 import { Awaiting } from '@/views/shared/Awaiting';
 import { CountReadout } from '@/views/shared/CountReadout';
 
@@ -143,6 +143,36 @@ export const DiagnosisView = memo(function DiagnosisView({
                     ) : null}
                     {/* DSC MK60 (lib/kwpOnDs2): the codes, read as ISO 14230 lays a $58 answer out —
                         not yet confirmed on a MK60, and said so; the bytes above stay the answer. */}
+                    {/* Another module's codes, read where its own SGBD reads them (engine faultLayouts) —
+                        checked against EDIABAS in simulation, not yet on a car, and said so. */}
+                    {rawFaults.some((r) => r.decoded) ? (
+                        <>
+                            <DataList>
+                                {rawFaults.flatMap((r) =>
+                                    (r.decoded ?? []).map((d, i) => {
+                                        const known = faultByCode.get(normCode(d.code));
+                                        const meaning = known && catalog ? resolveText(catalog, known.text, lang) : null;
+                                        const state = d.present === true ? t.fault_present_now : d.present === false ? t.fault_stored : null;
+                                        return (
+                                            <DataRow
+                                                key={`${r.request}-${d.code}-${i}`}
+                                                code={d.code}
+                                                codeTone="danger"
+                                                name={meaning?.text ?? humanName('')}
+                                                trailing={
+                                                    <span className="shrink-0 font-mono text-[10px] text-slate-600">
+                                                        {[state, d.count === null ? null : `×${d.count}`].filter(Boolean).join(' ')}
+                                                    </span>
+                                                }
+                                            />
+                                        );
+                                    }),
+                                )}
+                            </DataList>
+                            {rawFaults.every((r) => !r.decoded || r.decoded.length === 0) ? <p className="py-2 text-xs text-emerald-400">{t.faults_none}</p> : null}
+                            <Provenance>{t.faults_layout_unverified}</Provenance>
+                        </>
+                    ) : null}
                     {rawFaults.some((r) => r.kwpDtcs) ? (
                         <>
                             <DataList>

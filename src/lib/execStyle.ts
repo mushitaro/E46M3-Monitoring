@@ -19,7 +19,7 @@
  * running after the press, and it is. Which job to press is the STOP button's
  * business, and `stopJob` names it.
  */
-import type { JobOperation } from './jobOps';
+import type { JobOperation } from '@tsunagi/monitoring-engine';
 
 export type ExecStyle = 'pulse' | 'hold' | 'pulse-unreleasable';
 

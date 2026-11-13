@@ -1,6 +1,6 @@
-import type { Audience, JobClass, ResultDelivery, ResultRole, Actor, Termination, Risk } from '../ecuCatalog';
-import type { IrreversibleKey, OpKind, WhyKey } from '../jobOps';
-import type { RunBlockKey } from '../runGate';
+import type { Audience, JobClass, ResultDelivery, ResultRole, Actor, Termination, Risk } from '@tsunagi/monitoring-engine';
+import type { IrreversibleKey, OpKind, WhyKey } from '@tsunagi/monitoring-engine';
+import type { RunBlockKey } from '@tsunagi/monitoring-engine';
 import type { Chrome } from './chrome';
 
 /**
@@ -205,7 +205,12 @@ export interface Localised {
     /** Behind the ⓘ: how the scan asks, what it can decode, what silence means. */
     scan_info: string;
     /** The one or two words a row ends with. */
-    scan_outcome: { faults: (n: number) => string; clean: string; undecoded: string; silent: string; rejected: string; refused: string; skipped: string };
+    scan_outcome: { faults: (n: number) => string; clean: string; undecoded: string; faultsUnverified: (n: number) => string; cleanUnverified: string; identified: string; silent: string; rejected: string; refused: string; skipped: string };
+    /**
+     * Which module an address's IDENT chose (lib/variants), under its opened row: the SGBD, or `?`;
+     * and when nothing but the IDENT went, why.
+     */
+    scan_variant: (sgbd: string | null, carried: boolean) => string;
     /** A shared address: which of its SGBDs is fitted is chosen on the select. */
     scan_shared: string;
     /** Under a module read by its own SGBD's FS_LESEN: whose code read it, and whether it read to the end. */
@@ -366,6 +371,11 @@ export interface Localised {
     /** The head unit's settings, through the launcher (lib/launcherDoors). */
     /** DSC MK60's codes read as ISO 14230's $58 layout, not yet confirmed on the car (lib/kwpOnDs2). */
     faults_kwp_estimated: string;
+    /** Another module's codes, read where its own SGBD reads them (fault-layouts.json), not yet confirmed on a car. */
+    faults_layout_unverified: string;
+    /** The code is present now / stored from before, as the module's own record says. */
+    fault_present_now: string;
+    fault_stored: string;
     door_wifi: string;
     door_datetime: string;
     board_up: string;

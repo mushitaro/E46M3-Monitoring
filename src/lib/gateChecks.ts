@@ -12,8 +12,8 @@
  * consent nobody read.
  */
 import { execStyleOf } from './execStyle';
-import type { CatalogJob } from './ecuCatalog';
-import type { JobOperation } from './jobOps';
+import type { CatalogJob } from '@tsunagi/monitoring-engine';
+import type { JobOperation } from '@tsunagi/monitoring-engine';
 
 export type GateCheckKey = `pre:${string}` | 'ack:irreversible' | 'ack:unreleasable';
 

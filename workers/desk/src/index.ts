@@ -27,19 +27,23 @@
  *   GET  /investigations/:record                its entries, runs (listed) and read records
  *   GET  /investigations/:record/runs/:n        one run, with its samples and exchanges
  *   POST /investigations/:record/entries        `{ entries: [{ body }] }`, written as the desk
+ *
+ * And one route that is not the desk's own reading but its inbox — answered to M's platform alone,
+ * by the platform's ticket, never by a desk token (./inbox.ts):
+ *   POST /inbox/engine-report                   a Mainstay's engine error, handed on by the engine door
  */
 import { insertEntries, recordEntries } from '../../../functions/_lib/investigation';
 import { blobBytes, type D1Database } from '../../../functions/_lib/sync';
 import { openAsks, type NotebookBody, type NotebookEntry } from '../../../src/lib/notebook/rules';
-import { redactDeep, redactResponse, redactRun, redactText } from '../../../src/lib/investigation/redact';
+import { redactDeep, redactResponse, redactRun, redactText } from '../../../packages/monitoring-engine/src/investigation/redact';
 import { delegatedWindows, deskProblem, standingMandates } from '../../../src/lib/investigation/share';
 import { audit, gunzipJson, json, tokenOf, type DeskTables } from './door';
+import { engineReportInbox, INBOX_PATH, type InboxEnv } from './inbox';
 
 export { sha256Hex } from './door';
 
-export interface Env {
-    RUNS_DB: D1Database;
-}
+/** RUNS_DB for everything; the inbox also reads DESK_DELIVER_KEY and, to wake the loop, LOOP_TRIGGER_ID / LOOP_FIRE_TOKEN. */
+export type Env = InboxEnv;
 
 const MAX_WRITE = 20;
 const MAX_READS = 2000;
@@ -136,6 +140,11 @@ async function write(db: D1Database, d: { owner: string; entries: NotebookEntry[
 /** The whole Worker, with its clock passed in so a test can hold it still. */
 export async function handle(request: Request, env: Env, now = Date.now()): Promise<Response> {
     const db = env.RUNS_DB;
+    // The inbox first: it answers the platform's ticket, and a desk token opens nothing there.
+    if (new URL(request.url).pathname === INBOX_PATH) {
+        if (request.method !== 'POST') return json({ error: 'method' }, 405);
+        return engineReportInbox(request, env);
+    }
     const token = await tokenOf(request, db, TABLES, now);
     if (!token) return json({ error: 'unauthorized' }, 401);
 

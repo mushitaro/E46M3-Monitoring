@@ -5,7 +5,7 @@ import { MSS54_CHANNELS, formatErrorCode, type ChannelId, type ErrorMemoryEntry 
 import type { RawFaultRead } from '@/hooks/useDs2Link';
 import type { ProbeProgress } from '@/hooks/useProbe';
 import { DataList, DataRow, Field, Pane, Pill, Provenance, Section, TextButton, humanName } from '@/components/ui';
-import { text as resolveText, type EcuProfile } from '@/lib/ecuCatalog';
+import { text as resolveText, type EcuProfile } from '@tsunagi/monitoring-engine';
 import { normCode } from '@/lib/faultCode';
 import { useLang } from '@/lib/i18n';
 import { currentPlan } from '@/lib/notebook/rules';
@@ -13,7 +13,7 @@ import { BOARD_LIMITS, type Part, type PartKind } from '@/lib/probe/board';
 import { channelStats, compareRuns, type Comparison } from '@/lib/probe/compare';
 import { graphOf, type GraphTone } from '@/lib/probe/graph';
 import type { ProbeLive, StoredRun } from '@/lib/probe/runStore';
-import type { ScanRun } from '@/lib/probe/scan';
+import type { ScanRun } from '@tsunagi/monitoring-engine';
 import { formOf } from '@/lib/probe/sessions';
 import { standing } from '@/views/diagnosis/ScanView';
 import type { ProbeSessions } from './useProbeSessions';

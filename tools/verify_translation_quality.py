@@ -56,6 +56,13 @@ _EXTRA_ALLOW = {"CAN", "LSZ", "PDC", "IHKA", "KL15", "DME", "MSV", "M3", "S54", 
                 "FGR", "SACHS", "OKAY", "ERROR", "ARGCOMMENT", "JOBCOMMENT",
                 # --- ビット番号。`Bit0`..`Bit7` は番号であって独語ではない。
                 "BIT", "BIT0", "BIT1", "BIT2", "BIT3", "BIT4", "BIT5", "BIT6", "BIT7",
+                # --- BMW の故障メモリの仕様の名前（"High-Konzept"）。GS20 の FS_LESEN が名乗る。独語ではない。
+                "HIGH",
+                # --- OBD のレディネスの行の書式（"DATA C, Byte 8, xxxx 1xxx"）。バイト番号とビットの型で、独語ではない。
+                "BYTE", "X", "XX", "XXX", "XXXX",
+                # --- 名前（2026-11-11、非 M3 の DME と GS20 の訳で）。BMW のテスター MoTest、圧力センサのメーカー
+                #     Motorola、クルーズのスイッチ Tipup／Tipdown、単位 inc、電流差 delta I、バッテリー電圧の記号 Ubat。
+                "MOTEST", "MOTOROLA", "TIPUP", "TIPDOWN", "INC", "DELTA", "UBAT",
                 # --- 触媒前後の O2 センサ呼称。BMW の整備現場でこのまま通る。
                 "VKAT", "NKAT", "AVANOS", "EVANOS", "GKS", "TEV", "SLS", "DMTL", "EUV",
                 # --- OBD 用語。日本の現場でも「レディネス」ではなくこのまま使う。

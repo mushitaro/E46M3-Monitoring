@@ -73,6 +73,9 @@ FIT = {
     "early":  ("前期型",          "early cars"),
     "late":   ("後期型",          "later cars"),
     "jp":     ("日本仕様",         "Japan market"),
+    # M3 でない E46（運営者 2026-10-30：MONITORING は DS2 の E46 全部、2026-11-11 に入口は分けエンジンは共通）。
+    # 載っているかは、そのアドレスの IDENT が D_0012 / D_0032 の選び方で決める（variants.json）。
+    "nonm3":  ("M3 以外の E46",    "E46 other than the M3"),
 }
 
 def M(dump, ja, en, addr, group, fit, note_ja="", note_en="", prg=None):
@@ -82,7 +85,22 @@ def M(dump, ja, en, addr, group, fit, note_ja="", note_en="", prg=None):
 MODULES = {
     # --- engine / drivetrain / chassis ------------------------------------------
     "mss54":    M("MSS54DS0", "MSS54 (S54 / E46 M3 エンジン)", "MSS54 (S54 / E46 M3 Engine)", 0x12, "engine", "std"),
+    # M3 でない E46 の DME（DS2 の世代、〜2002 年ごろ）。0x12 に何がいるかは IDENT が D_0012 の選び方で決める
+    # （variants.json。EdiabasLib にグループファイルを走らせて食い違い 0）。同じ 0x12 の MS420DS1・MS43_SP2 は
+    # D_0012 が選ばないので載せない（tools/sgbd/fitment.py）。アドレスは dump_modules.py の実送信 IDENT `12 04 00`。
+    "ms420ds0": M("MS420DS0", "MS42 (M52TU エンジン)",          "MS42 (M52TU engine)",         0x12, "engine", "nonm3",
+                  "ECU の名乗りは「MS 42.0 fuer M52 mit EWS 3」", "The ECU calls itself \"MS 42.0 fuer M52 mit EWS 3\""),
+    "ms430ds0": M("MS430DS0", "MS43 (M54 エンジン)",            "MS43 (M54 engine)",           0x12, "engine", "nonm3",
+                  "ECU の名乗りは「MS 43.0 fuer M54 mit EWS 3」", "The ECU calls itself \"MS 43.0 fuer M54 mit EWS 3\""),
+    "bms43ds0": M("BMS43DS0", "BMS43 (M43 エンジン)",           "BMS43 (M43 engine)",          0x12, "engine", "nonm3",
+                  "ECU の名乗りは「BMS 43 fuer M43 mit ASC」", "The ECU calls itself \"BMS 43 fuer M43 mit ASC\""),
+    "bms46ds0": M("BMS46DS0", "BMS46 (M43 エンジン)",           "BMS46 (M43 engine)",          0x12, "engine", "nonm3",
+                  "ECU の名乗りは「BMS 46 fuer M43」", "The ECU calls itself \"BMS 46 fuer M43\""),
+    "bms46ds1": M("BMS46DS1", "BMS46 (M43 エンジン、EU3)",      "BMS46 (M43 engine, EU3)",     0x12, "engine", "nonm3",
+                  "ECU の名乗りは「BMS 46 fuer M43 EU3」", "The ECU calls itself \"BMS 46 fuer M43 EU3\""),
     "smg2":     M("SMG2",     "SMG II (E46 M3 変速機)",        "SMG II (E46 M3 Gearbox)",     0x32, "drivetrain", "smg"),
+    "gs20":     M("GS20",     "GS20 (5 速 AT)",                 "GS20 (5-speed automatic)",    0x32, "drivetrain", "nonm3",
+                  "ECU の名乗りは「Getriebesteuerung GS20」", "The ECU calls itself \"Getriebesteuerung GS20\""),
     # 0x56 は年式で中身が入れ替わる。前期は ASCMK20.prg、後期は DSC_E46.prg。同時装着は無い。
     # 旧 id は "dsc_mk60" だった。DSC_E46.prg を指しながら MK60 を名乗っており、MK20 の車では
     # 持っていない部品番号を主張することになる。

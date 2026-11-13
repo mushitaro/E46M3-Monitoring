@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { diffForms, formItems, judgeKey, measures, type Form } from './items';
-import type { Judge, ProbeStep } from './plan';
+import type { Judge, ProbeStep } from '@tsunagi/monitoring-engine';
 
 const steps = (channels: string[]): ProbeStep[] => [
     { n: 1, do: 'faults', kind: 'faults', module: 'mss54', when: 'parked' },

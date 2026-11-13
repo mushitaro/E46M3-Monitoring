@@ -28,7 +28,7 @@
 import type { LucideIcon } from 'lucide-react';
 import type { HubConfig } from '@/components/Hub';
 import type { LinkState } from '@/hooks/useDs2Link';
-import type { RunVerdict } from '@/lib/runGate';
+import type { RunVerdict } from '@tsunagi/monitoring-engine';
 import type { Tab } from '@/lib/tabs';
 
 export interface ViewHubStrings {

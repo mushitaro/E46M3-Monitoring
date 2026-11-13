@@ -13,12 +13,12 @@ import {
   humanName,
 } from "@/components/ui";
 import type { AssistantBridge } from "@/hooks/useAssistantBridge";
-import type { EcuProfile } from "@/lib/ecuCatalog";
+import type { EcuProfile } from "@tsunagi/monitoring-engine";
 import { useLang } from "@/lib/i18n";
 import { CHROME } from "@/lib/i18n/chrome";
-import type { Ledger } from "@/lib/ledger";
+import type { Ledger } from "@tsunagi/monitoring-engine";
 import { SYNC_TONE } from "@/lib/sync/status";
-import type { Motion } from "@/lib/vehicleState";
+import type { Motion } from "@tsunagi/monitoring-engine";
 import { AssistantSection } from "./AssistantSection";
 import { MovingOkSection } from "./MovingOkSection";
 import { StatusButton } from "./StatusButton";

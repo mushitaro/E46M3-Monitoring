@@ -1,0 +1,12 @@
+{
+  "_comment": "Where an engine update is proposed (docs/ENGINE.md §6; tsunagi-m-mainstay §6, operator 2026-11-12). One row per Mainstay: its repository, the path of this repository's submodule there, the branch the PR goes to, and the NAME of the secret (in this repository's Environment `mainstays`) holding a token that may open a PR there and nothing more. A Mainstay's repository becomes the store's at hand-over, so this table changes then; M never writes to a Mainstay's main. Changing this file is `human` (.github/**).",
+  "mainstays": [
+    {
+      "slug": "gren-blue-auto",
+      "repo": "mushitaro/tsunagi-gren-blue-private",
+      "path": "vendor/e46m3-monitoring",
+      "base": "main",
+      "tokenSecret": "MAINSTAY_PR_TOKEN_GREN_BLUE_AUTO"
+    }
+  ]
+}

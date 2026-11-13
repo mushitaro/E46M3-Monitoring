@@ -5,7 +5,7 @@ import { stepsFromActivity, stepsFromSequence, stepsFromJobFamily } from './proc
 import { humanName } from '@/components/ui';
 import { readResultsFor, type Smg2Workflows } from './smg2Workflows';
 import { GATE_CODE, GATE_OF, GEARS, MEASURES, NEUTRAL_REF, PASSES, gearWindows } from './gearWindows';
-import { jobIndex, resultsFor, type EcuProfile } from './ecuCatalog';
+import { jobIndex, resultsFor, type EcuProfile } from '@tsunagi/monitoring-engine';
 
 /**
  * These run against the real `smg2-workflows.json`, not fixtures. A fixture and

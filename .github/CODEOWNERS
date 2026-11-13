@@ -11,7 +11,8 @@
 /functions/_middleware.ts         @mushitaro
 /packages/ds2-core/               @mushitaro
 /public/kill-list.json            @mushitaro
-/src/lib/runGate.ts               @mushitaro
-/src/lib/ledger.ts                @mushitaro
-/src/lib/actuationGate.ts         @mushitaro
-/src/lib/vehicleState.ts          @mushitaro
+/packages/monitoring-engine/src/runGate.ts @mushitaro
+/packages/monitoring-engine/src/ledger.ts @mushitaro
+/packages/monitoring-engine/src/actuationGate.ts @mushitaro
+/packages/monitoring-engine/src/vehicleState.ts @mushitaro
+/packages/monitoring-engine/src/variants.ts @mushitaro

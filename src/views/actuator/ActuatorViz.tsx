@@ -3,7 +3,7 @@
 import { Zap } from 'lucide-react';
 import { DataList, DataRow, Section, humanName } from '@/components/ui';
 import type { Arming } from '@/hooks/useActuatorArming';
-import { label, type EcuProfile } from '@/lib/ecuCatalog';
+import { label, type EcuProfile } from '@tsunagi/monitoring-engine';
 import { useLang } from '@/lib/i18n';
 import { Awaiting } from '@/views/shared/Awaiting';
 

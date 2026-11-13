@@ -6,8 +6,8 @@
  * used with are not — those are per-ECU and belong in an ECU layer, never here.
  */
 
-import { Ds2Error } from './errors';
-import type { Ds2Frame } from './frame';
+import { Ds2Error } from './errors.ts';
+import type { Ds2Frame } from './frame.ts';
 
 /**
  * The DS2 write count field caps here.

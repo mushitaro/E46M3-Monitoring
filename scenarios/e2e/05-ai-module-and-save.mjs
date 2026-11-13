@@ -42,7 +42,7 @@ const scenario = {
         {
             ai: 'monitoring_sessions',
             means: '残していないまとまりの一覧（名前・時刻・件数、中身は無い）',
-            expect: (r) => (r?.notKept?.length >= 1 && !JSON.stringify(r).includes('77 83 73') ? true : JSON.stringify(r).slice(0, 300)),
+            expect: (r) => (r?.notKept?.length >= 1 && !JSON.stringify(r).includes('39 39 39 39 39 39 39') ? true : JSON.stringify(r).slice(0, 300)),
             keep: (r, st) => (st.episode = r.notKept[0].episode),
         },
         {

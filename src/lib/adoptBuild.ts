@@ -16,6 +16,20 @@
  */
 export const ADOPT_AFTER_DISCONNECTED_MS = 60_000;
 
+/** What still holds a waiting build's swap, said on the screen and to the assistant. */
+export type UpdateHold = 'link' | 'unsaved' | 'minute';
+
+/**
+ * Why a waiting build has not been taken yet: the cable is connected, something on the screen is
+ * unsaved (it waits for MEMORY's save, for as long as that takes), or neither and the idle minute
+ * is running. Before, only "waiting" was said, and with a fault read unsaved it waited forever while
+ * the assistant told the driver it would go a minute after the cable was let go.
+ */
+export function updateHold(s: { linkState: string; unsaved: boolean }): UpdateHold {
+    if (s.linkState !== 'disconnected') return 'link';
+    return s.unsaved ? 'unsaved' : 'minute';
+}
+
 export function shouldAdoptBuild(s: {
     waiting: boolean;
     linkState: string;

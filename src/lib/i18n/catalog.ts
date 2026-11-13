@@ -317,6 +317,12 @@ export interface Localised {
      *  at the head unit's 683px; the `_title` forms are the long ones, for a mouse. */
     signIn_lapsed: string;
     signIn_lapsed_title: string;
+    /** The waiting build's action, on the header at every width (WORKS). */
+    update_take: string;
+    update_waiting_title: string;
+    /** What still holds the waiting build's swap (lib/adoptBuild `updateHold`). */
+    update_held: Record<'link' | 'unsaved' | 'minute', string>;
+    reload_running_short: string;
     signIn_clock: string;
     signIn_clock_title: string;
     /** INSTALL (M menu): one sentence per state of hooks/useInstallPrompt, since the greyed glyph cannot say why. */

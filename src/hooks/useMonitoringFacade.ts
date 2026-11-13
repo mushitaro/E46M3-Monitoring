@@ -29,6 +29,7 @@ import { bestTelegram, loadTelegrams } from '@/lib/telegrams';
 import { LAUNCHER_QUERY, deviceLabel, isHeadUnit, type DeviceKind } from '@/hooks/useAssistantBridge';
 import type { Datalog } from '@/views/datalog/useDatalog';
 import type { Sessions } from '@/views/sessions/useSessions';
+import type { UpdateHold } from '@/lib/adoptBuild';
 import { appNow } from '@/lib/clock';
 
 /**
@@ -95,6 +96,10 @@ export function useMonitoringFacade(input: {
     startScan: () => Promise<{ addresses: number } | string>;
     /** A newer build is downloaded; it is taken once the link has been down a minute (lib/adoptBuild). */
     updateWaiting: boolean;
+    /** What still holds the waiting build's swap (lib/adoptBuild `updateHold`); null when none waits. */
+    updateHeldBy: UpdateHold | null;
+    /** DIAGNOSIS shows ALL MODULES (the last scan's list) rather than the module. */
+    allModules: boolean;
     /** Bring the delegated investigations level with the account (hooks/useInvestigationSync). */
     syncInvestigations: () => void;
     /** The name a device answers as when the owner gave it none. */
@@ -195,6 +200,8 @@ export function useMonitoringFacade(input: {
                 ? { running: true, ...probe.progress }
                 : { running: false, planReady: probe.available ? { v: probe.available.v, purpose: probe.available.purpose } : null },
             screen: tab,
+            // What DIAGNOSIS shows: the module, or ALL MODULES (the scan's list). monitoring_module puts the module back.
+            showing: tab === 'diagnosis' && input.allModules ? 'all-modules' : 'module',
             error: link.error,
             scan: link.scanProgress
                 ? { running: true, ...link.scanProgress }
@@ -202,7 +209,20 @@ export function useMonitoringFacade(input: {
                   ? { running: false, end: link.scan.end, at: new Date(link.scan.endedAt).toISOString(), counts: scanCounts(link.scan.results) }
                   : null,
             // Said so the assistant can tell the driver: it is taken once the link is down a minute, nothing unsaved.
+            // The header shows it at every width with UPDATE; heldBy says what it still waits for.
             newBuildWaiting: input.updateWaiting,
+            ...(input.updateWaiting
+                ? {
+                      newBuild: {
+                          heldBy: input.updateHeldBy,
+                          note: {
+                              link: 'Taken by itself a minute after the cable is let go (monitoring_disconnect), if nothing is unsaved. UPDATE on the header takes it now.',
+                              unsaved: 'Held: the screen holds an unsaved session, so it is NOT taken by itself. monitoring_save first (it then goes a minute later), or the driver presses UPDATE on the header.',
+                              minute: 'Taken by itself within a minute. UPDATE on the header takes it now.',
+                          }[input.updateHeldBy ?? 'link'],
+                      },
+                  }
+                : {}),
         }),
 
         faults: async (moduleId, fresh) => {

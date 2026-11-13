@@ -717,6 +717,14 @@ export const en: Localised = {
     reload_running: 'Fetching the newest build — the app reopens into it when it is ready',
     signIn_lapsed: 'Signed out — updates cannot arrive',
     signIn_lapsed_title: 'Your sign-in has expired. Until you sign in again, new builds cannot reach this device.',
+    update_take: 'Update',
+    update_waiting_title: 'A newer build is downloaded. It is taken by itself a minute after the cable is let go, when nothing on the screen is unsaved. Update takes it now (asking first if something would be lost).',
+    update_held: {
+        link: 'New build waiting — goes after the cable is let go',
+        unsaved: 'New build waiting — save first, or press Update',
+        minute: 'New build waiting — taken in a minute',
+    },
+    reload_running_short: 'Updating…',
     signIn_clock: 'Clock is off — retries once it is right',
     signIn_clock_title:
         "Your sign-in has expired, but this device's clock is off, so it cannot sign in again yet. Once the clock is right, it tries again by itself.",

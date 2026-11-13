@@ -17,7 +17,7 @@ import { Overlaid } from '@/components/shell/Overlaid';
 import { LABEL, TextButton } from '@/components/ui';
 import { useActuatorArming } from '@/hooks/useActuatorArming';
 import { reloadForUpdate, useAppUpdate, useSignIn, useUpdateRunning } from '@/hooks/useAppUpdate';
-import { ADOPT_AFTER_DISCONNECTED_MS, shouldAdoptBuild } from '@/lib/adoptBuild';
+import { ADOPT_AFTER_DISCONNECTED_MS, shouldAdoptBuild, updateHold } from '@/lib/adoptBuild';
 import { REPASS_AFTER_DISCONNECTED_MS, lapseAction, markRepass, repassAllowed } from '@/lib/signInLapse';
 import { useDs2Link, type ParkedObservation } from '@/hooks/useDs2Link';
 import { useHub } from '@/hooks/useHub';
@@ -411,6 +411,9 @@ export default function Home() {
         [releaseThen],
     );
 
+    /** DIAGNOSIS's ALL MODULES choice (below); the module switch clears it, so the screen shows the module. */
+    const [allModules, setAllModules] = useState(false);
+
     /**
      * The assistant's module switch (operator, 2026-11-01: "in AI mode the AI switches modules too").
      *
@@ -423,13 +426,19 @@ export default function Home() {
         async (id: string): Promise<string | null> => {
             const entry = ecuIndex?.modules.find((m) => m.id === id);
             if (!entry) return `There is no module ${id}. monitoring_catalog and monitoring_scan name them.`;
-            if (id === ecuId) return null;
+            // The screen shows the module, not the last scan's list (operator, 2026-11-13: after a scan
+            // the switch said smg2 and the screen stayed on ALL MODULES).
+            if (id === ecuId) {
+                setAllModules(false);
+                return null;
+            }
             if (link.state === 'busy' || link.state === 'connecting') return 'A read is in flight. Ask again in a moment.';
             if (link.state === 'logging') return 'A recording or a PROBE run is going. Stop it first (read back, then monitoring_stop_log).';
             const was = link.state === 'connected' ? link.mode : null;
             const next = moduleProtocol(id, entry.address, await loadTelegrams(id));
             await releaseThen(async () => {
                 if (was) await link.disconnect();
+                setAllModules(false);
                 setEcuId(id);
             });
             if (!was) return null;
@@ -448,7 +457,6 @@ export default function Home() {
      * open for the module it was opened for, because the scan reaches every address on the one
      * K-line. The other tabs need one module, so they keep showing it.
      */
-    const [allModules, setAllModules] = useState(false);
     const scopeAll = allModules && tab === 'diagnosis';
     const [scanOpen, setScanOpen] = useState<string | null>(null);
     const ledgerRef = useRef(ledger);
@@ -572,6 +580,8 @@ export default function Home() {
     // through the gate below for the same idle minute. The check after that trip finds the build again.
     const signIn = useSignIn();
     const updateWaiting = useAppUpdate(undefined, preview) && signIn === 'ok';
+    // What still holds it, on the header at every width and to the assistant (lib/adoptBuild).
+    const updateHeldBy = updateWaiting ? updateHold({ linkState: link.state, unsaved: sessions.unsaved }) : null;
     useEffect(() => {
         if (!preview || !updateWaiting || link.state !== 'disconnected' || sessions.unsaved || reloading) return;
         const since = Date.now();
@@ -614,7 +624,7 @@ export default function Home() {
     // until switched on on this device). The facade is what the tools may reach — the screen's own
     // controls, never a run.
     const buildId = useBuildId();
-    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, probeSessions, mode, tab, changeTab, showPane: setPane, selectJob, switchModule, startScan, updateWaiting, syncInvestigations, defaultDevice: t.assistant_defaultDevice });
+    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, probeSessions, mode, tab, changeTab, showPane: setPane, selectJob, switchModule, startScan, updateWaiting, updateHeldBy, allModules: scopeAll, syncInvestigations, defaultDevice: t.assistant_defaultDevice });
     // The end-to-end scenarios' door to the same tools (lib/e2e): a test build only.
     useE2EDoor(facade);
     const assistant = useAssistantBridge({
@@ -777,6 +787,7 @@ export default function Home() {
                 assistant={sessionsEnabled ? assistant : null}
                 signIn={preview ? signIn : 'ok'}
                 onReauth={canReauth ? startReauth : null}
+                update={preview && updateHeldBy ? { heldBy: updateHeldBy } : null}
             />
 
             {/* Below 900 a grid: MAIN and MULTI share one cell, HUB has the other (NARROW_GRID —

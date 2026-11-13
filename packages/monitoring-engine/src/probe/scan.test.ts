@@ -571,6 +571,37 @@ describe('scan: the DSC MK60 (KWP-on-DS2)', () => {
         expect(r.decoded).toBeUndefined();
     });
 
+    it('takes its own FS_LESEN’s reading of the answer when the job reads it to its end, and sends nothing more', async () => {
+        const { d, sent } = deps();
+        const seen: { request: string; answer: string }[] = [];
+        d.kwpExchange = async (_m, _j, f) => {
+            sent.push(f.hex);
+            const data = [0x58, 0x01, 0x5d, 0x90, 0x24];
+            const body = [0xb8, 0xf1, 0x29, data.length, ...data];
+            return { data: Uint8Array.from(data), bytes: Uint8Array.from([...body, body.reduce((x, b) => x ^ b, 0)]) };
+        };
+        d.decodeKwpBySgbd = async (_m, xs) => {
+            seen.push(...xs.map((x) => ({ request: x.request, answer: Array.from(x.answer, (b) => b.toString(16).padStart(2, '0')).join(' ') })));
+            return { faults: [{ code: 0x5d90, text: 'from the SGBD', kinds: [], values: [] }], status: 'OKAY', stopped: null, provenance: 'sgbd-job' };
+        };
+        const run = await runScan(scanTargets([P.mss54, P.mk60]), d);
+        expect(sent.filter((h) => h === MK60_FS)).toHaveLength(1);
+        expect(seen).toEqual([{ request: MK60_FS, answer: 'b8 f1 29 05 58 01 5d 90 24 ' + ((0xb8 ^ 0xf1 ^ 0x29 ^ 0x05 ^ 0x58 ^ 0x01 ^ 0x5d ^ 0x90 ^ 0x24).toString(16).padStart(2, '0')) }]);
+        const r = run.results.find((x) => x.address === '0xB8')!;
+        expect(r.sgbdFaults).toMatchObject({ module: 'dsc_mk60', status: 'OKAY', faults: [{ code: 0x5d90, text: 'from the SGBD' }] });
+        expect(r.kwpDtcs).toBeUndefined();
+    });
+
+    it('keeps the estimate, and says where the job stopped, when its own FS_LESEN does not reach its end', async () => {
+        const { d } = deps();
+        d.kwpExchange = async () => ({ data: Uint8Array.from([0x58, 0x01, 0x5d, 0x90, 0x24]), bytes: Uint8Array.from([0xb8, 0xf1, 0x29, 0x05, 0x58, 0x01, 0x5d, 0x90, 0x24, 0x00]) });
+        d.decodeKwpBySgbd = async () => ({ faults: [], status: null, stopped: { at: 1, reason: 'instruction 0x99' }, provenance: 'sgbd-job' });
+        const run = await runScan(scanTargets([P.mss54, P.mk60]), d);
+        const r = run.results.find((x) => x.address === '0xB8')!;
+        expect(r.kwpDtcs).toEqual([{ code: '0x5d90', status: 0x24 }]);
+        expect(r.reason).toContain('instruction 0x99');
+    });
+
     it('does not ask it on a car not identified as an M3', async () => {
         const { d, sent } = deps({ idents: { ...NON_M3_IDENTS } });
         const run = await runScan(scanTargets([P.mss54, P.mk60]), d);

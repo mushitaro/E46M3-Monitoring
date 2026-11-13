@@ -57,8 +57,9 @@
  *
  * The MK60's frames are KWP2000-shaped on the same line (../kwpOnDs2). On a car whose DME said it is
  * the MSS54, the scan asks it too, and while the car moves as every other module's fault read
- * (operator, 2026-11-12: the first reads, 2026-11-10, were parked only). Its codes are an estimate,
- * kept beside the bytes. On any other car it is not asked: which DSC is fitted is not known there.
+ * (operator, 2026-11-12: the first reads, 2026-11-10, were parked only). Its answer is read by its own
+ * FS_LESEN code, replayed on what came back (`decodeKwpBySgbd`, 2026-11-13); only where that does not
+ * reach its end are the codes the ISO 14230 estimate, kept beside the bytes. On any other car it is not asked: which DSC is fitted is not known there.
  *
  * ## The VIN, once (intake, operator 2026-11-10)
  *
@@ -208,7 +209,12 @@ export interface ScanDeps {
      * One KWP-on-DS2 exchange (the session's kwpRead).
      * Absent: a KWP module is not asked.
      */
-    kwpExchange?(moduleId: string, job: string, f: KwpFrame): Promise<{ data: Uint8Array }>;
+    kwpExchange?(moduleId: string, job: string, f: KwpFrame): Promise<{ data: Uint8Array; bytes?: Uint8Array }>;
+    /**
+     * A KWP module's answers read by its own FS_LESEN code (../sgbd/results), replayed on what came
+     * back: nothing more is sent. Null: its data carries no such code.
+     */
+    decodeKwpBySgbd?(moduleId: string, exchanges: { request: string; answer: Uint8Array }[]): Promise<SgbdFaultRead | null>;
     /**
      * The address's fault memory read by its module's own FS_LESEN job (../sgbd/faultRead), which
      * sends what its SGBD sends, answer by answer, through the gate. `target.modules` are the
@@ -527,12 +533,14 @@ async function readKwp(t: ScanTarget, faults: readonly KwpFrame[], base: { addre
     const gate = mayRunProtocolRead(`${moduleId}:FS_LESEN`, 'fault-read', deps.ledger(), 'unknown');
     if (!gate.allowed) return { ...base, outcome: 'refused', exchanges: [], reason: gate.reason };
     const exchanges: ScanResult['exchanges'] = [];
+    const answers: { request: string; answer: Uint8Array }[] = [];
     const dtcs: KwpDtc[] = [];
     let shaped = true;
     for (const f of faults) {
         try {
             const answer = await deps.kwpExchange!(moduleId, 'FS_LESEN', f);
             exchanges.push({ request: f.hex, response: toHex(answer.data) });
+            if (answer.bytes) answers.push({ request: f.hex, answer: answer.bytes });
             const read = parseDtcsByStatus(answer.data);
             if (read) dtcs.push(...read);
             else shaped = false;
@@ -547,7 +555,20 @@ async function readKwp(t: ScanTarget, faults: readonly KwpFrame[], base: { addre
             };
         }
     }
-    return { ...base, outcome: 'answered', exchanges, ...(shaped ? { kwpDtcs: dtcs } : {}) };
+    // Its own FS_LESEN reads the answers (operator, 2026-11-13: read with the SGBD's own table). Read to
+    // its end, that is the reading; otherwise the ISO 14230 estimate stays, beside the bytes.
+    let read: SgbdFaultRead | null = null;
+    let reason: string | undefined;
+    if (deps.decodeKwpBySgbd && answers.length === faults.length) {
+        try {
+            read = await deps.decodeKwpBySgbd(moduleId, answers);
+        } catch (e) {
+            reason = `SGBD reading: ${e instanceof Error ? e.message : String(e)}`;
+        }
+    }
+    if (read && read.stopped === null && read.status === 'OKAY') return { ...base, outcome: 'answered', exchanges, sgbdFaults: { ...read, module: moduleId } };
+    if (read) reason = `SGBD reading: ${read.stopped ? `stopped — ${read.stopped.reason}` : read.status ?? 'no verdict'}`;
+    return { ...base, outcome: 'answered', exchanges, ...(shaped ? { kwpDtcs: dtcs } : {}), ...(read ? { sgbdFaults: { ...read, module: moduleId } } : {}), ...(reason ? { reason } : {}) };
 }
 
 /** A line per outcome, for the answer and the log: `answered 21 · silent 14 · refused 2`. */

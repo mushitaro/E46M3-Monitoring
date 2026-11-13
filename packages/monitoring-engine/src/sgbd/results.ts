@@ -122,7 +122,11 @@ export interface SgbdFaultRead {
     provenance: 'sgbd-job';
 }
 
-const FAULT_KIND_TEXT = /^F_ART\d+_TEXT$/;
+/**
+ * What kind of fault, in the SGBD's words: `F_ARTn_TEXT` in the DS2 SGBDs; in a KWP2000 one (DSC_MK60)
+ * whether it is present now (`F_VORHANDEN_TEXT`) and whether it lights a warning lamp (`F_WARNUNG_TEXT`).
+ */
+const FAULT_KIND_TEXT = /^F_(ART\d+|VORHANDEN|WARNUNG)_TEXT$/;
 
 /**
  * A fault read, run through the module's own FS_LESEN: every page the app sent with the answer it

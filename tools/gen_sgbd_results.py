@@ -142,7 +142,8 @@ def build(mid, sgbd, names):
 # Every module's own fault read (運営者 2026-11-13「全部読めるようにしろ」): FS_LESEN, run by the app on
 # the car through the gate (packages/monitoring-engine/src/sgbd/faultRead.ts) — the job sends the count first, then the
 # entries it says there are, some with their IDENT or a login first. Not the MSS54 (it has its own
-# decoder) and not a KWP-on-DS2 module (lib/kwpOnDs2).
+# decoder). A KWP-on-DS2 module (DSC MK60, lib/kwpOnDs2) carries it too: the app sends its table's one
+# frame and replays the job on the answer, nothing more (運営者 2026-11-13「SGBD の対応表で読み直して」).
 FAULT_JOB = "FS_LESEN"
 FAULT_SKIP = {"mss54"}
 
@@ -155,7 +156,7 @@ def all_jobs():
             continue
         t = json.load(open(os.path.join(OUT, f), encoding="utf-8"))
         mid, sgbd = t["module"], t["sgbd"]
-        if mid in FAULT_SKIP or t.get("framing") == "kwp-ds2":
+        if mid in FAULT_SKIP:
             continue
         try:
             raw = open(resolve_prg(sgbd), "rb").read()

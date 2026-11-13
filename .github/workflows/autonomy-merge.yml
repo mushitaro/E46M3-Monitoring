@@ -1,8 +1,8 @@
 name: Autonomy merge
 
-# Merges the autonomous loop's own `auto`-class pull requests (docs/AUTONOMY.md §5), and nothing
-# else: a `claude/loop-*` branch whose every changed path .github/autonomy.json lets through, once
-# CI has passed on that exact commit. The class is worked out again here, from the table on main,
+# Merges Claude's `auto`-class pull requests (docs/AUTONOMY.md §5; operator 2026-11-13: every change
+# but the rules and the car's gate merges by itself), and nothing else: a `claude/*` branch none of
+# whose changed paths .github/autonomy.json holds, once CI has passed on that exact commit. The class is worked out again here, from the table on main,
 # so a branch cannot loosen the table it is judged by. Needs no repository setting: no auto-merge,
 # no branch protection. `human`-class changes wait for the owner.
 
@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   merge:
-    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' && startsWith(github.event.workflow_run.head_branch, 'claude/loop-')
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' && startsWith(github.event.workflow_run.head_branch, 'claude/')
     runs-on: ubuntu-latest
     steps:
       # main: the table and the classifier as they stand there.

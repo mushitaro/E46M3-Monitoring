@@ -127,11 +127,13 @@ guide が名乗るツールは `src/lib/bridge/tools.ts` の一覧だけ（`guid
 | 6 | 例題 1（DSC 低速カーブ）を一周 | — |
 | 7 | Manifold の DIAG の枠（OTA の署名は PC） | 人 |
 
-自動マージは PLAN §8-3 のとおり（運営者 2026-10-23）：文言・訳・単位表・読取専用のデコード表・
-例題・文書は CI が通れば自動。台帳・テレグラム・引数・リスク・前提条件・`runGate`・`packages/ds2-core`・
-`classify.py`・guide の「前提」と「言わないこと」は人の承認。分類はパスの許可表と CI で決め、
+自動マージ（運営者 2026-11-13「取り込みを止めるのをやめてほしい」。2026-10-23 の PLAN §8-3 より広げた）：
+CI が通れば、どの変更も自動で取り込まれる。人の承認が残るのは表の `human` だけ——決まりそのもの（`.github/`・
+`.claude/`・`CLAUDE.md`・分類と声の OK の判定器・机の CLI と受け口）と、車に何を送ってよいかを決める所
+（`runGate`・台帳・作動のゲート・車両状態・`packages/ds2-core`・キルリスト・ゲートの入口）。配信の前には
+デモテストが毎回回り、落ちれば配信しない。分類はパスの許可表と CI で決め、
 エージェントの判断にしない。`autonomy.yml` が PR に `autonomy:auto` か `autonomy:human` を付ける（ラベルは
-無ければ作る）。`autonomy-merge.yml` は、自律ループのブランチ（`claude/loop-*`）で `auto` のものだけを、CI が
+無ければ作る）。`autonomy-merge.yml` は、Claude のブランチ（`claude/*`。自律ループと開発のセッション）で `auto` のものだけを、CI が
 その同じコミットで通ったあとにマージする。分類は main の表で計算し直すので、ブランチが自分を裁く表を
 緩めることはできない。リポジトリの設定（自動マージ・ブランチ保護）は要らない。`human` は CODEOWNERS が
 オーナーにレビューを頼む。表と CODEOWNERS が食い違わないことは `src/lib/autonomyClass.test.ts` が見る。

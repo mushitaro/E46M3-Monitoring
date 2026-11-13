@@ -33,7 +33,7 @@ description: 'One firing of MONITORING''s autonomous loop: the scheduled Claude 
 ## 3. 進める
 
 - 開発は main から切ったブランチ `claude/loop-<YYYYMMDD>-<短い名前>` で。試験を書き、`npm run lint && npm run typecheck && npm test` と CLAUDE.md の検査を通してから PR（draft にしない）。
-- PR の分類はパスで決まる（`.github/autonomy.json`、`node scripts/autonomy-class.mjs` で事前に見られる）。自分で決めない。`auto` は CI が通れば自分でマージされ、`human` はオーナーの OK を待つ。`human` の変更は、`auto` の変更と同じ PR に混ぜない。
+- PR の分類はパスで決まる（`.github/autonomy.json`、`node scripts/autonomy-class.mjs` で事前に見られる）。自分で決めない。`auto` は CI が通れば自分でマージされ、配信される（運営者 2026-11-13：ほとんどの変更が `auto`）。`human`（決まりそのものと、車に送ってよいものを決める所）はオーナーの OK を待つ。`human` の変更は、`auto` の変更と同じ PR に混ぜない。
 - **声の OK で取り込む**（運営者、2026-11-12「声のマージOKで、取り込めるようにしてください」）。起動のたびに、`npm run desk -- list` の記録をすべて pull し、`マージOK #<番号>` で始まる項目を探す。見つけた開いている PR ごとに：
   1. PR の CI が最新のコミットで緑で、main と衝突しないことを確かめる。赤・衝突なら、自分の PR なら直して push し（OK はそのコミットより古くなるので、言い直しを頼む）、そうでなければ記録にその旨を書いて止まる。
   2. `git diff --name-only origin/main...<head>` を `node scripts/owner-ok.mjs <record> <番号> <最後のコミットの時刻>` に渡す。`merge` のときだけ、GitHub で squash で取り込む。`wait: …` のときは取り込まず、理由を日本語で同じ記録に `read` で書く（表の `owner` に触れる PR は、運営者が GitHub の画面で取り込む）。

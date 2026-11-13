@@ -5,7 +5,7 @@ import type { CatalogJob } from '../ecuCatalog.ts';
 import { EMPTY_LEDGER, type Ledger } from '../ledger.ts';
 import { moduleProtocol } from '../moduleProtocol.ts';
 import type { TelegramTable } from '../telegrams.ts';
-import { runProbe, type ProbeDeps, type ProbePlan } from './executor.ts';
+import { SPEED_EVERY_MS, runProbe, type ProbeDeps, type ProbePlan } from './executor.ts';
 import type { ProbeStep } from './plan.ts';
 
 /**
@@ -257,3 +257,34 @@ describe('a health check', () => {
     });
 });
 
+
+describe('the sample rate (operator, 2026-11-13: TUNER reads one block about four times a second)', () => {
+    const dmeBlocks = (h: Awaited<ReturnType<typeof harness>>, selection: number) =>
+        h.bus.at(0x12)!.trace.filter((e) => e.bytes[2] === 0x0b && e.bytes[3] === selection).length;
+
+    it('reads the speed about once a second, not every cycle, when only the DME’s own values are sampled', async () => {
+        const h = await harness({ speed: () => 40 }, 20);
+        const run = await runProbe(plan([{ n: 1, do: 'engine speed', kind: 'sample', channels: ['3:n'] }]), h.deps);
+        expect(dmeBlocks(h, 3)).toBe(20);
+        expect(dmeBlocks(h, 19)).toBeGreaterThan(1);
+        expect(dmeBlocks(h, 19)).toBeLessThan(dmeBlocks(h, 3));
+        // A sample without the speed carries none: absent, not the last value repeated.
+        const without = run.samples.filter((s) => !('19:v' in s.values));
+        expect(without.length).toBeGreaterThan(0);
+        expect(run.samples.filter((s) => '19:v' in s.values).every((s) => s.values['19:v'] === 40)).toBe(true);
+        // Never longer than SPEED_EVERY_MS and a cycle between two speed reads.
+        const withSpeed = run.samples.filter((s) => '19:v' in s.values).map((s) => s.t);
+        for (let i = 1; i < withSpeed.length; i++) expect(withSpeed[i] - withSpeed[i - 1]).toBeLessThanOrEqual((SPEED_EVERY_MS + 1000) / 1000);
+    });
+
+    it('reads the speed every cycle while a step waits on it, and when the plan names it', async () => {
+        const waiting = await harness({ speed: () => 40 }, 8);
+        await runProbe(plan([FAULTS_PARKED, { n: 2, do: 'engine speed', kind: 'sample', channels: ['3:n'] }]), waiting.deps);
+        expect(dmeBlocks(waiting, 19)).toBe(dmeBlocks(waiting, 3));
+        expect(waiting.bus.at(0x56)!.trace).toHaveLength(0);
+
+        const named = await harness({ speed: () => 40 }, 8);
+        await runProbe(plan([{ n: 1, do: 'speed and rpm', kind: 'sample', channels: ['3:n', '19:v'] }]), named.deps);
+        expect(dmeBlocks(named, 19)).toBe(dmeBlocks(named, 3));
+    });
+});

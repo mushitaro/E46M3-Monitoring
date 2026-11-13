@@ -4,9 +4,13 @@
  *
  * ## Two lanes on one wire
  *
- * Every cycle reads the DME's live blocks the plan needs — always including block 19, because the
- * car's speed is what every other decision here rests on — and the plan's RAM reads that are due.
- * Then, at most ONE one-shot step (a module's fault memory, a catalogue read) goes out, if its
+ * Every cycle reads the DME's live blocks the plan needs and the plan's RAM reads that are due, and
+ * block 19 — the car's speed, which every other decision here rests on — whenever a decision is
+ * waiting on it: a one-shot step still pending, another module's read, or the plan naming the speed
+ * itself. A plan that only samples the DME's own values reads the speed once every
+ * `SPEED_EVERY_MS` instead, so a one-block plan runs at the wire's pace, as TUNER does (operator,
+ * 2026-11-13: TUNER reads one block about four times a second on the same car and cable; PROBE,
+ * reading the speed as a second block every cycle, could not pass two). Then, at most ONE one-shot step (a module's fault memory, a catalogue read) goes out, if its
  * `when` matches the car as just measured and the gate lets it. One per cycle keeps the sample
  * cadence a property of the wire rather than of the plan.
  *
@@ -47,6 +51,13 @@ import { holds, judge, type JudgeResult, type ProbeSample } from './criteria.ts'
 import { moduleChannel, ramSegment, type Judge, type ProbeStep } from './plan.ts';
 
 const SPEED_CHANNELS: ChannelId[] = ['19:v' as ChannelId, '19:v_asc' as ChannelId];
+const SPEED_BLOCK = 19;
+/**
+ * How often the speed is read when nothing is waiting on it (above). Well inside the vehicle
+ * state's own limit (`VEHICLE_STATE_MAX_AGE_MS`), so the status never lapses to unknown between
+ * two reads of a live link.
+ */
+export const SPEED_EVERY_MS = 1000;
 /** Live-lane transport failures in a row that end the run: the cable or the DME has gone. */
 const LINK_LOST_AFTER = 3;
 /** Cycles a one-shot step may fail on transport before it is given up as `failed`. */
@@ -202,9 +213,9 @@ function expandWhole(c: string): string | null {
     return first ? channelId(Number(m[1]), first.symbol) : null;
 }
 
-/** Every live channel the plan needs, plus the speed. */
-function liveChannels(steps: readonly ProbeStep[], judges: readonly Judge[]): ChannelId[] {
-    const out = new Set<string>(SPEED_CHANNELS);
+/** Every live channel the plan needs, plus the speed (unless `withSpeed` is false). */
+function liveChannels(steps: readonly ProbeStep[], judges: readonly Judge[], withSpeed = true): ChannelId[] {
+    const out = new Set<string>(withSpeed ? SPEED_CHANNELS : []);
     for (const s of steps) {
         if (s.kind === 'sample') s.channels.forEach((c) => {
             const x = expandWhole(c);
@@ -260,6 +271,8 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
     };
 
     const { blocks: allBlocks } = planBlockReads(liveChannels(plan.steps, judges));
+    // The plan asks for the speed itself (a sample, a capture's condition, a judgement): every cycle.
+    const planWantsSpeed = liveChannels(plan.steps, judges, false).some((c) => c.startsWith(`${SPEED_BLOCK}:`));
     let blocks: LiveValueBlock[] = allBlocks;
     const ramSteps = plan.steps.filter((s): s is Extract<ProbeStep, { kind: 'ram' }> => s.kind === 'ram');
     const hasLiveSteps = plan.steps.some((s) => s.kind === 'sample' || s.kind === 'ram' || s.kind === 'capture');
@@ -269,6 +282,8 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
     let lost = 0;
     let cycle = 0;
     const lastCapture = new Map<number, number>();
+    /** The last speed read: its values and when they were measured. */
+    let speed: { values: Record<string, number | null>; at: number } | null = null;
 
     for (;;) {
         if (deps.stopped()) {
@@ -284,7 +299,15 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
         const values: Record<string, number | null> = {};
         let laneFailed = false;
         let held = false;
+        const speedDue =
+            planWantsSpeed ||
+            speed === null ||
+            deps.now() - speed.at >= SPEED_EVERY_MS ||
+            lanes.some((l) => !l.dropped) ||
+            run.steps.some((st) => st.state === 'pending');
+        let speedRead = false;
         for (const block of [...blocks]) {
+            if (block.selection === SPEED_BLOCK && !speedDue) continue;
             const id = `mss54:LIVE_${block.selection}`;
             const gate = mayRunProtocolRead(id, 'dme-measured', deps.ledger(), 'unknown');
             if (!gate.allowed) {
@@ -297,6 +320,7 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
                 const frame = await dme.exchangeWithRetry(req.control, req.payload, { attempts: 2 });
                 deps.link.assertPositive(frame, `Live block ${block.selection}`);
                 for (const v of decodeLiveBlock(block, frame)) values[channelId(block.selection, v.symbol)] = v.value;
+                if (block.selection === SPEED_BLOCK) speedRead = true;
             } catch (e) {
                 if (gateHeld(e)) {
                     held = true;
@@ -363,7 +387,10 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
         lost = 0;
 
         const now = deps.now();
-        const motion = motionOf(vehicleStateFrom(values, now), now);
+        if (speedRead) speed = { values: Object.fromEntries(SPEED_CHANNELS.map((c) => [c, values[c] ?? null])), at: now };
+        // The speed as measured, with when it was: a sample without block 19 carries no speed
+        // (absent, not repeated), and the motion is the last read's, aged by the vehicle state's rule.
+        const motion = speed ? motionOf(vehicleStateFrom(speed.values, speed.at), now) : 'unknown';
 
         // ---- the module lane: other modules' read jobs whose values the plan samples -----------
         let moduleHeld = false;

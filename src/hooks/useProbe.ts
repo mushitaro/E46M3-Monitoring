@@ -30,6 +30,8 @@ export interface ProbeProgress {
  * each attempt is its own run in the record, so the gap between them stays visible.
  */
 const RESUME_AFTER_MS = [3_000, 10_000, 30_000];
+/** The run on the screen redraws at most this often (onSample below). */
+const SHOW_EVERY_MS = 500;
 
 /**
  * PROBE on this tab: the plan the CO-WORK record on the device says may run, started by a person
@@ -124,6 +126,7 @@ export function useProbe(input: {
                         liveRef.current = live;
                         const settled = new Set<number>();
                         let samples = 0;
+                        let shownAt = -Infinity;
                         const show = () => setProgress({ v: body.v, settled: settled.size, total, samples, resumes, resuming: false });
                         show();
                         const run = await linkRef.current.startProbe(
@@ -134,9 +137,15 @@ export function useProbe(input: {
                                 onStart: (written) => {
                                     live.run = written;
                                 },
+                                // The board redraws from `progress`; at most every SHOW_EVERY_MS, as
+                                // DATALOG flushes (2026-11-13: a redraw per sample on the head unit
+                                // stood between the run's frames and halved the sample rate).
                                 onSample: (s) => {
                                     samples++;
                                     live.samples.push(s);
+                                    const at = performance.now();
+                                    if (at - shownAt < SHOW_EVERY_MS) return;
+                                    shownAt = at;
                                     show();
                                 },
                                 onStep: (k, state) => {

@@ -137,6 +137,8 @@ function yieldToEventLoop(): Promise<void> {
  * there was never anything to attach to a bug report.
  */
 const LOG_CAPACITY = 5000;
+/** How often a PROBE run's samples update the link's vehicle state (startProbe). */
+const PROBE_NOTE_EVERY_MS = 500;
 
 /** What the connect log calls each backend. It has to name the one actually in use: the two do
  *  not measure the same thing, so a session that says the wrong one makes every timing in it
@@ -1470,13 +1472,19 @@ export class LinkSession {
             for (const a of addresses) {
                 if (id.identOk.has(a)) await this.identify(link, a).catch((e) => this.append('warn', `IDENT ${hex2(a)}: ${e instanceof Error ? e.message : String(e)}`));
             }
+            let notedAt = -Infinity;
             const run = await runProbe(plan, {
                 ...deps,
-                // The run reads the speed block every cycle (executor `SPEED_CHANNELS`): the car's
-                // state is kept from it, as a recording keeps it, so the status and the read
-                // records say how fast the car is while a plan runs (2026-11-09: null all drive).
+                // The run reads the speed block (executor `SPEED_EVERY_MS`): the car's state is kept
+                // from it, as a recording keeps it, so the status and the read records say how fast
+                // the car is while a plan runs (2026-11-09: null all drive). At most every
+                // PROBE_NOTE_EVERY_MS: each note redraws every screen that listens to the link, and
+                // on the head unit a redraw per sample stood between the run's frames (2026-11-13:
+                // 1.9 samples a second fell to 0.8 once the board drew the run). The run's own
+                // decisions read the speed themselves, not this.
                 onSample: (sample) => {
-                    this.noteVehicle(sample.values);
+                    const at = appNow();
+                    if (at - notedAt >= PROBE_NOTE_EVERY_MS && this.noteVehicle(sample.values)) notedAt = at;
                     deps.onSample?.(sample);
                 },
                 // Each frame the plan sent is a read record too; a frame the gate held back was

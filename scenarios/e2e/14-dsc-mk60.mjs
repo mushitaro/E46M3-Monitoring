@@ -91,6 +91,24 @@ const scenario = {
                 },
             },
         },
+        { ui: 'tab', name: 'DIAGNOSIS' },
+        { screen: { desc: 'DIAGNOSIS は全モジュールの一覧', has: ['に読取'] } },
+        { say: 'SMG を見せて' },
+        {
+            ai: 'monitoring_module',
+            args: { module: 'smg2' },
+            means: '読み取りのあとに、画面のモジュールを SMG II に',
+            expect: (r) => (r?.switched === true ? true : JSON.stringify(r)),
+        },
+        { wait: 2500 },
+        {
+            ai: 'monitoring_status',
+            means: 'タブは SMG II を、一覧ではなくモジュールとして見せている',
+            expect: (r) => (r?.module?.id === 'smg2' && r.showing === 'module' ? true : JSON.stringify(r).slice(0, 300)),
+        },
+        // 2026-11-13：切り替えたと答えたのに、画面は全モジュールの一覧のままだった。
+        { screen: { desc: '画面も SMG II に切り替わり、一覧は消えている', has: ['SMG II'], hasNot: ['に読取'] } },
+        { shot: 'switched-after-scan' },
     ],
 };
 

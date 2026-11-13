@@ -95,6 +95,8 @@ export function useMonitoringFacade(input: {
     startScan: () => Promise<{ addresses: number } | string>;
     /** A newer build is downloaded; it is taken once the link has been down a minute (lib/adoptBuild). */
     updateWaiting: boolean;
+    /** DIAGNOSIS shows ALL MODULES (the last scan's list) rather than the module. */
+    allModules: boolean;
     /** Bring the delegated investigations level with the account (hooks/useInvestigationSync). */
     syncInvestigations: () => void;
     /** The name a device answers as when the owner gave it none. */
@@ -207,6 +209,8 @@ export function useMonitoringFacade(input: {
                 ? { running: true, ...probe.progress }
                 : { running: false, planReady: probe.available ? { v: probe.available.v, purpose: probe.available.purpose } : null },
             screen: tab,
+            // What DIAGNOSIS shows: the module, or ALL MODULES (the scan's list). monitoring_module puts the module back.
+            showing: tab === 'diagnosis' && input.allModules ? 'all-modules' : 'module',
             error: link.error,
             scan: link.scanProgress
                 ? { running: true, ...link.scanProgress }

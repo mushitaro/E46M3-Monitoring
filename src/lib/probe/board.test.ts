@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BOARD_LIMITS, boardLine, emptyBoard, move, partProblem, place, toggle } from './board';
+import { BOARD_LIMITS, boardLine, defaultReadouts, emptyBoard, move, partProblem, place, setShow, toggle } from './board';
 
 describe('placing parts', () => {
     it('numbers them in order placed and never reuses a number', () => {
@@ -55,5 +55,44 @@ describe('the owner rearranging', () => {
             { id: 'p2', kind: 'scan', title: null, open: true },
         ]);
         expect(move(b, 'p1', -1)).toBe(b);
+    });
+});
+
+describe('what a graph shows large (owner, 2026-11-13)', () => {
+    const vanos = { kind: 'graph', channels: ['35:evan1_ist', '35:evan1_soll'] };
+
+    it('shows the value and its target by default, the value alone without one', () => {
+        expect(defaultReadouts(['a', 'b'])).toEqual(['value', 'target']);
+        expect(defaultReadouts(['a'])).toEqual(['value']);
+    });
+
+    it('takes the readouts asked for, in order, and keeps them on the part', () => {
+        const { board } = place(emptyBoard('r1'), [{ ...vanos, show: ['delta', 'value', 'max'] }], { now: 1 });
+        expect(board.parts[0].show).toEqual(['delta', 'value', 'max']);
+    });
+
+    it('refuses an unknown readout, a repeat, or a target or delta without a target', () => {
+        expect(partProblem({ ...vanos, show: ['peak'] })).toMatch(/part.show/);
+        expect(partProblem({ ...vanos, show: [] })).toMatch(/part.show/);
+        expect(partProblem({ ...vanos, show: ['value', 'value'] })).toMatch(/once/);
+        expect(partProblem({ kind: 'graph', channels: ['3:ubatt'], show: ['delta'] })).toMatch(/need a target/);
+        expect(partProblem({ kind: 'graph', channels: ['3:ubatt'], show: ['value', 'min', 'max', 'mean'] })).toBeNull();
+        expect(partProblem({ kind: 'values', show: ['value'] })).toMatch(/only a graph/);
+    });
+
+    it('changes a placed graph in place: its id, order and open state stay', () => {
+        let { board } = place(emptyBoard('r1'), [{ kind: 'message', text: 'x' }, vanos], { now: 1 });
+        board = toggle(board, 'p2');
+        const next = setShow(board, [{ id: 'p2', show: ['value', 'target', 'delta'] }]);
+        expect(next.parts.map((p) => p.id)).toEqual(['p1', 'p2']);
+        expect(next.parts[1]).toMatchObject({ id: 'p2', open: false, show: ['value', 'target', 'delta'] });
+        expect(next.seq).toBe(board.seq);
+    });
+
+    it('changes nothing when one change is wrong', () => {
+        const { board } = place(emptyBoard('r1'), [{ kind: 'message', text: 'x' }, vanos], { now: 1 });
+        expect(() => setShow(board, [{ id: 'p2', show: ['max'] }, { id: 'p1', show: ['value'] }])).toThrow(/only a graph/);
+        expect(() => setShow(board, [{ id: 'p9', show: ['value'] }])).toThrow(/No part p9/);
+        expect(board.parts[1].show).toBeUndefined();
     });
 });

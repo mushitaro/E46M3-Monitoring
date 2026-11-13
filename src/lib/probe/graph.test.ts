@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { graphOf } from './graph';
+import { channelStats } from './compare';
+import { graphOf, readoutsOf } from './graph';
 
 const run = (n: number, f: (t: number) => Record<string, number | null>) => Array.from({ length: n }, (_, i) => ({ t: i, values: f(i) }));
 
@@ -48,5 +49,37 @@ describe('the graph part', () => {
         expect(g.points).toHaveLength(50);
         expect(g.points[0].t).toBe(699);
         expect(g.points.at(-1)!.t).toBe(999);
+    });
+});
+
+describe('the numbers a graph draws large (owner, 2026-11-13)', () => {
+    const samples = run(10, (t) => ({ ist: 10 + t, soll: 12 }));
+    const g = graphOf(samples, { value: 'ist', target: 'soll', seconds: 30 });
+    const stats = channelStats({ samples }).get('ist');
+
+    it('gives the newest value, its target and their difference, in the order asked', () => {
+        expect(readoutsOf(g, stats, ['delta', 'value', 'target'])).toEqual([
+            { kind: 'delta', value: 7 },
+            { kind: 'value', value: 19 },
+            { kind: 'target', value: 12 },
+        ]);
+    });
+
+    it('gives max, min and mean of the value since the run began, not only the window', () => {
+        const long = run(100, (t) => ({ ist: t }));
+        const lg = graphOf(long, { value: 'ist', seconds: 10 });
+        expect(readoutsOf(lg, channelStats({ samples: long }).get('ist'), ['max', 'min', 'mean'])).toEqual([
+            { kind: 'max', value: 99 },
+            { kind: 'min', value: 0 },
+            { kind: 'mean', value: 49.5 },
+        ]);
+    });
+
+    it('says nothing read as null rather than a number', () => {
+        expect(readoutsOf({ latest: null }, undefined, ['value', 'delta', 'mean'])).toEqual([
+            { kind: 'value', value: null },
+            { kind: 'delta', value: null },
+            { kind: 'mean', value: null },
+        ]);
     });
 });

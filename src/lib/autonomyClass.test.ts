@@ -26,6 +26,7 @@ describe('the autonomy class', () => {
             'packages/monitoring-engine/src/ledger.ts',
             'packages/monitoring-engine/src/actuationGate.ts',
             'packages/monitoring-engine/src/vehicleState.ts',
+            'packages/monitoring-engine/src/variants.ts',
             'packages/ds2-core/src/link.ts',
             'public/kill-list.json',
             'functions/_middleware.ts',

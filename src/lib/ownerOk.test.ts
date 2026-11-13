@@ -52,6 +52,7 @@ describe('the owner’s spoken OK', () => {
             'packages/monitoring-engine/src/ledger.ts',
             'packages/monitoring-engine/src/actuationGate.ts',
             'packages/monitoring-engine/src/vehicleState.ts',
+            'packages/monitoring-engine/src/variants.ts',
             'packages/ds2-core/src/link.ts',
             'public/kill-list.json',
             'workers/desk/src/index.ts',

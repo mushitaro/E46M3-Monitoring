@@ -1,5 +1,5 @@
 {
-  "_comment": "Which changes may merge without a person (docs/AUTONOMY.md §5). Operator, 2026-11-13: 「取り込みを止めるのをやめてほしい」 — every change merges by itself once CI has passed, except the `human` paths: the rules themselves, the gate that decides what reaches the car, the ledger, the link and the kill list. A pull request is `auto` when no file it changes matches a `human` pattern. Decided by this table and scripts/autonomy-class.mjs in CI, never by the agent that wrote the change. Changing this file is itself `human`.",
+  "_comment": "Which changes may merge without a person (docs/AUTONOMY.md §5). Operator, 2026-11-13: 「取り込みを止めるのをやめてほしい」 — every change merges by itself once CI has passed, except the `human` paths: the rules themselves, the gate that decides what reaches the car (runGate, the actuation gate, the vehicle state, and the variant choice that guards every frame), the ledger, the link and the kill list. A pull request is `auto` when no file it changes matches a `human` pattern. Decided by this table and scripts/autonomy-class.mjs in CI, never by the agent that wrote the change. Changing this file is itself `human`.",
   "auto": [
     "**"
   ],
@@ -18,7 +18,8 @@
     "packages/monitoring-engine/src/runGate.ts",
     "packages/monitoring-engine/src/ledger.ts",
     "packages/monitoring-engine/src/actuationGate.ts",
-    "packages/monitoring-engine/src/vehicleState.ts"
+    "packages/monitoring-engine/src/vehicleState.ts",
+    "packages/monitoring-engine/src/variants.ts"
   ],
   "_owner": "The same paths as `human`: a spoken OK (scripts/owner-ok.mjs) does not release them either. Only the owner's own account takes these in.",
   "owner": [
@@ -36,6 +37,7 @@
     "packages/monitoring-engine/src/runGate.ts",
     "packages/monitoring-engine/src/ledger.ts",
     "packages/monitoring-engine/src/actuationGate.ts",
-    "packages/monitoring-engine/src/vehicleState.ts"
+    "packages/monitoring-engine/src/vehicleState.ts",
+    "packages/monitoring-engine/src/variants.ts"
   ]
 }

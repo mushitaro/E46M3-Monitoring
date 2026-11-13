@@ -61,7 +61,7 @@ MSS54 の表と解読は `packages/ds2-mss54`。エンジンはこの二つに�
   import しない（GREN BLUE には私たちの `src/` が無い）。外は `@tsunagi/ds2-core`・`@tsunagi/ds2-mss54` だけ。
   React を import するのは `react.ts` だけ。試験の道具は入口に入れない。
 - `.github/autonomy.json` と `CODEOWNERS`：車に何を送ってよいかを決めるファイル（`runGate.ts`・`ledger.ts`・
-  `actuationGate.ts`・`vehicleState.ts`）は人の承認（`autonomy:human`）で、自律ループは自分でマージできない。
+  `actuationGate.ts`・`vehicleState.ts`・`variants.ts`）は人の承認（`autonomy:human`）で、自律ループは自分でマージできない。
   エンジンのほかのファイルは、運営者の 2026-11-13 の決まり（CI が通れば自動で取り込む）に従う。GREN BLUE に届くのは、
   Mainstay の側の必須のチェックが通った版だけ（§6）。
 

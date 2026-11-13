@@ -15,3 +15,4 @@
 /packages/monitoring-engine/src/ledger.ts @mushitaro
 /packages/monitoring-engine/src/actuationGate.ts @mushitaro
 /packages/monitoring-engine/src/vehicleState.ts @mushitaro
+/packages/monitoring-engine/src/variants.ts @mushitaro

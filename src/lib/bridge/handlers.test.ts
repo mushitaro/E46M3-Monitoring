@@ -231,6 +231,29 @@ describe('a moment', () => {
         expect(m.reason).toMatch(/No samples/);
     });
 
+    it('keeps only the channels named, so a long window fits (owner, 2026-11-13)', async () => {
+        const t = tab({ lastRun: () => ({ ...run(600), samples: Array.from({ length: 600 }, (_, i) => ({ t: i / 5, values: { '19:v': i, '3:ub': 13 + (i % 7) / 10, '3:n': 800 } })) }) });
+        t.tick(120_000);
+        const m = (await t.h.monitoring_moment({ seconds_ago: 10, window_s: 4, channels: ['3:ub'] })) as { samples: { values: Record<string, unknown> }[] };
+        expect(m.samples.length).toBeGreaterThan(0);
+        expect(m.samples.every((s) => Object.keys(s.values).join() === '3:ub')).toBe(true);
+        await expect(t.h.monitoring_moment({ channels: [] })).rejects.toThrow(/channels/);
+    });
+
+    it("gives a run's spread for the channels asked, in one small answer", async () => {
+        const samples = Array.from({ length: 600 }, (_, i) => ({ t: i / 5, values: { '19:v': i, '3:ub': i === 300 ? 11.8 : 13.5 } }));
+        const t = tab({ lastRun: () => ({ ...run(600), samples }) });
+        t.tick(120_000);
+        type O = { stats: Record<string, unknown>; samples: number; span?: unknown };
+        const o = (await t.h.monitoring_run_overview({ channels: ['3:ub', '3:n'] })) as O;
+        expect(o.samples).toBe(600);
+        expect(o.stats).toEqual({ '3:ub': { n: 600, min: 11.8, minAt: 60, max: 13.5, maxAt: 0, mean: 13.497 }, '3:n': null });
+        const part = (await t.h.monitoring_run_overview({ channels: ['3:ub'], from_s: 70 })) as O;
+        expect(part.stats['3:ub']).toMatchObject({ min: 13.5, n: 250 });
+        expect(part.span).toEqual({ from: 70 });
+        expect(((await t.h.monitoring_run_overview({})) as O).stats).toBeUndefined();
+    });
+
     it('thins a wide window', async () => {
         const t = tab({ lastRun: () => run(1000, 10) });
         t.tick(100_000);

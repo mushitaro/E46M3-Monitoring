@@ -142,7 +142,7 @@ export function useMonitoringFacade(input: {
         return { module: ecuId, read: false, reason: 'Not read yet in this session.' };
     };
 
-    /** A scan, module by module: what answered, with the MSS54's codes decoded and the rest as bytes. */
+    /** A scan, module by module: what answered, the MSS54's codes decoded, the others read by their own SGBD's code where it can, and the bytes. */
     const describeScan = async (r: ScanRun) => {
         const mss54 = ecuId === 'mss54' && catalog ? catalog : await loadEcuCatalog('mss54').catch(() => null);
         // DSC MK60 (lib/kwpOnDs2): its codes with its own SGBD's text — an estimate, as on its screen.
@@ -165,10 +165,22 @@ export function useMonitoringFacade(input: {
                 outcome: x.outcome,
                 ...(x.reason ? { reason: en.runBlock[x.reason as RunBlockKey] ?? x.reason } : {}),
                 ...(x.decoded ? { faults: describeEntries(x.decoded as ErrorMemoryEntry[], mss54) } : {}),
+                // Read by the module's own SGBD FS_LESEN code (lib/sgbd/results): its entries and its texts.
+                ...(!x.decoded && x.sgbdFaults
+                    ? {
+                          sgbdRead: {
+                              sgbd: x.sgbdFaults.module,
+                              complete: x.sgbdFaults.stopped === null && x.sgbdFaults.status === 'OKAY',
+                              ...(x.sgbdFaults.stopped ? { stopped: x.sgbdFaults.stopped.reason } : {}),
+                              faults: x.sgbdFaults.faults.map((f) => ({ location: f.code, text: f.text, kinds: f.kinds, values: f.values })),
+                              note: "Read by the module's own SGBD fault-read code run in the app (the reading INPA gives); texts are the SGBD's own German. Not yet compared with INPA on this car.",
+                          },
+                      }
+                    : {}),
                 ...(x.kwpDtcs
                     ? { estimated: true, codes: kwpCodes(x.kwpDtcs), raw: x.exchanges, note: 'Codes read as ISO 14230 lays out a $58 answer; not yet confirmed on a MK60. The bytes are the answer.' }
                     : !x.decoded && x.exchanges.some((e) => e.response !== null)
-                      ? { raw: x.exchanges, note: 'No decoder for this module: the answer is kept as bytes.' }
+                      ? { raw: x.exchanges, ...(x.sgbdFaults ? {} : { note: 'No decoder for this module: the answer is kept as bytes.' }) }
                       : {}),
             })),
         };

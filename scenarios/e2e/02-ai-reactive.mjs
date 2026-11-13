@@ -64,7 +64,16 @@ const scenario = {
             },
             keep: (r, st) => (st.allFaults = r),
         },
-        { screen: { desc: 'DIAGNOSIS に全モジュールの一覧', has: ['全モジュール', '故障 2'] } },
+        {
+            check: {
+                desc: 'メーター（0x80）は自身の SGBD の故障読取のコードで最後まで読まれ、故障なし',
+                run: async (_page, st) => {
+                    const s = JSON.stringify(st.allFaults);
+                    return /"sgbdRead":\{"sgbd":"kombi46r?","complete":true,"faults":\[\]/.test(s) ? true : s.slice(0, 600);
+                },
+            },
+        },
+        { screen: { desc: 'DIAGNOSIS に全モジュールの一覧', has: ['全モジュール', '故障 2', '故障なし'] } },
         { shot: 'scan' },
         {
             ai: 'monitoring_faults',

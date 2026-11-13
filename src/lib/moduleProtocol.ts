@@ -12,9 +12,10 @@
  * steering-wheel buttons, so a "generic" fault read would have asked most modules something they
  * never ask themselves.
  *
- * Only the MSS54 has a decoder for what comes back (`@tsunagi/ds2-mss54`). Every other module's
- * answer is kept as bytes and shown as bytes — the SGBD names its results but gives no offsets,
- * and a layout guessed from the MSS54's would be a reading of fiction.
+ * Only the MSS54 has a decoder of the app's own for what comes back (`@tsunagi/ds2-mss54`). Another
+ * module's answer is read, where it can be, by that module's own SGBD code run in the app
+ * (lib/sgbd/results) — never by a layout guessed from the MSS54's, which would be a reading of
+ * fiction — and its bytes are always kept.
  */
 
 import { kwpFrameOf, type KwpFrame } from './kwpOnDs2';

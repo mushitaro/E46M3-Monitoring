@@ -8,6 +8,7 @@ import { normCode } from '@/lib/faultCode';
 import { useLang } from '@/lib/i18n';
 import { text as resolveText, type EcuIndex, type EcuProfile } from '@/lib/ecuCatalog';
 import type { ScanResult, ScanRun } from '@/lib/probe/scan';
+import type { SgbdFault } from '@/lib/sgbd/results';
 import type { RunBlockKey } from '@/lib/runGate';
 import { Awaiting } from '@/views/shared/Awaiting';
 import { CountReadout } from '@/views/shared/CountReadout';
@@ -31,25 +32,41 @@ export interface ScanShown {
  * owner has to do something about. A module with no decoder that answered is "undecoded", not
  * "no faults" — its bytes may hold one, and a green word over them would be a reading of fiction.
  */
-export function standing(r: ScanResult, t: ReturnType<typeof useLang>['t']): { word: string; tone: string; rank: number; entries: ErrorMemoryEntry[] | null } {
+export function standing(
+    r: ScanResult,
+    t: ReturnType<typeof useLang>['t'],
+): { word: string; tone: string; rank: number; entries: ErrorMemoryEntry[] | null; sgbd: SgbdFault[] | null } {
     const entries = Array.isArray(r.decoded) ? (r.decoded as ErrorMemoryEntry[]) : null;
+    const sgbd = sgbdFaultsOf(r);
+    const none = { entries: null, sgbd: null };
     switch (r.outcome) {
-        case 'answered':
-            if (entries) {
-                return entries.length > 0
-                    ? { word: t.scan_outcome.faults(entries.length), tone: 'text-red-400', rank: 0, entries }
-                    : { word: t.scan_outcome.clean, tone: 'text-emerald-400', rank: 1, entries };
+        case 'answered': {
+            const n = entries?.length ?? sgbd?.length;
+            if (n !== undefined) {
+                return n > 0
+                    ? { word: t.scan_outcome.faults(n), tone: 'text-red-400', rank: 0, entries, sgbd }
+                    : { word: t.scan_outcome.clean, tone: 'text-emerald-400', rank: 1, entries, sgbd };
             }
-            return { word: t.scan_outcome.undecoded, tone: 'text-slate-400', rank: 2, entries: null };
+            return { word: t.scan_outcome.undecoded, tone: 'text-slate-400', rank: 2, ...none };
+        }
         case 'rejected':
-            return { word: t.scan_outcome.rejected, tone: 'text-amber-400', rank: 3, entries: null };
+            return { word: t.scan_outcome.rejected, tone: 'text-amber-400', rank: 3, ...none };
         case 'refused':
-            return { word: t.scan_outcome.refused, tone: 'text-slate-500', rank: 4, entries: null };
+            return { word: t.scan_outcome.refused, tone: 'text-slate-500', rank: 4, ...none };
         case 'skipped':
-            return { word: t.scan_outcome.skipped, tone: 'text-slate-600', rank: 5, entries: null };
+            return { word: t.scan_outcome.skipped, tone: 'text-slate-600', rank: 5, ...none };
         case 'silent':
-            return { word: t.scan_outcome.silent, tone: 'text-slate-600', rank: 6, entries: null };
+            return { word: t.scan_outcome.silent, tone: 'text-slate-600', rank: 6, ...none };
     }
+}
+
+/**
+ * The entries a module's own SGBD read out of its answer — only when its job ran to its end and
+ * said OKAY. A reading that stopped part-way is not a list: the row stays "undecoded", with its bytes.
+ */
+export function sgbdFaultsOf(r: ScanResult): SgbdFault[] | null {
+    const s = r.sgbdFaults;
+    return s && s.stopped === null && s.status === 'OKAY' ? s.faults : null;
 }
 
 const hhmm = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -98,7 +115,7 @@ export const ScanList = memo(function ScanList({ run, progress, index, mss54, se
                                 selected={open}
                                 onSelect={() => onSelect(open ? null : r.address)}
                                 trailing={<span className={`shrink-0 ${LABEL} ${s.tone}`}>{s.word}</span>}
-                                detail={open ? <Opened r={r} entries={s.entries} faultText={faultText} mss54={mss54} lang={lang} /> : undefined}
+                                detail={open ? <Opened r={r} entries={s.entries} sgbd={s.sgbd} faultText={faultText} mss54={mss54} lang={lang} /> : undefined}
                             />
                         );
                     })}
@@ -112,12 +129,14 @@ export const ScanList = memo(function ScanList({ run, progress, index, mss54, se
 function Opened({
     r,
     entries,
+    sgbd,
     faultText,
     mss54,
     lang,
 }: {
     r: ScanResult;
     entries: ErrorMemoryEntry[] | null;
+    sgbd: SgbdFault[] | null;
     faultText: Map<string, NonNullable<EcuProfile['faultText']>[number]>;
     mss54: EcuProfile | null;
     lang: 'ja' | 'en';
@@ -138,6 +157,15 @@ function Opened({
                     </p>
                 );
             })}
+            {sgbd?.map((f, i) => (
+                // The location's number in the module's own table, and its SGBD's text (German, as the SGBD holds it).
+                <p key={`${i}-${f.code}`} className="flex items-baseline gap-x-3 text-[11px]">
+                    <span className="w-10 shrink-0 text-right font-mono tabular-nums text-red-400">{f.code ?? '—'}</span>
+                    <span className="min-w-0 truncate text-slate-300">{f.text ?? '—'}</span>
+                    <span className="min-w-0 shrink truncate text-slate-500">{f.kinds.join(' · ')}</span>
+                </p>
+            ))}
+            {r.sgbdFaults && <p className="pl-[52px] text-[11px] text-slate-500">{t.scan_sgbdRead(r.sgbdFaults.module, sgbd !== null)}</p>}
             {!entries &&
                 r.exchanges
                     .filter((x) => x.response !== null)
@@ -154,13 +182,13 @@ function Opened({
 
 /**
  * The picture beside the scan: how many addresses answered, of how many asked — or how far one in
- * progress has got. Red when the one decoded module holds a fault; the others cannot say.
+ * progress has got. Red when a decoded module holds a fault; the undecoded ones cannot say.
  */
 export function ScanViz({ run, progress }: Pick<ScanShown, 'run' | 'progress'>) {
     const { t } = useLang();
     if (progress) return <CountReadout value={progress.done} suffix={`/${progress.total}`} tone="text-slate-400" caption={t.scan_title} />;
     if (!run) return <Awaiting icon={ScanLine} label={t.awaiting_scan} />;
     const answered = run.results.filter((r) => r.outcome === 'answered').length;
-    const faulted = run.results.some((r) => Array.isArray(r.decoded) && (r.decoded as unknown[]).length > 0);
+    const faulted = run.results.some((r) => (Array.isArray(r.decoded) && (r.decoded as unknown[]).length > 0) || (sgbdFaultsOf(r)?.length ?? 0) > 0);
     return <CountReadout value={answered} suffix={`/${run.results.length}`} tone={faulted ? 'text-red-400' : 'text-slate-200'} caption={t.viz_scanAnswered} />;
 }

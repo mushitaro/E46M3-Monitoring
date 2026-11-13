@@ -48,6 +48,7 @@
     // loop keeps only its scheduled turns.
     "LOOP_TRIGGER_ID": "trig_01TrL8w14QvVQNPv64HA4TYW"
     // The Mainstays' doors (engine reports, the engine's data) are not this build's: they are the
-    // engine gateway's, deployed apart (workers/engine-gateway/wrangler.jsonc).
+    // engine door of M's platform (tsunagi-m-platform services/engine), and the desk's inbox for
+    // the reports is workers/desk.
   }
 }

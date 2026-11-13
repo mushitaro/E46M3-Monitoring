@@ -1,13 +1,19 @@
 /**
- * A Mainstay's engine report, as this side accepts it, and the desk question it becomes
- * (workers/engine-gateway/src/engineReport.ts, operator 2026-11-11).
+ * A Mainstay's engine report, as this desk accepts it, and the desk question it becomes
+ * (./inbox.ts, operator 2026-11-11).
  *
  * The store redacts before it sends (GREN BLUE: packages/core/src/domain/engineReport.ts in
  * tsunagi_gren-blue): no VIN, chassis number, name, contact, cost, free text or identification
- * answer. This side does not take that on trust. The shape is checked field by field against the
- * same patterns — printable ASCII only, so Japanese text cannot pass — and then the desk's own
- * redaction (packages/monitoring-engine/src/investigation/redact.ts) runs over it again: an identification job's answer is
- * dropped and any VIN, full or short, becomes `[VIN]`, before anything is stored.
+ * answer. M's platform, whose engine door takes the report in, checks the shape and redacts again
+ * (tsunagi-m-platform services/engine/src/report.ts, redact.ts). This side takes neither on trust.
+ * The shape is checked field by field against the same patterns — printable ASCII only, so Japanese
+ * text cannot pass — and then the desk's own redaction
+ * (packages/monitoring-engine/src/investigation/redact.ts) runs over it again: an identification
+ * job's answer is dropped and any VIN, full or short, becomes `[VIN]`, before anything is stored.
+ *
+ * The shape is the platform contract's `engineReportDelivery` (contract/src/endpoints/engine.ts);
+ * this is the desk's own copy of it, kept without a dependency so a change on either side fails
+ * the tests here (workers/desk/inbox.test.ts).
  */
 import { isIdentification, redactText } from '../../../packages/monitoring-engine/src/investigation/redact';
 

@@ -52,8 +52,9 @@ const gate = createGate({
 // answer of a request the gate let through: refused, the gate never calls next().
 //
 // Nothing of this origin is served without the gate. The doors a Mainstay's server uses (engine
-// reports, the engine's data) are not here: they are M's engine gateway, deployed apart from this
-// WORKS build (workers/engine-gateway, operator 2026-11-12).
+// reports, the engine's data) are not here: they are the engine door of M's platform
+// (tsunagi-m-platform services/engine, `/engine/*`), deployed apart from this WORKS build
+// (operator 2026-11-12). The desk's inbox for those reports is workers/desk.
 export const onRequest = async (context: GateContext): Promise<Response> => {
     let upgrade: Response | null = null;
     const res = await gate({

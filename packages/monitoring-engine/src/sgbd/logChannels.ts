@@ -16,8 +16,6 @@ import { bestTelegram, loadTelegrams, type Telegram } from '../telegrams.ts';
 import type { Motion } from '../vehicleState.ts';
 import { answerFrame, decodeRead, loadSgbdResults, type SgbdResultsTable } from './results.ts';
 
-/** The modules whose reads DATALOG may record. */
-export const LOG_MODULES = ['smg2'] as const;
 
 export interface ModuleChannelInfo {
     channel: string;
@@ -59,13 +57,19 @@ export function moduleLogData(module: string, address: number): Promise<ModuleDa
 export function moduleChannels(module: string, d: ModuleData): ModuleChannelInfo[] {
     const out: ModuleChannelInfo[] = [];
     for (const jobId of Object.keys(d.results.jobs)) {
+        // The fault read is conducted by its own job (sgbd/faultRead), not sampled.
+        if (jobId.startsWith('FS_')) continue;
         const job = d.jobs.get(jobId);
         const tel = bestTelegram(d.telegrams, jobId);
-        if (!job || job.args.length > 0 || !tel) continue;
+        if (!job || job.class !== 'read' || job.args.length > 0 || !tel) continue;
         // The units are constants in the job's own code (`…_EINH`): read them by running it once on
-        // an answer of zeros long enough for every value. Nothing is sent.
+        // an answer of zeros long enough for every value. Nothing is sent. A job whose code would
+        // send another frame than the table's, or a second one, cannot be read from one answer:
+        // it offers no channel rather than an empty one.
+        const probe = decodeRead(d.results, jobId, tel.hex, answerFrame(d.address, 0xa0, new Uint8Array(240)));
+        if (!probe || (probe.stopped && /would send|second send|did not make/.test(probe.stopped.reason))) continue;
         const units = new Map<string, string | null>();
-        for (const v of decodeRead(d.results, jobId, tel.hex, answerFrame(d.address, 0xa0, new Uint8Array(240)))?.values ?? []) units.set(v.name, v.unit);
+        for (const v of probe.values) units.set(v.name, v.unit);
         for (const r of job.results) {
             if (r.role !== 'value' && r.role !== 'status') continue;
             if (r.type === 'string' || r.name === 'JOB_STATUS') continue;

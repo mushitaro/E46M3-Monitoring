@@ -34,8 +34,9 @@ export const ja: Localised = {
     faults_freezeFrames: 'フリーズフレーム',
 
     channels: 'チャンネル',
-    channels_other: 'SMG II の値',
-    channels_otherNote: 'SMG II の読み取りを 1 サンプルに 1 回送り、SMG II の SGBD 自身のコードで値にします。停車中だけで、走行中は空になります（台帳で走行中も可にした読み取りを除く）。',
+    channels_other: 'ほかのモジュールの値',
+    channels_otherNote: '選んだモジュールの読み取りを 1 サンプルに 1 回送り、そのモジュールの SGBD 自身のコードで値にします。停車中だけで、走行中は空になります（台帳で走行中も可にした読み取りを除く）。',
+    channels_module: 'モジュール',
     channels_pick: '記録するチャンネルを選ぶ',
     datalog_run: '記録',
     channels_search: '検索（シンボル名・項目名）',

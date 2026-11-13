@@ -16,7 +16,7 @@ const scenario = {
     story:
         'オーナーが「SMG の油温もログに入れて」と頼む。AI は DATALOG のチャンネルを探し、SMG II の油圧ユニット温度とエンジン回転数を、' +
         'DME のエンジン回転数と一緒に選ぶ。40 km/h で走っている間に記録を始めると、DME の値は入り、SMG II の値は空のまま。止まると SMG II の値が入り、' +
-        '要約に名前と単位が付く。画面の DATALOG にも SMG II の欄と値が出る。',
+        '要約に名前と単位が付く。画面の DATALOG の「ほかのモジュールの値」にも SMG II の欄と値が出る。',
     car: { dmeFaults: [], speedKmh: 40 },
     steps: [
         { say: 'SMG の油温もログに入れて' },
@@ -61,7 +61,7 @@ const scenario = {
             },
         },
         { ui: 'tab', name: 'DATALOG', means: 'オーナーが DATALOG を開く' },
-        { screen: { desc: 'DATALOG に SMG II の欄と、選んだ SMG II の値', has: ['SMG II の値', 'STAT_HYDRAULIKTEMPERATUR_WERT', '1/min'] } },
+        { screen: { desc: 'DATALOG の「ほかのモジュールの値」に SMG II の欄と、選んだ SMG II の値', has: ['ほかのモジュールの値', 'SMG2', 'STAT_HYDRAULIKTEMPERATUR_WERT', '1/min'] } },
         { shot: 'smg2-datalog' },
         { ai: 'monitoring_stop_log', args: { confirmed: true }, means: '復唱のあと止める', expect: (r) => (r && r.stopped === 'recording' ? true : JSON.stringify(r)) },
         { wait: 1000 },

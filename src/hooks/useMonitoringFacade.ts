@@ -201,7 +201,7 @@ export function useMonitoringFacade(input: {
                 : link.scan
                   ? { running: false, end: link.scan.end, at: new Date(link.scan.endedAt).toISOString(), counts: scanCounts(link.scan.results) }
                   : null,
-            // Said so the assistant can tell the driver: it is taken once the link is down a minute, nothing unsaved.
+            // Said so the assistant can tell the driver: UPDATE is in the header, and it is taken by itself once the link is down a minute.
             newBuildWaiting: input.updateWaiting,
         }),
 

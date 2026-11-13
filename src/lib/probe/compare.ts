@@ -13,7 +13,7 @@
  *
  * Pure: the bridge's compare and the desk read the same numbers.
  */
-import type { ProbeRun } from './executor';
+import type { ProbeRun } from '@tsunagi/monitoring-engine';
 import { diffForms, judgeKey, measures, type Form, type ItemDiff } from './items';
 
 export interface RunRef {

@@ -15,17 +15,17 @@ const cls = (...paths: string[]) => classify(paths, table).class;
 describe('the autonomy class', () => {
     it('lets every change merge by itself once CI passes (operator, 2026-11-13)', () => {
         expect(cls('docs/AUTONOMY.md', 'scenarios/cases.json', 'public/guide/faults.md', 'src/lib/i18n/ja.ts')).toBe('auto');
-        for (const p of ['src/hooks/useDs2Link.ts', 'src/lib/probe/executor.ts', 'src/lib/bridge/tools.ts', 'src/hooks/useMonitoringFacade.ts', 'src/views/diagnosis/DiagnosisView.tsx', 'functions/api/bridge/socket.ts', 'public/guide/index.md']) {
+        for (const p of ['src/hooks/useDs2Link.ts', 'packages/monitoring-engine/src/link/session.ts', 'packages/monitoring-engine/src/probe/executor.ts', 'packages/monitoring-engine/src/probe/scan.ts', 'src/lib/bridge/tools.ts', 'src/hooks/useMonitoringFacade.ts', 'src/views/diagnosis/DiagnosisView.tsx', 'functions/api/bridge/socket.ts', 'public/guide/index.md']) {
             expect(cls(p), p).toBe('auto');
         }
     });
 
     it('holds the rules themselves and what decides what reaches the car', () => {
         for (const p of [
-            'src/lib/runGate.ts',
-            'src/lib/ledger.ts',
-            'src/lib/actuationGate.ts',
-            'src/lib/vehicleState.ts',
+            'packages/monitoring-engine/src/runGate.ts',
+            'packages/monitoring-engine/src/ledger.ts',
+            'packages/monitoring-engine/src/actuationGate.ts',
+            'packages/monitoring-engine/src/vehicleState.ts',
             'packages/ds2-core/src/link.ts',
             'public/kill-list.json',
             'functions/_middleware.ts',
@@ -40,7 +40,7 @@ describe('the autonomy class', () => {
     });
 
     it('holds a change when any one of its files is held, and an empty one', () => {
-        expect(cls('docs/PLAN.md', 'src/lib/runGate.ts')).toBe('human');
+        expect(cls('docs/PLAN.md', 'packages/monitoring-engine/src/runGate.ts')).toBe('human');
         expect(cls()).toBe('human');
     });
 

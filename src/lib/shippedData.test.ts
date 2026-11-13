@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { assertLoadableProfile, type EcuIndex, type EcuProfile } from './ecuCatalog';
+import { assertLoadableProfile, type EcuIndex, type EcuProfile } from '@tsunagi/monitoring-engine';
 import { STRINGS } from './i18n';
-import { isReadOnlyControl, mayRun } from './runGate';
-import { EMPTY_LEDGER } from './ledger';
+import { isReadOnlyControl, mayRun } from '@tsunagi/monitoring-engine';
+import { EMPTY_LEDGER } from '@tsunagi/monitoring-engine';
 
 /**
  * The whole shipped catalogue, checked against the code that has to read it.
@@ -291,8 +291,11 @@ describe('what a real car would accept today', () => {
         }
     }
 
-    it('is 103 jobs across 36 modules', () => {
-        // Was 86 across 36. The ten that arrived are seven `IS_LESEN` /
+    it('is 126 jobs across 42 modules', () => {
+        // 103 across 36 until 2026-11-11's non-M3 DMEs and GS20 arrived (six modules, 23 jobs): their own
+        // read-only reads (control bytes already in `READ_ONLY_CONTROLS`). The policy did not move, and an
+        // M3 is sent none of them — which module is at an address is its IDENT's to say (lib/variants).
+        // Before that: was 86 across 36. The ten that arrived are seven `IS_LESEN` /
         // `FS_SHADOW_LESEN` (control 0x14) and two
         // `STATUS_AUSSCHWINGZEIT_LESEN` (0x0d) — both control bytes already
         // named in `READ_ONLY_CONTROLS`, whose frames the extractor had been
@@ -307,8 +310,10 @@ describe('what a real car would accept today', () => {
         // Then 100 -> 103, all SMG II: GETRIEBEDATEN_LESEN (0x40, block 2 — a read on SMG II by its
         // SGBD's own comment, runGate.MODULE_READ_ONLY_CONTROLS), and IDENT and FS_QUICK_LESEN,
         // whose frames the extractor now follows past the result tags in front of their send.
-        expect(allowed.length).toBe(103);
-        expect(new Set(allowed.map((a) => a.split('.')[0])).size).toBe(36);
+        //
+        // Then 103 -> 126: the six modules above.
+        expect(allowed.length).toBe(126);
+        expect(new Set(allowed.map((a) => a.split('.')[0])).size).toBe(42);
     });
 
     it('and every one of them is classified read and takes no arguments', () => {
@@ -346,6 +351,9 @@ describe('reads whose control byte we cannot vouch for', () => {
         [0x08, 'smg2.CODIERDATEN_LESEN, mrs4.BARCODE_*_LESEN'],
         [0x0e, 'PRUEFSTEMPEL_LESEN on 14 modules — an inspection stamp, evidently'],
         [0x1b, 'BETRIEBSSTUNDENZAEHLER_LESEN, STATUS_LESEN'],
+        // The non-M3 DMEs (2026-11-11): the results of a system check or a VANOS measurement. Refused like
+        // the rest — the byte is not established as a read, whatever the job is called.
+        [0x2b, 'STATUS_VERSTELLZEIT_MESS_VANOS_*, LESEN_SYSTEMCHECK_* on ms420ds0, ms430ds0, bms46ds1'],
         [0x40, 'SYSTEM_PARAMETER_LESEN on the nav units'],
         [0x63, 'cdc_46.SER_NR_DOM_LESEN'],
         [0x80, 'mrs4.C_FS_LESEN'],
@@ -379,8 +387,9 @@ describe('reads whose control byte we cannot vouch for', () => {
         expect(gone.map((c) => `0x${c.toString(16)}`)).toEqual([]);
     });
 
-    it('covers 47 jobs', () => {
-        expect([...found.values()].reduce((n, a) => n + a.length, 0)).toBe(47);
+    it('covers 64 jobs', () => {
+        // 47 until the non-M3 DMEs and GS20 arrived (2026-11-11).
+        expect([...found.values()].reduce((n, a) => n + a.length, 0)).toBe(64);
     });
 
     it('refuses all of them, rather than trusting the name', () => {

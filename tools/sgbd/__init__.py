@@ -6,7 +6,7 @@
 
 分割の理由: 従来 `gen_from_dump.py` が「読み込み・分類・翻訳・出力」を1ファイルで
 兼ねていたため、同じ id から事実を再導出する正規表現が
-`gen_from_dump.py`(3種) と `src/lib/ecuCatalog.ts`(3種) の計6箇所に散り、
+`gen_from_dump.py`(3種) と `packages/monitoring-engine/src/ecuCatalog.ts`(3種) の計6箇所に散り、
 互いに食い違っていた（読取ジョブが書込側に分類される等）。導出は `classify.py` の
 1箇所に集約し、他はその結果を運ぶだけにする。
 """

@@ -2,8 +2,8 @@
 
 import { useEffect, useRef } from 'react';
 import { bridgeHandlers, type TabFacade } from './bridge/handlers';
-import { appNow, learnServerTime, resetClock } from './clock';
-import { practiceCar, resetPracticeCar, type PracticeCar } from './practiceCar';
+import { appNow, learnServerTime, resetClock } from '@tsunagi/monitoring-engine';
+import { practiceCar, resetPracticeCar, type PracticeCar } from '@tsunagi/monitoring-engine';
 
 /**
  * The end-to-end test build's door (tools/e2e): only a build made with

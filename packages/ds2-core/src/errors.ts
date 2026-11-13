@@ -40,7 +40,12 @@ export type Ds2ErrorCode =
     | 'ECHO_MISMATCH'
     | 'NEGATIVE_RESPONSE'
     | 'GATE_HELD'
-    | 'NOT_CONNECTED';
+    | 'NOT_CONNECTED'
+    /**
+     * The link's send guard held the frame back (Ds2Link.setSendGuard): nothing went on the wire.
+     * The app's decision, not the line's or the ECU's — never retried, never "check the cable".
+     */
+    | 'NOT_SENT';
 
 /**
  * How a failure should be *acted on*, which is not the same as what went wrong.

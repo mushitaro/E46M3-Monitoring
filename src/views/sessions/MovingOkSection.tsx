@@ -4,10 +4,10 @@ import { useState, type ReactNode } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { DataList, DataRow, Section, TextButton, humanName, type HumanName } from '@/components/ui';
-import { description, label, text, type EcuProfile } from '@/lib/ecuCatalog';
-import { movingOkChoices, type Ledger, type VerificationRecord } from '@/lib/ledger';
+import { description, label, text, type EcuProfile } from '@tsunagi/monitoring-engine';
+import { movingOkChoices, type Ledger, type VerificationRecord } from '@tsunagi/monitoring-engine';
 import { useLang } from '@/lib/i18n';
-import type { Motion } from '@/lib/vehicleState';
+import type { Motion } from '@tsunagi/monitoring-engine';
 
 /**
  * WHILE MOVING — where the owner allows a read while the car moves (lib/ledger `grantMovingOk`).

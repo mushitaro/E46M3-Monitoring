@@ -12,8 +12,8 @@
  * the verified-ledger discipline in the plan (§4-1).
  */
 
-import { Ds2Error } from './errors';
-import { isPositiveResponse, type Ds2Frame } from './frame';
+import { Ds2Error } from './errors.ts';
+import { isPositiveResponse, type Ds2Frame } from './frame.ts';
 
 /** The access level the tuner uses, and the only one proven on a real DME. */
 export const DS2_DEFAULT_ACCESS_LEVEL = 5;

@@ -76,14 +76,14 @@ import {
     type EcuProfile,
     type JobClass,
     type Risk,
-} from '@/lib/ecuCatalog';
-import { jobOperation, type OpKind } from '@/lib/jobOps';
+} from '@tsunagi/monitoring-engine';
+import { jobOperation, type OpKind } from '@tsunagi/monitoring-engine';
 import { isOn } from '@/lib/jobSurface';
-import { mayRunOnVehicle, type Ledger } from '@/lib/ledger';
-import { mayRun } from '@/lib/runGate';
-import { bestTelegram, type TelegramTable } from '@/lib/telegrams';
+import { mayRunOnVehicle, type Ledger } from '@tsunagi/monitoring-engine';
+import { mayRun } from '@tsunagi/monitoring-engine';
+import { bestTelegram, type TelegramTable } from '@tsunagi/monitoring-engine';
 import { useLang } from '@/lib/i18n';
-import type { Motion } from '@/lib/vehicleState';
+import type { Motion } from '@tsunagi/monitoring-engine';
 
 /** The class order is the order of consequence, not alphabetical. */
 // No `test`: those rows live in ACTUATOR. Ordered by consequence, not alphabet.

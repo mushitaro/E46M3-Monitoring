@@ -54,7 +54,10 @@ const gate = createGate({
 // And one door is left outside the gate: /api/bridge/dev-request and /api/bridge/dev-status. The relay
 // calls them, not a browser, so there is no cookie to show — each request carries the relay's own
 // one-time ticket instead, and the route refuses anything else (functions/_lib/devTicket.ts). The two
-// exact paths, not a prefix; nothing else of this origin is served without the gate.
+// exact paths, not a prefix; nothing else of this origin is served without the gate. The doors a
+// Mainstay's server uses (engine reports, the engine's data) are not here either: they are the engine
+// door of M's platform (tsunagi-m-platform services/engine, `/engine/*`), deployed apart from this
+// WORKS build (operator 2026-11-12). The desk's inbox for those reports is workers/desk.
 const DEV_PATHS = ['/api/bridge/dev-request', '/api/bridge/dev-status'];
 
 export const onRequest = async (context: GateContext): Promise<Response> => {

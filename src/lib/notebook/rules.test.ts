@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { addProblem, currentPlan, entryProblem, liveMandate, mergeEntries, notebookLine, openAsks, runnablePlan, statusOf, type NotebookEntry } from './rules';
-import { ramSegment, stepsProblem, type ProbeStep } from '../probe/plan';
+import { ramSegment, stepsProblem, type ProbeStep } from '@tsunagi/monitoring-engine';
 
 const T0 = 1_800_000_000_000;
 let seq = 0;

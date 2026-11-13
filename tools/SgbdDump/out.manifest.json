@@ -59,6 +59,27 @@
    "tableCount": 5
   },
   {
+   "path": "BMS43DS0.json",
+   "sha256": "4fed838e664ab0687f58010c17fcc3d215194b15ee9188dd578590936762292d",
+   "bytes": 44648,
+   "jobCount": 70,
+   "tableCount": 6
+  },
+  {
+   "path": "BMS46DS0.json",
+   "sha256": "213c983ecd85621ab9d841325103edb1531590502e0902272789360f8c0beafd",
+   "bytes": 59938,
+   "jobCount": 96,
+   "tableCount": 6
+  },
+  {
+   "path": "BMS46DS1.json",
+   "sha256": "3ad94cab8af1bb2c5d2b1b1b7347515085f889c7198d1ffda91a69a05b7be46c",
+   "bytes": 69945,
+   "jobCount": 106,
+   "tableCount": 8
+  },
+  {
    "path": "B_SM46_3.json",
    "sha256": "391fa045fc4f2bc9c121332bff1e778eb1d89334cead6b1eb4a37cfbcdec3ff3",
    "bytes": 14428,
@@ -101,6 +122,11 @@
    "tableCount": 15
   },
   {
+   "path": "DSC_MK60.telegrams.json",
+   "sha256": "a68c4093c228a214b7bce706c46c05244a3c6c74bf588a080576f78953a47282",
+   "bytes": 31021
+  },
+  {
    "path": "DWS.json",
    "sha256": "735dd73522339b98692781ca5a5b3d612fc1be9ea3f1b931b7613f314502da2c",
    "bytes": 21121,
@@ -141,6 +167,13 @@
    "bytes": 9730,
    "jobCount": 19,
    "tableCount": 3
+  },
+  {
+   "path": "GS20.json",
+   "sha256": "be382382d0608ae2fda9c44814e246fa3695fafd1ee8f1faf7453d3dbd9653ed",
+   "bytes": 41552,
+   "jobCount": 21,
+   "tableCount": 15
   },
   {
    "path": "IHKA46.json",
@@ -239,6 +272,34 @@
    "bytes": 40476,
    "jobCount": 30,
    "tableCount": 7
+  },
+  {
+   "path": "MS420DS0.json",
+   "sha256": "986233ea06af8c95b1ef7a1e218193172e22e9dc86d73a5883bfee67b1c6f577",
+   "bytes": 126332,
+   "jobCount": 186,
+   "tableCount": 10
+  },
+  {
+   "path": "MS420DS1.json",
+   "sha256": "d158aad08150167234eaa0049a1916f3cc41449909aab14405c32a258e647e58",
+   "bytes": 109566,
+   "jobCount": 174,
+   "tableCount": 8
+  },
+  {
+   "path": "MS430DS0.json",
+   "sha256": "dd1d83e6d6160aa78a3aac424074cf38d8223ccb1c4b02f5bd2afabb889a44ba",
+   "bytes": 182329,
+   "jobCount": 230,
+   "tableCount": 14
+  },
+  {
+   "path": "MS43_SP2.json",
+   "sha256": "cca19df8e1a99f4e546e91200a8d9dd59b412b3f6371c0fb0d4f093dd77c305a",
+   "bytes": 75435,
+   "jobCount": 20,
+   "tableCount": 11
   },
   {
    "path": "MSS54DS0.json",
@@ -445,8 +506,8 @@
   },
   {
    "path": "_addresses.json",
-   "sha256": "5a8b5d5dcafa8cbd2d4ef6f3cdc4fcb216be8dc9475eb8ba4f4d706ea0fc826f",
-   "bytes": 42542
+   "sha256": "25beff1657cfbfc9a90881ef7aa0f51f3195b7e483f50d48da9352ea84682ef2",
+   "bytes": 47756
   },
   {
    "path": "_families.json",

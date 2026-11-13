@@ -15,10 +15,10 @@
     "functions/_middleware.ts",
     "packages/ds2-core/**",
     "public/kill-list.json",
-    "src/lib/runGate.ts",
-    "src/lib/ledger.ts",
-    "src/lib/actuationGate.ts",
-    "src/lib/vehicleState.ts"
+    "packages/monitoring-engine/src/runGate.ts",
+    "packages/monitoring-engine/src/ledger.ts",
+    "packages/monitoring-engine/src/actuationGate.ts",
+    "packages/monitoring-engine/src/vehicleState.ts"
   ],
   "_owner": "The same paths as `human`: a spoken OK (scripts/owner-ok.mjs) does not release them either. Only the owner's own account takes these in.",
   "owner": [
@@ -33,9 +33,9 @@
     "functions/_middleware.ts",
     "packages/ds2-core/**",
     "public/kill-list.json",
-    "src/lib/runGate.ts",
-    "src/lib/ledger.ts",
-    "src/lib/actuationGate.ts",
-    "src/lib/vehicleState.ts"
+    "packages/monitoring-engine/src/runGate.ts",
+    "packages/monitoring-engine/src/ledger.ts",
+    "packages/monitoring-engine/src/actuationGate.ts",
+    "packages/monitoring-engine/src/vehicleState.ts"
   ]
 }

@@ -9,10 +9,10 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SimulatedFtdiDevice, SimulatedUsb, type ControlRecord } from './ftdiSimulator';
-import { WebUsbFtdiTransport } from './webUsbFtdiTransport';
-import { isDs2Error } from './errors';
-import type { LinkTiming } from './timing';
+import { SimulatedFtdiDevice, SimulatedUsb, type ControlRecord } from './ftdiSimulator.ts';
+import { WebUsbFtdiTransport } from './webUsbFtdiTransport.ts';
+import { isDs2Error } from './errors.ts';
+import type { LinkTiming } from './timing.ts';
 
 const SIO_RESET = 0x00;
 const SIO_SET_MODEM_CTRL = 0x01;

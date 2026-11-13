@@ -7,7 +7,7 @@
 同じジョブ id から事実を再導出する正規表現が、これまで6箇所にあった:
 
     gen_from_dump.py   EXCLUDE / TESTJOB / ADAPTJOB
-    src/lib/ecuCatalog.ts  jobRisk / jobPreconditions / execStyle（呼出0件）
+    packages/monitoring-engine/src/ecuCatalog.ts  jobRisk / jobPreconditions / execStyle（呼出0件）
 
 そして食い違っていた。`ABGLEICHWERTE_LESEN` は生成器が「永続書込」に分類し、
 `jobRisk` が `low`、`jobOps` が `read` と判定していた。3つが同時に正しいことは
@@ -228,7 +228,14 @@ SYSTEMS: list[tuple[str, str]] = [
 # ソフトウェア自身の名前で、ダンプ一覧と 1 対 1 に突き合わせられる。
 HOME_SYSTEM: dict[str, str] = {
     "MSS54DS0": "engine",
+    # M3 でない E46 の DME と AT（2026-11-11）。M3 の MSS54・SMG II と同じ持ち場。
+    "MS420DS0": "engine",
+    "MS430DS0": "engine",
+    "BMS43DS0": "engine",
+    "BMS46DS0": "engine",
+    "BMS46DS1": "engine",
     "SMG2": "gearbox",
+    "GS20": "gearbox",
     "ASCMK20": "stability",
     "DSC_E46": "stability",
     "DSC_MK60": "stability",

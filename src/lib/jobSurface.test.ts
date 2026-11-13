@@ -1,11 +1,11 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { EcuIndex, EcuProfile } from './ecuCatalog';
+import type { EcuIndex, EcuProfile } from '@tsunagi/monitoring-engine';
 import { isOn, surfaceOf } from './jobSurface';
-import { EMPTY_LEDGER } from './ledger';
-import { mayRun } from './runGate';
-import { bestTelegram, type TelegramTable } from './telegrams';
+import { EMPTY_LEDGER } from '@tsunagi/monitoring-engine';
+import { mayRun } from '@tsunagi/monitoring-engine';
+import { bestTelegram, type TelegramTable } from '@tsunagi/monitoring-engine';
 
 const DATA = path.resolve(import.meta.dirname, '..', '..', 'public', 'ecu-data');
 const read = <T,>(f: string) => JSON.parse(readFileSync(path.join(DATA, f), 'utf-8')) as T;
@@ -17,7 +17,7 @@ const modules = index.modules.map((m) => ({
 }));
 
 describe('every job belongs to exactly one tab', () => {
-    it('lands on one surface, across all 52 modules', () => {
+    it('lands on one surface, across all 58 modules', () => {
         // The property that makes this a partition rather than two filters that
         // happen to agree. Two surfaces run a job through DIFFERENT gates —
         // SERVICE via mayRun, ACTUATOR via mayActuate, which is wider in
@@ -32,7 +32,8 @@ describe('every job belongs to exactly one tab', () => {
             }
         }
         // 1524 across 51; 64 more with DSC MK60 (2026-11-10).
-        expect(counted).toBe(1588);
+        // 1588 until the non-M3 DMEs and GS20 arrived (2026-11-11).
+        expect(counted).toBe(2297);
     });
 
     it('puts the actuators on ACTUATOR and nothing else there', () => {
@@ -53,7 +54,7 @@ describe('every job belongs to exactly one tab', () => {
 });
 
 describe('SERVICE carries the whole of what a real car will accept', () => {
-    it('holds every job mayRun permits on a vehicle — 96 of them, all reads', () => {
+    it('holds every job mayRun permits on a vehicle — 119 of them, all reads', () => {
         // This is why SERVICE is not deleted. DIAGNOSIS, ADAPTATION and DATALOG
         // send frames built from the protocol, not catalogue jobs; the hub's
         // SERVICE branch is the only path that sends one. If these ever moved to
@@ -79,6 +80,8 @@ describe('SERVICE carries the whole of what a real car will accept', () => {
         // (`32 05 0B 03` -> 04, 02, 05), so all four had looked like one shared frame.
         //
         // 100 -> 103: SMG II's GETRIEBEDATEN_LESEN (0x40 reads on SMG II), IDENT and FS_QUICK_LESEN.
-        expect(runnable.length).toBe(103);
+        //
+        // 103 -> 126: the non-M3 DMEs and GS20 (six modules, 2026-11-11), their own read-only reads.
+        expect(runnable.length).toBe(126);
     });
 });

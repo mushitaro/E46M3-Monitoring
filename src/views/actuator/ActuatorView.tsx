@@ -5,19 +5,19 @@ import { useMemo, useState } from 'react';
 import { GateDialog } from '@/components/gate/GateDialog';
 import { DataList, DataRow, LABEL, ListControls, Pill, Section, TextButton, humanName } from '@/components/ui';
 import type { Arming } from '@/hooks/useActuatorArming';
-import { mayActuate, type ActuationMode } from '@/lib/actuationGate';
+import { mayActuate, type ActuationMode } from '@tsunagi/monitoring-engine';
 import type { Phase } from '@/lib/actuatorArgs';
-import type { CatalogJob, EcuProfile } from '@/lib/ecuCatalog';
+import type { CatalogJob, EcuProfile } from '@tsunagi/monitoring-engine';
 import { execStyleOf } from '@/lib/execStyle';
 import { useLang } from '@/lib/i18n';
 import { cautionFor, type JobTextTable } from '@/lib/jobText';
-import { operationFor } from '@/lib/jobOps';
+import { operationFor } from '@tsunagi/monitoring-engine';
 import { isOn } from '@/lib/jobSurface';
-import type { Ledger } from '@/lib/ledger';
-import type { RunVerdict, SendRequirement } from '@/lib/runGate';
+import type { Ledger } from '@tsunagi/monitoring-engine';
+import type { RunVerdict, SendRequirement } from '@tsunagi/monitoring-engine';
 import { TEST_ID, tid } from '@/lib/testIds';
-import { bestTelegram, type TelegramTable } from '@/lib/telegrams';
-import type { Motion } from '@/lib/vehicleState';
+import { bestTelegram, type TelegramTable } from '@tsunagi/monitoring-engine';
+import type { Motion } from '@tsunagi/monitoring-engine';
 import { ReasonGlossary, ReasonTag } from '@/views/shared/RunReason';
 
 /**

@@ -7,10 +7,10 @@
  * that module's load-time divisor assertion.
  */
 
-import { Ds2Error } from './errors';
-import type { Ds2ByteTransport } from './byteTransport';
-import { WebSerialTransport } from './transport';
-import { WebUsbFtdiTransport } from './webUsbFtdiTransport';
+import { Ds2Error } from './errors.ts';
+import type { Ds2ByteTransport } from './byteTransport.ts';
+import { WebSerialTransport } from './transport.ts';
+import { WebUsbFtdiTransport } from './webUsbFtdiTransport.ts';
 
 /**
  * 'none' is a real answer rather than an error. Everything that reads recorded data — a saved

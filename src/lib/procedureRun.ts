@@ -40,9 +40,9 @@
  * does not ask twice. It reports that refusal rather than routing around it.
  */
 import { buildArgFrame, encodingBlocker, type ArgFrameBlockKey } from './argFrame';
-import type { CatalogJob } from './ecuCatalog';
+import type { CatalogJob } from '@tsunagi/monitoring-engine';
 import type { Smg2Procedure } from './smg2Workflows';
-import { bestTelegram, type TelegramTable } from './telegrams';
+import { bestTelegram, type TelegramTable } from '@tsunagi/monitoring-engine';
 
 export const START_JOB = 'TESTPRG_STARTEN';
 export const STOP_JOB = 'TESTPRG_STOP';

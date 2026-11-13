@@ -5,9 +5,33 @@
    "jobs": 223,
    "results": 966
   },
+  "ms420ds0": {
+   "jobs": 186,
+   "results": 748
+  },
+  "ms430ds0": {
+   "jobs": 230,
+   "results": 975
+  },
+  "bms43ds0": {
+   "jobs": 70,
+   "results": 382
+  },
+  "bms46ds0": {
+   "jobs": 96,
+   "results": 473
+  },
+  "bms46ds1": {
+   "jobs": 106,
+   "results": 521
+  },
   "smg2": {
    "jobs": 46,
    "results": 1052
+  },
+  "gs20": {
+   "jobs": 21,
+   "results": 405
   },
   "ascmk20": {
    "jobs": 35,
@@ -211,16 +235,16 @@
   }
  },
  "totals": {
-  "jobs": 1588,
-  "results": 9919
+  "jobs": 2297,
+  "results": 13423
  },
  "roles": {
-  "raw": 37,
-  "status": 1477,
-  "telegram": 635,
-  "text": 463,
-  "unit": 800,
-  "value": 6507
+  "raw": 42,
+  "status": 2174,
+  "telegram": 656,
+  "text": 712,
+  "unit": 1340,
+  "value": 8499
  },
- "unclassified": 151
+ "unclassified": 190
 }

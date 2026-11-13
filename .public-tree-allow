@@ -1,0 +1,5 @@
+# Made-up values that look like a VIN, used by tests (scripts/check-public-tree.mjs). One per line.
+# The intake report test (packages/monitoring-engine/src/intake/intake.test.ts): a VIN no car has,
+# spelled in a fake KOMBI answer to check that the report takes a VIN only from bytes the scan read.
+WBSBL93060JR12345
+WBSBL93060JR99999

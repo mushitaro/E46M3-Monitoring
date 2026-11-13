@@ -3,7 +3,7 @@ name: Deploy desk
 # Deploys the desk's door (workers/desk → the `monitoring-desk` Pages project) from main, with
 # `npm run desk:deploy`, which used to be run by hand and fell behind: on 2026-11-12 the door still
 # refused a plan's `adapt` step and the `module:JOB:RESULT` channels the WORKS build already took,
-# because the rules it checks a plan by (src/lib/notebook, src/lib/probe/plan.ts) are bundled into it
+# because the rules it checks a plan by (src/lib/notebook, the engine's probe/plan.ts) are bundled into it
 # at deploy time and it had not been deployed since.
 #
 # Runs when what the door bundles changes, and by hand. The same `works` environment and Cloudflare
@@ -17,7 +17,8 @@ on:
       - 'workers/desk/**'
       - 'src/lib/notebook/**'
       - 'src/lib/investigation/**'
-      - 'src/lib/probe/plan.ts'
+      - 'packages/monitoring-engine/src/investigation/**'
+      - 'packages/monitoring-engine/src/probe/plan.ts'
       - 'src/lib/probe/board.ts'
       - '.github/workflows/deploy-desk.yml'
   workflow_dispatch:

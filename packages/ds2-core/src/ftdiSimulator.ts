@@ -32,7 +32,7 @@ import type {
     USBLike,
     USBOutTransferResult,
     USBTransferStatus,
-} from './webUsbTypes';
+} from './webUsbTypes.ts';
 
 /** One vendor control request, as the device saw it. Tests assert on the ORDER of these. */
 export interface ControlRecord {
@@ -287,10 +287,13 @@ export class SimulatedUsb implements USBLike {
 
     private listeners = new Set<(e: USBConnectionEvent) => void>();
 
-    constructor(
-        private readonly granted: USBDevice[] = [],
-        private readonly offered: USBDevice | null = null,
-    ) {}
+    private readonly granted: USBDevice[];
+    private readonly offered: USBDevice | null;
+
+    constructor(granted: USBDevice[] = [], offered: USBDevice | null = null) {
+        this.granted = granted;
+        this.offered = offered;
+    }
 
     async getDevices(): Promise<USBDevice[]> {
         return [...this.granted];

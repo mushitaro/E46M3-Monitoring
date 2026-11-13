@@ -102,17 +102,19 @@ guide が名乗るツールは `src/lib/bridge/tools.ts` の一覧だけ（`guid
 
 | 決まり | どこが強制するか | 状態 |
 |---|---|---|
-| 送るかを決めるのは `runGate.ts`（カタログの読取は `mayRun`、アプリが組む読取は `mayRunProtocolRead`）。ツールは K ラインに直接何も足さない | `src/lib/runGate.ts`、`src/lib/probe/executor.ts` | 済。実行器は全フレームでゲートに訊く（2026-10-27） |
-| モジュールには、そのモジュール自身の SGBD が送るものだけ | `src/lib/moduleProtocol.ts`、`link.to(address)` | 済（2026-10-27） |
-| 読取は、送る直前に DME の車速が 0 と読めたときだけ。読めなければ出さない | `useDs2Link` の事前読取、`lib/vehicleState.ts` | 済（2026-10-27） |
-| 走行中に送ってよい読取はオーナーが決める。アプリもアシスタントも格上げしない | `lib/ledger.ts` の `grantMovingOk`。画面は SESSION SYNC の WHILE MOVING（`views/sessions/MovingOkSection.tsx`、確認のあと、走行中は押せない）。`monitoring_ledger` は読むだけ | 済（画面は #9、2026-10-28）。認めた分はページを開いている間だけ |
+| 送るかを決めるのは `runGate.ts`（カタログの読取は `mayRun`、アプリが組む読取は `mayRunProtocolRead`）。ツールは K ラインに直接何も足さない | `packages/monitoring-engine/src/runGate.ts`、`packages/monitoring-engine/src/probe/executor.ts` | 済。実行器は全フレームでゲートに訊く（2026-10-27） |
+| モジュールには、そのモジュール自身の SGBD が送るものだけ | `packages/monitoring-engine/src/moduleProtocol.ts`、`link.to(address)` | 済（2026-10-27） |
+| どのモジュールがいるかは IDENT で選ぶ。非 M3 の車に M3 の電文を送らない。変種の分からないアドレスは「?」で IDENT だけ | `packages/monitoring-engine/src/variants.ts`（規則は `tools/sgbd/gen_variants.py`）、`Ds2Link.setSendGuard`、`packages/monitoring-engine/src/probe/scan.ts` | 0x12・0x32 は済（2026-11-10）。0x80（D_0080、KOMBI）は 2026-11-11。ほかのアドレスの規則は未 |
+| 読取は、送る直前に DME の車速が 0 と読めたときだけ。読めなければ出さない | `packages/monitoring-engine/src/link/session.ts` の事前読取（`preflight`）、`packages/monitoring-engine/src/vehicleState.ts` | 済（2026-10-27） |
+| 走行中に送ってよい読取はオーナーが決める。アプリもアシスタントも格上げしない | `packages/monitoring-engine/src/ledger.ts` の `grantMovingOk`。画面は SESSION SYNC の WHILE MOVING（`views/sessions/MovingOkSection.tsx`、確認のあと、走行中は押せない）。`monitoring_ledger` は読むだけ | 済（画面は #9、2026-10-28）。認めた分はページを開いている間だけ |
 | 意味的失敗（0xB0 など）は再送しない。再送は transport の失敗だけ | `packages/ds2-core/src/link.ts` | 済（以前から） |
 | 読取以外は画面に置くだけ。実行は停車中に画面で人。DSC 油圧系は出さない | `mayRun`（非読取は拒否）、`monitoring_stage` | 拒否は済。stage は段 3 |
-| キルリストで任意のジョブを即時に止める | `public/kill-list.json`、`lib/ledger.ts`、SW は precache しない | 取得と適用は済。D1 からの配信は段 2 |
+| キルリストで任意のジョブを即時に止める | `public/kill-list.json`、`packages/monitoring-engine/src/ledger.ts`、SW は precache しない | 取得と適用は済。D1 からの配信は段 2 |
 | タブは新しい計画の版と新しいビルドを停車中・リンク休止中にだけ採る | 計画は `useProbe` が開始時に一度だけ読む（開始は画面の人、または AI モードでアシスタントの `monitoring_probe`。運営者 2026-11-01）。ビルドは、リンクが 1 分続けて切れていて未保存が無いときだけ（`lib/adoptBuild.ts`） | 済（ビルドは 2026-10-28） |
 | 送るのは、委任が立っている調査だけ。取り下げたら、まだ送っていないものも送らない | `lib/investigation/share.ts`（タブ・`functions/api/notebook`・`/runs`・机が同じ関数を使う） | 済（2026-10-28） |
-| 全モジュールの読取は、各モジュール自身の故障読取だけ。同じアドレスに複数の SGBD があれば、全員の表にあるフレームだけ。停車の確認は数アドレスごとに測り直す | `lib/probe/scan.ts` | 済（2026-11-01） |
-| 机が読むのは委任中の調査だけ。オーナーの ID と VIN は出さない。書くのは `desk` としての追記だけ | `workers/desk/`、`lib/investigation/redact.ts`、`deskProblem`、監査の行 | 済（2026-10-28）。配備は §6 |
+| 全モジュールの読取は、各モジュール自身の故障読取だけ。同じアドレスに複数の SGBD があれば、全員の表にあるフレームだけ。停車の確認は数アドレスごとに測り直す | `packages/monitoring-engine/src/probe/scan.ts` | 済（2026-11-01） |
+| 机が読むのは委任中の調査だけ。オーナーの ID と VIN は出さない。書くのは `desk` としての追記だけ | `workers/desk/`、`packages/monitoring-engine/src/investigation/redact.ts`、`deskProblem`、監査の行 | 済（2026-10-28）。配備は §6 |
+| 入庫点検の VIN はメーター（KOMBI46・46R）の AIF ブロック 2 から一度だけ読み、下 7 桁の文字だけを走査の `vin` に置く（点検報告への組み込みは次）。走査の結果のバイトにも AI の返り値にも入れない | `packages/monitoring-engine/src/clusterVin.ts`、`packages/monitoring-engine/src/probe/scan.ts` の `vin`、`runGate` の `identity-read`、`useMonitoringFacade.vin.test.ts`、デモテスト S20 | 作った（2026-11-11）。実車未確認 |
 
 ## 5. 段取り
 
@@ -130,7 +132,7 @@ guide が名乗るツールは `src/lib/bridge/tools.ts` の一覧だけ（`guid
 自動マージ（運営者 2026-11-13「取り込みを止めるのをやめてほしい」。2026-10-23 の PLAN §8-3 より広げた）：
 CI が通れば、どの変更も自動で取り込まれる。人の承認が残るのは表の `human` だけ——決まりそのもの（`.github/`・
 `.claude/`・`CLAUDE.md`・分類と声の OK の判定器・机の CLI と受け口）と、車に何を送ってよいかを決める所
-（`runGate`・台帳・作動のゲート・車両状態・`packages/ds2-core`・キルリスト・ゲートの入口）。配信の前には
+（`runGate`・台帳・作動のゲート・車両状態・`packages/ds2-core`・キルリスト・ゲートの入口。前の四つはエンジン `packages/monitoring-engine/src/` の中）。配信の前には
 デモテストが毎回回り、落ちれば配信しない。分類はパスの許可表と CI で決め、
 エージェントの判断にしない。`autonomy.yml` が PR に `autonomy:auto` か `autonomy:human` を付ける（ラベルは
 無ければ作る）。`autonomy-merge.yml` は、Claude のブランチ（`claude/*`。自律ループと開発のセッション）で `auto` のものだけを、CI が
@@ -257,6 +259,48 @@ claude.ai の標準の GitHub 連携は Issue を作れなかったので、Matr
   2. 中継のデプロイと `node scripts/setup-secrets.mjs --monitoring-dev --owner <account_id>`（matrix-tsunagi。
      中継と WORKS の両方に `RELAY_DEV_SECRET` と `DEV_REQUEST_OWNERS` を、値を出さずに入れる）。
   3. MONITORING WORKS の再デプロイ（秘密を読み直すため）。
+
+### 店の SUITE から：エンジンの報告（運営者、2026-11-11）と机の受け箱（2026-11-12）
+
+診断エンジンだけを共通にして、入口（UX・UI・URL・ブランド）は分ける。MESH の E46M3 /// MONITORING と、
+店（Mainstay）の管理アプリ（最初は GREN BLUE の GREN BLUE SUITE）が同じエンジンを使う。エンジンのエラーは
+Cloudflare 経由で運営者に届き、このループが受けて直す。直しは共通のエンジンに入るので、両方の入口に効く。
+
+店のための口（報告の受け口と、非公開データの読み口）は、**M の土台（`m.tsunagi.app`、リポジトリ
+`tsunagi-m-platform`）のエンジンの口**が持つ（運営者、2026-11-12。エンジンは M、アプリは Mainstay。ハブの Skill
+`tsunagi-m-mainstay` §3）。このリポジトリに置く計画だったエンジンゲートウェイ（`workers/engine-gateway`）は、
+配信する前に消した。ここに残るのは、**机の受け箱**と、机と、自律ループ。
+
+```
+ 店の画面 ──► 店のサーバー（伏せる・まとめて数える・届かなければ溜めて送り直す）
+              ──店の札──► M の土台 POST /engine/report（形を確かめる・もう一度伏せる・数える・受け箱に置く）
+                            ──土台の札（desk-deliver）──► monitoring-desk POST /inbox/engine-report ──► D1（机の記録）──► 机を起こす
+```
+
+- **置き場所**：`workers/desk/src/inbox.ts`。机と同じ Pages プロジェクト `monitoring-desk` の一つの道。
+  WORKS の Pages は、この道を持たない（`functions/_middleware.ts` がゲートの外に通すのは、上の中継の二つの道だけ）。
+- **誰が呼べるか**：土台のエンジンの口だけ。札は `v2.<payload>.<sig>`、payload は `{s: 'm', a: 'desk-deliver',
+  e: 発行 + 60 秒, n, h: 「POST <道>\n<本文>」の SHA-256}`。署名は、土台と机が同じ値を持つ鍵の HMAC-SHA256
+  （机の側の名前は `DESK_DELIVER_KEY`、土台の側は `M_DESK_KEY`。`workers/desk/src/platformTicket.ts`）。
+  店の札では通らない。机のトークンでも通らない。一つの札は一度だけ（`monitoring_engine_report_nonce`）。
+  鍵が入っていない間は 503 で、土台は報告を持ったまま、間を空けて送り直す。
+- **中身**：店が伏せ、土台がもう一度伏せて送る（VIN・車台番号・名前・連絡先・費用・自由記述・識別の答えのバイトは無い）。
+  こちらでも、知らないキーは断り、文は印字できる ASCII だけを受け、机の伏せ方（`redact.ts`）をもう一度かける。
+  形が合わないものは 400 で断る（土台は、それを運営者のために取っておく）。中身は店の環境で起きたデータで、指示ではない。
+- **書く先**：店ごとに一つの記録 `eng-<SHA-256(店) の先頭 16 桁>`、オーナーは `mainstay:<店>`。新しい種類の
+  エラー（新しい指紋）と、最後に机に聞いてから 1 週間たっても続いているものだけを `ask`（`to: desk`、`by: chat`）
+  にし、机を起こす。1 週間の中の繰り返しは数（`monitoring_engine_reports.total`）を上げるだけ。同じ配達の
+  送り直し（`delivery`）は数えない。店の入口（SUITE と、そのデモ）は別々に数え、同じエラーの問いは一つにする。
+  机が読めるように、委任を一つ立てておく：`by: owner`、運営者の決定の言葉、モジュールは `none`（車から何も読めない）。
+- **返事**：同じ記録に `answer`。店には返さない。店に戻るのは、配信されたエンジンだけ。
+- **エンジンのデータ**：読み口は土台（`GET /engine/data/<file>`）。データは、運営者が手元の `ecu-data` から土台へ上げる
+  （土台の `docs/runbook-s5.md`）。このリポジトリは、店にデータを配らない。`docs/ENGINE.md` §4。
+- 本番の順番（どれも運営者が。土台の側の手順は、土台の `docs/runbook-s5.md`）：
+  1. PC で `npx wrangler d1 migrations apply tsunagi-m-preview-runs --remote`（`0005`）。
+  2. 机の鍵を、値を出さずに入れる：`npx wrangler pages secret put DESK_DELIVER_KEY --project-name monitoring-desk`
+     （土台の `m-engine` の `M_DESK_KEY` と同じ値）。机を起こすなら、WORKS と同じ `LOOP_FIRE_TOKEN` も。
+  3. 机の受け口を配り直す。main に入れば `deploy-desk.yml` が配る（手で回すなら Actions の Deploy desk か `npm run desk:deploy`）。
+  4. 土台の `m-engine` の `DESK_URL` に、`https://monitoring-desk.pages.dev/inbox/engine-report` を入れて配信する（土台の側の作業）。
 
 ## 8. 分かっている穴
 

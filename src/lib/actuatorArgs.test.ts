@@ -2,9 +2,9 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildArgs, jobCallLine, missingArgs, planLines, visibleArgs } from './actuatorArgs';
-import type { EcuIndex, EcuProfile } from './ecuCatalog';
+import type { EcuIndex, EcuProfile } from '@tsunagi/monitoring-engine';
 import { execStyleOf } from './execStyle';
-import { hasStopControl, operationFor } from './jobOps';
+import { hasStopControl, operationFor } from '@tsunagi/monitoring-engine';
 
 const DATA = path.resolve(import.meta.dirname, '..', '..', 'public', 'ecu-data');
 const read = <T,>(f: string) => JSON.parse(readFileSync(path.join(DATA, f), 'utf-8')) as T;

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ReadRecord } from '@/lib/investigation/readRecord';
+import type { ReadRecord } from '@tsunagi/monitoring-engine';
 import type { FailureReport } from './errorRecords';
-import type { SavedSession } from './session';
+import type { SavedSession } from '@tsunagi/monitoring-engine';
 
 /**
  * Nothing leaves the device before the owner has acknowledged what the preview sends.

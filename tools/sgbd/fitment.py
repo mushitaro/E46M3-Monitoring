@@ -51,14 +51,8 @@ _PROTOCOL: dict[str, Fitment] = {
     #
     # 車が違うのではなく**話す言葉が違う**。DS2 のツールから届かない、が正確な理由で、
     # そちらのほうが強い——装備の推測を挟まずに済む。
-    "DSC_MK60": {
-        "addr": "0xB8", "ident": "B8 29 F1 02 1A 80", "provenance": "trace",
-        "reason_ja": "IDENT が KWP2000（6 バイト、0xB8 宛）。このアプリは DS2 しか話さないので届かない。"
-                     "SGBD 自身は E46 を名乗っている（MK60 DSC3）——車ではなくプロトコルが理由。",
-        "reason_en": "Its IDENT is KWP2000 — six bytes, addressed to 0xB8. This app speaks only DS2, so it "
-                     "cannot reach it. The SGBD does name the E46 (MK60 DSC3): the reason is the protocol, "
-                     "not the car.",
-    },
+    # DSC_MK60 はここにあった（KWP2000 で DS2 から届かない）。2026-11-10 に DS2 の回線の上の KWP2000 の形で
+    # 識別と故障を読むモジュール dsc_mk60 として載せたので、除外から外した（gen_ecu_data.py の MODULES）。
     # ECU ではない。ECU 文字列が自分でそう名乗っている:
     #     "Spezial SGBD nur zum flashen eines SG's"
     # ジョブも FLASH_PARAMETER_* / MOST_CAN_GATEWAY_* / ACCESS_TIMING_PARAMETER。
@@ -174,7 +168,31 @@ _UNRECORDED_GENERATION: dict[str, Fitment] = {
     },
 }
 
-NOT_FITTED: dict[str, Fitment] = {**_PROTOCOL, **_NOT_EQUIPPED, **_UNRECORDED_GENERATION}
+# ---------------------------------------------------------------------------
+#  4) 0x12 にいるが、グループファイルが選ばない
+# ---------------------------------------------------------------------------
+#  M3 でない E46 の DME を載せた（2026-11-11、gen_ecu_data.py の MODULES）。0x12 に何がいるかは IDENT の
+#  答えから D_0012 の選び方で決まり（variants.json。EdiabasLib に D_0012.grp そのものを走らせて食い違い 0）、
+#  アプリは選ばれた SGBD の電文だけを送る。D_0012 の選び方の表に名前が出てこない SGBD は、載せても
+#  決して選ばれず、何も送られない——だから載せない。
+_NOT_CHOSEN: dict[str, Fitment] = {
+    "MS420DS1": {
+        "addr": "0x12", "ident": "12 04 00", "instead": "ms420ds0", "provenance": "trace",
+        "reason_ja": "MS42（\"MS 42.0 fuer M52 mit EWS 3\"）の別版。D_0012 の選び方の表に無く、IDENT から"
+                     "選ばれることが無い（MS42 として選ばれるのは MS420DS0）。",
+        "reason_en": "Another version of the MS42 (\"MS 42.0 fuer M52 mit EWS 3\"). D_0012's tables never name it, "
+                     "so no IDENT answer selects it (an MS42 is selected as MS420DS0).",
+    },
+    "MS43_SP2": {
+        "addr": "0x12", "ident": "12 04 00", "instead": "ms430ds0", "provenance": "trace",
+        "reason_ja": "MS43 の特別版（\"MS 43.0 fuer M52 mit EWS 3\"、ジョブ 20 個）。D_0012 の選び方の表に無く、"
+                     "IDENT から選ばれることが無い（MS43 として選ばれるのは MS430DS0）。",
+        "reason_en": "A special MS43 SGBD (\"MS 43.0 fuer M52 mit EWS 3\", 20 jobs). D_0012's tables never name it, "
+                     "so no IDENT answer selects it (an MS43 is selected as MS430DS0).",
+    },
+}
+
+NOT_FITTED: dict[str, Fitment] = {**_PROTOCOL, **_NOT_EQUIPPED, **_UNRECORDED_GENERATION, **_NOT_CHOSEN}
 
 # 台帳にあるがモジュールでも ECU でもないファイル。`_addresses.json` と用語抽出の
 # 中間物（`_phrases_*.json` ほか）。`check_references.py` はこれらを ECU として

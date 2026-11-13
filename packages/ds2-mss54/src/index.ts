@@ -30,7 +30,7 @@ export {
     type LiveValueField,
     type DecodedValue,
     type ChannelId,
-} from './liveValues';
+} from './liveValues.ts';
 
 export {
     parseErrorMemoryEntries,
@@ -45,14 +45,14 @@ export {
     type ErrorMemoryQuickTest,
     type ErrorMemorySource,
     type EnvironmentSet,
-} from './errorMemory';
+} from './errorMemory.ts';
 
 export {
     IDENT_REQUEST,
     ERROR_MEMORY_QUICKTEST,
     ERROR_MEMORY_ENTRIES,
     SHADOW_MEMORY_ENTRIES,
-} from './requests';
+} from './requests.ts';
 
 // Adaptations are a separate export from live values on purpose — see the note
 // in adaptations.ts about why a lifetime misfire counter must not turn up in
@@ -70,4 +70,4 @@ export {
     type AdaptationDivergence,
     type DecodedAdaptation,
     type UnreadableAdaptationBlock,
-} from './adaptations';
+} from './adaptations.ts';

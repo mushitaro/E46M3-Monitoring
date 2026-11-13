@@ -24,7 +24,7 @@
  */
 
 import { decodeField, minPayloadLength, type FieldDef } from '@tsunagi/ds2-core';
-import { MSS54_ADAPTATION_BLOCKS, type AdaptationBlock } from './adaptationBlocks.generated';
+import { MSS54_ADAPTATION_BLOCKS, type AdaptationBlock } from './adaptationBlocks.generated.ts';
 
 export {
     MSS54_ADAPTATION_BLOCKS,
@@ -35,7 +35,7 @@ export {
     type AdaptationField,
     type AdaptationDivergence,
     type UnreadableAdaptationBlock,
-} from './adaptationBlocks.generated';
+} from './adaptationBlocks.generated.ts';
 
 export function adaptationBlockBySelection(selection: number): AdaptationBlock | undefined {
     return MSS54_ADAPTATION_BLOCKS.find((b) => b.selection === selection);

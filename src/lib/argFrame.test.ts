@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildArgFrame, checksum, encodingBlocker, parseByte } from './argFrame';
-import type { CatalogJob, EcuProfile } from './ecuCatalog';
-import type { Telegram, TelegramTable } from './telegrams';
+import type { CatalogJob, EcuProfile } from '@tsunagi/monitoring-engine';
+import type { Telegram, TelegramTable } from '@tsunagi/monitoring-engine';
 
 const DATA = path.resolve(import.meta.dirname, '..', '..', 'public', 'ecu-data');
 const read = <T,>(f: string) => JSON.parse(readFileSync(path.join(DATA, f), 'utf-8')) as T;

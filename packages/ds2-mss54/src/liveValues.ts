@@ -24,20 +24,20 @@ import {
     MSS54_LIVE_BLOCKS,
     type LiveValueBlock,
     type LiveValueField,
-} from './liveValueBlocks.generated';
+} from './liveValueBlocks.generated.ts';
 
 export {
     MSS54_LIVE_BLOCKS,
     MSS54_LIVE_COVERAGE,
     MSS54_LIVE_FIELD_COUNT,
     MSS54_LIVE_JOIN_REFUSALS,
-} from './liveValueBlocks.generated';
+} from './liveValueBlocks.generated.ts';
 export type {
     LiveJoinRefusal,
     LiveJoinSource,
     LiveValueBlock,
     LiveValueField,
-} from './liveValueBlocks.generated';
+} from './liveValueBlocks.generated.ts';
 
 /**
  * A channel is identified by BLOCK PLUS SYMBOL, not by symbol alone.

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { createDs2Transport, detectTransportKind, type TransportEnv } from './transportSelect';
-import { WebSerialTransport } from './transport';
-import { WebUsbFtdiTransport } from './webUsbFtdiTransport';
+import { createDs2Transport, detectTransportKind, type TransportEnv } from './transportSelect.ts';
+import { WebSerialTransport } from './transport.ts';
+import { WebUsbFtdiTransport } from './webUsbFtdiTransport.ts';
 
 const env = (over: Partial<TransportEnv> = {}): TransportEnv => ({
     search: '',

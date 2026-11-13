@@ -6,10 +6,10 @@ import { formatErrorCode, type ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
 import { DataList, DataRow, LABEL, Section, humanName } from '@/components/ui';
 import { normCode } from '@/lib/faultCode';
 import { useLang } from '@/lib/i18n';
-import { text as resolveText, type EcuIndex, type EcuProfile } from '@/lib/ecuCatalog';
-import type { ScanResult, ScanRun } from '@/lib/probe/scan';
-import type { SgbdFault } from '@/lib/sgbd/results';
-import type { RunBlockKey } from '@/lib/runGate';
+import { text as resolveText, type EcuIndex, type EcuProfile } from '@tsunagi/monitoring-engine';
+import type { ScanResult, ScanRun } from '@tsunagi/monitoring-engine';
+import type { SgbdFault } from '@tsunagi/monitoring-engine';
+import type { RunBlockKey } from '@tsunagi/monitoring-engine';
 import { Awaiting } from '@/views/shared/Awaiting';
 import { CountReadout } from '@/views/shared/CountReadout';
 
@@ -47,8 +47,16 @@ export function standing(
                     ? { word: t.scan_outcome.faults(n), tone: 'text-red-400', rank: 0, entries, sgbd }
                     : { word: t.scan_outcome.clean, tone: 'text-emerald-400', rank: 1, entries, sgbd };
             }
+            // Read where the module's own SGBD reads it (engine faultLayouts): said, and said unconfirmed.
+            if (r.faults) {
+                return r.faults.length > 0
+                    ? { word: t.scan_outcome.faultsUnverified(r.faults.length), tone: 'text-red-400', rank: 0, ...none }
+                    : { word: t.scan_outcome.cleanUnverified, tone: 'text-slate-400', rank: 2, ...none };
+            }
             return { word: t.scan_outcome.undecoded, tone: 'text-slate-400', rank: 2, ...none };
         }
+        case 'identified':
+            return { word: t.scan_outcome.identified, tone: 'text-slate-400', rank: 2, ...none };
         case 'rejected':
             return { word: t.scan_outcome.rejected, tone: 'text-amber-400', rank: 3, ...none };
         case 'refused':
@@ -174,6 +182,7 @@ function Opened({
                             {x.request} → {x.response || '—'}
                         </p>
                     ))}
+            {r.variant && r.variant.basis !== 'm3-fitment' && <p className="pl-[52px] font-mono text-[11px] text-slate-400">{t.scan_variant(r.variant.sgbd, r.variant.moduleId !== null)}</p>}
             {reason && <p className="pl-[52px] text-[11px] text-slate-500">{reason}</p>}
             {r.modules.length > 1 && <p className="pl-[52px] text-[11px] text-slate-500">{t.scan_shared}</p>}
         </>

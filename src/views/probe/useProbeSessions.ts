@@ -7,7 +7,7 @@ import { emptyBoard, move, toggle, type Board } from '@/lib/probe/board';
 import { getBoard, probeChanges, putBoard } from '@/lib/probe/boardStore';
 import { listRuns, type StoredRun } from '@/lib/probe/runStore';
 import { lineage, nextSession, probeSessions, type NextRefusal } from '@/lib/probe/sessions';
-import { appNow } from '@/lib/clock';
+import { appNow } from '@tsunagi/monitoring-engine';
 
 /**
  * PROBE's two tabs, as the page holds them: the sessions on the device (STARTUP), the one opened on

@@ -1,7 +1,7 @@
 import { gzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import type { NotebookEntry } from '../notebook/rules';
-import type { ReadRecord } from '../investigation/readRecord';
+import type { ReadRecord } from '@tsunagi/monitoring-engine';
 import { sqliteD1 } from '../testing/sqliteD1';
 import * as notebook from '../../../functions/api/notebook/index';
 import * as reads from '../../../functions/api/reads/index';

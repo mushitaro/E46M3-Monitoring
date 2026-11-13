@@ -5,7 +5,7 @@ import {
     minPayloadLength,
     readRaw,
     type FieldDef,
-} from './blockDecoder';
+} from './blockDecoder.ts';
 
 describe('byteLength', () => {
     it('sizes every format', () => {

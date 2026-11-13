@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { Ds2Address, Ds2Control, Ds2Status } from './frame';
-import { Ds2Link } from './link';
-import { simulatedPort } from './simulator';
-import { WebSerialTransport } from './transport';
+import { Ds2Address, Ds2Control, Ds2Status } from './frame.ts';
+import { Ds2Link } from './link.ts';
+import { simulatedPort } from './simulator.ts';
+import { WebSerialTransport } from './transport.ts';
 
 /**
  * One link, several modules on one wire.

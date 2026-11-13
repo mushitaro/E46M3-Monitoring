@@ -12,13 +12,13 @@ description: 'The desk side of E46M3 /// MONITORING (DS2 diagnosis of a BMW E46 
 | 何 | どこ |
 |---|---|
 | CO-WORK の規則（委任・計画・所見） | `src/lib/notebook/rules.ts` |
-| 計画の手順の形、RAM の窓 | `src/lib/probe/plan.ts` |
-| 全モジュールの故障の読み取り | `src/lib/probe/scan.ts` |
+| 計画の手順の形、RAM の窓 | `packages/monitoring-engine/src/probe/plan.ts` |
+| 全モジュールの故障の読み取り | `packages/monitoring-engine/src/probe/scan.ts` |
 | ランどうしの比較、一つの値の推移 | `src/lib/probe/compare.ts` |
-| タブの実行器、判定 | `src/lib/probe/executor.ts`、`criteria.ts` |
-| 送ってよいかの判断 | `src/lib/runGate.ts`（`mayRun`、`mayRunProtocolRead`） |
-| モジュールごとの送れるフレーム | `src/lib/moduleProtocol.ts` |
-| 台帳（停車中に答えた・走行中に読んでよい） | `src/lib/ledger.ts` |
+| タブの実行器、判定 | `packages/monitoring-engine/src/probe/executor.ts`、`criteria.ts` |
+| 送ってよいかの判断 | `packages/monitoring-engine/src/runGate.ts`（`mayRun`、`mayRunProtocolRead`） |
+| モジュールごとの送れるフレーム | `packages/monitoring-engine/src/moduleProtocol.ts` |
+| 台帳（停車中に答えた・走行中に読んでよい） | `packages/monitoring-engine/src/ledger.ts` |
 | ジョブのカタログ（BMW SGBD 由来） | `public/ecu-data/`（private の `E46M3-Monitoring-data` から置く） |
 | 任された調査（アカウントの写し） | `npm run desk -- list`・`pull <record>`・`run <record> <n>`（`workers/desk` を通す。オーナーの ID と VIN は出ない。取ったものは `desk-work/` に置き、コミットしない） |
 | 車 | Matrix MONITORING WORKS（`monitoring_*`）。TUNER の RAM の名前は `tuner_ram` |

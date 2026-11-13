@@ -11,8 +11,11 @@
  * in the name would be correct and unreadable. The log's own lines carry the
  * ISO timestamps, so the instant is not lost — it is just not in the filename.
  */
-import type { ChannelId } from '@tsunagi/ds2-mss54';
-import type { CommsLogLine, LiveSample } from '@/hooks/useDs2Link';
+import { logLine, type CommsLogLine } from '@tsunagi/monitoring-engine';
+
+// The text of both files is the engine's (logText.ts), so a saved session and a downloaded file
+// cannot disagree; what is here is handing a file to the person.
+export { datalogCsv, logLine } from '@tsunagi/monitoring-engine';
 
 export function download(content: string, type: string, filename: string) {
     const url = URL.createObjectURL(new Blob([content], { type }));
@@ -27,28 +30,6 @@ export function stamp() {
     const d = new Date();
     const p = (n: number) => String(n).padStart(2, '0');
     return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
-}
-
-/**
- * One comms-log line as text. Shared with the saved sessions and the error records
- * (`lib/sync/session.ts`), so an excerpt read from either looks exactly like the file.
- */
-export function logLine(l: CommsLogLine): string {
-    return `${new Date(l.t).toISOString()} ${l.kind.toUpperCase().padEnd(5)} ${l.text}`;
-}
-
-/**
- * A datalog run as CSV text — the file EXPORT CSV downloads and the text a saved session keeps.
- * One function, so the saved copy and the downloaded one cannot disagree about a column.
- *
- * Headings are channel ids — `3:n`, `35:n` — so a run that read both blocks has two distinct
- * columns instead of one column called `n` holding the last block read.
- */
-export function datalogCsv(channels: readonly ChannelId[], samples: readonly LiveSample[]): string {
-    return [
-        ['time_s', ...channels].join(','),
-        ...samples.map((s) => [s.time.toFixed(3), ...channels.map((k) => s.values[k] ?? '')].join(',')),
-    ].join('\r\n');
 }
 
 export function exportCommsLog(log: CommsLogLine[]) {

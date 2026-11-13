@@ -35,7 +35,7 @@
 
 import { humanName, type HumanName } from '@/components/ui';
 import { decodeCode, type CodedText, type Smg2Procedure, type Smg2Sequence } from '@/lib/smg2Workflows';
-import type { OpStep, WhyKey } from '@/lib/jobOps';
+import type { OpStep, WhyKey } from '@tsunagi/monitoring-engine';
 
 export type StepState =
     /** Not reached. */

@@ -9,7 +9,7 @@ import path from 'node:path';
  *
  * On a clone without the data (it lives in E46M3-Monitoring-data, docs/PRESERVED.md) they are left
  * out and the run says so, instead of failing with ENOENT for a reason that is about the machine
- * and not the code. Newer tests guard themselves per block through src/lib/testing/shipped.ts and
+ * and not the code. Newer tests guard themselves per block through packages/monitoring-engine/src/testing/shipped.ts and
  * are not affected. CI and cloud sessions place the data (.claude/hooks/session-start.sh), so there
  * every file runs.
  */
@@ -28,7 +28,9 @@ function testFilesNamingTheData(dir: string): string[] {
     return out;
 }
 
-const NEEDS_DATA = HAVE_DATA ? [] : testFilesNamingTheData(path.join(ROOT, 'src'));
+const NEEDS_DATA = HAVE_DATA
+    ? []
+    : [...testFilesNamingTheData(path.join(ROOT, 'src')), ...testFilesNamingTheData(path.join(ROOT, 'packages', 'monitoring-engine', 'src'))];
 if (NEEDS_DATA.length > 0) {
     console.warn(
         `[vitest] public/ecu-data is not here, so ${NEEDS_DATA.length} test file(s) that read it are skipped:\n  ` +
@@ -42,11 +44,15 @@ if (NEEDS_DATA.length > 0) {
 // other file in the repo is interpreted.
 export default defineConfig({
     resolve: {
-        alias: {
-            '@tsunagi/ds2-core': path.resolve(import.meta.dirname, 'packages/ds2-core/src/index.ts'),
-            '@tsunagi/ds2-mss54': path.resolve(import.meta.dirname, 'packages/ds2-mss54/src/index.ts'),
-            '@': path.resolve(import.meta.dirname, 'src'),
-        },
+        // An array, matched in order: the engine's subpaths (`/react`, `/testing/shipped`) must not
+        // be read as its index plus a suffix, which is what a plain prefix key would do.
+        alias: [
+            { find: /^@tsunagi\/monitoring-engine$/, replacement: path.resolve(import.meta.dirname, 'packages/monitoring-engine/src/index.ts') },
+            { find: /^@tsunagi\/monitoring-engine\/(.*)$/, replacement: path.resolve(import.meta.dirname, 'packages/monitoring-engine/src') + '/$1' },
+            { find: '@tsunagi/ds2-core', replacement: path.resolve(import.meta.dirname, 'packages/ds2-core/src/index.ts') },
+            { find: '@tsunagi/ds2-mss54', replacement: path.resolve(import.meta.dirname, 'packages/ds2-mss54/src/index.ts') },
+            { find: '@', replacement: path.resolve(import.meta.dirname, 'src') },
+        ],
     },
     test: {
         // The codec is pure and needs no DOM. Anything that does (hooks, the

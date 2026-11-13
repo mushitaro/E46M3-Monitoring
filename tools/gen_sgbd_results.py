@@ -8,7 +8,7 @@
 #  SGBD のジョブは、要求を送ったあと、答えのどのバイトがどの値か（`STAT_…_WERT`）、
 #  単位（`…_EINH`）、倍率を、自分のバイトコードで組み立てている。それを手で写さず、
 #  ジョブのコードそのもの（XOR 0xF7 を外したもの）を出して、アプリの小さな解釈器
-#  （`src/lib/sgbd/vm.ts`）がその場で走らせる。解釈器は実車の EdiabasLib トレースと
+#  （`packages/monitoring-engine/src/sgbd/vm.ts`）がその場で走らせる。解釈器は実車の EdiabasLib トレースと
 #  命令ごとに突き合わせてある（`vm.test.ts`）。
 #
 #  出すのは、ジョブの先頭から**届きうる**命令の範囲だけ（分岐をたどって、最後に届く
@@ -49,7 +49,7 @@ RESULT_JOBS = {
 
 # 故障メモリの読取（FS_LESEN）は下の all_jobs が、SGBD に FS_LESEN があるモジュール全部に足す。
 # 2026-11-13 の #56 は、アプリが送るページとジョブが同じ順で送るモジュールだけ（34）を載せていたが、
-# いまはジョブ自身が実車相手に読み取りを進める（src/lib/sgbd/faultRead.ts）ので、先に識別やログインを
+# いまはジョブ自身が実車相手に読み取りを進める（packages/monitoring-engine/src/sgbd/faultRead.ts）ので、先に識別やログインを
 # 送るもの（LWS5・MRS3/4・SM46）、件数 0 なら次を送らないもの（SPM46）、命令 0x7e（strcat）も読める。
 
 JUMPS = {0x0B, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x47, 0x48, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F}
@@ -140,7 +140,7 @@ def build(mid, sgbd, names):
 
 
 # Every module's own fault read (運営者 2026-11-13「全部読めるようにしろ」): FS_LESEN, run by the app on
-# the car through the gate (src/lib/sgbd/faultRead.ts) — the job sends the count first, then the
+# the car through the gate (packages/monitoring-engine/src/sgbd/faultRead.ts) — the job sends the count first, then the
 # entries it says there are, some with their IDENT or a login first. Not the MSS54 (it has its own
 # decoder) and not a KWP-on-DS2 module (lib/kwpOnDs2).
 FAULT_JOB = "FS_LESEN"

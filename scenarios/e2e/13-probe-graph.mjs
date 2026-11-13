@@ -9,7 +9,7 @@ const WORDS = 'VANOS が目標に付いてくるか、走りながら見せて';
 
 const scenario = {
     id: 'S13',
-    title: 'PROBE のグラフ：見る値と目標 → 大きな値・二本の線・状況の値 → 二枚目の窓に大きく',
+    title: 'PROBE のグラフ：見る値と目標 → 大きな値と目標・二本の線・状況の値 → 二枚目の窓に大きく → 差と最大・最小・平均を頼んで足す',
     story:
         '走りながら吸気 VANOS を見る計画で PROBE を回す。AI がボードに graph を置く（実角と目標角、状況に回転とスロットル、幅 ±2°）。' +
         'ボードには値と目標、「AI の決めた幅」、回転とスロットルが出て、二枚目の窓（VISU）には同じグラフが大きく出る。値は走っている間に動く。',
@@ -44,7 +44,7 @@ const scenario = {
                 replace: true,
             },
             means: 'AI がグラフを置く',
-            expect: (r) => (r && r.placed && r.placed.length === 1 && r.screen === 'probe' ? true : JSON.stringify(r)),
+            expect: (r) => (r && r.placed?.join() === 'p1' && r.screen === 'probe' ? true : JSON.stringify(r)),
         },
         { until: 'AI の決めた幅', means: 'ボードにグラフが出る' },
         { screen: { desc: 'ボード：見る値の名前、目標、幅の出所、状況の値', has: ['GRAPH', '吸気VANOS バンク1 実角', '目標', 'Δ', '±2 · AI の決めた幅', 'エンジン回転数', 'スロットルポテンショ1 実位置', 'LIVE'] } },
@@ -62,6 +62,16 @@ const scenario = {
         { ai: 'monitoring_display', args: { pane: 'visu' }, means: '二枚目の窓を出す', expect: () => true },
         { wait: 800 },
         { shot: 'graph' },
+        { say: '目標との差と、最大と最小と平均も横に出して' },
+        {
+            ai: 'monitoring_show',
+            args: { set: [{ id: 'p1', show: ['value', 'target', 'delta', 'max', 'min', 'mean'] }] },
+            means: '置いたグラフの大きな数字を変える（オーナー 2026-11-13：目標角を実角の隣に、差を大きく、最大・最小・平均は頼んだときだけ）',
+            expect: (r) => (r?.board?.[0]?.show?.join(',') === 'value,target,delta,max,min,mean' && r.placed.length === 0 ? true : JSON.stringify(r)),
+        },
+        { wait: 800 },
+        { screen: { desc: '二枚目の窓に、値・目標・差・最大・最小・平均が大きく並ぶ', has: ['値', '目標', 'Δ', '最大', '最小', '平均'] } },
+        { shot: 'graph-readouts' },
         { ai: 'monitoring_stop_log', args: { confirmed: true }, means: '止める（復唱のあと）', expect: (r) => (JSON.stringify(r).includes('probe') ? true : JSON.stringify(r)) },
         { wait: 1500 },
         { screen: { desc: '止めたあとは、その回の記録からグラフを描く（LIVE ではない）', has: ['吸気VANOS バンク1 実角', 'AI の決めた幅'], hasNot: ['LIVE'] } },

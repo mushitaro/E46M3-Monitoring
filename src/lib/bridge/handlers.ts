@@ -16,7 +16,7 @@
  * reach adds no new kind of frame: a scan is each module's own fault read, a module switch is the
  * screen's DISCONNECT and CONNECT, and a PROBE run sends reads through runGate.
  */
-import { boardLine, place, type Board } from '../probe/board';
+import { boardLine, place, setShow, type Board } from '../probe/board';
 import { compareRuns, trend } from '../probe/compare';
 import type { ProbeExchange } from '@tsunagi/monitoring-engine';
 import type { ProbeLive, StoredRun } from '../probe/runStore';
@@ -589,10 +589,13 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
             const r = await resolve(args.record);
             const parts = Array.isArray(args.parts) ? args.parts : [];
             const remove = Array.isArray(args.remove) ? args.remove.filter((x): x is string => typeof x === 'string') : [];
-            if (parts.length === 0 && remove.length === 0 && args.replace !== true) {
+            const set = Array.isArray(args.set) ? args.set : [];
+            if (parts.length === 0 && remove.length === 0 && set.length === 0 && args.replace !== true) {
                 throw new Error('parts is required: what to place on the board (monitoring_guide board).');
             }
-            const { board, placed } = place(await f.board(r.id), parts, { replace: args.replace === true, remove, now: f.now() });
+            // Changes first, to the parts already there; then what is placed, removed or replaced.
+            const before = set.length ? setShow(await f.board(r.id), set) : await f.board(r.id);
+            const { board, placed } = place(before, parts, { replace: args.replace === true, remove, now: f.now() });
             await f.putBoard(board);
             f.openSession(r.id);
             f.display('probe');

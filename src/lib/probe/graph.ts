@@ -7,6 +7,7 @@
  * own; the one number of the assistant's is the band, and the view says so.
  */
 import type { ProbeSample } from '@tsunagi/monitoring-engine';
+import type { Readout } from './board';
 
 export interface GraphSpec {
     /** The value to watch. */
@@ -71,4 +72,36 @@ export function graphOf(samples: readonly ProbeSample[], spec: GraphSpec, max = 
         tone,
         context,
     };
+}
+
+/** A number the graph draws large: which it is, and its value (null: not read yet). */
+export interface ReadoutValue {
+    kind: Readout;
+    value: number | null;
+}
+
+/**
+ * The numbers a graph draws large, in the order asked: the newest value and target and their
+ * difference from the window's last sample, and max, min and mean of the value since the run began
+ * (`stats`, the run's own spread — compare.channelStats). Never the assistant's numbers.
+ */
+export function readoutsOf(g: Pick<Graph, 'latest'>, stats: { min: number; max: number; mean: number } | undefined, show: readonly Readout[]): ReadoutValue[] {
+    const l = g.latest;
+    const of = (kind: Readout): number | null => {
+        switch (kind) {
+            case 'value':
+                return l?.value ?? null;
+            case 'target':
+                return l?.target ?? null;
+            case 'delta':
+                return l?.deviation ?? null;
+            case 'max':
+                return stats?.max ?? null;
+            case 'min':
+                return stats?.min ?? null;
+            case 'mean':
+                return stats?.mean ?? null;
+        }
+    };
+    return show.map((kind) => ({ kind, value: of(kind) }));
 }

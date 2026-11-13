@@ -29,7 +29,6 @@ import { bestTelegram, loadTelegrams } from '@/lib/telegrams';
 import { LAUNCHER_QUERY, deviceLabel, isHeadUnit, type DeviceKind } from '@/hooks/useAssistantBridge';
 import type { Datalog } from '@/views/datalog/useDatalog';
 import type { Sessions } from '@/views/sessions/useSessions';
-import type { UpdateHold } from '@/lib/adoptBuild';
 import { appNow } from '@/lib/clock';
 
 /**
@@ -96,8 +95,6 @@ export function useMonitoringFacade(input: {
     startScan: () => Promise<{ addresses: number } | string>;
     /** A newer build is downloaded; it is taken once the link has been down a minute (lib/adoptBuild). */
     updateWaiting: boolean;
-    /** What still holds the waiting build's swap (lib/adoptBuild `updateHold`); null when none waits. */
-    updateHeldBy: UpdateHold | null;
     /** DIAGNOSIS shows ALL MODULES (the last scan's list) rather than the module. */
     allModules: boolean;
     /** Bring the delegated investigations level with the account (hooks/useInvestigationSync). */
@@ -147,7 +144,7 @@ export function useMonitoringFacade(input: {
         return { module: ecuId, read: false, reason: 'Not read yet in this session.' };
     };
 
-    /** A scan, module by module: what answered, with the MSS54's codes decoded and the rest as bytes. */
+    /** A scan, module by module: what answered, the MSS54's codes decoded, the others read by their own SGBD's code where it can, and the bytes. */
     const describeScan = async (r: ScanRun) => {
         const mss54 = ecuId === 'mss54' && catalog ? catalog : await loadEcuCatalog('mss54').catch(() => null);
         // DSC MK60 (lib/kwpOnDs2): its codes with its own SGBD's text — an estimate, as on its screen.
@@ -170,10 +167,22 @@ export function useMonitoringFacade(input: {
                 outcome: x.outcome,
                 ...(x.reason ? { reason: en.runBlock[x.reason as RunBlockKey] ?? x.reason } : {}),
                 ...(x.decoded ? { faults: describeEntries(x.decoded as ErrorMemoryEntry[], mss54) } : {}),
+                // Read by the module's own SGBD FS_LESEN code (lib/sgbd/results): its entries and its texts.
+                ...(!x.decoded && x.sgbdFaults
+                    ? {
+                          sgbdRead: {
+                              sgbd: x.sgbdFaults.module,
+                              complete: x.sgbdFaults.stopped === null && x.sgbdFaults.status === 'OKAY',
+                              ...(x.sgbdFaults.stopped ? { stopped: x.sgbdFaults.stopped.reason } : {}),
+                              faults: x.sgbdFaults.faults.map((f) => ({ location: f.code, text: f.text, kinds: f.kinds, values: f.values })),
+                              note: "Read by the module's own SGBD fault-read code run in the app (the reading INPA gives); texts are the SGBD's own German. Not yet compared with INPA on this car.",
+                          },
+                      }
+                    : {}),
                 ...(x.kwpDtcs
                     ? { estimated: true, codes: kwpCodes(x.kwpDtcs), raw: x.exchanges, note: 'Codes read as ISO 14230 lays out a $58 answer; not yet confirmed on a MK60. The bytes are the answer.' }
                     : !x.decoded && x.exchanges.some((e) => e.response !== null)
-                      ? { raw: x.exchanges, note: 'No decoder for this module: the answer is kept as bytes.' }
+                      ? { raw: x.exchanges, ...(x.sgbdFaults ? {} : { note: 'No decoder for this module: the answer is kept as bytes.' }) }
                       : {}),
             })),
         };
@@ -208,21 +217,8 @@ export function useMonitoringFacade(input: {
                 : link.scan
                   ? { running: false, end: link.scan.end, at: new Date(link.scan.endedAt).toISOString(), counts: scanCounts(link.scan.results) }
                   : null,
-            // Said so the assistant can tell the driver: it is taken once the link is down a minute, nothing unsaved.
-            // The header shows it at every width with UPDATE; heldBy says what it still waits for.
+            // Said so the assistant can tell the driver: UPDATE is in the header, and it is taken by itself once the link is down a minute.
             newBuildWaiting: input.updateWaiting,
-            ...(input.updateWaiting
-                ? {
-                      newBuild: {
-                          heldBy: input.updateHeldBy,
-                          note: {
-                              link: 'Taken by itself a minute after the cable is let go (monitoring_disconnect), if nothing is unsaved. UPDATE on the header takes it now.',
-                              unsaved: 'Held: the screen holds an unsaved session, so it is NOT taken by itself. monitoring_save first (it then goes a minute later), or the driver presses UPDATE on the header.',
-                              minute: 'Taken by itself within a minute. UPDATE on the header takes it now.',
-                          }[input.updateHeldBy ?? 'link'],
-                      },
-                  }
-                : {}),
         }),
 
         faults: async (moduleId, fresh) => {

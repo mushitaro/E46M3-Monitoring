@@ -234,6 +234,54 @@ describe('scan run', () => {
     });
 });
 
+describe('scan: another module read by its own SGBD', () => {
+    const read = { faults: [{ code: 1, text: 'Wischer', kinds: ['sporadischer Fehler'], values: [] }], status: 'OKAY', stopped: null, provenance: 'sgbd-job' as const };
+
+    it('hands every page with the frame sent to the module’s own reading, and keeps the bytes beside it', async () => {
+        const { d } = deps();
+        const seen: string[][] = [];
+        const run = await runScan(scanTargets([P.mss54, P.kombi]), {
+            ...d,
+            decodeBySgbd: async (t, xs) => {
+                seen.push(xs.map((x) => x.request));
+                return { ...read, module: t.modules[0] };
+            },
+        });
+        // The MSS54 has its own decoder; only the cluster goes this way.
+        expect(seen).toEqual([['80 05 04 01 80']]);
+        const kombi = run.results.find((r) => r.address === '0x80')!;
+        expect(kombi.sgbdFaults).toEqual({ ...read, module: 'kombi46' });
+        expect(kombi.exchanges[0].response).toBe('01 02');
+        expect(run.results.find((r) => r.address === '0x12')!.sgbdFaults).toBeUndefined();
+    });
+
+    it('does not read an answer cut short, nor a refusal', async () => {
+        const { d } = deps({ answers: { 0x80: 'rejected' } });
+        let called = 0;
+        const run = await runScan(scanTargets([P.kombi]), {
+            ...d,
+            decodeBySgbd: async () => {
+                called++;
+                return null;
+            },
+        });
+        expect(called).toBe(0);
+        expect(run.results[0].sgbdFaults).toBeUndefined();
+    });
+
+    it('says the reading failed rather than losing the answer', async () => {
+        const { d } = deps();
+        const run = await runScan(scanTargets([P.kombi]), {
+            ...d,
+            decodeBySgbd: async () => {
+                throw new Error('no table');
+            },
+        });
+        expect(run.results[0].outcome).toBe('answered');
+        expect(run.results[0].reason).toBe('SGBD reading: no table');
+    });
+});
+
 describe('scan: the DSC MK60 (KWP-on-DS2)', () => {
     it('lists it with its own frames, apart from DS2\'s', () => {
         const mk60 = scanTargets([P.mss54, P.mk60]).find((t) => t.address === 0xb8)!;

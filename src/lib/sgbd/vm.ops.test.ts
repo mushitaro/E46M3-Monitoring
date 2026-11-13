@@ -100,3 +100,38 @@ describe('arguments and the send', () => {
         expect(value(r, 'BYTE')).toBe(0x2a);
     });
 });
+
+describe('a job that asks page by page, one result set per entry', () => {
+    // move S1, {32 05 04 0p} ; xsend S2, S1 ; clear L0 ; move B0, S2[#3] ; ergi NAME, I0
+    const page = (p: number, n: string) => [
+        0x00, 0x18, S1, ...str([0x32, 0x05, 0x04, p]),
+        0x2a, 0x11, S2, S1,
+        0x01, 0x40, L0, 0x00, 0x29, 0x00, S2, 3, 0, ...ergi(n, I0),
+    ];
+    const enewset = [0x40, 0x00];
+    const job = [...page(0, 'FIRST'), ...enewset, ...page(1, 'SECOND'), ...eoj];
+    const frame = (b: number[]) => Uint8Array.from([...b, b.reduce((x, y) => x ^ y, 0)]);
+    const sent0 = frame([0x32, 0x05, 0x04, 0x00]);
+    const sent1 = frame([0x32, 0x05, 0x04, 0x01]);
+    const answer = (d: number) => frame([0x32, 0x05, 0xa0, d]);
+
+    it('gives each send the answer the app got for it, in order, and opens a new set at enewset', () => {
+        const r = run(job, { exchanges: [{ sent: sent0, answer: answer(0x11) }, { sent: sent1, answer: answer(0x22) }] });
+        expect(r.stopped).toBeNull();
+        expect(r.results.map((x) => [x.name, (x.value as { value: number }).value, x.set])).toEqual([
+            ['FIRST', 0x11, 0],
+            ['SECOND', 0x22, 1],
+        ]);
+    });
+
+    it('stops at a send the app did not make, keeping what came before', () => {
+        const r = run(job, { exchanges: [{ sent: sent0, answer: answer(0x11) }] });
+        expect(r.results.map((x) => x.name)).toEqual(['FIRST']);
+        expect(r.stopped?.reason).toBe('a second send');
+    });
+
+    it('stops when a later page is not the one the app sent', () => {
+        const r = run(job, { exchanges: [{ sent: sent0, answer: answer(0x11) }, { sent: sent0, answer: answer(0x22) }] });
+        expect(r.stopped?.reason).toBe('the job would send 32 05 04 01, not 32 05 04 00');
+    });
+});

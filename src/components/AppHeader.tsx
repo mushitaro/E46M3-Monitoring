@@ -12,7 +12,6 @@ import { useLang } from '@/lib/i18n';
 import { PRIVACY_PREVIEW, REPOSITORY } from '@/lib/links';
 import { settingsDoorUrl, useSettingsDoor } from '@/lib/launcherDoors';
 import type { SignIn } from '@/lib/signInLapse';
-import type { UpdateHold } from '@/lib/adoptBuild';
 import type { LinkState, LinkMode } from '@/hooks/useDs2Link';
 
 /**
@@ -88,10 +87,10 @@ export function AppHeader({
     onCredits,
     onReload,
     reloading,
+    updateWaiting = false,
     assistant = null,
     signIn = 'ok',
     onReauth = null,
-    update = null,
 }: {
     ident: { hex: string; length: number } | null;
     state: LinkState;
@@ -102,6 +101,8 @@ export function AppHeader({
     /** Reloads into the newest build. The shell confirms first when something would be lost. */
     onReload: () => void;
     reloading: boolean;
+    /** A newer build is downloaded and waiting (WORKS). UPDATE is drawn at every width while it is. */
+    updateWaiting?: boolean;
     /** The assistant bridge, on a build that has one; its AI switch sits right of the badge. */
     assistant?: AssistantBridge | null;
     /** The sign-in, as the update check last heard it. Never anything but 'ok' in production. */
@@ -109,12 +110,6 @@ export function AppHeader({
     /** SIGN IN AGAIN, while it can be pressed; null while it cannot. The shell confirms first when
      *  something unsaved would be lost. */
     onReauth?: (() => void) | null;
-    /**
-     * WORKS: a newer build is downloaded and waiting, and what still holds its swap (lib/adoptBuild):
-     * `link` while the cable is connected, `unsaved` while the screen holds something unsaved,
-     * `minute` in the idle minute before it goes by itself. Null: none waits, or production.
-     */
-    update?: { heldBy: UpdateHold } | null;
 }) {
     const { lang, t } = useLang();
     // The preview sends what production never does, so it links to where that is written down —
@@ -170,7 +165,15 @@ export function AppHeader({
             </div>
 
             {signIn !== 'ok' && <SignInNotice signIn={signIn} onReauth={onReauth} />}
-            {signIn === 'ok' && update && <UpdateNotice heldBy={update.heldBy} onReload={onReload} reloading={reloading} />}
+
+            {/* A newer build waits: UPDATE at every width (owner, 2026-11-13: the head unit, 683px, never
+                showed RELOAD, and stayed on an old build). The build is also taken by itself once the
+                link has been down a minute. */}
+            {updateWaiting && (
+                <TextButton onClick={reloading ? undefined : onReload} Icon={RefreshCw} tone="primary" className="-my-3 ml-4 shrink-0 py-3">
+                    {reloading ? t.reload_running : t.update_now}
+                </TextButton>
+            )}
 
             {/* The family's group, as TUNER draws it (tsunagi-m-chrome §1): icons
                 only, 20px, 16px apart, neutral slate, the destination in `title`.
@@ -253,26 +256,6 @@ function SignInNotice({ signIn, onReauth }: { signIn: Exclude<SignIn, 'ok'>; onR
                     <span className={`[grid-area:1/1] ${signedOut} ${onReauth ? 'invisible' : ''}`}>{t.sync_signedOut}</span>
                 </span>
             )}
-        </div>
-    );
-}
-
-/**
- * A newer build is waiting (WORKS only). At every width, as the sign-in notice: the head unit is
- * 683px and the family's RELOAD is in the M menu there, where the owner never saw that one waited
- * (operator, 2026-11-13: the assistant said UPDATE would show, and nothing did). The sentence from
- * 600px says what still holds the swap; UPDATE takes it now, through RELOAD's own confirm when
- * something would be lost. Quiet: a tint, no motion.
- */
-function UpdateNotice({ heldBy, onReload, reloading }: { heldBy: UpdateHold; onReload: () => void; reloading: boolean }) {
-    const { t } = useLang();
-    return (
-        <div role="status" title={t.update_waiting_title} className="ml-4 flex shrink-0 items-center gap-3 min-[900px]:mr-6">
-            <span className="hidden max-w-[16rem] truncate text-[11px] text-blue-400 min-[600px]:block">{t.update_held[heldBy]}</span>
-            {/* `-my-3 py-3`, as the sign-in notice's: the head unit's finger gets the row's height. */}
-            <TextButton onClick={reloading ? undefined : onReload} Icon={RefreshCw} className="-my-3 py-3">
-                {reloading ? t.reload_running_short : t.update_take}
-            </TextButton>
         </div>
     );
 }

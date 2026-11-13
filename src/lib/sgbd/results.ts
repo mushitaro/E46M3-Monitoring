@@ -99,3 +99,64 @@ export function decodeRead(table: SgbdResultsTable | null, jobId: string, reques
     );
     return { ...foldResults(run.results), stopped: run.stopped, provenance: 'sgbd-job' };
 }
+
+/** One fault-memory entry as the module's own FS_LESEN reports it: one result set. */
+export interface SgbdFault {
+    /** `F_ORT_NR`: the fault location's number in the module's own table. */
+    code: number | null;
+    /** `F_ORT_TEXT`, the SGBD's (German) text for the location; null when the job gave none. */
+    text: string | null;
+    /** `F_ARTn_TEXT` that the job filled (dashes and empties left out): what kind of fault, as the SGBD says. */
+    kinds: string[];
+    /** Everything else the set carries (frequency, conditions, `F_HFK`, …), folded with units. */
+    values: ReadValue[];
+}
+
+export interface SgbdFaultRead {
+    faults: SgbdFault[];
+    /** The job's own verdict (`OKAY`, or why not). */
+    status: string | null;
+    /** Where the run stopped before its end: the entries read until then are kept, but the list may be short. */
+    stopped: { at: number; reason: string } | null;
+    provenance: 'sgbd-job';
+}
+
+const FAULT_KIND_TEXT = /^F_ART\d+_TEXT$/;
+
+/**
+ * A fault read, run through the module's own FS_LESEN: every page the app sent with the answer it
+ * got, in order. Each result set that names a fault location (`F_ORT_NR`) is one entry; the job's
+ * bookkeeping sets (the count, `JOB_STATUS`) are not. Null when the table has no code for the job.
+ */
+export function decodeFaultRead(
+    table: SgbdResultsTable | null,
+    exchanges: readonly { request: string; answer: Uint8Array }[],
+    jobId = 'FS_LESEN',
+): SgbdFaultRead | null {
+    const job = table?.jobs[jobId];
+    if (!table || !job || exchanges.length === 0) return null;
+    const run = runSgbdJob(
+        { code: fromBase64(job.code), base: job.base },
+        { exchanges: exchanges.map((x) => ({ sent: bytesOf(x.request), answer: x.answer })), tables: table.tables as SgbdTables },
+    );
+    const sets = new Map<number, SgbdResult[]>();
+    for (const r of run.results) sets.set(r.set, [...(sets.get(r.set) ?? []), r]);
+    const faults: SgbdFault[] = [];
+    let status: string | null = null;
+    for (const rs of sets.values()) {
+        const folded = foldResults(rs);
+        status = folded.status ?? status;
+        const at = (name: string) => folded.values.find((v) => v.name === name)?.value;
+        const code = at('F_ORT_NR');
+        if (code === undefined) continue;
+        faults.push({
+            code: typeof code === 'number' ? code : null,
+            text: typeof at('F_ORT_TEXT') === 'string' ? (at('F_ORT_TEXT') as string) : null,
+            kinds: folded.values
+                .filter((v) => FAULT_KIND_TEXT.test(v.name) && typeof v.value === 'string' && !/^-*$/.test(v.value.trim()))
+                .map((v) => v.value as string),
+            values: folded.values.filter((v) => v.name !== 'F_ORT_NR' && v.name !== 'F_ORT_TEXT' && !FAULT_KIND_TEXT.test(v.name)),
+        });
+    }
+    return { faults, status, stopped: run.stopped, provenance: 'sgbd-job' };
+}

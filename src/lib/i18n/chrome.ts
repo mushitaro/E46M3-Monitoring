@@ -19,6 +19,8 @@
  * rather than recognise.
  */
 export const CHROME = {
+    /** The header's button while a newer build waits (WORKS). */
+    update_now: 'UPDATE',
     // The product name's second half (tsunagi-m-release §3: <target> /// <function word>). The
     // function word is MONITORING — it is also the M ICON mark this app wears — and the tab that
     // reads fault memory keeps its own name, DIAGNOSIS, beside it.

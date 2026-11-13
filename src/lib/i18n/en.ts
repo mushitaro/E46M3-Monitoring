@@ -228,7 +228,7 @@ export const en: Localised = {
     scan_title: 'All modules',
     scan_note: (time) => `Read at ${time}`,
     scan_info:
-        "Each module is sent its own SGBD's fault read, one address after another, only while the DME shows the car standing still, measured again every few addresses. Where several SGBDs use one address, only the frames all of them carry are sent. Only the engine (MSS54) can be decoded; every other answer is shown as the bytes that came back. No answer means the equipment is not fitted, is asleep, or is not on this line.",
+        "Each module is sent its own SGBD's fault read, one address after another, only while the DME shows the car standing still, measured again every few addresses. Where several SGBDs use one address, only the frames all of them carry are sent. The engine (MSS54) is decoded by its own decoder; most other modules' answers are read by their own SGBD's fault-read code, the same reading INPA gives, and the location texts are the SGBD's own (German). An answer that cannot be read that way is shown as the bytes that came back. No answer means the equipment is not fitted, is asleep, or is not on this line.",
     scan_outcome: {
         faults: (n) => `${n} fault${n === 1 ? '' : 's'}`,
         clean: 'No faults',
@@ -239,6 +239,7 @@ export const en: Localised = {
         skipped: 'Not reached',
     },
     scan_shared: 'Which one is fitted is chosen on MODULE, then opened.',
+    scan_sgbdRead: (sgbd, done) => (done ? `Read by ${sgbd.toUpperCase()}'s own fault-read code; texts as the SGBD holds them.` : `${sgbd.toUpperCase()}'s own fault-read code did not read this answer to its end; the bytes are the answer.`),
     scan_progress: (d, n) => `Scanning ${d} / ${n}`,
     awaiting_scan: 'AWAITING SCAN…',
     viz_scanAnswered: 'modules answered',
@@ -717,14 +718,6 @@ export const en: Localised = {
     reload_running: 'Fetching the newest build — the app reopens into it when it is ready',
     signIn_lapsed: 'Signed out — updates cannot arrive',
     signIn_lapsed_title: 'Your sign-in has expired. Until you sign in again, new builds cannot reach this device.',
-    update_take: 'Update',
-    update_waiting_title: 'A newer build is downloaded. It is taken by itself a minute after the cable is let go, when nothing on the screen is unsaved. Update takes it now (asking first if something would be lost).',
-    update_held: {
-        link: 'New build waiting — goes after the cable is let go',
-        unsaved: 'New build waiting — save first, or press Update',
-        minute: 'New build waiting — taken in a minute',
-    },
-    reload_running_short: 'Updating…',
     signIn_clock: 'Clock is off — retries once it is right',
     signIn_clock_title:
         "Your sign-in has expired, but this device's clock is off, so it cannot sign in again yet. Once the clock is right, it tries again by itself.",

@@ -17,7 +17,7 @@ import { Overlaid } from '@/components/shell/Overlaid';
 import { LABEL, TextButton } from '@/components/ui';
 import { useActuatorArming } from '@/hooks/useActuatorArming';
 import { reloadForUpdate, useAppUpdate, useSignIn, useUpdateRunning } from '@/hooks/useAppUpdate';
-import { ADOPT_AFTER_DISCONNECTED_MS, shouldAdoptBuild, updateHold } from '@/lib/adoptBuild';
+import { ADOPT_AFTER_DISCONNECTED_MS, shouldAdoptBuild } from '@/lib/adoptBuild';
 import { REPASS_AFTER_DISCONNECTED_MS, lapseAction, markRepass, repassAllowed } from '@/lib/signInLapse';
 import { useDs2Link, type ParkedObservation } from '@/hooks/useDs2Link';
 import { useHub } from '@/hooks/useHub';
@@ -513,12 +513,12 @@ export default function Home() {
     const reloading = useUpdateRunning();
     const reload = useCallback(() => {
         if (reloading) return;
-        const loses =
-            link.state !== 'disconnected' ||
-            (sessionsEnabled ? sessions.unsaved : link.faults !== null || datalog.samples.length > 0);
+        // With the journal, what was read is already on the device as it happened (lib/sync/journalStore)
+        // and MEMORY shows it again after the reload: only an open link is lost then.
+        const loses = link.state !== 'disconnected' || (!sessionsEnabled && (link.faults !== null || datalog.samples.length > 0));
         if (loses && !window.confirm(t.reload_confirm)) return;
         void releaseThen(() => reloadForUpdate());
-    }, [reloading, link.state, link.faults, datalog.samples.length, sessionsEnabled, sessions.unsaved, t, releaseThen]);
+    }, [reloading, link.state, link.faults, datalog.samples.length, sessionsEnabled, t, releaseThen]);
 
     // The M menu (components/MobileMenu.tsx), below 900 only. `menuDrag` is where the press that
     // opened it landed, while it is still down: the sheet reads it to carry that press on into a
@@ -580,17 +580,17 @@ export default function Home() {
     // through the gate below for the same idle minute. The check after that trip finds the build again.
     const signIn = useSignIn();
     const updateWaiting = useAppUpdate(undefined, preview) && signIn === 'ok';
-    // What still holds it, on the header at every width and to the assistant (lib/adoptBuild).
-    const updateHeldBy = updateWaiting ? updateHold({ linkState: link.state, unsaved: sessions.unsaved }) : null;
     useEffect(() => {
-        if (!preview || !updateWaiting || link.state !== 'disconnected' || sessions.unsaved || reloading) return;
+        // Not held by an episode not kept: the journal wrote it as it happened, and MEMORY still has it
+        // after the reload. Held, the head unit sat on an old build for days (owner, 2026-11-13).
+        if (!preview || !updateWaiting || link.state !== 'disconnected' || (!sessionsEnabled && sessions.unsaved) || reloading) return;
         const since = Date.now();
         const t = setTimeout(() => {
             const go = shouldAdoptBuild({ waiting: true, linkState: 'disconnected', disconnectedSince: since, now: Date.now(), unsaved: false, updating: false });
             if (go) void reloadForUpdate();
         }, ADOPT_AFTER_DISCONNECTED_MS);
         return () => clearTimeout(t);
-    }, [preview, updateWaiting, link.state, sessions.unsaved, reloading]);
+    }, [preview, updateWaiting, link.state, sessionsEnabled, sessions.unsaved, reloading]);
 
     // The sign-in lapsed: WORKS goes through the gate again by itself when that costs nothing — the
     // idle minute the swap above waits for, a network, a clock the server agrees with, and no trip
@@ -624,7 +624,7 @@ export default function Home() {
     // until switched on on this device). The facade is what the tools may reach — the screen's own
     // controls, never a run.
     const buildId = useBuildId();
-    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, probeSessions, mode, tab, changeTab, showPane: setPane, selectJob, switchModule, startScan, updateWaiting, updateHeldBy, allModules: scopeAll, syncInvestigations, defaultDevice: t.assistant_defaultDevice });
+    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, probeSessions, mode, tab, changeTab, showPane: setPane, selectJob, switchModule, startScan, updateWaiting, allModules: scopeAll, syncInvestigations, defaultDevice: t.assistant_defaultDevice });
     // The end-to-end scenarios' door to the same tools (lib/e2e): a test build only.
     useE2EDoor(facade);
     const assistant = useAssistantBridge({
@@ -784,10 +784,10 @@ export default function Home() {
                 onCredits={() => setCreditsOpen(true)}
                 onReload={reload}
                 reloading={reloading}
+                updateWaiting={updateWaiting}
                 assistant={sessionsEnabled ? assistant : null}
                 signIn={preview ? signIn : 'ok'}
                 onReauth={canReauth ? startReauth : null}
-                update={preview && updateHeldBy ? { heldBy: updateHeldBy } : null}
             />
 
             {/* Below 900 a grid: MAIN and MULTI share one cell, HUB has the other (NARROW_GRID —

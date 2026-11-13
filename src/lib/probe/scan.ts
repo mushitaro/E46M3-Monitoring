@@ -31,6 +31,13 @@
  * back, and the refusal is told beside them rather than replacing them. What the first answer
  * means stays unread — there is no decoder — but it is the module's answer, and it is shown.
  *
+ * ## Another module's answer, read by its own SGBD
+ *
+ * When every frame came back, the answers go through the module's own FS_LESEN code
+ * (`decodeBySgbd`, lib/sgbd/results): the entries with the location and kind texts its SGBD holds,
+ * the same reading INPA gives. A module whose job does not send what the app sent, or that leaves
+ * the interpreter's subset, stays bytes, with where the reading stopped.
+ *
  * ## The DSC MK60 is in it
  *
  * The MK60's frames are KWP2000-shaped on the same line (lib/kwpOnDs2). The scan asks it too, and
@@ -44,7 +51,8 @@
  *     lost line from modules that are not fitted.
  *   - Retry. A module that does not answer is `silent` — likely not fitted, which is a fact about
  *     the car worth stating — and a refusal (`rejected`) is the module's answer, recorded as said.
- *   - Read meaning into bytes. Only the MSS54 has a decoder; every other answer is kept as bytes.
+ *   - Read meaning into bytes by any rule but the module's own: the MSS54's decoder, or the module's
+ *     own SGBD code. The bytes are kept beside either.
  *
  * Pure apart from its deps, so the rules hold in a test with a simulated K-line.
  */
@@ -54,6 +62,7 @@ import type { Ledger } from '../ledger';
 import type { ModuleProtocol, ProtocolFrame } from '../moduleProtocol';
 import { mayRunProtocolRead, type RunBlockKey } from '../runGate';
 import type { Motion } from '../vehicleState';
+import type { SgbdFaultRead } from '../sgbd/results';
 
 export interface ScanTarget {
     address: number;
@@ -63,7 +72,7 @@ export interface ScanTarget {
     frames: ProtocolFrame[];
     /** The IDENT every candidate's own table carries, sent before the read. Null: they differ or have none. */
     ident: ProtocolFrame | null;
-    /** The MSS54 alone is decoded. */
+    /** The MSS54's own decoder. Null: the module's own SGBD code reads it where it can (`decodeBySgbd`). */
     decoder: 'mss54' | null;
     /** A KWP-on-DS2 module (DSC MK60): its own fault-read frames. */
     kwp?: { faults: KwpFrame[] };
@@ -92,6 +101,11 @@ export interface ScanResult {
     reason?: string;
     /** The MSS54's decoded entries, as the decoder gives them. */
     decoded?: unknown;
+    /**
+     * Another module's answer read by its own SGBD's FS_LESEN (lib/sgbd/results), with the SGBD whose
+     * code read it. The bytes in `exchanges` stay the answer.
+     */
+    sgbdFaults?: SgbdFaultRead & { module: string };
     /** A KWP-on-DS2 answer read as ISO 14230 lays a $58 out (lib/kwpOnDs2): an estimate, the bytes stay the answer. */
     kwpDtcs?: KwpDtc[];
 }
@@ -116,6 +130,8 @@ export interface ScanDeps {
      */
     kwpExchange?(moduleId: string, job: string, f: KwpFrame): Promise<{ data: Uint8Array }>;
     decode?(target: ScanTarget, responses: Ds2Frame[]): unknown;
+    /** A module with no decoder of its own: its answers, each with the frame sent, read by its SGBD's own code. */
+    decodeBySgbd?(target: ScanTarget, exchanges: { request: string; frame: Ds2Frame }[]): Promise<(SgbdFaultRead & { module: string }) | null>;
     stopped(): boolean;
     pause(): Promise<void>;
     now(): number;
@@ -263,6 +279,14 @@ export async function runScan(targets: readonly ScanTarget[], deps: ScanDeps): P
                 result.decoded = deps.decode(t, frames);
             } catch (e) {
                 result.reason = `decoder: ${e instanceof Error ? e.message : String(e)}`;
+            }
+        }
+        if (outcome === 'answered' && frames.length === t.frames.length && !t.decoder && deps.decodeBySgbd) {
+            try {
+                const read = await deps.decodeBySgbd(t, t.frames.map((f, k) => ({ request: f.hex, frame: frames[k] })));
+                if (read) result.sgbdFaults = read;
+            } catch (e) {
+                result.reason = `SGBD reading: ${e instanceof Error ? e.message : String(e)}`;
             }
         }
         push(result);

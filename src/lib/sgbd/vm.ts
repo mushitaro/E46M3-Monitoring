@@ -16,8 +16,9 @@
  * the app sent — if not, it stops: the answer is not this job's — and hands the job the answer.
  *
  * It has no connection, no file access and no way to send anything: the send is the one instruction
- * it answers itself, once, with bytes the app already holds. Anything outside the subset (a second
- * send, a call, an instruction it does not model) stops the run, and the results reported until
+ * it answers itself, with bytes the app already holds — once per exchange the app made, each checked
+ * against the frame the job builds. Anything outside the subset (a send the app did not make, a call,
+ * an instruction it does not model) stops the run, and the results reported until
  * then are kept with the reason it stopped. A result the job did not reach is not invented.
  *
  * ## Where the semantics come from
@@ -39,6 +40,11 @@ export type ResultValue =
 export interface SgbdResult {
     name: string;
     value: ResultValue;
+    /**
+     * Which result set it went into: 0 until the job's first `enewset`, then one more for each. A
+     * fault read opens a set per entry, so the entries' names repeat and the set tells them apart.
+     */
+    set: number;
 }
 
 export interface SgbdJobCode {
@@ -67,7 +73,7 @@ const OP = {
     not: 0x0a, jump: 0x0b, jc: 0x0e, jae: 0x0f, jz: 0x10, jnz: 0x11, jmi: 0x14, jpl: 0x15, clrc: 0x16, setc: 0x17,
     asr: 0x18, lsl: 0x19, lsr: 0x1a, asl: 0x1b, nop: 0x1c, eoj: 0x1d, push: 0x1e, pop: 0x1f, scat: 0x21, slen: 0x23,
     serase: 0x25, xsend: 0x2a, ergb: 0x34, ergw: 0x35, ergd: 0x36, ergi: 0x37, ergr: 0x38, ergs: 0x39, a2flt: 0x3a,
-    fadd: 0x3b, fsub: 0x3c, fmul: 0x3d, fdiv: 0x3e, ergy: 0x3f, etag: 0x41, atsp: 0x50, jg: 0x5a, jge: 0x5b, jl: 0x5c,
+    fadd: 0x3b, fsub: 0x3c, fmul: 0x3d, fdiv: 0x3e, ergy: 0x3f, enewset: 0x40, etag: 0x41, atsp: 0x50, jg: 0x5a, jge: 0x5b, jl: 0x5c,
     jle: 0x5d, ja: 0x5e, jbe: 0x5f, parb: 0x55, parw: 0x56, parl: 0x57, pars: 0x58, a2fix: 0x67, fix2flt: 0x68, fix2hex: 0x79, fix2dez: 0x7a, tabset: 0x7b,
     tabseek: 0x7c, tabget: 0x7d, ergl: 0x82, strcmp: 0x8f,
 } as const;
@@ -122,6 +128,12 @@ export interface SgbdRunOptions {
     sent?: Uint8Array;
     /** The module's answer as it came off the line: address, length, status, data, checksum. Required with `sent`. */
     answer?: Uint8Array;
+    /**
+     * Every exchange the app made for the job, in order, when it sends more than once (a fault read
+     * asks page by page). Each send of the job is checked against the next one and gets its answer.
+     * Given, it stands in for `sent` and `answer`.
+     */
+    exchanges?: readonly { sent: Uint8Array; answer: Uint8Array }[];
     tables?: SgbdTables;
     /** The job's arguments, as EDIABAS takes them: strings, first argument first. */
     args?: readonly string[];
@@ -140,7 +152,9 @@ export function runSgbdJob(job: SgbdJobCode, opts: SgbdRunOptions): SgbdRun {
     const flags = { z: false, s: false, c: false, v: false };
     let table: readonly (readonly string[])[] | null = null;
     let row = -1;
-    let sent = false;
+    let set = 0;
+    const exchanges = opts.exchanges ?? (opts.sent ? [{ sent: opts.sent, answer: opts.answer }] : []);
+    let sends = 0;
     let request: Uint8Array | null = null;
     let pc = 0;
 
@@ -480,19 +494,26 @@ export function runSgbdJob(job: SgbdJobCode, opts: SgbdRunOptions): SgbdRun {
                 }
 
                 case OP.xsend: {
-                    if (sent) fail('a second send');
                     const req = readStr(b);
-                    request = req.slice();
-                    if (!opts.sent) return { results, request, stopped: null };
+                    if (sends === 0) request = req.slice();
+                    if (exchanges.length === 0) return { results, request, stopped: null };
+                    const x = exchanges[sends];
+                    if (!x) fail(sends === 1 ? 'a second send' : `send ${sends + 1}, which the app did not make`);
                     // The interface appends the checksum; the job's string carries none.
-                    const mine = opts.sent.slice(0, opts.sent.length - 1);
+                    const mine = x!.sent.slice(0, x!.sent.length - 1);
                     if (req.length !== mine.length || req.some((x, i) => x !== mine[i])) {
                         fail(`the job would send ${hex(req)}, not ${hex(mine)}`);
                     }
                     if (a.m !== 'reg' || a.r.t !== 'str') fail('a send into a non-string');
-                    if (!opts.answer) fail('a send with no answer');
-                    strings[(a as { r: { n: number } }).r.n] = opts.answer!.slice();
-                    sent = true;
+                    if (!x!.answer) fail('a send with no answer');
+                    strings[(a as { r: { n: number } }).r.n] = x!.answer!.slice();
+                    sends++;
+                    break;
+                }
+
+                case OP.enewset: {
+                    // The results from here on are the next set (EDIABAS: one set per fault entry).
+                    set++;
                     break;
                 }
 
@@ -534,17 +555,17 @@ export function runSgbdJob(job: SgbdJobCode, opts: SgbdRunOptions): SgbdRun {
                     const width = { byte: 1, word: 2, dword: 4, int: 2, long: 4 }[kind];
                     const raw = readNum(b, widthOf(b) ?? width);
                     const value = kind === 'int' || kind === 'long' ? signed(raw, width) : u(raw, width);
-                    results.push({ name: resultName(a), value: { kind, value } });
+                    results.push({ name: resultName(a), value: { kind, value }, set });
                     break;
                 }
                 case OP.ergr:
-                    results.push({ name: resultName(a), value: { kind: 'real', value: floats[fltOrFail(b)] } });
+                    results.push({ name: resultName(a), value: { kind: 'real', value: floats[fltOrFail(b)] }, set });
                     break;
                 case OP.ergs:
-                    results.push({ name: resultName(a), value: { kind: 'text', value: latin1(readStr(b)) } });
+                    results.push({ name: resultName(a), value: { kind: 'text', value: latin1(readStr(b)) }, set });
                     break;
                 case OP.ergy:
-                    results.push({ name: resultName(a), value: { kind: 'bytes', value: readStr(b).slice() } });
+                    results.push({ name: resultName(a), value: { kind: 'bytes', value: readStr(b).slice() }, set });
                     break;
 
                 case OP.fix2flt: {

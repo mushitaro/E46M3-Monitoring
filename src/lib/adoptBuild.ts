@@ -8,27 +8,15 @@
  *
  *   - a newer build is downloaded and waiting (hooks/useAppUpdate primes it);
  *   - the link has been down for a while, so a cable that blinks mid-drive does not count;
- *   - nothing on the screen is unsaved (MEMORY's own test of that);
+ *   - nothing on the screen is unsaved — in a build without the journal; with it (WORKS), what was read
+ *     is on the device as it happened and MEMORY shows it after the reload (owner, 2026-11-13: held by
+ *     an episode not kept, the head unit stayed on an old build for days);
  *   - no update is already running.
  *
  * Production never calls this: it makes no request of its own, so it never knows a build waits
  * (THIRD-PARTY-NOTICES.md §1). There a person presses RELOAD, as before.
  */
 export const ADOPT_AFTER_DISCONNECTED_MS = 60_000;
-
-/** What still holds a waiting build's swap, said on the screen and to the assistant. */
-export type UpdateHold = 'link' | 'unsaved' | 'minute';
-
-/**
- * Why a waiting build has not been taken yet: the cable is connected, something on the screen is
- * unsaved (it waits for MEMORY's save, for as long as that takes), or neither and the idle minute
- * is running. Before, only "waiting" was said, and with a fault read unsaved it waited forever while
- * the assistant told the driver it would go a minute after the cable was let go.
- */
-export function updateHold(s: { linkState: string; unsaved: boolean }): UpdateHold {
-    if (s.linkState !== 'disconnected') return 'link';
-    return s.unsaved ? 'unsaved' : 'minute';
-}
 
 export function shouldAdoptBuild(s: {
     waiting: boolean;

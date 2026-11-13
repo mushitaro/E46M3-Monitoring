@@ -756,6 +756,7 @@ export const en: Localised = {
     board_session: (date) => `Session of ${date}`,
     board_vizEmpty: 'Once a PROBE run starts, its values and graph appear here.',
     board_listEmpty: 'No parts yet. The assistant places what to watch here; once a PROBE run starts, its values appear.',
+    faults_jobRead: "Read by running this module's own SGBD fault-read job in the app. The text is the SGBD's.",
     board_noRun: 'This session has no run yet.',
     board_noRunN: (n) => `Run ${n} is not on this device.`,
     board_notRead: 'This module’s faults have not been read yet.',

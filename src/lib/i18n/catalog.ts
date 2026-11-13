@@ -350,6 +350,7 @@ export interface Localised {
     board_session: (date: string) => string;
     board_vizEmpty: string;
     board_listEmpty: string;
+    faults_jobRead: string;
     board_noRun: string;
     board_noRunN: (n: number) => string;
     board_notRead: string;

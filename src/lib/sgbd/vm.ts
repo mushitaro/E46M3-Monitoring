@@ -75,7 +75,7 @@ const OP = {
     serase: 0x25, xsend: 0x2a, ergb: 0x34, ergw: 0x35, ergd: 0x36, ergi: 0x37, ergr: 0x38, ergs: 0x39, a2flt: 0x3a,
     fadd: 0x3b, fsub: 0x3c, fmul: 0x3d, fdiv: 0x3e, ergy: 0x3f, enewset: 0x40, etag: 0x41, atsp: 0x50, jg: 0x5a, jge: 0x5b, jl: 0x5c,
     jle: 0x5d, ja: 0x5e, jbe: 0x5f, parb: 0x55, parw: 0x56, parl: 0x57, pars: 0x58, a2fix: 0x67, fix2flt: 0x68, fix2hex: 0x79, fix2dez: 0x7a, tabset: 0x7b,
-    tabseek: 0x7c, tabget: 0x7d, ergl: 0x82, strcmp: 0x8f,
+    tabseek: 0x7c, tabget: 0x7d, strcat: 0x7e, ergl: 0x82, strcmp: 0x8f,
 } as const;
 
 type Reg =
@@ -141,7 +141,12 @@ export interface SgbdRunOptions {
     onStep?: (address: number) => void;
 }
 
-export function runSgbdJob(job: SgbdJobCode, opts: SgbdRunOptions): SgbdRun {
+/**
+ * The interpreter, as a generator: each send yields the frame the job built (no checksum) and takes
+ * back the module's answer as it came off the line, or null to end a dry run there. `runSgbdJob`
+ * drives it for one recorded exchange; `runSgbdJobLive` for a read the job itself conducts.
+ */
+function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array, SgbdRun, Uint8Array | null> {
     const { code, base } = job;
     const tables = opts.tables ?? {};
     const bytes = new Uint8Array(16); // B0..BF, I0..I7 and L0..L3 overlay these, little-endian
@@ -152,10 +157,8 @@ export function runSgbdJob(job: SgbdJobCode, opts: SgbdRunOptions): SgbdRun {
     const flags = { z: false, s: false, c: false, v: false };
     let table: readonly (readonly string[])[] | null = null;
     let row = -1;
-    let set = 0;
-    const exchanges = opts.exchanges ?? (opts.sent ? [{ sent: opts.sent, answer: opts.answer }] : []);
-    let sends = 0;
     let request: Uint8Array | null = null;
+    let set = 0;
     let pc = 0;
 
     const getNum = (r: Extract<Reg, { t: 'num' }>) => {
@@ -495,25 +498,22 @@ export function runSgbdJob(job: SgbdJobCode, opts: SgbdRunOptions): SgbdRun {
 
                 case OP.xsend: {
                     const req = readStr(b);
-                    if (sends === 0) request = req.slice();
-                    if (exchanges.length === 0) return { results, request, stopped: null };
-                    const x = exchanges[sends];
-                    if (!x) fail(sends === 1 ? 'a second send' : `send ${sends + 1}, which the app did not make`);
-                    // The interface appends the checksum; the job's string carries none.
-                    const mine = x!.sent.slice(0, x!.sent.length - 1);
-                    if (req.length !== mine.length || req.some((x, i) => x !== mine[i])) {
-                        fail(`the job would send ${hex(req)}, not ${hex(mine)}`);
-                    }
+                    if (request === null) request = req.slice();
                     if (a.m !== 'reg' || a.r.t !== 'str') fail('a send into a non-string');
-                    if (!x!.answer) fail('a send with no answer');
-                    strings[(a as { r: { n: number } }).r.n] = x!.answer!.slice();
-                    sends++;
+                    const answer: Uint8Array | null = yield req.slice();
+                    if (answer === null) return { results, request, stopped: null };
+                    strings[(a as { r: { n: number } }).r.n] = answer.slice();
                     break;
                 }
-
-                case OP.enewset: {
+                case OP.enewset:
                     // The results from here on are the next set (EDIABAS: one set per fault entry).
                     set++;
+                    break;
+                case OP.strcat: {
+                    // Text joined as text: the first string up to its terminator, then the second, terminated.
+                    if (a.m !== 'reg' || a.r.t !== 'str') fail('strcat into a non-string');
+                    const n = (a as { r: { n: number } }).r.n;
+                    strings[n] = fromLatin1(latin1(strings[n]) + latin1(readStr(b)) + '\0');
                     break;
                 }
 
@@ -680,6 +680,81 @@ export function runSgbdJob(job: SgbdJobCode, opts: SgbdRunOptions): SgbdRun {
         throw e;
     }
     return { results, request, stopped: null };
+}
+
+
+/**
+ * One recorded exchange: the job is run from its first instruction, its send checked against the frame
+ * the app sent and answered with the module's answer. Without `sent`, a dry run: it stops at the first
+ * send and reports the frame the job built.
+ */
+export function runSgbdJob(job: SgbdJobCode, opts: SgbdRunOptions): SgbdRun {
+    const g = jobSteps(job, opts);
+    // The exchanges the app made, in order: one (`sent`, `answer`) or several (a fault read page by page).
+    const exchanges = opts.exchanges ?? (opts.sent ? [{ sent: opts.sent, answer: opts.answer! }] : []);
+    let r = g.next();
+    let sends = 0;
+    while (!r.done) {
+        const req = r.value;
+        if (exchanges.length === 0) {
+            // A dry run: the frame the job built is the answer.
+            r = g.next(null);
+            continue;
+        }
+        const x = exchanges[sends];
+        if (!x) {
+            r = g.throw(new Stop(sends === 1 ? 'a second send' : `send ${sends + 1}, which the app did not make`));
+            continue;
+        }
+        // The interface appends the checksum; the job's string carries none.
+        const mine = x.sent.slice(0, x.sent.length - 1);
+        if (req.length !== mine.length || req.some((v, i) => v !== mine[i])) r = g.throw(new Stop(`the job would send ${hex(req)}, not ${hex(mine)}`));
+        else if (!x.answer) r = g.throw(new Stop('a send with no answer'));
+        else {
+            sends++;
+            r = g.next(x.answer);
+        }
+    }
+    return r.value;
+}
+
+export interface SgbdLiveOptions extends Omit<SgbdRunOptions, 'sent' | 'answer'> {
+    /**
+     * Send one frame the job built (no checksum) and give back the module's answer as it came off the
+     * line. The caller is the gate: it refuses a frame that may not be sent by throwing, and the run
+     * ends there with that reason. A silent module throws too: EDIABAS ends the job on it.
+     */
+    exchange(request: Uint8Array): Promise<Uint8Array>;
+    /** At most this many sends; the run ends past it. FS_LESEN sends a handful. */
+    maxSends?: number;
+}
+
+/**
+ * A read the job conducts itself: every send goes out through `exchange`, and the job reads each
+ * answer and decides what to send next, as EDIABAS would run it — the fault count first, then the
+ * entries it says there are. The results are the job's own, set by set.
+ */
+export async function runSgbdJobLive(job: SgbdJobCode, opts: SgbdLiveOptions): Promise<SgbdRun & { exchanges: { request: Uint8Array; answer: Uint8Array | null }[] }> {
+    const g = jobSteps(job, opts);
+    const exchanges: { request: Uint8Array; answer: Uint8Array | null }[] = [];
+    const max = opts.maxSends ?? 16;
+    let r = g.next();
+    while (!r.done) {
+        const req = r.value;
+        if (exchanges.length >= max) {
+            r = g.throw(new Stop(`more than ${max} sends`));
+            continue;
+        }
+        try {
+            const answer = await opts.exchange(req);
+            exchanges.push({ request: req, answer });
+            r = g.next(answer);
+        } catch (e) {
+            exchanges.push({ request: req, answer: null });
+            r = g.throw(new Stop(e instanceof Error ? e.message : String(e)));
+        }
+    }
+    return { ...r.value, exchanges };
 }
 
 function hex(b: Uint8Array): string {

@@ -62,6 +62,7 @@ import { appNow } from '@/lib/clock';
 import { kwpExchange, parseDtcsByStatus, type KwpDtc, type KwpFrame } from '@/lib/kwpOnDs2';
 import { whyNotSendable } from '@/lib/actuationGate';
 import { answerFrame, decodeFaultRead, decodeRead, loadSgbdResults, type DecodedRead, type SgbdFaultRead } from '@/lib/sgbd/results';
+import { hasFaultJob, readFaultsByJob, type JobFaultRead } from '@/lib/sgbd/faultRead';
 import { moduleLogGate, moduleLogValues, type ModuleLogRead } from '@/lib/sgbd/logChannels';
 import type { ReadRecord } from '@/lib/investigation/readRecord';
 import type { ModuleProtocol } from '@/lib/moduleProtocol';
@@ -192,6 +193,8 @@ export interface RawFaultRead {
     source: string;
     /** A KWP-on-DS2 `$58` answer read as ISO 14230 lays it out (lib/kwpOnDs2); not yet confirmed on a MK60. */
     kwpDtcs?: KwpDtc[];
+    /** On the first row of a read the module's own FS_LESEN conducted (lib/sgbd/faultRead): what it found, with its text. */
+    jobFaults?: SgbdFaultRead;
 }
 
 /**
@@ -785,6 +788,43 @@ export function useDs2Link(options: {
         [append, clearError, failWith, notifyFailure],
     );
 
+    /**
+     * An address's fault memory read by its module's own FS_LESEN (lib/sgbd/faultRead; operator
+     * 2026-11-13): the job sends what its SGBD sends, answer by answer, each frame through the gate.
+     * Candidates are tried in turn while one refuses; a silent address is not asked again. Null: no
+     * candidate carries the job.
+     */
+    const jobFaultRead = useCallback(
+        async (link: Ds2Link, address: number, modules: readonly string[]): Promise<{ module: string; read: JobFaultRead } | null> => {
+            let last: { module: string; read: JobFaultRead } | null = null;
+            for (const m of modules) {
+                const table = await loadSgbdResults(m);
+                if (!table || !hasFaultJob(table)) continue;
+                const read = await readFaultsByJob(
+                    table,
+                    m,
+                    address,
+                    async (control, payload) => {
+                        try {
+                            const f = await readFrame(link.to(address), m, 'FS_LESEN', control, payload, modeRef.current === 'practice' ? { attempts: 1, timeoutMs: 400 } : { attempts: 1 });
+                            return answerFrame(f.address, f.controlOrStatus, f.payload);
+                        } catch (e) {
+                            // A refusal is an answer the job reads (its status byte), as EDIABAS hands it over.
+                            const status = isDs2Error(e) && e.code === 'NEGATIVE_RESPONSE' ? (e.detail as { status?: unknown } | undefined)?.status : undefined;
+                            if (typeof status === 'number') return answerFrame(address, status, new Uint8Array(0));
+                            throw e;
+                        }
+                    },
+                    (e) => isDs2Error(e) && e.kind === 'timeout',
+                );
+                last = { module: m, read };
+                if (read.outcome === 'answered' || read.outcome === 'silent') break;
+            }
+            return last;
+        },
+        [readFrame],
+    );
+
     // The identity and the fault memory are read while the car moves too (operator, 2026-11-04;
     // lib/runGate `fault-read`). A caller that holds a ledger verdict passes its `requires`.
     const readIdent = useCallback(
@@ -831,11 +871,26 @@ export function useDs2Link(options: {
                     setRawFaults(out);
                     return out;
                 }
-                if (target.decoder !== 'mss54' && target.faults.length === 0) {
-                    refuse(`${target.moduleId}: its SGBD carries no short fault-read frame; nothing is sent.`);
-                }
                 await preflight(link, 'Fault read', requires);
                 if (target.decoder !== 'mss54') {
+                    // The module's own FS_LESEN, where its SGBD has one (lib/sgbd/faultRead).
+                    const jr = await jobFaultRead(link, target.address, [target.moduleId]);
+                    if (jr) {
+                        const { read } = jr;
+                        append(read.outcome === 'answered' ? 'rx' : 'warn', `FS_LESEN (${target.moduleId}'s own job): ${read.outcome}, ${read.read.faults.length} entr${read.read.faults.length === 1 ? 'y' : 'ies'}${read.reason ? ` — ${read.reason}` : ''}`);
+                        if (read.outcome !== 'answered') throw new Error(`Fault read: ${read.outcome}${read.reason ? ` — ${read.reason}` : ''}`);
+                        const out: RawFaultRead[] = read.exchanges.map((x, i) => ({
+                            request: x.request,
+                            response: x.response ?? '',
+                            source: 'FS_LESEN (the SGBD job, run here)',
+                            ...(i === 0 && read.read.status === 'OKAY' ? { jobFaults: read.read } : {}),
+                        }));
+                        setFaults(null);
+                        setQuickTest(null);
+                        setRawFaults(out);
+                        return out;
+                    }
+                    if (target.faults.length === 0) refuse(`${target.moduleId}: its SGBD carries no short fault-read frame; nothing is sent.`);
                     // No decoder: send the module's own FS_LESEN frames and keep what came back.
                     const out: RawFaultRead[] = [];
                     for (const f of target.faults) {
@@ -872,7 +927,7 @@ export function useDs2Link(options: {
                 setFaults(entries);
                 return entries;
             }),
-        [append, kwpRead, preflight, readFrame, run, session],
+        [append, jobFaultRead, kwpRead, preflight, readFrame, run, session],
     );
 
     /**
@@ -1276,6 +1331,8 @@ export function useDs2Link(options: {
                             readFrame(link.to(address), moduleId, job, f.control, f.payload, modeRef.current === 'practice' ? { ...options, timeoutMs: 400 } : options),
                         // The DSC MK60: the screen's own read, which measures parked before it sends.
                         kwpExchange: (moduleId, job, f) => kwpRead(link, moduleId, job, f),
+                        // Every other module: its own FS_LESEN, run here (lib/sgbd/faultRead).
+                        jobRead: (t) => jobFaultRead(link, t.address, t.modules),
                         // The MSS54 alone: its entries are the frame whose argument is 01.
                         decode: (t, frames) => {
                             const i = t.frames.findIndex((f) => f.payload[0] === 0x01);
@@ -1311,7 +1368,8 @@ export function useDs2Link(options: {
                             // A KWP answer is not a ledger fact here, as it is not on the module's own screen.
                             if (targets.some((t) => t.kwp && t.modules[0] === r.modules[0])) continue;
                             for (const x of r.exchanges) {
-                                if (x.response === null) continue;
+                                // A login or an identity the job sent first is not this module's fault read.
+                                if (x.response === null || x.refused || x.request.split(' ')[2] !== '04') continue;
                                 try {
                                     onObservedRef.current?.({ moduleId: r.modules[0], jobId: 'FS_LESEN', telegram: x.request, response: x.response, at: new Date().toISOString(), ecuIdent: identRef.current?.hex });
                                 } catch {
@@ -1355,7 +1413,7 @@ export function useDs2Link(options: {
                     setScanProgress(null);
                 }
             }),
-        [append, kwpRead, measureMotion, readFrame, run],
+        [append, jobFaultRead, kwpRead, measureMotion, readFrame, run],
     );
 
     /**

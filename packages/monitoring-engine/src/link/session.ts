@@ -1472,9 +1472,10 @@ export class LinkSession {
             }
             const run = await runProbe(plan, {
                 ...deps,
-                // The run reads the speed block every cycle (executor `SPEED_CHANNELS`): the car's
-                // state is kept from it, as a recording keeps it, so the status and the read
-                // records say how fast the car is while a plan runs (2026-11-09: null all drive).
+                // The run reads the speed block when a cycle decides on it and at least every
+                // `SPEED_REFRESH_MS` (executor): the car's state is kept from it, as a recording keeps
+                // it, so the status and the read records say how fast the car is while a plan runs
+                // (2026-11-09: null all drive).
                 onSample: (sample) => {
                     this.noteVehicle(sample.values);
                     deps.onSample?.(sample);

@@ -148,6 +148,54 @@ describe('a moving car', () => {
     });
 });
 
+describe('the sample rate (operator, 2026-11-13: TUNER reads one block at about 4 Hz; PROBE must too)', () => {
+    const blocksSent = (h: Awaited<ReturnType<typeof harness>>, selection: number) =>
+        h.bus.at(0x12)!.trace.filter((e) => e.bytes[2] === 0x0b && e.bytes[3] === selection).length;
+
+    it('reads one block a sample when nothing waits on the speed, and the speed only as often as it is due', async () => {
+        const h = await harness({ speed: () => 40 }, 30);
+        const run = await runProbe(plan([{ n: 1, do: 'rpm', kind: 'sample', channels: ['3:n'] }]), h.deps);
+        const block3 = blocksSent(h, 3);
+        const block19 = blocksSent(h, 19);
+        expect(run.samples.length).toBeGreaterThanOrEqual(29);
+        expect(block3).toBe(run.samples.length);
+        // The first cycle and then once per SPEED_REFRESH_MS of the test's clock: far fewer than one a sample.
+        expect(block19).toBeGreaterThan(1);
+        expect(block19).toBeLessThan(block3 / 2);
+        // A cycle that read the speed carries it; the others say nothing about it rather than repeat it.
+        expect(run.samples.filter((x) => x.values['19:v'] === 40)).toHaveLength(block19);
+    });
+
+    it('reads the speed every cycle while a one-shot step is still pending, and stops once it settles', async () => {
+        let speed = 30;
+        const h = await harness({ speed: () => speed }, 30);
+        const run = await runProbe(plan([FAULTS_PARKED, { n: 2, do: 'rpm', kind: 'sample', channels: ['3:n'] }]), {
+            ...h.deps,
+            pause: async () => {
+                if (h.cyclesRun() === 8) speed = 0;
+                await h.deps.pause();
+            },
+        });
+        expect(run.steps[0].state).toBe('done');
+        const trace = h.bus.at(0x12)!.trace.filter((e) => e.bytes[2] === 0x0b).map((e) => e.bytes[3]);
+        // Until the parked-only read went, each block 3 had a block 19 beside it.
+        const firstFault = run.exchanges.find((e) => e.what === 'FS_LESEN')!;
+        expect(firstFault.motion).toBe('parked');
+        const beforeStop = trace.slice(0, 16);
+        expect(beforeStop.filter((x) => x === 19)).toHaveLength(8);
+        // After it, the speed is read only when due.
+        const after = trace.slice(20);
+        expect(after.filter((x) => x === 19).length).toBeLessThan(after.filter((x) => x === 3).length / 2);
+    });
+
+    it('reads the speed every cycle when the plan itself samples it', async () => {
+        const h = await harness({ speed: () => 40 }, 12);
+        const run = await runProbe(plan([{ n: 1, do: 'speed and rpm', kind: 'sample', channels: ['3:n', '19:v'] }]), h.deps);
+        expect(blocksSent(h, 19)).toBe(run.samples.length);
+        expect(run.samples.every((x) => x.values['19:v'] === 40)).toBe(true);
+    });
+});
+
 describe('an unknown speed is not a stopped car', () => {
     it('keeps a parked-only step waiting when the DME will not give the speed', async () => {
         const h = await harness({ speed: () => 0, noSpeed: true }, 8);

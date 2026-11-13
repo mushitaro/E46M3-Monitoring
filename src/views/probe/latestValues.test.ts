@@ -13,4 +13,14 @@ describe('latestValues', () => {
         expect(m.get('rpm')).toBe(3000);
         expect(m.get('v')).toBe(13.3);
     });
+
+    it('follows a run in progress as its samples grow in place', () => {
+        const samples: Array<{ t: number; values: Record<string, number | null> }> = [{ t: 0, values: { rpm: 800 } }];
+        expect(latestValues({ samples }).get('rpm')).toBe(800);
+        samples.push({ t: 1, values: { rpm: 1200, v: 13.9 } });
+        const m = latestValues({ samples });
+        expect([m.get('rpm'), m.get('v')]).toEqual([1200, 13.9]);
+        samples.push({ t: 2, values: { rpm: null } });
+        expect(latestValues({ samples }).get('rpm')).toBe(1200);
+    });
 });

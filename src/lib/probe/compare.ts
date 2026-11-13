@@ -79,10 +79,25 @@ export function runRef(r: Run): RunRef {
     };
 }
 
+/**
+ * Running sums per sample list, kept so a run in progress is not summed again from its first sample
+ * on every new one: the board redraws once a sample, and on the head unit a full pass over a long
+ * run's every value was the time the next exchange waited for (operator, 2026-11-13: the rate fell
+ * as the board was drawn). A run's samples only ever grow at the end, so the sums carry on from
+ * where they stopped; a list that shrank is summed afresh.
+ */
+type Acc = Map<string, { n: number; sum: number; min: number; max: number }>;
+const running = new WeakMap<readonly ProbeRun['samples'][number][], { seen: number; acc: Acc }>();
+
 export function channelStats(r: Pick<ProbeRun, 'samples'>): Map<string, ChannelStats> {
-    const acc = new Map<string, { n: number; sum: number; min: number; max: number }>();
-    for (const s of r.samples) {
-        for (const [k, v] of Object.entries(s.values)) {
+    let memo = running.get(r.samples);
+    if (!memo || memo.seen > r.samples.length) {
+        memo = { seen: 0, acc: new Map() };
+        running.set(r.samples, memo);
+    }
+    const acc = memo.acc;
+    for (let i = memo.seen; i < r.samples.length; i++) {
+        for (const [k, v] of Object.entries(r.samples[i].values)) {
             if (typeof v !== 'number' || !Number.isFinite(v)) continue;
             const x = acc.get(k) ?? { n: 0, sum: 0, min: Infinity, max: -Infinity };
             x.n++;
@@ -92,6 +107,7 @@ export function channelStats(r: Pick<ProbeRun, 'samples'>): Map<string, ChannelS
             acc.set(k, x);
         }
     }
+    memo.seen = r.samples.length;
     const out = new Map<string, ChannelStats>();
     for (const [k, x] of acc) out.set(k, { n: x.n, mean: round(x.sum / x.n), min: round(x.min), max: round(x.max) });
     return out;

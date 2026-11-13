@@ -133,8 +133,10 @@ for (const file of files) {
                 record({ who: 'AI', what: `${step.ai}(${short(step.args ?? {})})`, expect: step.means ?? '', got: result.error ? `error: ${result.error}` : short(result.r), ok: verdict === true, why: verdict === true ? '' : verdict });
                 if (step.keep) step.keep(result.r, scenario.state ??= {});
             } else if (step.ui) {
-                const what = step.ui === 'practice' ? 'PRACTICE' : step.ui === 'tab' ? `タブ ${step.name}` : `押す ${step.text ?? step.role ?? step.selector}`;
-                if (step.ui === 'practice') await page.locator('label:has-text("PRACTICE")').first().click();
+                const what = step.ui === 'practice' ? 'PRACTICE' : step.ui === 'tab' ? `タブ ${step.name}` : step.ui === 'module' ? `モジュール ${step.value}` : `押す ${step.text ?? step.role ?? step.selector}`;
+                // The header's module select, as an owner picks a module on it.
+                if (step.ui === 'module') await page.locator(`select:has(option[value="${step.value}"])`).first().selectOption(step.value);
+                else if (step.ui === 'practice') await page.locator('label:has-text("PRACTICE")').first().click();
                 else if (step.ui === 'tab') await page.locator(`[role=tab]:has-text("${step.name}")`).first().click();
                 else if (step.selector) await page.locator(step.selector).first().click();
                 else if (step.role) await page.getByRole('button', { name: step.role, exact: true }).nth(step.nth ?? 0).click();

@@ -6,10 +6,20 @@ const scenario = {
     id: 'S01',
     title: 'MANUAL：故障を読み、記録し、後から MEMORY で残す',
     story:
-        'オーナーがナビで MONITORING を開く。PRACTICE（模擬の E46 M3）につなぎ、DME の故障を読み、データログを 3 秒取って切断する。' +
+        'オーナーがナビで MONITORING を開く。起動直後のモジュールは ALL MODULES（運営者 2026-11-13）なので、DME（MSS54）を選ぶ。PRACTICE（模擬の E46 M3）につなぎ、DME の故障を読み、データログを 3 秒取って切断する。' +
         'あとで MEMORY を開くと、その接続が「まだ残していない」に並んでいる。SAVE で残し、読み込み直しても消えていないことを確かめる。',
     steps: [
         { screen: { desc: '起動直後：タブの並びとハブ', has: ['DIAGNOSIS', 'DATALOG', 'MEMORY', 'CONNECT'] } },
+        {
+            check: {
+                desc: '起動直後のモジュールは ALL MODULES（運営者 2026-11-13）',
+                run: async (page) => {
+                    const r = await page.evaluate(() => window.__monitoringE2E.tool('monitoring_status', {}));
+                    return r.showing === 'all-modules' ? true : `showing ${r.showing}`;
+                },
+            },
+        },
+        { ui: 'module', value: 'mss54', means: 'DME（MSS54）を選ぶ' },
         { ui: 'practice', means: 'PRACTICE に印が付く' },
         { ui: 'click', text: 'CONNECT', settle: 2000, means: '模擬の車につながる' },
         { screen: { desc: 'つながった', has: ['DISCONNECT', 'READ'] } },

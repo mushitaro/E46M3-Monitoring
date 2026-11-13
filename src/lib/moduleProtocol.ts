@@ -136,3 +136,10 @@ export const hasIdent = (p: ModuleProtocol): boolean => p.ident !== null || !!p.
 
 /** Whether the app has a fault-read frame for this module, DS2 or KWP-on-DS2. */
 export const hasFaultRead = (p: ModuleProtocol): boolean => p.faults.length > 0 || (p.kwp?.faults.length ?? 0) > 0;
+
+/**
+ * Whether a fault read may be tried: a frame of its own, or — any DS2 module but the DME — its SGBD's
+ * own FS_LESEN, which the link runs when the data carries it (lib/sgbd/faultRead) and refuses, with
+ * why, when it does not.
+ */
+export const mayTryFaultRead = (p: ModuleProtocol): boolean => hasFaultRead(p) || (p.kwp === null && p.decoder !== 'mss54');

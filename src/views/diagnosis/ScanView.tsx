@@ -189,6 +189,8 @@ export function ScanViz({ run, progress }: Pick<ScanShown, 'run' | 'progress'>) 
     if (progress) return <CountReadout value={progress.done} suffix={`/${progress.total}`} tone="text-slate-400" caption={t.scan_title} />;
     if (!run) return <Awaiting icon={ScanLine} label={t.awaiting_scan} />;
     const answered = run.results.filter((r) => r.outcome === 'answered').length;
-    const faulted = run.results.some((r) => (Array.isArray(r.decoded) && (r.decoded as unknown[]).length > 0) || (sgbdFaultsOf(r)?.length ?? 0) > 0);
+    const faulted = run.results.some(
+        (r) => (Array.isArray(r.decoded) && (r.decoded as unknown[]).length > 0) || (sgbdFaultsOf(r)?.length ?? 0) > 0,
+    );
     return <CountReadout value={answered} suffix={`/${run.results.length}`} tone={faulted ? 'text-red-400' : 'text-slate-200'} caption={t.viz_scanAnswered} />;
 }

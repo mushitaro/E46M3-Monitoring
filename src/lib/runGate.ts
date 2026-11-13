@@ -105,6 +105,36 @@ export const MODULE_READ_ONLY_CONTROLS: Readonly<Record<string, ReadonlySet<numb
     smg2: new Set([0x40]),
 };
 
+/**
+ * The access frames a module's own read job sends before it reads (operator, 2026-11-13: 「全部読めるように」).
+ *
+ * The airbag modules answer their fault memory only after a login their own FS_LESEN sends first:
+ * MRS3's `SG_LOGIN` (`a4 06 90 ff ff`, sent at the head of every MRS3 job, IDENT included) and MRS4's
+ * access with the code its job builds from the identity it just read (`a4 08 95 …`). They change
+ * nothing the module keeps; they open the session the read runs in, as INPA's fault read does. They go
+ * only as part of that module's own job run by the app (lib/sgbd/faultRead), never on their own and
+ * never to another module.
+ */
+export const MODULE_JOB_ACCESS_CONTROLS: Readonly<Record<string, ReadonlySet<number>>> = {
+    mrs3: new Set([0x90]),
+    mrs4: new Set([0x90, 0x95]),
+};
+
+/**
+ * Whether a frame a module's own read job built may go to that module: addressed to it, its length
+ * byte true, and a read — or one of the access frames its own job sends first (above).
+ */
+export function mayJobSend(moduleId: string, address: number, frame: Uint8Array): { ok: true; control: number; payload: Uint8Array } | { ok: false; why: string } {
+    if (frame.length < 3) return { ok: false, why: 'a frame too short to send' };
+    if (frame[0] !== address) return { ok: false, why: `addressed to 0x${frame[0].toString(16)}, not this module (0x${address.toString(16)})` };
+    if (frame[1] !== frame.length + 1) return { ok: false, why: 'its length byte does not match' };
+    const control = frame[2];
+    if (!isReadOnlyControl(control, moduleId) && !(MODULE_JOB_ACCESS_CONTROLS[moduleId]?.has(control) ?? false)) {
+        return { ok: false, why: `control 0x${control.toString(16).padStart(2, '0')} is not a read` };
+    }
+    return { ok: true, control, payload: frame.slice(3) };
+}
+
 /** A read on this module: in the common list, or in the module's own. */
 export function isReadOnlyControl(control: number, moduleId: string): boolean {
     return READ_ONLY_CONTROLS.has(control) || (MODULE_READ_ONLY_CONTROLS[moduleId]?.has(control) ?? false);

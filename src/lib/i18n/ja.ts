@@ -742,6 +742,7 @@ export const ja: Localised = {
     board_session: (date) => `${date} のセッション`,
     board_vizEmpty: 'PROBE の記録が始まると、ここに値とグラフが出ます。',
     board_listEmpty: 'まだ部品はありません。AI が見るものをここに置きます。PROBE の記録が始まると、値が出ます。',
+    faults_jobRead: 'このモジュール自身の SGBD の故障読み取りジョブを、アプリの中で動かして読んだもの。説明は SGBD の文。',
     board_noRun: 'このセッションにはまだ実行がありません。',
     board_noRunN: (n) => `実行 ${n} はこの端末にありません。`,
     board_notRead: 'このモジュールの故障は、まだ読んでいません。',

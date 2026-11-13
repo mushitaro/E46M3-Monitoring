@@ -33,7 +33,8 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('SMG II’s reads, by its own SGBD code', ()
     const table = HAVE_SHIPPED_DATA ? readShipped<SgbdResultsTable>('smg2.results.json') : null;
     const telegrams = HAVE_SHIPPED_DATA ? readShipped<TelegramTable>('smg2.telegrams.json') : null;
     const profile = HAVE_SHIPPED_DATA ? readShipped<EcuProfile>('smg2.jobs.json') : null;
-    const noArgs = table ? Object.keys(table.jobs).filter((j) => j !== 'ADAPTIONSWERTE_LESEN') : [];
+    // FS_LESEN ships for the read its job conducts (lib/sgbd/faultRead), not for one recorded answer.
+    const noArgs = table ? Object.keys(table.jobs).filter((j) => j !== 'ADAPTIONSWERTE_LESEN' && j !== 'FS_LESEN') : [];
 
     it.each(noArgs)('%s reads PRACTICE’s answer to its end, every value one its catalogue declares', (job) => {
         const hex = telegrams!.jobs[job][0].hex;
@@ -59,16 +60,24 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('SMG II’s reads, by its own SGBD code', ()
     });
 
     it('reads nothing for a job whose code does not ship', () => {
-        expect(decodeRead(table, 'FS_LESEN', '32 05 04 01 32', answerFrame(0x32, 0xa0, new Uint8Array(4)))).toBeNull();
+        expect(decodeRead(table, 'IDENT', '32 04 00 36', answerFrame(0x32, 0xa0, new Uint8Array(4)))).toBeNull();
     });
 });
 
 describe.skipIf(!HAVE_SHIPPED_DATA)('fault reads, by each module’s own FS_LESEN', () => {
     const shipped = HAVE_SHIPPED_DATA ? readdirSync(SHIPPED_DATA).filter((f) => f.endsWith('.results.json')) : [];
-    const withFaultRead = shipped
+    const shippedWith = shipped
         .map((f) => readShipped<SgbdResultsTable>(f))
         .filter((t) => t.jobs.FS_LESEN)
         .map((t) => t.module);
+    // The modules whose job sends exactly the pages the app's own frames are (#56). Every other module's
+    // FS_LESEN conducts its read itself (lib/sgbd/faultRead), and is pinned in faultRead.test.ts.
+    const SAME_PAGES = [
+        'rdc', 'ueb2', 'ews3', 'ews3d', 'zke5', 'zke5_s12', 'kombi46', 'kombi46r', 'lsz', 'lsz_2', 'mfl', 'aic', 'rls_ds2',
+        'xenon_l', 'xenon_r', 'cvm_ii', 'ihka46', 'ihka46_2', 'ihka46_3', 'pdce38', 'pdcact', 'shd46', 'shd46_2', 'radio',
+        'bmbt46rn', 'bmbt46tn', 'bmbt_mir', 'bm46wide', 'navmk3', 'navmk4', 'navmk4_2', 'nav_jap', 'ses', 'videomod',
+    ];
+    const withFaultRead = SAME_PAGES.filter((id) => shippedWith.includes(id));
     const index = HAVE_SHIPPED_DATA ? readShipped<{ modules: { id: string; address: number }[] }>('index.json') : null;
     const pages = (id: string) => {
         const address = index!.modules.find((m) => m.id === id)!.address;
@@ -85,8 +94,8 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('fault reads, by each module’s own FS_LESE
     it('ships the body, cluster, immobiliser, climate and sunroof among them (the scan of 2026-11-13 kept these as bytes)', () => {
         expect(withFaultRead.length).toBeGreaterThanOrEqual(34);
         for (const id of ['zke5', 'shd46', 'ews3', 'ihka46_2', 'kombi46']) expect(withFaultRead).toContain(id);
-        // Not yet: its job's first page is not the frame the app sends.
-        expect(withFaultRead).not.toContain('smg2');
+        // And the ones whose job sends something else first, which the job now conducts itself.
+        for (const id of ['lws5', 'mrs3', 'mrs4', 'sm46c_5', 'spm46ft', 'szm46', 'alc_ds2', 'cdc_46']) expect(shippedWith).toContain(id);
     });
 
     it.each(withFaultRead)('%s: every page the app sends is a page its job sends, and an empty memory reads as none', (id) => {

@@ -9,7 +9,7 @@ import { normCode } from '@/lib/faultCode';
 import { en } from '@/lib/i18n/en';
 import { TUNER_WORKS } from '@/lib/links';
 import type { Ledger } from '@/lib/ledger';
-import { hasFaultRead, hasIdent, type ModuleProtocol } from '@/lib/moduleProtocol';
+import { hasIdent, mayTryFaultRead, type ModuleProtocol } from '@/lib/moduleProtocol';
 import { addEntries, listAllEntries } from '@/lib/notebook/store';
 import { getBoard, putBoard } from '@/lib/probe/boardStore';
 import { listRuns } from '@/lib/probe/runStore';
@@ -139,6 +139,21 @@ export function useMonitoringFacade(input: {
                 });
                 return { module: ecuId, read: true, decoded: false, estimated: true, note: 'Codes read as ISO 14230 lays out a $58 answer; not yet confirmed on a MK60. The bytes are the answer.', codes, raw };
             }
+            const job = rows.find((r) => r.jobFaults)?.jobFaults;
+            if (job) {
+                return {
+                    module: ecuId,
+                    read: true,
+                    decoded: true,
+                    sgbdRead: {
+                        sgbd: ecuId,
+                        complete: job.status === 'OKAY' && job.stopped === null,
+                        faults: job.faults.map((f) => ({ location: f.code, text: f.text, kinds: f.kinds, values: f.values })),
+                        note: "Read by the module's own SGBD fault-read job, run in the app against the car; texts are the SGBD's own German.",
+                    },
+                    raw,
+                };
+            }
             return { module: ecuId, read: true, decoded: false, note: 'No decoder for this module: the answer is kept as bytes.', raw };
         }
         return { module: ecuId, read: false, reason: 'Not read yet in this session.' };
@@ -228,7 +243,7 @@ export function useMonitoringFacade(input: {
 
         refreshFaults: async () => {
             if (link.state !== 'connected') return `The link is ${link.state}; faults are read when it is connected and idle.`;
-            if (!hasIdent(target) && !hasFaultRead(target)) return en.faults_notEstablished;
+            if (!hasIdent(target) && !mayTryFaultRead(target)) return en.faults_notEstablished;
             // The gate's answer for each read (a withdrawn read, a car measured moving), then the
             // link's own preflight measures the speed again just before the bytes go.
             const ident = mayRunProtocolRead(`${ecuId}:IDENT`, 'fault-read', ledger, link.motion);
@@ -241,7 +256,7 @@ export function useMonitoringFacade(input: {
                 if (hasIdent(target) && ident.allowed && (await link.readIdent(ident.requires)) === null) {
                     return link.lastError() ?? 'The identity read did not complete.';
                 }
-                if (hasFaultRead(target)) {
+                if (mayTryFaultRead(target)) {
                     const read = await link.readFaults(fs.requires);
                     if (read === null) return link.lastError() ?? 'The fault read did not complete.';
                     return target.decoder === 'mss54' ? { fresh: { faults: read, raw: null } } : { fresh: { faults: null, raw: read as RawFaultRead[] } };

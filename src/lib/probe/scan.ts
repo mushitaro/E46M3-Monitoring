@@ -58,6 +58,7 @@
  */
 import { isDs2Error, isPositiveResponse, toHex, type Ds2Frame, type RetryOptions } from '@tsunagi/ds2-core';
 import { parseDtcsByStatus, type KwpDtc, type KwpFrame } from '../kwpOnDs2';
+import type { JobFaultRead } from '../sgbd/faultRead';
 import type { Ledger } from '../ledger';
 import type { ModuleProtocol, ProtocolFrame } from '../moduleProtocol';
 import { mayRunProtocolRead, type RunBlockKey } from '../runGate';
@@ -129,6 +130,12 @@ export interface ScanDeps {
      * Absent: a KWP module is not asked.
      */
     kwpExchange?(moduleId: string, job: string, f: KwpFrame): Promise<{ data: Uint8Array }>;
+    /**
+     * The address's fault memory read by its module's own FS_LESEN job (lib/sgbd/faultRead), which
+     * sends what its SGBD sends, answer by answer, through the gate. Null: no candidate carries the job
+     * here, and the frames below are sent instead.
+     */
+    jobRead?(target: ScanTarget): Promise<{ module: string; read: JobFaultRead } | null>;
     decode?(target: ScanTarget, responses: Ds2Frame[]): unknown;
     /** A module with no decoder of its own: its answers, each with the frame sent, read by its SGBD's own code. */
     decodeBySgbd?(target: ScanTarget, exchanges: { request: string; frame: Ds2Frame }[]): Promise<(SgbdFaultRead & { module: string }) | null>;
@@ -191,6 +198,38 @@ export async function runScan(targets: readonly ScanTarget[], deps: ScanDeps): P
             push(result);
             await deps.pause();
             continue;
+        }
+        // The module's own job, where one of the candidates carries it (operator, 2026-11-13).
+        if (deps.jobRead && !t.decoder && !t.kwp) {
+            const held = t.modules.map((m) => mayRunProtocolRead(`${m}:FS_LESEN`, 'fault-read', deps.ledger(), 'unknown')).find((g) => !g.allowed) as
+                | { allowed: false; reason: RunBlockKey }
+                | undefined;
+            if (held) {
+                push({ ...base, outcome: 'refused', exchanges: [], reason: held.reason });
+                continue;
+            }
+            const jr = await deps.jobRead(t);
+            if (jr) {
+                lostInARow = jr.read.outcome === 'silent' ? lostInARow + 1 : 0;
+                push({
+                    ...base,
+                    outcome: jr.read.outcome,
+                    exchanges: jr.read.exchanges,
+                    ...(jr.read.reason ? { reason: jr.read.reason } : {}),
+                    // What the job found, as a recorded read's decode gives it; shown only where it reached its own verdict.
+                    sgbdFaults: { ...jr.read.read, module: jr.module },
+                });
+                if (lostInARow >= LINE_LOST_AFTER && run.results.some((r) => r.outcome === 'answered')) {
+                    if ((await deps.measure()) === 'unknown') {
+                        run.end = 'link-lost';
+                        skipRest(i + 1, 'the DME stopped answering too: the line, not the modules');
+                        break;
+                    }
+                    lostInARow = 0;
+                }
+                await deps.pause();
+                continue;
+            }
         }
         if (t.frames.length === 0) {
             push({

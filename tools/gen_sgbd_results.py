@@ -47,25 +47,10 @@ RESULT_JOBS = {
     ),
 }
 
-# 故障メモリの読取（FS_LESEN）。アプリが送る FS_LESEN のページ（moduleProtocol の faults）を、ジョブ
-# 自身が同じ順で送るモジュールだけ。ジョブは故障 1 件ごとに結果の組（enewset）を開き、F_ORT_NR・
-# F_ORT_TEXT・F_ARTn_TEXT を自分の表で引く。MSS54 は専用の解読器があるので載せない。
-# 載せないもの（2026-11-13、解釈器で確かめた）：SMG2（ジョブの最初のページが 04 01、アプリは 04 00）、
-# ASCMK20・DSC_E46・LWS5・MRS3・MRS4・SM46 系（ジョブが別の電文を先に送る）、SPM46FT/BT（命令 0x7e）。
-FAULT_READ_SGBDS = {
-    "rdc": "RDC.prg", "ueb2": "UEB2.prg", "ews3": "EWS3.prg", "ews3d": "EWS3D.prg",
-    "zke5": "ZKE5.prg", "zke5_s12": "ZKE5_S12.prg", "kombi46": "KOMBI46.prg", "kombi46r": "KOMBI46R.prg",
-    "lsz": "LSZ.prg", "lsz_2": "LSZ_2.prg", "mfl": "MFL.prg", "aic": "AIC.prg", "rls_ds2": "RLS_DS2.prg",
-    "xenon_l": "XENON_L.prg", "xenon_r": "XENON_R.prg", "cvm_ii": "CVM_II.prg",
-    "ihka46": "IHKA46.prg", "ihka46_2": "IHKA46_2.prg", "ihka46_3": "IHKA46_3.prg",
-    "pdce38": "PDCE38.prg", "pdcact": "PDCACT.prg", "shd46": "SHD46.prg", "shd46_2": "SHD46_2.prg",
-    "radio": "RADIO.prg", "bmbt46rn": "BMBT46RN.prg", "bmbt46tn": "BMBT46TN.prg", "bmbt_mir": "BMBT_MIR.prg",
-    "bm46wide": "BM46WIDE.prg", "navmk3": "NAVMK3.prg", "navmk4": "NAVMK4.prg", "navmk4_2": "NAVMK4_2.prg",
-    "nav_jap": "NAV_JAP.prg", "ses": "SES.prg", "videomod": "VIDEOMOD.prg",
-}
-for _mid, _sgbd in FAULT_READ_SGBDS.items():
-    _prev = RESULT_JOBS.get(_mid)
-    RESULT_JOBS[_mid] = (_sgbd, (_prev[1] if _prev else []) + ["FS_LESEN"])
+# 故障メモリの読取（FS_LESEN）は下の all_jobs が、SGBD に FS_LESEN があるモジュール全部に足す。
+# 2026-11-13 の #56 は、アプリが送るページとジョブが同じ順で送るモジュールだけ（34）を載せていたが、
+# いまはジョブ自身が実車相手に読み取りを進める（src/lib/sgbd/faultRead.ts）ので、先に識別やログインを
+# 送るもの（LWS5・MRS3/4・SM46）、件数 0 なら次を送らないもの（SPM46）、命令 0x7e（strcat）も読める。
 
 JUMPS = {0x0B, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x47, 0x48, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F}
 JUMP, EOJ, TABSET = 0x0B, 0x1D, 0x7B
@@ -154,11 +139,42 @@ def build(mid, sgbd, names):
     }
 
 
+# Every module's own fault read (運営者 2026-11-13「全部読めるようにしろ」): FS_LESEN, run by the app on
+# the car through the gate (src/lib/sgbd/faultRead.ts) — the job sends the count first, then the
+# entries it says there are, some with their IDENT or a login first. Not the MSS54 (it has its own
+# decoder) and not a KWP-on-DS2 module (lib/kwpOnDs2).
+FAULT_JOB = "FS_LESEN"
+FAULT_SKIP = {"mss54"}
+
+
+def all_jobs():
+    """Module id -> (SGBD, jobs to carry): RESULT_JOBS, plus FS_LESEN wherever the module's SGBD has one."""
+    out = {mid: (sgbd, list(names)) for mid, (sgbd, names) in RESULT_JOBS.items()}
+    for f in sorted(os.listdir(OUT)):
+        if not f.endswith(".telegrams.json"):
+            continue
+        t = json.load(open(os.path.join(OUT, f), encoding="utf-8"))
+        mid, sgbd = t["module"], t["sgbd"]
+        if mid in FAULT_SKIP or t.get("framing") == "kwp-ds2":
+            continue
+        try:
+            raw = open(resolve_prg(sgbd), "rb").read()
+        except (FileNotFoundError, KeyError):
+            continue
+        if not any(n == FAULT_JOB for _, n in jobtable(raw)):
+            continue
+        sg, names = out.get(mid, (sgbd, []))
+        if FAULT_JOB not in names:
+            names.append(FAULT_JOB)
+        out[mid] = (sg, names)
+    return out
+
+
 if __name__ == "__main__":
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     only = set(sys.argv[1:])
-    for mid, (sgbd, names) in RESULT_JOBS.items():
+    for mid, (sgbd, names) in all_jobs().items():
         if only and mid not in only:
             continue
         data = build(mid, sgbd, names)

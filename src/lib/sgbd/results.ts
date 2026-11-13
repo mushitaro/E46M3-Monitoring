@@ -139,8 +139,13 @@ export function decodeFaultRead(
         { code: fromBase64(job.code), base: job.base },
         { exchanges: exchanges.map((x) => ({ sent: bytesOf(x.request), answer: x.answer })), tables: table.tables as SgbdTables },
     );
+    return faultsOfRun(run.results, run.stopped);
+}
+
+/** A fault-read job's results, set by set: the entries (sets naming a location) and its verdict. */
+export function faultsOfRun(results: readonly SgbdResult[], stopped: SgbdFaultRead['stopped']): SgbdFaultRead {
     const sets = new Map<number, SgbdResult[]>();
-    for (const r of run.results) sets.set(r.set, [...(sets.get(r.set) ?? []), r]);
+    for (const r of results) sets.set(r.set ?? 0, [...(sets.get(r.set ?? 0) ?? []), r]);
     const faults: SgbdFault[] = [];
     let status: string | null = null;
     for (const rs of sets.values()) {
@@ -158,5 +163,5 @@ export function decodeFaultRead(
             values: folded.values.filter((v) => v.name !== 'F_ORT_NR' && v.name !== 'F_ORT_TEXT' && !FAULT_KIND_TEXT.test(v.name)),
         });
     }
-    return { faults, status, stopped: run.stopped, provenance: 'sgbd-job' };
+    return { faults, status, stopped, provenance: 'sgbd-job' };
 }

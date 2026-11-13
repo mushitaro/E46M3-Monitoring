@@ -4,7 +4,7 @@ import { CircleDot, Loader2, Play, PlayCircle, PlugZap, Radar, Radio, Square, Za
 import type { HubConfig, NoticeTone } from '@/components/Hub';
 import type { useDs2Link } from '@/hooks/useDs2Link';
 import type { ProbeProgress } from '@/hooks/useProbe';
-import { hasFaultRead, hasIdent, type ModuleProtocol } from '@/lib/moduleProtocol';
+import { hasIdent, mayTryFaultRead, type ModuleProtocol } from '@/lib/moduleProtocol';
 import { hubConfigFor, hubNoticeFor } from '@/lib/hub';
 import { jobRiskOf, type CatalogJob } from '@/lib/ecuCatalog';
 import { useLang } from '@/lib/i18n';
@@ -89,9 +89,9 @@ export function useHub(input: {
             // SGBD carries, so a module with fault frames but no IDENT is not sent a refused IDENT.
             readFaults: () =>
                 void (hasIdent(input.target) ? link.readIdent() : Promise.resolve(null)).then(() =>
-                    hasFaultRead(input.target) ? link.readFaults() : null,
+                    mayTryFaultRead(input.target) ? link.readFaults() : null,
                 ),
-            faultsAvailable: hasIdent(input.target) || hasFaultRead(input.target),
+            faultsAvailable: hasIdent(input.target) || mayTryFaultRead(input.target),
             scan: input.scan
                 ? { run: input.scan.run, line: input.scan.progress ? t.scan_progress(input.scan.progress.done, input.scan.progress.total) : undefined }
                 : undefined,

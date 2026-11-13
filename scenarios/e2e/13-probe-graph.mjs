@@ -74,6 +74,22 @@ const scenario = {
         { shot: 'graph-readouts' },
         { ai: 'monitoring_stop_log', args: { confirmed: true }, means: '止める（復唱のあと）', expect: (r) => (JSON.stringify(r).includes('probe') ? true : JSON.stringify(r)) },
         { wait: 1500 },
+        { say: '今の最大最小ってどうなってんだろ' },
+        {
+            ai: 'monitoring_run_overview',
+            args: { channels: ['35:evan1_ist', '35:evan1_soll', '3:ub_nope'] },
+            means: 'その回の全体の最大・最小・平均と時刻を、頼んだ値だけ一回で返す（読んでいない値は null）（オーナー 2026-11-13）',
+            expect: (r) => {
+                const a = r?.stats?.['35:evan1_ist'];
+                return a && a.n > 0 && a.min <= a.mean && a.mean <= a.max && typeof a.maxAt === 'number' && r.stats['3:ub_nope'] === null ? true : JSON.stringify(r?.stats ?? r);
+            },
+        },
+        {
+            ai: 'monitoring_moment',
+            args: { seconds_ago: 3, window_s: 20, channels: ['35:evan1_ist'] },
+            means: '時刻の窓も、頼んだ値だけに絞って返す',
+            expect: (r) => (r?.recorded && r.samples.length > 0 && r.samples.every((x) => Object.keys(x.values).every((k) => k === '35:evan1_ist')) ? true : JSON.stringify(r).slice(0, 300)),
+        },
         { screen: { desc: '止めたあとは、その回の記録からグラフを描く（LIVE ではない）', has: ['吸気VANOS バンク1 実角', 'AI の決めた幅'], hasNot: ['LIVE'] } },
         { say: '保存して' },
         {

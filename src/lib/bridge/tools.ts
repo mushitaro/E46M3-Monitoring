@@ -87,14 +87,22 @@ export const MONITORING_TOOLS = {
     monitoring_moment: {
         scope: 'read',
         description:
-            'What the tab recorded around a moment: seconds_ago counts back from when the call reaches the tab. Returns the samples in the window (speed, rpm, throttle and the plan\'s channels), captures that fired, link gaps, and the driver\'s words in that window. Absent channels were not read, not zero.',
-        inputSchema: obj({ seconds_ago: num('Seconds before the call reached the tab (default 8).'), window_s: num('Window width in seconds (default 20, max 180).') }),
+            'What the tab recorded around a moment: seconds_ago counts back from when the call reaches the tab. Returns the samples in the window (speed, rpm, throttle and the plan\'s channels — or only the channels named), captures that fired, link gaps, and the driver\'s words in that window. Absent channels were not read, not zero. For a run\'s max, min and mean, monitoring_run_overview with channels is one small answer.',
+        inputSchema: obj({
+            seconds_ago: num('Seconds before the call reached the tab (default 8).'),
+            window_s: num('Window width in seconds (default 20, max 180).'),
+            channels: { type: 'array', maxItems: 12, items: { type: 'string' }, description: 'Only these channels in each sample (3:ub, 35:evan1_ist); the answer is smaller.' },
+        }),
     },
     monitoring_run_overview: {
         scope: 'read',
         description:
-            "The PROBE run in progress or the last one: length, samples and rate, link gaps, each step's state (done, waiting — with why, e.g. parked only while the car is moving — refused with the gate's reason, rejected by the module, failed), the last exchanges as sent and answered with the values read from them, captures taken, and the judgements the tab computed with where each threshold came from.",
-        inputSchema: obj({}),
+            "The PROBE run in progress or the last one: length, samples and rate, link gaps, each step's state (done, waiting — with why, e.g. parked only while the car is moving — refused with the gate's reason, rejected by the module, failed), the last exchanges as sent and answered with the values read from them, captures taken, and the judgements the tab computed with where each threshold came from. With channels: for each, over the whole run (or from_s..to_s, run seconds), how many readings, min and max with the run second each came at, and the mean — the same spread the board's values cards draw; null for a channel not read.",
+        inputSchema: obj({
+            channels: { type: 'array', maxItems: 12, items: { type: 'string' }, description: 'The channels to give the spread of (3:ub, 35:evan1_ist, 35:evan1_soll).' },
+            from_s: num('From this run second (default the start).'),
+            to_s: num('To this run second (default the end).'),
+        }),
     },
     monitoring_ledger: {
         scope: 'read',

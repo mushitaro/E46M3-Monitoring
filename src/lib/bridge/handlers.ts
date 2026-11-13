@@ -18,7 +18,8 @@
  */
 import { boardLine, place, setShow, type Board } from '../probe/board';
 import { compareRuns, trend } from '../probe/compare';
-import type { ProbeExchange } from '@tsunagi/monitoring-engine';
+import type { ProbeExchange, ProbeSample } from '@tsunagi/monitoring-engine';
+import { runStats } from '../probe/runStats';
 import type { ProbeLive, StoredRun } from '../probe/runStore';
 import { formOf, lineage, nextSession, type NextRefusal } from '../probe/sessions';
 import { TAB_ORDER, type Mode, type Tab } from '../tabs';
@@ -200,6 +201,15 @@ function summary(id: string, r: readonly NotebookEntry[], now: number) {
 }
 
 /** Evenly thinned to at most `max`, first and last kept. */
+/** Channel names the assistant passed, or null for none: up to 12, as a run records them. */
+function channelList(v: unknown): string[] | null {
+    if (v === undefined) return null;
+    if (!Array.isArray(v) || v.length === 0 || v.length > 12 || !v.every((c) => typeof c === 'string' && /^[A-Za-z0-9_:.*]{1,140}$/.test(c))) {
+        throw new Error('channels names 1-12 channels as a run records them (3:ub, 35:evan1_ist).');
+    }
+    return [...new Set(v as string[])];
+}
+
 function thin<T>(xs: readonly T[], max: number): T[] {
     if (xs.length <= max) return [...xs];
     const out: T[] = [];
@@ -306,19 +316,24 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
                     reason: centre < 0 ? 'That moment is before the run began.' : 'No samples in that window: the link may have been down, or PROBE stopped.',
                 };
             }
+            const only = channelList(args.channels);
+            const picked = thin(inWindow, MOMENT_SAMPLES);
             return {
                 recorded: true,
                 run: n,
                 running: live !== null,
                 window: { from: Math.max(0, Math.round(from)), to: Math.round(to), centre: Math.round(centre) },
-                samples: thin(inWindow, MOMENT_SAMPLES),
+                samples: only ? picked.map((s) => ({ ...s, values: Object.fromEntries(only.filter((c) => c in s.values).map((c) => [c, s.values[c]])) })) : picked,
                 captures,
                 driverWords: notes.map((e) => ({ t: e.body.kind === 'note' ? e.body.t : null, text: e.body.kind === 'note' ? e.body.text : '' })),
             };
         },
 
-        monitoring_run_overview: async () => {
+        monitoring_run_overview: async (args) => {
             const live = f.live();
+            const asked = channelList(args.channels);
+            const span = { from: typeof args.from_s === 'number' ? args.from_s : undefined, to: typeof args.to_s === 'number' ? args.to_s : undefined };
+            const spread = (samples: readonly ProbeSample[]) => (asked ? { stats: runStats(samples, asked, span), ...(span.from !== undefined || span.to !== undefined ? { span } : {}) } : {});
             if (live) {
                 const seconds = (f.now() - live.startedAt) / 1000;
                 return {
@@ -329,6 +344,7 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
                     seconds: Math.round(seconds),
                     samples: live.samples.length,
                     rateHz: seconds > 0 ? Math.round((live.samples.length / seconds) * 10) / 10 : null,
+                    ...spread(live.samples),
                     // Each step's state, and for one that is due but held, why (`waiting`): a run whose
                     // reads all wait for a stationary car used to look the same as a stuck one.
                     ...(live.run ? { steps: live.run.steps, recent: recentExchanges(live.run.exchanges) } : {}),
@@ -353,6 +369,7 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
                 recent: recentExchanges(r.exchanges),
                 captures: r.captures.length,
                 judges: r.judges,
+                ...spread(r.samples),
             };
         },
 

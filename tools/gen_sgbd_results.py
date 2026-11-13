@@ -148,15 +148,23 @@ FAULT_JOB = "FS_LESEN"
 FAULT_SKIP = {"mss54"}
 
 
+def _nonm3():
+    """The modules of a car that is not an M3 (index `fit: nonm3`): their faults are read by the
+    layouts EDIABAS's own simulation checked (tools/sgbd/gen_fault_layouts.py), not by their job here."""
+    idx = json.load(open(os.path.join(OUT, "index.json"), encoding="utf-8"))
+    return {m["id"] for m in idx["modules"] if m.get("fit") == "nonm3"}
+
+
 def all_jobs():
     """Module id -> (SGBD, jobs to carry): RESULT_JOBS, plus FS_LESEN wherever the module's SGBD has one."""
     out = {mid: (sgbd, list(names)) for mid, (sgbd, names) in RESULT_JOBS.items()}
+    skip = FAULT_SKIP | _nonm3()
     for f in sorted(os.listdir(OUT)):
         if not f.endswith(".telegrams.json"):
             continue
         t = json.load(open(os.path.join(OUT, f), encoding="utf-8"))
         mid, sgbd = t["module"], t["sgbd"]
-        if mid in FAULT_SKIP:
+        if mid in skip:
             continue
         try:
             raw = open(resolve_prg(sgbd), "rb").read()
@@ -168,6 +176,30 @@ def all_jobs():
         if FAULT_JOB not in names:
             names.append(FAULT_JOB)
         out[mid] = (sg, names)
+    # DATALOG reads every module's own argument-free status reads (運営者 2026-11-13「全モジュールの
+    # データログ」): read-class jobs with no argument, a telegram in the module's table and a value or
+    # status among their results. The app decides per job whether its code reads the answer of that
+    # telegram to the end (packages/monitoring-engine/src/sgbd/logChannels.ts) and offers only those.
+    for f in sorted(os.listdir(OUT)):
+        if not f.endswith(".jobs.json"):
+            continue
+        mid = f[: -len(".jobs.json")]
+        tel_path = os.path.join(OUT, f"{mid}.telegrams.json")
+        if mid in skip or not os.path.exists(tel_path):
+            continue
+        tel = json.load(open(tel_path, encoding="utf-8"))
+        if tel.get("framing") == "kwp-ds2":
+            continue
+        cat = json.load(open(os.path.join(OUT, f), encoding="utf-8"))
+        status = [
+            j["id"] for j in cat["jobs"]
+            if j.get("class") == "read" and not j.get("args") and not j["id"].startswith(("FS_", "IDENT"))
+            and tel["jobs"].get(j["id"]) and any(r.get("role") in ("value", "status") for r in j.get("results", []))
+        ]
+        if not status:
+            continue
+        sg, names = out.get(mid, (tel["sgbd"], []))
+        out[mid] = (sg, names + [n for n in status if n not in names])
     return out
 
 

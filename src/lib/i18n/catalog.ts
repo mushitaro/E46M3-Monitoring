@@ -38,6 +38,7 @@ export interface Localised {
     /** Another module's read values as DATALOG channels (lib/sgbd/logChannels). */
     channels_other: string;
     channels_otherNote: string;
+    channels_module: string;
     channels_pick: string;
     datalog_run: string;
     channels_search: string;

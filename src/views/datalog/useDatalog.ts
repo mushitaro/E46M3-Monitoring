@@ -6,7 +6,7 @@ import type { LiveSample, useDs2Link } from '@/hooks/useDs2Link';
 import { datalogCsv, download, stamp } from '@/lib/download';
 import type { EcuIndex } from '@tsunagi/monitoring-engine';
 import { EMPTY_LEDGER, type Ledger } from '@tsunagi/monitoring-engine';
-import { LOG_MODULES, isModuleChannel, moduleChannels, moduleLogData, moduleLogReads, type ModuleChannelInfo } from '@tsunagi/monitoring-engine';
+import { isModuleChannel, moduleChannels, moduleLogData, moduleLogReads, type ModuleChannelInfo } from '@tsunagi/monitoring-engine';
 import { useLang } from '@/lib/i18n';
 
 type Link = ReturnType<typeof useDs2Link>;
@@ -36,13 +36,20 @@ export function useDatalog(link: Link, others: { ledger: Ledger; index: EcuIndex
         const index = others.index;
         if (!index) return;
         let live = true;
-        void Promise.all(
-            LOG_MODULES.map(async (m) => {
-                const address = index.modules.find((x) => x.id === m)?.address;
-                const d = address === undefined ? null : await moduleLogData(m, address);
-                return d ? moduleChannels(m, d) : [];
-            }),
-        ).then((lists) => live && setModuleInfos(lists.flat()));
+        // Every module whose own status-read code ships (operator 2026-11-13: 「全モジュールのデータログ」),
+        // one after another so the head unit is not asked for every module at once. SMG II first, as before.
+        void (async () => {
+            const order = [...index.modules].sort((a, b) => (a.id === 'smg2' ? -1 : b.id === 'smg2' ? 1 : 0));
+            const found: ModuleChannelInfo[] = [];
+            for (const m of order) {
+                if (m.id === 'mss54') continue;
+                const d = await moduleLogData(m.id, m.address);
+                if (!live) return;
+                if (!d) continue;
+                found.push(...moduleChannels(m.id, d));
+                setModuleInfos([...found]);
+            }
+        })();
         return () => {
             live = false;
         };

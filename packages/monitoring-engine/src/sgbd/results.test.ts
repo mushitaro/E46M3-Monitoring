@@ -34,7 +34,9 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('SMG II’s reads, by its own SGBD code', ()
     const telegrams = HAVE_SHIPPED_DATA ? readShipped<TelegramTable>('smg2.telegrams.json') : null;
     const profile = HAVE_SHIPPED_DATA ? readShipped<EcuProfile>('smg2.jobs.json') : null;
     // FS_LESEN ships for the read its job conducts (lib/sgbd/faultRead), not for one recorded answer.
-    const noArgs = table ? Object.keys(table.jobs).filter((j) => j !== 'ADAPTIONSWERTE_LESEN' && j !== 'FS_LESEN') : [];
+    // The SMG II reads chosen by hand (tools/gen_sgbd_results.py RESULT_JOBS). The other status reads every
+    // module now carries are offered to DATALOG only where their code reads one answer cleanly (logChannels).
+    const noArgs = ['STATUS_IO_LESEN', 'STATUS_IO_STATI_LESEN', 'STATUS_HARDWARE_STATI_LESEN', 'STATUS_FAHRZEUGTESTER_LESEN', 'GETRIEBEDATEN_LESEN'].filter((j) => table?.jobs[j]);
 
     it.each(noArgs)('%s reads PRACTICE’s answer to its end, every value one its catalogue declares', (job) => {
         const hex = telegrams!.jobs[job][0].hex;

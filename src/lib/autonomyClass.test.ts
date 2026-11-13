@@ -13,33 +13,34 @@ const table = JSON.parse(readFileSync(path.join(ROOT, '.github', 'autonomy.json'
 const cls = (...paths: string[]) => classify(paths, table).class;
 
 describe('the autonomy class', () => {
-    it('lets wording, examples, the guide’s topics and docs merge by themselves', () => {
+    it('lets every change merge by itself once CI passes (operator, 2026-11-13)', () => {
         expect(cls('docs/AUTONOMY.md', 'scenarios/cases.json', 'public/guide/faults.md', 'src/lib/i18n/ja.ts')).toBe('auto');
+        for (const p of ['src/hooks/useDs2Link.ts', 'src/lib/probe/executor.ts', 'src/lib/bridge/tools.ts', 'src/hooks/useMonitoringFacade.ts', 'src/views/diagnosis/DiagnosisView.tsx', 'functions/api/bridge/socket.ts', 'public/guide/index.md']) {
+            expect(cls(p), p).toBe('auto');
+        }
     });
 
-    it('holds anything that decides what reaches the car, or what the assistant may do', () => {
+    it('holds the rules themselves and what decides what reaches the car', () => {
         for (const p of [
             'src/lib/runGate.ts',
             'src/lib/ledger.ts',
-            'src/hooks/useDs2Link.ts',
+            'src/lib/actuationGate.ts',
+            'src/lib/vehicleState.ts',
             'packages/ds2-core/src/link.ts',
-            'src/lib/probe/executor.ts',
-            'src/lib/bridge/tools.ts',
-            'src/lib/bridge/handlers.ts',
-            'src/hooks/useMonitoringFacade.ts',
             'public/kill-list.json',
-            'public/guide/index.md',
-            'functions/api/bridge/socket.ts',
+            'functions/_middleware.ts',
             '.github/autonomy.json',
+            '.github/workflows/autonomy-merge.yml',
             '.claude/skills/monitoring-loop/SKILL.md',
+            'CLAUDE.md',
+            'scripts/autonomy-class.mjs',
         ]) {
             expect(cls(p), p).toBe('human');
         }
     });
 
-    it('holds a change when any one of its files is held, and anything the table does not name', () => {
+    it('holds a change when any one of its files is held, and an empty one', () => {
         expect(cls('docs/PLAN.md', 'src/lib/runGate.ts')).toBe('human');
-        expect(cls('src/views/diagnosis/DiagnosisView.tsx')).toBe('human');
         expect(cls()).toBe('human');
     });
 

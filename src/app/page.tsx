@@ -411,8 +411,12 @@ export default function Home() {
         [releaseThen],
     );
 
-    /** DIAGNOSIS's ALL MODULES choice (below); the module switch clears it, so the screen shows the module. */
-    const [allModules, setAllModules] = useState(false);
+    /**
+     * DIAGNOSIS's ALL MODULES choice (below); the module switch clears it, so the screen shows the module.
+     * The app opens on it (operator, 2026-11-13: the default is ALL MODULES, not MSS54); the link still
+     * opens for `ecuId`, which the scan reaches every address through.
+     */
+    const [allModules, setAllModules] = useState(true);
 
     /**
      * The assistant's module switch (operator, 2026-11-01: "in AI mode the AI switches modules too").

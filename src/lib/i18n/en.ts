@@ -753,6 +753,8 @@ export const en: Localised = {
     series_info: 'The sessions NEXT linked. Where the version changed, the items added and removed are shown.',
     series_none: 'Choose a session to see its series.',
     board_session: (date) => `Session of ${date}`,
+    board_vizEmpty: 'Once a PROBE run starts, its values and graph appear here.',
+    board_listEmpty: 'No parts yet. The assistant places what to watch here; once a PROBE run starts, its values appear.',
     board_noRun: 'This session has no run yet.',
     board_noRunN: (n) => `Run ${n} is not on this device.`,
     board_notRead: 'This module’s faults have not been read yet.',

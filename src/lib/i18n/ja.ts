@@ -739,6 +739,8 @@ export const ja: Localised = {
     series_info: 'NEXT でつながったセッションの並びです。版が変わったところに、足した項目と外した項目を出します。',
     series_none: 'セッションを選ぶと、その系列を出します。',
     board_session: (date) => `${date} のセッション`,
+    board_vizEmpty: 'PROBE の記録が始まると、ここに値とグラフが出ます。',
+    board_listEmpty: 'まだ部品はありません。AI が見るものをここに置きます。PROBE の記録が始まると、値が出ます。',
     board_noRun: 'このセッションにはまだ実行がありません。',
     board_noRunN: (n) => `実行 ${n} はこの端末にありません。`,
     board_notRead: 'このモジュールの故障は、まだ読んでいません。',

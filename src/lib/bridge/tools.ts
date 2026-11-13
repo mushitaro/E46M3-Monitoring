@@ -216,7 +216,7 @@ export const MONITORING_TOOLS = {
     monitoring_display: {
         scope: 'control',
         description:
-            'Change what the screen shows: one of the tabs. MANUAL: diagnosis, datalog, adaptation, service, actuator, memory. PROBE: startup (the sessions), probe (the board). Showing a tab of the other mode switches the mode. pane: below 900 px the screen shows the tab’s rows (list) or its picture — values and graph (visu); setting it needs no tab. Starting a recording (monitoring_start_log) puts visu up. Showing only; nothing is sent to the car.',
+            'Change what the screen shows: one of the tabs. MANUAL: diagnosis, datalog, adaptation, service, actuator, memory. PROBE: startup (the sessions), probe (the board). Showing a tab of the other mode switches the mode. pane: below 900 px the screen shows the tab’s rows (list) or its picture — values and graph (visu); setting it needs no tab. The screen also follows the work by itself: reading faults, scanning or switching module shows DIAGNOSIS; starting a recording, DATALOG’s visu; starting PROBE, its board’s visu — and while a PROBE run goes, the board stays. Showing only; nothing is sent to the car.',
         inputSchema: obj({
             show: str('The tab to show.', { enum: ['diagnosis', 'datalog', 'adaptation', 'service', 'actuator', 'memory', 'startup', 'probe'] }),
             pane: str('list or visu.', { enum: ['list', 'visu'] }),

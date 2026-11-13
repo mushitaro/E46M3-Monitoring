@@ -56,7 +56,21 @@ const day = (ms: number) => new Date(ms).toLocaleDateString();
 export function BoardView({ s, data }: { s: ProbeSessions; data: BoardData }) {
     const { t } = useLang();
     const parts = s.board?.parts ?? [];
-    if (!s.current || parts.length === 0) return <Pane>{null}</Pane>;
+    if (!s.current || parts.length === 0) {
+        // Nothing placed yet: a run in progress shows its values, as cards; otherwise say what comes here.
+        const live = data.live && data.live.sessionId === s.current && data.live.samples.length > 0 ? data.live : null;
+        return (
+            <Pane>
+                {live ? (
+                    <Section title={KIND_LABEL.values(t)} note={`${t.run_tag} ${live.n} · v${live.planV} · LIVE`}>
+                        <ValueCards source={live} />
+                    </Section>
+                ) : (
+                    <Empty>{t.board_listEmpty}</Empty>
+                )}
+            </Pane>
+        );
+    }
     return (
         <Pane>
             {parts.map((p, i) => (
@@ -338,9 +352,6 @@ function PartBody({ part: p, s, data }: { part: Part; s: ProbeSessions; data: Bo
             // ones: the latest sample of each channel, with the spread so far. Otherwise the stored run.
             const { live, run } = sourceOf(s, p, data.live);
             if (!live && !run) return <Empty>{p.run ? t.board_noRunN(p.run) : t.board_noRun}</Empty>;
-            const source = live ?? run!;
-            const stats = [...channelStats(source)].filter(([k]) => !p.channels || p.channels.includes(k));
-            const latest = live ? latestValues(live) : null;
             return (
                 <div className="space-y-1">
                     <p className="font-mono text-[11px] text-slate-500">
@@ -348,24 +359,7 @@ function PartBody({ part: p, s, data }: { part: Part; s: ProbeSessions; data: Bo
                             ? `${t.run_tag} ${live.n} · v${live.planV} · LIVE`
                             : runLabel({ record: run!.sessionId, n: run!.n, planV: run!.planV, startedAt: run!.startedAt })}
                     </p>
-                    <DataList>
-                        {stats.map(([k, x]) => (
-                            <DataRow
-                                key={k}
-                                name={humanName('')}
-                                ident={k}
-                                trailing={
-                                    <span className="shrink-0 font-mono text-[11px] tabular-nums text-slate-300">
-                                        {latest ? <span className="mr-2 text-sm text-slate-100">{num(latest.get(k))}</span> : null}
-                                        {num(x.mean)}
-                                        <span className="ml-2 text-slate-500">
-                                            {num(x.min)}–{num(x.max)} · n {x.n}
-                                        </span>
-                                    </span>
-                                }
-                            />
-                        ))}
-                    </DataList>
+                    <ValueCards source={live ?? run!} only={p.channels} />
                 </div>
             );
         }
@@ -466,6 +460,38 @@ export function GraphPart({ part: p, s, live, large = false }: { part: Part; s: 
     );
 }
 
+/**
+ * The values as cards (operator, 2026-11-11: 「カードみたいなイメージ」): each channel's newest number
+ * large with its unit, and its mean and spread small beneath — read at a glance from the driver's seat.
+ * `large` is the MULTI pane's.
+ */
+export function ValueCards({ source, only, large = false }: { source: Pick<ProbeLive, 'samples'>; only?: readonly string[]; large?: boolean }) {
+    const { lang } = useLang();
+    const stats = [...channelStats(source)].filter(([k]) => !only || only.includes(k));
+    const latest = latestValues(source);
+    return (
+        <div className={`grid gap-2 ${large ? 'grid-cols-2 lg:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3'}`}>
+            {stats.map(([k, x]) => {
+                const l = channelLabel(k, lang);
+                return (
+                    <div key={k} className="min-w-0 rounded bg-slate-800/40 px-3 py-2">
+                        <p className="truncate text-[11px] text-slate-400" title={k}>
+                            {l.name}
+                        </p>
+                        <p className="flex items-baseline gap-1">
+                            <span className={`font-mono tabular-nums text-slate-100 ${large ? 'text-5xl' : 'text-3xl'}`}>{num(latest.get(k))}</span>
+                            <span className="text-xs text-slate-500">{l.unit}</span>
+                        </p>
+                        <p className="truncate font-mono text-[10px] tabular-nums text-slate-500">
+                            ⌀ {num(x.mean)} · {num(x.min)}–{num(x.max)} · n {x.n}
+                        </p>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
 /** The newest number each channel has had in a run in progress. */
 export function latestValues(live: Pick<ProbeLive, 'samples'>): Map<string, number> {
     const out = new Map<string, number>();
@@ -506,6 +532,27 @@ export function BoardViz({ s, live }: { s: ProbeSessions; live?: ProbeLive | nul
             </div>
         );
     }
+    // A run in progress with no graph placed: its own channels, a graph of the first and the rest as
+    // cards (operator, 2026-11-12: VISU went black while recording). Nothing to draw is said, not black.
+    const recording = live && live.sessionId === s.current && live.samples.length > 0 ? live : null;
+    if (recording) {
+        const channels = [...channelStats(recording)].map(([k]) => k);
+        const first = channels[0];
+        const auto = { id: 'auto', kind: 'graph', open: true, at: 0, channels: [first] } as Part;
+        // The graph keeps half the pane; a glance takes in six values, not a whole block's worth.
+        return (
+            <div className="flex h-full flex-col gap-3">
+                <div className="h-1/2 min-h-0 shrink-0">
+                    <GraphPart part={auto} s={s} live={recording} large />
+                </div>
+                {channels.length > 1 ? (
+                    <div className="min-h-0 flex-1 overflow-hidden">
+                        <ValueCards source={recording} only={channels.slice(1, 7)} />
+                    </div>
+                ) : null}
+            </div>
+        );
+    }
     const message = [...parts].reverse().find((p) => p.kind === 'message');
     if (message) {
         return (
@@ -515,5 +562,12 @@ export function BoardViz({ s, live }: { s: ProbeSessions; live?: ProbeLive | nul
             </div>
         );
     }
-    return null;
+    const values = parts.find((p) => p.kind === 'values');
+    const run = values ? sourceOf(s, values, live).run : null;
+    if (values && run) return <ValueCards source={run} only={values.channels} large />;
+    return (
+        <div className="flex h-full items-center justify-center">
+            <p className="text-sm text-slate-500">{t.board_vizEmpty}</p>
+        </div>
+    );
 }

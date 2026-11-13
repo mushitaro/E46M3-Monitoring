@@ -346,6 +346,8 @@ export interface Localised {
     series_info: string;
     series_none: string;
     board_session: (date: string) => string;
+    board_vizEmpty: string;
+    board_listEmpty: string;
     board_noRun: string;
     board_noRunN: (n: number) => string;
     board_notRead: string;

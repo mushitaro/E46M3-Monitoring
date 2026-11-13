@@ -16,6 +16,17 @@
 export const PART_KINDS = ['message', 'faults', 'scan', 'plan', 'judges', 'compare', 'values', 'graph'] as const;
 export type PartKind = (typeof PART_KINDS)[number];
 
+/**
+ * graph: the numbers drawn large, side by side, in this order (owner, 2026-11-13: the target beside
+ * the actual, the difference large, and — only when asked — the run's max, min and mean beside the
+ * main one). `value` and `target` are the newest readings; `delta` is value − target; `max`, `min`
+ * and `mean` are of the value since the run began.
+ */
+export const READOUTS = ['value', 'target', 'delta', 'max', 'min', 'mean'] as const;
+export type Readout = (typeof READOUTS)[number];
+/** What a graph shows large when the assistant has not said: the value, and its target when it has one. */
+export const defaultReadouts = (channels: readonly string[] | undefined): Readout[] => ((channels?.length ?? 0) > 1 ? ['value', 'target'] : ['value']);
+
 export const BOARD_LIMITS = {
     parts: 12,
     title: 60,
@@ -52,6 +63,8 @@ export interface PartSpec {
      * The assistant's number, and drawn as the assistant's; without it the colour does not change.
      */
     band?: number;
+    /** graph: the numbers drawn large, in order (READOUTS). Default: defaultReadouts. */
+    show?: Readout[];
 }
 
 export interface Part extends PartSpec {
@@ -103,8 +116,12 @@ export function partProblem(p: unknown): string | null {
         if (x.seconds !== undefined && !(Number.isInteger(x.seconds) && x.seconds >= w.min && x.seconds <= w.max)) return `part.seconds is a whole number from ${w.min} to ${w.max}`;
         if (x.band !== undefined && !(typeof x.band === 'number' && Number.isFinite(x.band) && x.band > 0)) return 'part.band is a positive number, in the value’s own unit';
         if (x.band !== undefined && x.channels.length < 2) return 'part.band needs a target: channels: [the value, its target]';
-    } else if (x.context !== undefined || x.seconds !== undefined || x.band !== undefined) {
-        return 'only a graph part takes context, seconds and band';
+        if (x.show !== undefined) {
+            const problem = showProblem(x.show, x.channels);
+            if (problem) return problem;
+        }
+    } else if (x.context !== undefined || x.seconds !== undefined || x.band !== undefined || x.show !== undefined) {
+        return 'only a graph part takes context, seconds, band and show';
     }
     if (
         x.channels !== undefined &&
@@ -113,6 +130,35 @@ export function partProblem(p: unknown): string | null {
         return `part.channels names 1-${BOARD_LIMITS.channels} channels (19:v, adapt:6:lu_adapt)`;
     }
     return null;
+}
+
+/** What is wrong with a graph's `show`, given its channels — or null. */
+function showProblem(show: unknown, channels: readonly string[]): string | null {
+    if (!Array.isArray(show) || show.length < 1 || show.length > READOUTS.length || !show.every((r) => READOUTS.includes(r as Readout))) {
+        return `part.show lists 1-${READOUTS.length} of ${READOUTS.join(', ')}, in the order to draw them large`;
+    }
+    if (new Set(show).size !== show.length) return 'part.show names each readout once';
+    if (channels.length < 2 && show.some((r) => r === 'target' || r === 'delta')) return 'part.show: target and delta need a target: channels: [the value, its target]';
+    return null;
+}
+
+/**
+ * Change which numbers a graph part on the board shows large (`show`), keeping its place, its
+ * open or closed state and everything else about it. All or nothing, like `place`.
+ */
+export function setShow(board: Board, changes: readonly unknown[]): Board {
+    const byId = new Map<string, Readout[]>();
+    for (const c of changes) {
+        if (!c || typeof c !== 'object') throw new Error('set is a list of {id, show}');
+        const { id, show } = c as { id?: unknown; show?: unknown };
+        const part = board.parts.find((p) => p.id === id);
+        if (!part) throw new Error(`No part ${String(id)} on this board; monitoring_status lists the board.`);
+        if (part.kind !== 'graph') throw new Error(`${part.id} is a ${part.kind} part; only a graph takes show`);
+        const problem = showProblem(show, part.channels ?? []);
+        if (problem) throw new Error(problem);
+        byId.set(part.id, [...(show as Readout[])]);
+    }
+    return { ...board, parts: board.parts.map((p) => (byId.has(p.id) ? { ...p, show: byId.get(p.id) } : p)) };
 }
 
 /**
@@ -147,6 +193,7 @@ function pick(s: PartSpec): PartSpec {
     if (s.context !== undefined) out.context = [...s.context];
     if (s.seconds !== undefined) out.seconds = s.seconds;
     if (s.band !== undefined) out.band = s.band;
+    if (s.show !== undefined) out.show = [...s.show];
     return out;
 }
 
@@ -166,6 +213,6 @@ export function move(board: Board, id: string, by: -1 | 1): Board {
 }
 
 /** The board as the assistant reads it back: what is on it, in the owner's order, and what is open. */
-export function boardLine(board: Board): Array<{ id: string; kind: PartKind; title: string | null; open: boolean }> {
-    return board.parts.map((p) => ({ id: p.id, kind: p.kind, title: p.title ?? null, open: p.open }));
+export function boardLine(board: Board): Array<{ id: string; kind: PartKind; title: string | null; open: boolean; show?: Readout[] }> {
+    return board.parts.map((p) => ({ id: p.id, kind: p.kind, title: p.title ?? null, open: p.open, ...(p.kind === 'graph' ? { show: p.show ?? defaultReadouts(p.channels) } : {}) }));
 }

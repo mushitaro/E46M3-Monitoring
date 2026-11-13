@@ -367,6 +367,10 @@ export interface Localised {
     /** graph: the band the colour changes at is the assistant's number, not a specification. */
     graph_band: (band: string) => string;
     graph_target: string;
+    readout_value: string;
+    readout_max: string;
+    readout_min: string;
+    readout_mean: string;
     graph_noValue: string;
     /** The head unit's settings, through the launcher (lib/launcherDoors). */
     /** DSC MK60's codes read as ISO 14230's $58 layout, not yet confirmed on the car (lib/kwpOnDs2). */

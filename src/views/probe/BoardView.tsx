@@ -9,9 +9,9 @@ import { text as resolveText, type EcuProfile } from '@tsunagi/monitoring-engine
 import { normCode } from '@/lib/faultCode';
 import { useLang } from '@/lib/i18n';
 import { currentPlan } from '@/lib/notebook/rules';
-import { BOARD_LIMITS, type Part, type PartKind } from '@/lib/probe/board';
+import { BOARD_LIMITS, defaultReadouts, type Part, type PartKind, type Readout } from '@/lib/probe/board';
 import { channelStats, compareRuns, type Comparison } from '@/lib/probe/compare';
-import { graphOf, type GraphTone } from '@/lib/probe/graph';
+import { graphOf, readoutsOf, type GraphTone } from '@/lib/probe/graph';
 import type { ProbeLive, StoredRun } from '@/lib/probe/runStore';
 import type { ScanRun } from '@tsunagi/monitoring-engine';
 import { formOf } from '@/lib/probe/sessions';
@@ -375,6 +375,20 @@ function sourceOf(s: ProbeSessions, p: Part, live: ProbeLive | null | undefined)
     return { live: l, run: l ? null : runOf(s, p.run) };
 }
 
+const samplesOf = (src: { live: ProbeLive | null; run: StoredRun | null }) => (src.live ? src.live.samples : src.run!.samples);
+
+const READOUT_LABEL: Record<Readout, (t: T) => string> = {
+    value: (t) => t.readout_value,
+    target: (t) => t.graph_target,
+    delta: () => 'Δ',
+    max: (t) => t.readout_max,
+    min: (t) => t.readout_min,
+    mean: (t) => t.readout_mean,
+};
+
+/** The value and its difference carry the colour of how far off target it is; the target its line's blue; the run's spread the quiet ink. */
+const readoutColour = (r: Readout, tone: GraphTone) => (r === 'value' || r === 'delta' ? TONE[tone] : r === 'target' ? SERIES.target : TONE.none);
+
 /** Off target, as the diverging scale says it: above red, below blue, within or unjudged the ink. */
 const TONE: Record<GraphTone, string> = { above: '#F87A7F', below: '#6CCBEF', within: '#F2F2F5', none: '#F2F2F5' };
 /** The data series registry (tsunagi-m-design §1.10): measured feedback violet and thick, the target blue and dashed. */
@@ -396,7 +410,7 @@ export function GraphPart({ part: p, s, live, large = false }: { part: Part; s: 
     const src = sourceOf(s, p, live);
     if (!value) return null;
     if (!src.live && !src.run) return <Empty>{p.run ? t.board_noRunN(p.run) : t.board_noRun}</Empty>;
-    const samples = src.live ? src.live.samples : src.run!.samples;
+    const samples = samplesOf(src);
     const g = graphOf(samples, { value, target, context: p.context, seconds: p.seconds ?? BOARD_LIMITS.seconds.default, band: p.band });
     const v = channelLabel(value, lang);
     if (!g.latest) return <Empty>{t.graph_noValue}</Empty>;
@@ -412,6 +426,11 @@ export function GraphPart({ part: p, s, live, large = false }: { part: Part; s: 
             return n === null ? [] : [`${x(q.t).toFixed(2)},${y(n).toFixed(2)}`];
         }).join(' ');
     const dev = g.latest.deviation;
+    // The numbers drawn large, in the order asked; a target and difference not among them stay small beside.
+    const show = p.show ?? defaultReadouts(p.channels);
+    const big = readoutsOf(g, show.some((r) => r === 'max' || r === 'min' || r === 'mean') ? channelStats({ samples: samplesOf(src) }).get(value) : undefined, show);
+    const small = target ? (['target', 'delta'] as const).filter((r) => !show.includes(r)) : [];
+    const size = large ? (big.length > 3 ? 'text-5xl' : 'text-6xl') : big.length > 3 ? 'text-2xl' : 'text-3xl';
     return (
         <div className={large ? 'flex h-full flex-col gap-2' : 'space-y-1'}>
             <div className="flex items-baseline justify-between gap-3">
@@ -420,15 +439,23 @@ export function GraphPart({ part: p, s, live, large = false }: { part: Part; s: 
                     {src.live ? `${t.run_tag} ${src.live.n} · LIVE` : `${t.run_tag} ${src.run!.n}`}
                 </span>
             </div>
-            <div className="flex items-baseline gap-3">
-                <span className={`font-mono tabular-nums ${large ? 'text-6xl' : 'text-3xl'}`} style={{ color: TONE[g.tone] }}>
-                    {num(g.latest.value)}
-                </span>
-                <span className="text-xs text-slate-500">{v.unit}</span>
-                {g.latest.target !== null ? (
-                    <span className="font-mono text-xs tabular-nums text-slate-400">
-                        {t.graph_target} {num(g.latest.target)}
-                        {dev !== null ? <span className="ml-2" style={{ color: TONE[g.tone] }}>Δ {dev > 0 ? '+' : ''}{num(dev)}</span> : null}
+            <div className="flex flex-wrap items-end gap-x-5 gap-y-1">
+                {big.map((r) => (
+                    <div key={r.kind} className="min-w-0">
+                        <p className="text-[11px] text-slate-500">{READOUT_LABEL[r.kind](t)}</p>
+                        <p className="flex items-baseline gap-1">
+                            <span className={`font-mono tabular-nums ${size}`} style={{ color: readoutColour(r.kind, g.tone) }}>
+                                {r.kind === 'delta' && r.value !== null && r.value > 0 ? '+' : ''}
+                                {num(r.value)}
+                            </span>
+                            <span className="text-xs text-slate-500">{v.unit}</span>
+                        </p>
+                    </div>
+                ))}
+                {g.latest.target !== null && small.length ? (
+                    <span className="pb-1 font-mono text-xs tabular-nums text-slate-400">
+                        {small.includes('target') ? `${t.graph_target} ${num(g.latest.target)}` : null}
+                        {small.includes('delta') && dev !== null ? <span className="ml-2" style={{ color: TONE[g.tone] }}>Δ {dev > 0 ? '+' : ''}{num(dev)}</span> : null}
                     </span>
                 ) : null}
             </div>

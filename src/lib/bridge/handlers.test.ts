@@ -424,4 +424,16 @@ describe('the PROBE board', () => {
         await expect(h.monitoring_show({ parts: [{ kind: 'values', text: 'rpm 800' }] })).rejects.toThrow(/only a message part/);
         await expect(h.monitoring_show({ parts: [{ kind: 'gauge' }] })).rejects.toThrow(/part.kind/);
     });
+
+    it('changes which numbers a placed graph shows large, and reads them back (owner, 2026-11-13)', async () => {
+        const { h } = tab();
+        await h.monitoring_investigate({ words: 'w', modules: [], days: 7 });
+        await h.monitoring_show({ parts: [{ kind: 'graph', channels: ['35:evan1_ist', '35:evan1_soll'] }] });
+        type Line = { board: Array<{ id: string; show?: string[] }> };
+        expect(((await h.monitoring_status({})) as Line).board[0].show).toEqual(['value', 'target']);
+        const r = (await h.monitoring_show({ set: [{ id: 'p1', show: ['value', 'delta', 'max', 'min'] }] })) as { placed: string[] } & Line;
+        expect(r.placed).toEqual([]);
+        expect(r.board).toEqual([expect.objectContaining({ id: 'p1', show: ['value', 'delta', 'max', 'min'] })]);
+        await expect(h.monitoring_show({ set: [{ id: 'p1', show: ['peak'] }] })).rejects.toThrow(/part.show/);
+    });
 });

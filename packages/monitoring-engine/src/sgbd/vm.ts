@@ -76,6 +76,7 @@ const OP = {
     fadd: 0x3b, fsub: 0x3c, fmul: 0x3d, fdiv: 0x3e, ergy: 0x3f, enewset: 0x40, etag: 0x41, atsp: 0x50, jg: 0x5a, jge: 0x5b, jl: 0x5c,
     jle: 0x5d, ja: 0x5e, jbe: 0x5f, parb: 0x55, parw: 0x56, parl: 0x57, pars: 0x58, a2fix: 0x67, fix2flt: 0x68, fix2hex: 0x79, fix2dez: 0x7a, tabset: 0x7b,
     tabseek: 0x7c, tabget: 0x7d, strcat: 0x7e, ergl: 0x82, strcmp: 0x8f,
+    scmp: 0x20, gettmr: 0x43, settmr: 0x44, clrt: 0x46, jt: 0x47, wait: 0x6b,
 } as const;
 
 type Reg =
@@ -90,6 +91,11 @@ function regOf(code: number): Reg | null {
     if (code <= 0x23) return { t: 'str', n: code - 0x1c };
     if (code <= 0x2b) return { t: 'flt', n: code - 0x24 };
     if (code <= 0x33) return { t: 'str', n: 8 + (code - 0x2c) };
+    // The upper half of the register file (EdiabasLib's EdiabasNet register table): A0..AF are bytes
+    // 16..31, I8..IF and L4..L7 overlay them. DSC_MK60's FS_LESEN keeps a count in L6.
+    if (code >= 0x80 && code <= 0x8f) return { t: 'num', at: 16 + (code - 0x80), width: 1 };
+    if (code >= 0x90 && code <= 0x97) return { t: 'num', at: 16 + (code - 0x90) * 2, width: 2 };
+    if (code >= 0x98 && code <= 0x9b) return { t: 'num', at: 16 + (code - 0x98) * 4, width: 4 };
     return null;
 }
 
@@ -149,7 +155,9 @@ export interface SgbdRunOptions {
 function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array, SgbdRun, Uint8Array | null> {
     const { code, base } = job;
     const tables = opts.tables ?? {};
-    const bytes = new Uint8Array(16); // B0..BF, I0..I7 and L0..L3 overlay these, little-endian
+    let trapMask = 0;
+    let trap = 0;
+    const bytes = new Uint8Array(32); // B0..BF and A0..AF; I0..IF and L0..L7 overlay these, little-endian
     const strings: Uint8Array[] = Array.from({ length: 16 }, () => new Uint8Array(0));
     const floats = new Float64Array(8);
     const stack: number[] = [];
@@ -330,7 +338,33 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
                 case OP.nop:
                 case OP.clrc:
                 case OP.setc:
+                // A pause between sends: the app keeps the line's own timing, a replay has none to keep.
+                case OP.wait:
                     break;
+                // The trap mask (EDIABAS's `tmr`): a bit set lets the error of that number mark a trap and
+                // go on, where it would end the job. Here no error goes on — the run stops with its
+                // reason — so no trap is ever marked and `jt` (jump on trap n) never jumps. DSC_MK60's
+                // FS_LESEN guards its table lookups this way (settmr 0x400; jt …, 10).
+                case OP.gettmr: {
+                    const r = numOrFail(a);
+                    setNum(r, trapMask);
+                    break;
+                }
+                case OP.settmr:
+                    trapMask = u(readNum(a, 4), 4);
+                    break;
+                case OP.clrt:
+                    trap = 0;
+                    break;
+                case OP.jt:
+                    if (trap !== 0 && trap === readNum(b, 4)) jumpTo(a);
+                    break;
+                case OP.scmp: {
+                    // Z on equal strings. Not measured on a trace: its one use in the shipped jobs only
+                    // decides whether the raw answer (`_TEL_ANTWORT`) is reported.
+                    flags.z = latin1(readStr(a)) === latin1(readStr(b));
+                    break;
+                }
                 case OP.eoj:
                     return { results, request, stopped: null };
 
@@ -403,9 +437,12 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
                 case OP.asl:
                 case OP.lsl:
                 case OP.lsr: {
-                    const r = numOrFail(a);
-                    const w = r.width;
-                    const x = getNum(r);
+                    // `comp` only reads its first operand, so it may be a byte of a string (DSC_MK60's
+                    // FS_LESEN: `comp S3[2], 0x7f`, a negative answer), as wide as the second operand.
+                    const indexed = op === OP.comp && a.m === 'idx';
+                    const r = indexed ? null : numOrFail(a);
+                    const w = r ? r.width : (widthOf(b) ?? 1);
+                    const x = r ? getNum(r) : u(readNum(a, w), w);
                     const y = u(readNum(b, w), w);
                     const sx = signed(x, w);
                     const sy = signed(y, w);
@@ -451,7 +488,7 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
                             v = y >= w * 8 ? 0 : x * 2 ** y;
                     }
                     setFlags(v, w);
-                    if (op !== OP.comp) setNum(r, v);
+                    if (r && op !== OP.comp) setNum(r, v);
                     break;
                 }
                 case OP.not: {

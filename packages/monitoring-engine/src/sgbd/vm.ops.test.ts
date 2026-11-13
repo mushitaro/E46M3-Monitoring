@@ -135,3 +135,28 @@ describe('a job that asks page by page, one result set per entry', () => {
         expect(r.stopped?.reason).toBe('the job would send 32 05 04 01, not 32 05 04 00');
     });
 });
+
+describe('the upper register file and the trap mask (DSC_MK60’s FS_LESEN)', () => {
+    const L4 = 0x98, L6 = 0x9a, I8 = 0x90;
+
+    it('keeps L4..L7 apart from L0..L3, with I8.. over the same bytes as L4', () => {
+        const r = run([...movL(L0, 1), ...movL(L4, 0x1122_3344), ...movL(L6, 7), ...ergd('L0', L0), ...ergd('L4', L4), ...ergd('L6', L6), ...ergi('I8', I8), ...eoj]);
+        expect(r.stopped).toBeNull();
+        expect(value(r, 'L0')).toBe(1);
+        expect(value(r, 'L4')).toBe(0x1122_3344);
+        expect(value(r, 'L6')).toBe(7);
+        expect(value(r, 'I8')).toBe(0x3344);
+    });
+
+    it('sets and reads back the trap mask; with no trap marked, jt does not jump', () => {
+        const settmr = [0x44, 0x70, ...u32(0x400)];
+        const gettmr = [0x43, 0x40, L6];
+        const clrt = [0x46, 0x00];
+        const skip = ergi('SKIPPED', I0);
+        const jt = [0x47, 0x77, ...u32(skip.length), ...u32(10)];
+        const r = run([...settmr, ...gettmr, ...ergd('MASK', L6), ...clrt, ...jt, ...skip, ...eoj]);
+        expect(r.stopped).toBeNull();
+        expect(value(r, 'MASK')).toBe(0x400);
+        expect(r.results.map((x) => x.name)).toContain('SKIPPED');
+    });
+});

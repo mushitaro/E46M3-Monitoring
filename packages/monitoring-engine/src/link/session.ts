@@ -856,11 +856,25 @@ export class LinkSession {
             if (target.kwp) {
                 if (target.kwp.faults.length === 0) refuse(`${target.moduleId}: its SGBD carries no fault-read frame; nothing is sent.`);
                 const out: RawFaultRead[] = [];
+                const answers: { request: string; answer: Uint8Array }[] = [];
                 for (const f of target.kwp.faults) {
                     const answer = await this.kwpRead(link, target.address, target.moduleId, 'FS_LESEN', f, requires);
-                    const dtcs = parseDtcsByStatus(answer.data);
-                    this.append('rx', dtcs ? `${dtcs.length} code(s), read as ISO 14230 lays a $58 answer out — not yet confirmed on a MK60` : `${answer.data.length} bytes — not the $58 shape`);
-                    out.push({ request: f.hex, response: toHex(answer.data), source: f.source, ...(dtcs ? { kwpDtcs: dtcs } : {}) });
+                    answers.push({ request: f.hex, answer: answer.bytes });
+                    out.push({ request: f.hex, response: toHex(answer.data), source: f.source });
+                }
+                // Its own FS_LESEN reads what came back (sgbd/results, replayed: nothing more is sent).
+                // Read to its end, that is the reading; otherwise the ISO 14230 estimate, beside the bytes.
+                const read = decodeFaultRead(await loadSgbdResults(target.moduleId), answers);
+                if (read && read.stopped === null && read.status === 'OKAY' && out.length > 0) {
+                    this.append('rx', `FS_LESEN (${target.moduleId}'s own job, on the answer): ${read.faults.length} entr${read.faults.length === 1 ? 'y' : 'ies'}`);
+                    out[0] = { ...out[0], jobFaults: read };
+                } else {
+                    for (const [i, x] of answers.entries()) {
+                        const dtcs = parseDtcsByStatus(x.answer.slice(4, x.answer.length - 1));
+                        this.append('rx', dtcs ? `${dtcs.length} code(s), read as ISO 14230 lays a $58 answer out — not yet confirmed on a MK60` : `${x.answer.length - 5} bytes — not the $58 shape`);
+                        if (dtcs) out[i] = { ...out[i], kwpDtcs: dtcs };
+                    }
+                    if (read) this.append('warn', `FS_LESEN (${target.moduleId}'s own job): ${read.stopped ? `stopped — ${read.stopped.reason}` : read.status ?? 'no verdict'}`);
                 }
                 this.update({ faults: null, quickTest: null, rawFaults: out });
                 return out;
@@ -1344,6 +1358,7 @@ export class LinkSession {
                         const address = targets.find((t) => t.kwp && t.modules[0] === moduleId)?.address ?? refuse(`${moduleId}: not in this scan.`);
                         return this.kwpRead(link, address, moduleId, job, f);
                     },
+                    decodeKwpBySgbd: async (moduleId, xs) => decodeFaultRead(await loadSgbdResults(moduleId), xs),
                     // Every other module: its own FS_LESEN, run here (sgbd/faultRead).
                     jobRead: (t) => this.jobFaultRead(link, t.address, t.modules),
                     // The MSS54 alone: its entries are the frame whose argument is 01.

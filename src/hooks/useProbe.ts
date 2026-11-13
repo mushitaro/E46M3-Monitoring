@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { startTransition, useCallback, useEffect, useRef, useState } from 'react';
 import type { useDs2Link } from '@/hooks/useDs2Link';
 import type { EcuIndex } from '@tsunagi/monitoring-engine';
 import type { Ledger } from '@tsunagi/monitoring-engine';
@@ -137,7 +137,11 @@ export function useProbe(input: {
                                 onSample: (s) => {
                                     samples++;
                                     live.samples.push(s);
-                                    show();
+                                    // The board's redraw for a sample is a transition: React yields
+                                    // in it, so the next exchange's answer is taken when it comes
+                                    // instead of after the whole page is drawn (operator, 2026-11-13:
+                                    // the rate halved while the board was on screen).
+                                    startTransition(show);
                                 },
                                 onStep: (k, state) => {
                                     if (state !== 'pending') settled.add(k);

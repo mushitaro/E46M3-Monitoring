@@ -41,7 +41,11 @@ export function graphOf(samples: readonly ProbeSample[], spec: GraphSpec, max = 
     // The newest at the right edge, always: a run shorter than the window starts part way across.
     const end = samples.length ? samples[samples.length - 1].t : 0;
     const from = end - spec.seconds;
-    const window = samples.filter((s) => s.t >= from && finite(s.values[spec.value]));
+    // From the end back to the window's start: a run's samples are in time order, and a long run
+    // is not walked from its first sample on every redraw.
+    let start = samples.length;
+    while (start > 0 && samples[start - 1].t >= from) start--;
+    const window = samples.slice(start).filter((s) => finite(s.values[spec.value]));
     const all = window.map((s) => ({ t: s.t, value: s.values[spec.value] as number, target: spec.target && finite(s.values[spec.target]) ? (s.values[spec.target] as number) : null }));
     const points = all.length <= max ? all : Array.from({ length: max }, (_, k) => all[Math.round((k * (all.length - 1)) / (max - 1))]);
     const ys = all.flatMap((p) => (p.target === null ? [p.value] : [p.value, p.target]));

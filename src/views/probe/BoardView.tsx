@@ -492,13 +492,22 @@ export function ValueCards({ source, only, large = false }: { source: Pick<Probe
     );
 }
 
-/** The newest number each channel has had in a run in progress. */
+/**
+ * The newest number each channel has had in a run in progress. Kept per sample list and carried on
+ * from where it stopped, like `channelStats`: the board redraws once a sample.
+ */
+const newest = new WeakMap<readonly ProbeLive['samples'][number][], { seen: number; out: Map<string, number> }>();
 export function latestValues(live: Pick<ProbeLive, 'samples'>): Map<string, number> {
-    const out = new Map<string, number>();
-    for (const smp of live.samples) {
-        for (const [k, v] of Object.entries(smp.values)) if (typeof v === 'number' && Number.isFinite(v)) out.set(k, v);
+    let memo = newest.get(live.samples);
+    if (!memo || memo.seen > live.samples.length) {
+        memo = { seen: 0, out: new Map() };
+        newest.set(live.samples, memo);
     }
-    return out;
+    for (let i = memo.seen; i < live.samples.length; i++) {
+        for (const [k, v] of Object.entries(live.samples[i].values)) if (typeof v === 'number' && Number.isFinite(v)) memo.out.set(k, v);
+    }
+    memo.seen = live.samples.length;
+    return new Map(memo.out);
 }
 
 /**

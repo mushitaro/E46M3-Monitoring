@@ -144,36 +144,34 @@ configureEcuData((file) => fetch(`/api/monitoring/ecu-data/${file}`, { cache: 'n
 - `link/session.test.ts` が、ディスクから読む口を渡して練習の車につなぎ、IDENT・故障の読み・走行中の拒否まで
   通ることを確かめる。
 
-### 店のサーバーへの読み口：エンジンゲートウェイ `GET /engine-data/<file>`（運営者 2026-11-11、2026-11-12）
+### 店のサーバーへの読み口：M の土台の「エンジンの口」（運営者 2026-11-11、2026-11-12）
 
 データは BMW SGBD 由来と逆コンパイル由来で、`THIRD-PARTY-NOTICES.md` §3 が配信を閉じた内側と定めている。
 GREN BLUE のリポジトリにもビルドにも写さない。
 
-読み口は M のエンジンの口（**エンジンゲートウェイ**）で、MESH の道具である E46M3 /// MONITORING の WORKS の配信とは
-別に置く（運営者 2026-11-12。エンジンは M、アプリは Mainstay。ハブの Skill `tsunagi-m-mainstay` §3）。MESH のアプリの
-配信や不具合が、店の流れに効かないようにするため。コードは `workers/engine-gateway`
-（Pages プロジェクト `tsunagi-engine-gateway` → `tsunagi-engine-gateway.pages.dev`、中身は `_worker.js` だけ。
-カスタムドメインは運営者が後で決める）。エンジンの報告の受け口
-`POST /engine-report` も同じゲートウェイにある。WORKS の Pages は、どちらの口も持たない。
+読み口は、このリポジトリには無い。**M の土台（`m.tsunagi.app`、リポジトリ `tsunagi-m-platform`）のエンジンの口**が持つ
+（運営者 2026-11-12。エンジンは M、アプリは Mainstay。ハブの Skill `tsunagi-m-mainstay` §3）。MESH の道具である
+E46M3 /// MONITORING の WORKS の配信や不具合が、店の流れに効かないようにするため。
+
+前は、このリポジトリに `workers/engine-gateway`（`tsunagi-engine-gateway`）として置く計画だった。配信する前に、
+同じ役目を土台の `m-engine` に置き直したので、ゲートウェイは消した（`feat/desk-inbox`）。
 
 ```
  GREN BLUE SUITE（ブラウザ）── 同じオリジン ──► GREN BLUE のサーバー（スタッフのサインインは店のもの）
-   configureEcuData(f => fetch(`<店のサーバーの口>/${f}`))         店の鍵で一回きりの札を作る
-                                                                      Authorization: Bearer v1.<{s, a:'engine-data', e, n, h}>.<HMAC>
-                                                                      h = ファイル名の SHA-256
+   configureEcuData(f => fetch(`<店のサーバーの口>/${f}`))         店の engine-data の鍵で、札を作る（60 秒、その道だけ）
                                                                       ▼
-                       tsunagi-engine-gateway  GET /engine-data/<file>
+                       M の土台  GET /engine/data/<file>
                          ① ファイル名は index.json・variants.json・fault-layouts.json・<id>.jobs.json・<id>.telegrams.json だけ
-                         ② 店（ENGINE_REPORT_MAINSTAYS）の鍵 ENGINE_REPORT_SECRET_<SLUG> で札を確かめる（60 秒、一回きり）
-                         ③ 配信のときに写した ecu-data/<file> を ASSETS から返す。Cache-Control: private, no-store
+                         ② 鍵の名簿で、店の札を確かめる
+                         ③ R2 の <束>/<版>/<file> を返す。版と ETag を付ける。同じものを持っていれば 304
 ```
 
-- 店のスタッフのうち誰が読めるかは店のサインイン、どの店が読めるかはゲートウェイの `ENGINE_REPORT_MAINSTAYS` と
-  店の鍵。m3 のトークンは使わない（SUITE はスタッフの m3 トークンを持たない。マネージャー 2026-11-11）。
-- データは WORKS と同じ `public/ecu-data`（E46M3-Monitoring-data から）を、`npm run gateway:deploy` が配信のときだけ
-  ゲートウェイの出力に写す。コミットしない。advanced mode なので、札なしで静的ファイルに届く道は無い。
-- ゲートウェイは WORKS と同じ D1（`tsunagi-m-preview-runs`、机の記録）に bind し、エンジンの報告を机の記録に書いて
-  机を起こす。共有するのはデータベースだけで、配信は分ける。
+- 道、札の形、鍵の出し方、データの上げ方は、土台の `docs/design.md` §7 の S5 と `docs/runbook-s5.md`。
+- データは、運営者が手元の `ecu-data`（E46M3-Monitoring-data）から、土台の `npm run data:publish` で版にして R2 に上げる。
+  このリポジトリの配信とは関係しない。**データを直したら、土台へ上げ直す**（版を有効にするまで、店は前の版を読む）。
+- 店のスタッフのうち誰が読めるかは店のサインイン、どの店が読めるかは土台の鍵の名簿。m3 のトークンは使わない。
+- エンジンの報告は、店のサーバー → 土台の `POST /engine/report` → このリポジトリの机の受け箱
+  （`workers/desk`、`POST /inbox/engine-report`）の順に届く。机と自律ループはここに残る（`docs/AUTONOMY.md` §7）。
 
 ## 5. 公開の範囲
 
@@ -209,4 +207,4 @@ Mainstay の側に要るもの（Mainstay の仕事）：
 - `base` の枝の保護：PR を必須にし、**必須のチェック**に Cloudflare のビルド（Git 連携。適合の試験と自分の試験を含む）を入れる。
   この保護が、上のトークンで main に直接書けないことを保つ。
 - リポジトリの設定で「Allow auto-merge」。無いと PR は開いたまま（ワークフローは警告を出す）。
-- `vendor/` の中は直さない。直してほしいことは、エンジンの報告（`/api/bridge/engine-report`）か運営者への頼みで届ける。
+- `vendor/` の中は直さない。直してほしいことは、エンジンの報告（土台の `POST /engine/report`）か運営者への頼みで届ける。

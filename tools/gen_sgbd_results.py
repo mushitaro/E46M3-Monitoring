@@ -47,6 +47,26 @@ RESULT_JOBS = {
     ),
 }
 
+# 故障メモリの読取（FS_LESEN）。アプリが送る FS_LESEN のページ（moduleProtocol の faults）を、ジョブ
+# 自身が同じ順で送るモジュールだけ。ジョブは故障 1 件ごとに結果の組（enewset）を開き、F_ORT_NR・
+# F_ORT_TEXT・F_ARTn_TEXT を自分の表で引く。MSS54 は専用の解読器があるので載せない。
+# 載せないもの（2026-11-13、解釈器で確かめた）：SMG2（ジョブの最初のページが 04 01、アプリは 04 00）、
+# ASCMK20・DSC_E46・LWS5・MRS3・MRS4・SM46 系（ジョブが別の電文を先に送る）、SPM46FT/BT（命令 0x7e）。
+FAULT_READ_SGBDS = {
+    "rdc": "RDC.prg", "ueb2": "UEB2.prg", "ews3": "EWS3.prg", "ews3d": "EWS3D.prg",
+    "zke5": "ZKE5.prg", "zke5_s12": "ZKE5_S12.prg", "kombi46": "KOMBI46.prg", "kombi46r": "KOMBI46R.prg",
+    "lsz": "LSZ.prg", "lsz_2": "LSZ_2.prg", "mfl": "MFL.prg", "aic": "AIC.prg", "rls_ds2": "RLS_DS2.prg",
+    "xenon_l": "XENON_L.prg", "xenon_r": "XENON_R.prg", "cvm_ii": "CVM_II.prg",
+    "ihka46": "IHKA46.prg", "ihka46_2": "IHKA46_2.prg", "ihka46_3": "IHKA46_3.prg",
+    "pdce38": "PDCE38.prg", "pdcact": "PDCACT.prg", "shd46": "SHD46.prg", "shd46_2": "SHD46_2.prg",
+    "radio": "RADIO.prg", "bmbt46rn": "BMBT46RN.prg", "bmbt46tn": "BMBT46TN.prg", "bmbt_mir": "BMBT_MIR.prg",
+    "bm46wide": "BM46WIDE.prg", "navmk3": "NAVMK3.prg", "navmk4": "NAVMK4.prg", "navmk4_2": "NAVMK4_2.prg",
+    "nav_jap": "NAV_JAP.prg", "ses": "SES.prg", "videomod": "VIDEOMOD.prg",
+}
+for _mid, _sgbd in FAULT_READ_SGBDS.items():
+    _prev = RESULT_JOBS.get(_mid)
+    RESULT_JOBS[_mid] = (_sgbd, (_prev[1] if _prev else []) + ["FS_LESEN"])
+
 JUMPS = {0x0B, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x47, 0x48, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F}
 JUMP, EOJ, TABSET = 0x0B, 0x1D, 0x7B
 

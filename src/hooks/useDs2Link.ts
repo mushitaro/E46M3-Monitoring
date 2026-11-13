@@ -61,7 +61,7 @@ import {
 import { appNow } from '@/lib/clock';
 import { kwpExchange, parseDtcsByStatus, type KwpDtc, type KwpFrame } from '@/lib/kwpOnDs2';
 import { whyNotSendable } from '@/lib/actuationGate';
-import { answerFrame, decodeRead, loadSgbdResults, type DecodedRead } from '@/lib/sgbd/results';
+import { answerFrame, decodeFaultRead, decodeRead, loadSgbdResults, type DecodedRead, type SgbdFaultRead } from '@/lib/sgbd/results';
 import { moduleLogGate, moduleLogValues, type ModuleLogRead } from '@/lib/sgbd/logChannels';
 import type { ReadRecord } from '@/lib/investigation/readRecord';
 import type { ModuleProtocol } from '@/lib/moduleProtocol';
@@ -1280,6 +1280,22 @@ export function useDs2Link(options: {
                         decode: (t, frames) => {
                             const i = t.frames.findIndex((f) => f.payload[0] === 0x01);
                             return i >= 0 && frames[i] ? parseErrorMemoryEntries(frames[i], 'errorMemory') : null;
+                        },
+                        // Every other module: its own FS_LESEN code reads the answers. Where SGBDs share the
+                        // address, the first whose job sends these frames and reads them to its end; else the
+                        // first that got anywhere, with where it stopped.
+                        decodeBySgbd: async (t, xs) => {
+                            let first: (SgbdFaultRead & { module: string }) | null = null;
+                            for (const id of t.modules) {
+                                const read = decodeFaultRead(
+                                    await loadSgbdResults(id),
+                                    xs.map((x) => ({ request: x.request, answer: answerFrame(x.frame.address, x.frame.controlOrStatus, x.frame.payload) })),
+                                );
+                                if (!read) continue;
+                                if (read.stopped === null && read.status === 'OKAY') return { ...read, module: id };
+                                first ??= { ...read, module: id };
+                            }
+                            return first;
                         },
                         stopped: () => linkRef.current !== link,
                         pause: yieldToEventLoop,

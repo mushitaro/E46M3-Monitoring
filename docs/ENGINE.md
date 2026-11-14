@@ -177,6 +177,32 @@ E46M3 /// MONITORING の WORKS の配信や不具合が、店の流れに効か�
 - エンジンの報告は、店のサーバー → 土台の `POST /engine/report` → このリポジトリの机の受け箱
   （`workers/desk`、`POST /inbox/engine-report`）の順に届く。机と自律ループはここに残る（`docs/AUTONOMY.md` §7）。
 
+### このアプリ（m3 の WORKS）も、同じ口から読む（運営者 2026-11-14）
+
+m3 も GREN BLUE と同じ、土台の上の Mainstay で、特別な入口を持たない。だから E46M3 /// MONITORING の WORKS も、
+モジュールのデータ（エンジンが読むものと、画面が読む `<id>.jobtext.json`・`<id>.hydraulics.json`・`<id>.results.json`・
+`smg2-workflows.json`）を土台のエンジンの口から読み、ビルドとリポジトリに入れない。
+
+```
+ MONITORING WORKS（ブラウザ）── ./ecu-data/<file>（今までと同じ道。エンジンも画面も設定を変えない）
+   └ Service Worker：ecu-data-<版> のキャッシュ。車の中で電波が無くても開ける
+        ▼ オーナーのゲート（functions/_middleware.ts）
+ functions/ecu-data/[[path]].ts ── functions/_lib/engineData.ts（束を isolate のメモリにだけ、版が同じ間）
+        ▼ m3 の engine-data の鍵で札（functions/_lib/door.ts は土台の正本の写し。npm run door:verify）
+ M の土台  GET /engine/data/_bundle（index.json を求められたときだけ、一分に一度まで「変わった？」）
+```
+
+- **一つだけ GREN BLUE と違う：** 車の中で使う道具なので、ゲートの内側の端末に、版が同じ間だけ置いてよい（土台の
+  `docs/design.md` §10、S5 の「写さない、残さない」の例外）。だから答えは `no-store` ではなく `private, no-cache` で、
+  版（`x-m-dataset-version`）を名乗る。Service Worker は、新しい版のファイルが来たら古い版のキャッシュを消し、ゲートに
+  断られたら（401・403・`/_gate/` への戻し）持っているデータを全部消す。
+- **土台がこの配信に設定されるまでは、今までどおり**：`M_ENGINE_DATA_URL`・`M_MAINSTAY`・秘密値 `M_ENGINE_DATA_KEY` が
+  揃っていなければ、道はビルドの中の写しへそのまま渡す。揃えた後は `npm run deploy -- --data-from-door` で、
+  `public/ecu-data/` を外してビルドし、配信する（`out/ecu-data/` があれば止まる）。配信の後の確かめが、
+  `/ecu-data/index.json` が版を名乗ることを見る。
+- 土台に訊けないとき（電波、429、503）は、持っている束を使い続ける。何も持っていなければ、429 は「今日の上限、UTC 0 時に
+  戻る」、それ以外は 503。どちらも「データが無い」とは言わない。
+
 ## 5. 公開の範囲
 
 - エンジンはコードだけ。`public/ecu-data/`・`tools/terms/` は今までどおり `.gitignore` の内側で、パッケージに

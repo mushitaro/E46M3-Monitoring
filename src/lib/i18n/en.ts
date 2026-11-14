@@ -361,7 +361,7 @@ export const en: Localised = {
             'Vehicle-identity jobs get no run control. This app does not send a chassis number, key material or an odometer value.',
         run_block_noTelegram: "This job's request telegram is not uniquely established. We do not send what we cannot name.",
         run_block_needsArgs: 'This job takes arguments. The extracted telegram embeds argument values we did not choose, so it cannot be sent as it stands.',
-        run_block_notRead: 'Not a read job. Reads are all this app can send to a car so far — there is no execution path yet for actuator tests, calibration writes or procedures.',
+        run_block_notRead: 'Not a read job. The owner has not yet decided whether this goes to a car (the paths that run actuator tests, procedures and adjustments on a car are built for the items the owner decides).',
         run_block_controlWrites: 'The control byte is not read-only. Whatever the classification says, the frame that would go out could change the car, so it is not sent.',
         run_block_notVerified: 'No ledger entry saying this was proven on a vehicle. Nothing but reads runs without one.',
         run_block_revoked: 'This read has been withdrawn (kill list or ledger). The reason is in its ledger record.',

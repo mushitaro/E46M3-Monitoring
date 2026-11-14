@@ -51,6 +51,13 @@
  *
  * ## What is allowed out of the box
  *
+ * This is the shipped default, not a rule. The owner retired "reads only" on
+ * 2026-11-14: what goes to the car — when (moving or parked only), how far (run,
+ * shown on the screen only, or not at all) and who may start it (the person at
+ * the screen, or the assistant too) — is decided item by item by the owner, and
+ * this file is where that decision is read. Until an item is decided, the default
+ * below stands.
+ *
  * Reads, and only reads. A DS2 read command cannot change the ECU: it names a
  * block and the ECU answers. Everything that CAN change the car — actuator
  * tests, calibration writes, coding, programming, the SMG II procedures, the

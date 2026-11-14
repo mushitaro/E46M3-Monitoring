@@ -368,6 +368,12 @@ check('ecu-data/index.json 200', idx.status === 200, String(idx.status));
 check('ships 51 modules', modules >= 51, `${modules} modules`);
 check('ecu-data noindex', (idx.headers.get('x-robots-tag') || '').includes('noindex'),
     idx.headers.get('x-robots-tag') || '(none)');
+// With --data-from-door (deploy.mjs passes it on): the data came from the platform's engine door
+// (functions/ecu-data), which names its version; the build's own copy names none (operator, 2026-11-14).
+if (process.argv.includes('--data-from-door')) {
+    const version = idx.headers.get('x-m-dataset-version');
+    check('ecu-data comes from the engine door (x-m-dataset-version)', Boolean(version), version || '(none: the door is not configured here, or the build answered)');
+}
 
 const sw = await get('/sw.js');
 const cache = (sw.text.match(/const CACHE = ['"]([^'"]+)['"]/) || [])[1];

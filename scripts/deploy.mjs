@@ -40,6 +40,11 @@
 //     build は通り、**51 モジュールが 0 個の `out/` ができる**。それを
 //     配信すると、本物を「誰でも作れるもの」で置き換えることになる。だから
 //     `out/ecu-data/index.json` を読み、モジュール数が足りなければ止める。
+//     **`--data-from-door`**（運営者、2026-11-14）：データは M の土台のエンジンの口から読む
+//     （functions/ecu-data/[[path]].ts）。このときは逆に、`out/ecu-data/` があれば止める——
+//     データをビルドに入れない、が決まりだから。この配信の Pages に `M_ENGINE_DATA_URL`・
+//     `M_MAINSTAY`・秘密値 `M_ENGINE_DATA_KEY` が入っていることは、verify-deploy.mjs が
+//     ゲートの内側から `/ecu-data/index.json` の版の見出しで確かめる。
 //
 //  6. **共有のアップロードトークンは退役した。** SYNC はゲートが解決した持ち主で
 //     分けられ、トークンを持たない。`sync-token` の meta を含む HTML が一つでも
@@ -171,19 +176,30 @@ console.log(`ok    HEAD ${short} is origin/${PUBLIC_BRANCH}`);
 run('npm run build:preview');
 
 // --- 5. データがあることの主張 -------------------------------------------------
+const FROM_DOOR = process.argv.includes('--data-from-door');
 const indexPath = path.join(OUT, 'ecu-data', 'index.json');
-if (!existsSync(indexPath)) {
+if (FROM_DOOR) {
+    if (existsSync(path.join(OUT, 'ecu-data'))) {
+        refuse(
+            '--data-from-door なのに out/ecu-data/ がある。データはビルドに入れない（運営者、2026-11-14）。\n' +
+                '         public/ecu-data/ を外してから build すること。',
+        );
+    }
+    console.log('ok    the build carries no module data: /ecu-data/ is read from the engine door of the platform');
+} else if (!existsSync(indexPath)) {
     refuse(
         'out/ecu-data/index.json が無い。データの無いビルドを配信しようとしている。\n' +
             '         public/ecu-data/ を用意してから build すること（docs/REFERENCES.md §3）。',
     );
 }
-const index = JSON.parse(readFileSync(indexPath, 'utf-8'));
-const n = index.modules?.length ?? 0;
-if (n < MIN_MODULES) {
-    refuse(`out/ecu-data/index.json のモジュールが ${n} 個しかない（${MIN_MODULES} 必要）。データが欠けたビルド。`);
+if (!FROM_DOOR) {
+    const index = JSON.parse(readFileSync(indexPath, 'utf-8'));
+    const n = index.modules?.length ?? 0;
+    if (n < MIN_MODULES) {
+        refuse(`out/ecu-data/index.json のモジュールが ${n} 個しかない（${MIN_MODULES} 必要）。データが欠けたビルド。`);
+    }
+    console.log(`ok    ${n} modules in out/ecu-data/index.json`);
 }
-console.log(`ok    ${n} modules in out/ecu-data/index.json`);
 
 // --- 6. 共有トークンが載っていないこと、公開済みのコミットの preview であること -------
 const html = (function walk(dir) {
@@ -206,4 +222,4 @@ console.log(`ok    no sync-token; ${html.length} documents branded preview; buil
 // `--commit-dirty=true`: CLAUDE.md and .claude/ may differ from HEAD and are deliberately outside the
 // tree check above; without the flag wrangler warns about them on every deploy.
 run(`npx --yes wrangler pages deploy out --project-name ${PROJECT} --branch main --commit-dirty=true`);
-verify(`node scripts/verify-deploy.mjs https://${PROJECT}.pages.dev`);
+verify(`node scripts/verify-deploy.mjs https://${PROJECT}.pages.dev${FROM_DOOR ? ' --data-from-door' : ''}`);

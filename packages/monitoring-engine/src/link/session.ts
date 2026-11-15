@@ -249,7 +249,7 @@ export interface LinkHandlers {
     /** Told when a job that drives something ran in PRACTICE through this send path (policy: practice first). */
     onPracticed?: (p: { moduleId: string; jobId: string; at: string }) => void;
     /** Told about every run of a job that drives something on the car, either way (policy: record runs). Vehicle only. */
-    onActuated?: (r: { moduleId: string; jobId: string; kind: 'run' | 'stop'; telegram: string; response: string | null; outcome: 'ok' | 'rejected' | 'failed'; reason: string | null; at: string; ecuIdent?: string }) => void;
+    onActuated?: (r: { moduleId: string; jobId: string; kind: 'run' | 'follow' | 'stop'; telegram: string; response: string | null; outcome: 'ok' | 'rejected' | 'failed'; reason: string | null; at: string; ecuIdent?: string }) => void;
 }
 
 const INITIAL: LinkSnapshot = {
@@ -1099,7 +1099,7 @@ export class LinkSession {
             // A read the owner has not cleared for a moving car goes only when the DME says
             // 0 km/h in this same call. A run that drives something is measured further (battery,
             // engine); its stop is never held back by a measurement.
-            const measured = permit?.kind === 'stop' ? null : await this.preflight(link, jobId, permit ? 'parked' : requires);
+            const measured = permit && permit.kind !== 'run' ? null : await this.preflight(link, jobId, permit ? 'parked' : requires);
             if (permit?.kind === 'run') await this.preflightRun(link, jobId, permit.engine);
             this.append('tx', `${jobId}: ${hex}`);
             const drives = permitted || !isReadOnlyControl(control, target.moduleId);
@@ -1150,7 +1150,9 @@ export class LinkSession {
         });
 
     /** A run of a job that drives something: PRACTICE's is practice, the car's is a record. */
-    private noteRun(moduleId: string, jobId: string, kind: 'run' | 'stop', telegram: string, response: string | null, outcome: 'ok' | 'rejected' | 'failed', e: unknown) {
+    private noteRun(moduleId: string, jobId: string, kind: 'run' | 'follow' | 'stop', telegram: string, response: string | null, outcome: 'ok' | 'rejected' | 'failed', e: unknown) {
+        // A procedure's status re-ask is the same run asked again: only its failures are news.
+        if (kind === 'follow' && outcome === 'ok') return;
         const at = new Date(appNow()).toISOString();
         try {
             if (this.modeNow === 'practice') {

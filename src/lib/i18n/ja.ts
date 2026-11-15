@@ -135,7 +135,7 @@ export const ja: Localised = {
         '解読結果の隣に生バイトも出しています。',
     procBlock: {
         proc_block_vehicle:
-            '実車が接続されています。この手順は読取ではなく、実車で確認が取れていないので送れません。PRACTICE で実行してください。',
+            '実車が接続されていますが、この画面に台帳と車の状態が渡っていません。何も送りません。',
         proc_block_noJob: 'このモジュールのカタログに TESTPRG_STARTEN / TESTPRG_STOP がありません。',
         proc_block_selection: 'ギアの選択が必要です（ニュートラル・1〜6速・リバース）。',
         proc_block_frame: '送るべきフレームを組み立てられません。テンプレートと宣言引数が一致していません。',

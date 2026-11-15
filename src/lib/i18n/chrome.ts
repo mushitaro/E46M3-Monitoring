@@ -35,6 +35,9 @@ export const CHROME = {
     // The sub-action under the scan: put the chosen module on the screen.
     open_module: 'Open',
     practice: 'PRACTICE',
+    // PRACTICE's simulated engine, on the module row while connected: what an engine-off or engine-on job is practised against.
+    practice_engine: 'ENGINE',
+    practice_engine_title: 'Practice car engine — running when ticked, stopped when not',
     probe: 'PROBE',
     exportCsv: 'Export CSV',
     retry: 'Retry',

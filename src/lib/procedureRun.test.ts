@@ -10,7 +10,7 @@ import {
     planProcedure,
     stillRunning,
 } from './procedureRun';
-import { practiceEcu } from '@tsunagi/monitoring-engine';
+import { EMPTY_LEDGER, practiceEcu, recordPracticeRun } from '@tsunagi/monitoring-engine';
 import type { Smg2Procedure, Smg2Workflows } from './smg2Workflows';
 import type { TelegramTable } from '@tsunagi/monitoring-engine';
 
@@ -37,13 +37,29 @@ describe('the cadence', () => {
 });
 
 describe('planning a procedure', () => {
-    it('refuses on a vehicle, and says that is why', () => {
-        // TESTPRG_STARTEN is not a read and 0x32 is not in READ_ONLY_CONTROLS.
-        // The plan reports the refusal rather than building a frame nobody may
-        // send — there is no second opinion here about what reaches a car.
+    it('refuses on a vehicle when the screen did not hand it the gate’s inputs', () => {
         const r = plan({ mode: 'vehicle' });
         expect(r.ok).toBe(false);
         if (!r.ok) expect(r.reason).toBe('proc_block_vehicle');
+    });
+
+    it('on a vehicle, asks the owner’s decision: this same program practised first, then parked (2026-11-15)', () => {
+        const p = proc('0x01');
+        const before = plan({ mode: 'vehicle', gate: { ledger: EMPTY_LEDGER, motion: 'parked' } });
+        expect(before).toEqual({ ok: false, reason: 'run_block_practiceFirst' });
+        // Practising another program opens nothing for this one.
+        const other = recordPracticeRun(EMPTY_LEDGER, 'smg2:TESTPRG_STARTEN(0x02)', '2026-11-15T00:00:00Z');
+        expect(plan({ mode: 'vehicle', gate: { ledger: other, motion: 'parked' } })).toEqual({ ok: false, reason: 'run_block_practiceFirst' });
+        const practised = recordPracticeRun(EMPTY_LEDGER, `smg2:TESTPRG_STARTEN(${p.testprg})`, '2026-11-15T00:00:00Z');
+        expect(plan({ mode: 'vehicle', gate: { ledger: practised, motion: 'moving' } })).toEqual({ ok: false, reason: 'run_block_moving' });
+        const r = plan({ mode: 'vehicle', gate: { ledger: practised, motion: 'parked' } });
+        expect(r.ok).toBe(true);
+        if (r.ok) {
+            expect(r.plan.startJobId).toBe(`TESTPRG_STARTEN(${p.testprg})`);
+            expect(r.plan.permits.start).toMatchObject({ kind: 'run', moduleId: 'smg2', jobId: r.plan.startJobId, hex: r.plan.startHex });
+            expect(r.plan.permits.follow).toMatchObject({ kind: 'follow', jobId: r.plan.startJobId });
+            expect(r.plan.permits.stop).toMatchObject({ kind: 'stop', jobId: 'TESTPRG_STOP', hex: r.plan.stopHex });
+        }
     });
 
     it('sends STOP before START, because the ECU requires it', () => {

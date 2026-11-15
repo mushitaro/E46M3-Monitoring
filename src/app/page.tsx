@@ -49,7 +49,7 @@ import { PRIVACY_PREVIEW } from '@/lib/links';
 import { loadDscHydraulics, type DscHydraulics } from '@/lib/dscHydraulics';
 import { enabledTabs, featureEnabled } from '@/lib/features';
 import { EMPTY_LEDGER, applyKillList, fetchKillList, grantMovingOk, permitFor, recordClear, recordParkedObservation, recordPracticeRun, recordVehicleRun, type KillList, type Ledger } from '@tsunagi/monitoring-engine';
-import { mayActuate, mayRun, type RunVerdict } from '@tsunagi/monitoring-engine';
+import { mayActuate, mayRun, practiceCar, type RunVerdict } from '@tsunagi/monitoring-engine';
 import { loadSmg2Workflows, type Smg2Workflows } from '@/lib/smg2Workflows';
 import { MODE_HOME, TAB_MODE, TAB_ORDER, type Mode, type Tab } from '@/lib/tabs';
 import { addEntries } from '@/lib/notebook/store';
@@ -308,6 +308,8 @@ export default function Home() {
     const catalog = loaded?.id === ecuId ? loaded.catalog : null;
     // The module's group in the index: part of how the owner's decision judges a job (policy.ts).
     const moduleGroup = useMemo(() => ecuIndex?.modules.find((m) => m.id === ecuId)?.group, [ecuIndex, ecuId]);
+    // SMG II's procedures ask the same gate, with the ledger and the car as they stand.
+    const procedureGate = useMemo(() => ({ ledger, motion: link.motion }), [ledger, link.motion]);
 
     // Datalog state lives here so the right column can visualise a run while
     // the datalog tab is not the one on the left.
@@ -569,6 +571,18 @@ export default function Home() {
     // checkbox the hub reads CONNECT either way and the box says which link you
     // will get — which is also why it is disabled once a session is open.
     const [practiceArmed, setPracticeArmed] = useState(false);
+    // PRACTICE's simulated engine (lib/practiceCar): jobs whose SGBD asks for the engine stopped are practised with it off.
+    const [practiceEngineOn, setPracticeEngineOn] = useState(true);
+    const practiceEngine = useMemo(
+        () => ({
+            running: practiceEngineOn,
+            onChange: (v: boolean) => {
+                practiceCar.engineRunning = v;
+                setPracticeEngineOn(v);
+            },
+        }),
+        [practiceEngineOn],
+    );
     const [faultOpen, setFaultOpen] = useState(false);
     const [creditsOpen, setCreditsOpen] = useState(false);
 
@@ -916,6 +930,7 @@ export default function Home() {
                                     state={link.state}
                                     practiceArmed={practiceArmed}
                                     onPractice={setPracticeArmed}
+                                    practiceEngine={practiceEngine}
                                     onDisconnect={disconnect}
                                     onChangeEcu={chooseModule}
                                     allowAll={tab === 'diagnosis'}
@@ -1158,6 +1173,7 @@ export default function Home() {
                     jobs={jobIndex(catalog)}
                     telegrams={telegrams}
                     mode={link.mode}
+                    gate={procedureGate}
                     send={link.runRead}
                     onClose={() => setWizardOpen(false)}
                 />

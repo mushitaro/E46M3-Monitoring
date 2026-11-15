@@ -136,7 +136,7 @@ export const en: Localised = {
         'confirmed them against a car, so the raw bytes are printed beside the decode.',
     procBlock: {
         proc_block_vehicle:
-            'A vehicle is attached. This procedure is not a read and has not been confirmed on a car, so it is not sent. Run it in PRACTICE.',
+            'A car is connected, but this screen was not handed the ledger and the car’s state. Nothing is sent.',
         proc_block_noJob: "This module's catalogue has no TESTPRG_STARTEN / TESTPRG_STOP.",
         proc_block_selection: 'A gear must be chosen — neutral, 1 to 6, or reverse.',
         proc_block_frame: 'The frame cannot be built: the template and the declared arguments do not agree.',

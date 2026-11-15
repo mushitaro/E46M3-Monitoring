@@ -112,6 +112,7 @@ public repo を clone した人が、**何がどれだけ欠けているか**を
 | `sgbd/gen_variants.py` | #1 の `D_00xx.grp`（`SgbdDump --tables`）＋ `RULES`（逆アセンブルを読んで書いた選び方）。`SgbdDump --ident` で EdiabasLib にグループファイルそのものを走らせ、食い違えば書かない | `public/ecu-data/variants.json`, `variants.oracle.json` |
 | `gen_ecu_data.py` | ダンプ ＋ `sgbd/*` ＋ `translate.py` | `public/ecu-data/<id>.jobs.json`, `index.json` |
 | `sgbd/gen_fault_layouts.py` | #1 の各モジュールの FS_LESEN（`SgbdDump --exec` を EdiabasLib の模擬で走らせる。答えは使い捨ての `.sim`）。乱数の答えで EdiabasLib と一致しなければ書かない | `public/ecu-data/fault-layouts.json` |
+| `sgbd/gen_job_frames.py` | #1 の各モジュールの値を取るジョブ（作動テスト・検査・模擬・リセット。書き込みは除く）を、値の組ごとに `SgbdDump --exec … --string` で EdiabasLib の模擬に走らせ、送った電文を順に記録する（答えは使い捨ての `.sim`。IDENT は `variants.oracle.json` の答え、ほかは肯定の空の答え）。アプリが同じジョブのコードで組む電文と一致したものだけを実車に開く | `public/ecu-data/job-frames.oracle.json` |
 | `gen_smg2_workflows.py` | `SMG2.json` | `public/ecu-data/smg2-workflows.json` |
 | `gen_dsc_hydraulics.py` | `DSC_E46.json` ＋ `dsc_e46.telegrams.json` | `public/ecu-data/dsc_e46.hydraulics.json` |
 | `gen_sgbd_results.py` | #1（`.prg` のジョブのコード）＋ `<SGBD>.json` の `tables` | `public/ecu-data/<id>.results.json`（SMG II の 6 ジョブと、34 モジュールの故障読取 FS_LESEN。エンジンの `packages/monitoring-engine/src/sgbd/vm.ts` が答えを読むのに走らせる） |

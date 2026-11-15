@@ -82,8 +82,11 @@ export const NATURES: ReadonlyArray<{ nature: Nature; ja: string; en: string }> 
 ];
 
 /**
- * The owner's decision of 2026-11-15, by nature. 「OKです。…これで実装をお願いします。」 on the decision
- * page's recommended settings.
+ * The decision by nature. The owner approved the decision page (2026-11-15, 「これで実装をお願いします」)
+ * without pasting its selections, so this was first written from the page's recommended settings —
+ * the assistant's, not the owner's. Corrected by the owner the same day: the brake hydraulics are not
+ * shown-only (「DSCの油圧系は表示だけにしていません」); they run like the other actuators, parked, on the
+ * screen. Any other nature the owner sets differently is corrected here the same way.
  */
 export const OWNER_DECISION: Readonly<Record<Nature, Decision>> = {
     r_ident: { when: 'moving', how: 'run', who: 'ai' },
@@ -96,7 +99,7 @@ export const OWNER_DECISION: Readonly<Record<Nature, Decision>> = {
     a_chassis: { when: 'parked', how: 'run', who: 'screen' },
     a_engine: { when: 'parked', how: 'run', who: 'screen' },
     a_smg: { when: 'parked', how: 'run', who: 'screen' },
-    a_brake: { when: 'parked', how: 'show', who: 'screen' },
+    a_brake: { when: 'parked', how: 'run', who: 'screen' },
     a_safety: { when: 'parked', how: 'off', who: 'screen' },
     p_smg: { when: 'parked', how: 'run', who: 'screen' },
     c_check: { when: 'parked', how: 'run', who: 'screen' },

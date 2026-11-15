@@ -219,10 +219,12 @@ describe('the run gate', () => {
         }
     });
 
-    it('shows the brake hydraulics and offers no writes (owner, 2026-11-15)', () => {
+    it('runs the brake hydraulics like the other actuators — practised first, parked — and offers no writes (owner, 2026-11-15)', () => {
         const dsc = profile('dsc_e46');
         const pump = dsc.jobs.find((j) => j.id === 'DRUCKHALTEN')!;
-        expect(mayRun(pump, bestTelegram(telegrams('dsc_e46'), pump.id), EMPTY_LEDGER, ctx('dsc_e46'))).toEqual({ allowed: false, reason: 'run_block_policyShow' });
+        const v = mayRun(pump, bestTelegram(telegrams('dsc_e46'), pump.id), EMPTY_LEDGER, ctx('dsc_e46'));
+        expect(v.allowed).toBe(false);
+        if (!v.allowed) expect(v.reason).not.toBe('run_block_policyShow');
         const write = profile('mss54').jobs.find((j) => j.id === 'SPEICHER_SCHREIBEN')!;
         expect(mayRun(write, null, EMPTY_LEDGER, ctx('mss54')).allowed).toBe(false);
     });

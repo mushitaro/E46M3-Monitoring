@@ -33,10 +33,10 @@ function engine() {
     const t = (Date.now() - START) / 1000;
     const v = practiceCar.speedKmh;
     return {
-        rpm: Math.round((v > 0 ? 1200 + v * 35 : 820) + 15 * Math.sin(t * 1.3)),
+        rpm: practiceCar.engineRunning || v > 0 ? Math.round((v > 0 ? 1200 + v * 35 : 820) + 15 * Math.sin(t * 1.3)) : 0,
         coolantC: Math.min(92, 22 + 70 * (1 - Math.exp(-t / 90))),
         oilC: Math.min(98, 22 + 76 * (1 - Math.exp(-t / 130))),
-        battV: 13.9 + 0.12 * Math.sin(t / 2.5),
+        battV: practiceCar.batteryV ?? (practiceCar.engineRunning || v > 0 ? 13.9 + 0.12 * Math.sin(t / 2.5) : 12.5),
     };
 }
 
@@ -59,7 +59,8 @@ function blockPayload(block: LiveValueBlock): Uint8Array {
         let target: number;
         if (f.symbol === 'n') target = e.rpm;
         else if (f.symbol === 'tmot') target = e.coolantC;
-        else if (f.unit === 'V') target = f.symbol.startsWith('UUB') ? e.battV : 2.5;
+        // The battery: the DME's `ub` (block 3, main relay) and the UUB fields. Other volts are sensors.
+        else if (f.unit === 'V') target = f.symbol.startsWith('UUB') || f.symbol === 'ub' ? e.battV : 2.5;
         else if (f.unit === '°C') target = e.oilC;
         else if (f.unit === 'rpm') target = e.rpm;
         // The practice car's speed: 0 unless a scenario drives it. The speed preflight reads block 19

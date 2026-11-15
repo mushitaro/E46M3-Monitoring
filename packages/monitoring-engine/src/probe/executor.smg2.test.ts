@@ -116,20 +116,20 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('PROBE samples SMG II values read by its own
         expect(h.observed).toContain('smg2:STATUS_IO_LESEN');
     });
 
-    it('sends nothing to SMG II while the car moves, and leaves the value empty', async () => {
+    it('reads it while the car moves: the owner decided status values are read while moving (2026-11-15)', async () => {
         const h = await harness(() => 40);
         const run = await runProbe(plan([{ n: 1, do: 'SMG II engine speed', kind: 'sample', channels: [RPM] }]), h.deps);
         expect(run.samples.length).toBeGreaterThan(0);
-        expect(run.samples.every((s) => s.values[RPM] === null)).toBe(true);
-        expect(sentTo(h, 0x32)).toEqual([]);
+        expect(run.samples.every((s) => s.values[RPM] === 3000)).toBe(true);
+        expect(sentTo(h, 0x32).some((f) => f.startsWith('32 05 0b'))).toBe(true);
     });
 
-    it('reads it while moving once the owner has cleared it for a moving car', async () => {
-        const ledger: Ledger = { ...EMPTY_LEDGER, records: { 'smg2:STATUS_IO_LESEN': { id: 'smg2:STATUS_IO_LESEN', status: 'moving-ok', movingOkBy: 'owner', movingOkAt: '2026-11-12T00:00:00Z' } } };
+    it('sends nothing once it has been withdrawn, and leaves the value empty', async () => {
+        const ledger: Ledger = { ...EMPTY_LEDGER, records: { 'smg2:STATUS_IO_LESEN': { id: 'smg2:STATUS_IO_LESEN', status: 'revoked', reason: 'kill list' } } };
         const h = await harness(() => 40, 4, ledger);
         const run = await runProbe(plan([{ n: 1, do: 'SMG II engine speed', kind: 'sample', channels: [RPM] }]), h.deps);
-        expect(run.samples.length).toBeGreaterThan(0);
-        expect(run.samples.every((s) => s.values[RPM] === 3000)).toBe(true);
+        expect(run.samples.every((s) => (s.values[RPM] ?? null) === null)).toBe(true);
+        expect(sentTo(h, 0x32).some((f) => f.startsWith('32 05 0b'))).toBe(false);
     });
 });
 
@@ -142,7 +142,7 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('a read step on SMG II', () => {
         expect(x.values?.find((v) => v.name === 'STAT_MOTORDREHZAHL_WERT')?.value).toBe(3000);
     });
 
-    it('says why it waits when the car moves, and lets a fault read behind it go', async () => {
+    it('reads it while the car moves too, and the fault read behind it goes', async () => {
         const h = await harness(() => 40);
         const run = await runProbe(
             plan([
@@ -151,9 +151,9 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('a read step on SMG II', () => {
             ]),
             h.deps,
         );
-        expect(run.steps[0]).toMatchObject({ state: 'pending', sent: 0, waiting: 'parked only: the car was measured moving' });
+        expect(run.steps[0].state).toBe('done');
         expect(run.steps[1].state).toBe('done');
-        expect(sentTo(h, 0x32).some((f) => f.startsWith('32 05 0b'))).toBe(false);
+        expect(sentTo(h, 0x32).some((f) => f.startsWith('32 05 0b'))).toBe(true);
     });
 });
 

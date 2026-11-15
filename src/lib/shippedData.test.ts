@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { assertLoadableProfile, type EcuIndex, type EcuProfile } from '@tsunagi/monitoring-engine';
 import { STRINGS } from './i18n';
-import { isReadOnlyControl, mayRun } from '@tsunagi/monitoring-engine';
+import { isReadNature, isReadOnlyControl, mayRun, natureOf, recordPracticeRun } from '@tsunagi/monitoring-engine';
 import { EMPTY_LEDGER } from '@tsunagi/monitoring-engine';
 
 /**
@@ -192,8 +192,8 @@ describe('what writes the car’s identity is never addressed to its owner', () 
     });
 });
 
-describe('no non-read job can run, on any module, with any telegram', () => {
-    it('refuses every non-read job in every module', () => {
+describe('nothing that drives the car runs on it before it has run in PRACTICE (owner, 2026-11-15)', () => {
+    it('refuses every job that drives something, in every module, with an empty ledger', () => {
         // runGate.test.ts makes this assertion over three modules. The port's largest
         // classification changes landed on the other 48, and until the telegram tables
         // arrived those 48 were also being held back by the missing table — so this had
@@ -203,7 +203,7 @@ describe('no non-read job can run, on any module, with any telegram', () => {
         for (const [id, p] of profiles) {
             const table = telegrams.get(id)!;
             for (const j of p.jobs) {
-                if (j.class === 'read') continue;
+                if (isReadNature(natureOf(id, j))) continue;
                 const entries = table.jobs[j.id] ?? [];
                 const tel =
                     entries.length === 1
@@ -215,6 +215,30 @@ describe('no non-read job can run, on any module, with any telegram', () => {
             }
         }
         expect(allowed).toEqual([]);
+    });
+
+    it('once practised, runs only what the owner decided to run, parked, with terms and without arguments', () => {
+        const ran: string[] = [];
+        for (const [id, p] of profiles) {
+            const table = telegrams.get(id)!;
+            const group = index.modules.find((m) => m.id === id)?.group;
+            for (const j of p.jobs) {
+                if (isReadNature(natureOf(id, j, group))) continue;
+                const entries = table.jobs[j.id] ?? [];
+                if (entries.length !== 1 || entries[0].confidence !== 'single') continue;
+                const tel = { hex: entries[0].hex, confidence: 'single' as const };
+                const practised = recordPracticeRun(EMPTY_LEDGER, `${id}:${j.id}`, '2026-11-15T00:00:00Z');
+                const v = mayRun(j, tel as never, practised, { moduleId: id, motion: 'parked', group });
+                if (!v.allowed) continue;
+                ran.push(`${id}.${j.id}`);
+                expect(v.requires).toBe('parked');
+                expect(v.actuation, `${id}.${j.id}`).toBeDefined();
+                expect(['a_brake', 'a_safety', 'c_mode', 'c_setup', 'w']).not.toContain(v.actuation!.nature);
+                expect(j.args).toEqual([]);
+                expect(mayRun(j, tel as never, practised, { moduleId: id, motion: 'moving', group }).allowed).toBe(false);
+            }
+        }
+        expect(ran.length).toBeGreaterThan(0);
     });
 });
 
@@ -291,7 +315,7 @@ describe('what a real car would accept today', () => {
         }
     }
 
-    it('is 126 jobs across 42 modules', () => {
+    it('is 127 jobs across 42 modules', () => {
         // 103 across 36 until 2026-11-11's non-M3 DMEs and GS20 arrived (six modules, 23 jobs): their own
         // read-only reads (control bytes already in `READ_ONLY_CONTROLS`). The policy did not move, and an
         // M3 is sent none of them — which module is at an address is its IDENT's to say (lib/variants).
@@ -312,16 +336,20 @@ describe('what a real car would accept today', () => {
         // whose frames the extractor now follows past the result tags in front of their send.
         //
         // Then 103 -> 126: the six modules above.
-        expect(allowed.length).toBe(126);
+        //
+        // Then 126 -> 127 (owner, 2026-11-15): reads are judged by nature (policy.ts), not by class, and
+        // BM46WIDE's CHECKSUMME_ABFRAGEN, filed `unclassified`, is a read whose frame carries 0x0a
+        // (QUERY_ENCODING_CHECKSUM, a read). Its control byte still had to pass, as every read's must.
+        expect(allowed.length).toBe(127);
         expect(new Set(allowed.map((a) => a.split('.')[0])).size).toBe(42);
     });
 
-    it('and every one of them is classified read and takes no arguments', () => {
+    it('and every one of them is a read and takes no arguments', () => {
         const byId = new Map(profiles.map(([id, p]) => [id, new Map(p.jobs.map((j) => [j.id, j]))]));
         for (const a of allowed) {
             const [mid, jid] = [a.slice(0, a.indexOf('.')), a.slice(a.indexOf('.') + 1)];
             const j = byId.get(mid)!.get(jid)!;
-            expect(j.class).toBe('read');
+            expect(isReadNature(natureOf(mid, j)), a).toBe(true);
             expect(j.args).toEqual([]);
         }
     });

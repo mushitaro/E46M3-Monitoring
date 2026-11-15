@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react';
 import { GateDialog } from '@/components/gate/GateDialog';
 import { DataList, DataRow, LABEL, ListControls, Pill, Section, TextButton, humanName } from '@/components/ui';
 import type { Arming } from '@/hooks/useActuatorArming';
-import { mayActuate, type ActuationMode } from '@tsunagi/monitoring-engine';
+import { DEFAULT_RUN_TIMEOUT_S, mayActuate, permitFor, stopPermit, type ActuationMode, type ActuationPermit } from '@tsunagi/monitoring-engine';
 import type { Phase } from '@/lib/actuatorArgs';
 import type { CatalogJob, EcuProfile } from '@tsunagi/monitoring-engine';
 import { execStyleOf } from '@/lib/execStyle';
@@ -60,7 +60,7 @@ export function ActuatorView({
     mode: ActuationMode;
     arming: Arming;
     /** Send a job's frame. The caller owns the busy lock and the log. */
-    onRun: (jobId: string, hex: string, requires?: SendRequirement) => Promise<unknown>;
+    onRun: (jobId: string, hex: string, requires?: SendRequirement, permit?: ActuationPermit) => Promise<unknown>;
 }) {
     const { lang, t } = useLang();
     const [query, setQuery] = useState('');
@@ -87,11 +87,12 @@ export function ActuatorView({
                     moduleId: profile.id,
                     mode,
                     motion,
+                    group: profile.group,
                 }),
             );
         }
         return out;
-    }, [jobs, telegrams, ledger, profile.id, mode, motion]);
+    }, [jobs, telegrams, ledger, profile.id, profile.group, mode, motion]);
 
     const runnableCount = useMemo(
         () => [...verdicts.values()].filter((v) => v.allowed).length,
@@ -117,6 +118,8 @@ export function ActuatorView({
         // prop type is the allowed shape, so this is not a courtesy check that
         // could be skipped. A refused verdict cannot be handed on.
         if (!v?.allowed) return;
+        // One thing driven at a time (the owner's rule, 2026-11-15): stop the one that is on first.
+        if (arming.anyArmed && !arming.armed.has(job.id)) return;
         setPending({ job, phase, verdict: v });
     };
 
@@ -124,7 +127,12 @@ export function ActuatorView({
         const p = pending;
         if (!p) return;
         setPending(null);
-        await onRun(p.job.id, p.verdict.telegram.hex, p.verdict.requires);
+        // On a car, a frame that drives something goes with the gate's permit for exactly its bytes;
+        // the link measures the car (stationary, battery, engine) before it sends.
+        const permit = permitFor(p.verdict, profile.id, p.job.id, Date.now()) ?? undefined;
+        const result = await onRun(p.job.id, p.verdict.telegram.hex, p.verdict.requires, permit);
+        // Not started (refused, not measured, no answer): nothing to stop, nothing armed.
+        if (result === null || result === undefined) return;
         if (p.phase !== 'start') return;
         const op = operationFor(p.job);
         const stopId = op.stopJob;
@@ -133,7 +141,14 @@ export function ActuatorView({
         // not hold an entry without one, which is the point: there is no state
         // where an output is on and nothing knows how to end it.
         if (stopId && stopHex) {
-            arming.arm({ jobId: p.job.id, stopJobId: stopId, stopHex, at: Date.now() });
+            arming.arm({
+                jobId: p.job.id,
+                stopJobId: stopId,
+                stopHex,
+                at: Date.now(),
+                stopPermit: permit ? stopPermit(permit, stopId, stopHex) : undefined,
+                timeoutS: p.verdict.actuation?.timeoutS ?? DEFAULT_RUN_TIMEOUT_S,
+            });
         }
     };
 
@@ -169,6 +184,7 @@ export function ActuatorView({
                             job={job}
                             verdict={verdicts.get(job.id) ?? null}
                             armed={arming.armed.has(job.id)}
+                            otherOn={arming.anyArmed && !arming.armed.has(job.id)}
                             lang={lang}
                             onStart={() => open(job, 'start')}
                             onRunOnce={() => open(job, 'pulse')}
@@ -200,6 +216,7 @@ function Row({
     job,
     verdict,
     armed,
+    otherOn,
     lang,
     onStart,
     onRunOnce,
@@ -208,6 +225,8 @@ function Row({
     job: CatalogJob;
     verdict: RunVerdict | null;
     armed: boolean;
+    /** Another output is on: one at a time. */
+    otherOn: boolean;
     lang: 'ja' | 'en';
     onStart: () => void;
     onRunOnce: () => void;
@@ -215,7 +234,7 @@ function Row({
 }) {
     const { t } = useLang();
     const style = execStyleOf(operationFor(job));
-    const allowed = verdict?.allowed === true;
+    const allowed = verdict?.allowed === true && !otherOn;
 
     return (
         <DataRow

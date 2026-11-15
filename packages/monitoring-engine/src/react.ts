@@ -22,7 +22,7 @@ export function useLinkSession(options: { target: ModuleProtocol } & LinkHandler
     const [session] = useState(() => new LinkSession(options));
     useEffect(() => {
         session.setTarget(options.target);
-        session.setHandlers({ onFailure: options.onFailure, onObserved: options.onObserved, onRead: options.onRead });
+        session.setHandlers({ onFailure: options.onFailure, onObserved: options.onObserved, onRead: options.onRead, onPracticed: options.onPracticed, onActuated: options.onActuated });
     });
     // The initial snapshot is a constant, so the server's render and the first client render agree.
     const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);

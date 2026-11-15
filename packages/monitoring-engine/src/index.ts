@@ -21,6 +21,7 @@ export * from './variants.ts';
 export * from './identity.ts';
 export * from './ledger.ts';
 export * from './vehicleState.ts';
+export * from './policy.ts';
 export * from './runGate.ts';
 export * from './actuationGate.ts';
 export * from './practiceCar.ts';

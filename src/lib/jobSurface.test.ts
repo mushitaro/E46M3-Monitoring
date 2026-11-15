@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { EcuIndex, EcuProfile } from '@tsunagi/monitoring-engine';
 import { isOn, surfaceOf } from './jobSurface';
 import { EMPTY_LEDGER } from '@tsunagi/monitoring-engine';
-import { mayRun } from '@tsunagi/monitoring-engine';
+import { isReadNature, mayRun, natureOf } from '@tsunagi/monitoring-engine';
 import { bestTelegram, type TelegramTable } from '@tsunagi/monitoring-engine';
 
 const DATA = path.resolve(import.meta.dirname, '..', '..', 'public', 'ecu-data');
@@ -54,7 +54,7 @@ describe('every job belongs to exactly one tab', () => {
 });
 
 describe('SERVICE carries the whole of what a real car will accept', () => {
-    it('holds every job mayRun permits on a vehicle — 119 of them, all reads', () => {
+    it('holds every job mayRun permits on a vehicle with an empty ledger — all of them reads', () => {
         // This is why SERVICE is not deleted. DIAGNOSIS, ADAPTATION and DATALOG
         // send frames built from the protocol, not catalogue jobs; the hub's
         // SERVICE branch is the only path that sends one. If these ever moved to
@@ -66,7 +66,7 @@ describe('SERVICE carries the whole of what a real car will accept', () => {
                 if (mayRun(job, bestTelegram(telegrams, job.id), EMPTY_LEDGER, { moduleId: id, motion: 'parked' }).allowed) {
                     runnable.push(`${id}.${job.id}`);
                     expect(surfaceOf(job), `${id}.${job.id}`).toBe('service');
-                    expect(job.class).toBe('read');
+                    expect(isReadNature(natureOf(id, job)), `${id}.${job.id}`).toBe(true);
                 }
             }
         }
@@ -82,6 +82,8 @@ describe('SERVICE carries the whole of what a real car will accept', () => {
         // 100 -> 103: SMG II's GETRIEBEDATEN_LESEN (0x40 reads on SMG II), IDENT and FS_QUICK_LESEN.
         //
         // 103 -> 126: the non-M3 DMEs and GS20 (six modules, 2026-11-11), their own read-only reads.
-        expect(runnable.length).toBe(126);
+        //
+        // 126 -> 127 (owner, 2026-11-15): reads judged by nature — BM46WIDE's CHECKSUMME_ABFRAGEN (0x0a).
+        expect(runnable.length).toBe(127);
     });
 });

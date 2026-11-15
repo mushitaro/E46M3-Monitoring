@@ -41,8 +41,9 @@
  */
 import type { CatalogJob } from './ecuCatalog.ts';
 import type { Ledger } from './ledger.ts';
-import { isReadOnlyControl, mayRun, READ_ONLY_CONTROLS, telegramBytes, type RunVerdict } from './runGate.ts';
+import { actuationTerms, isReadOnlyControl, mayRun, READ_ONLY_CONTROLS, telegramBytes, type RunVerdict } from './runGate.ts';
 import type { Telegram } from './telegrams.ts';
+import { decisionFor, isReadNature } from './policy.ts';
 import type { Motion } from './vehicleState.ts';
 
 export type ActuationMode = 'vehicle' | 'practice';
@@ -55,6 +56,8 @@ export interface ActuationContext {
     mode: ActuationMode;
     /** As last measured. On a vehicle it goes to `mayRun` unchanged. */
     motion: Motion;
+    /** The module's group in the index, for the owner's decision (policy.ts). */
+    group?: string;
 }
 
 export function mayActuate(
@@ -64,7 +67,14 @@ export function mayActuate(
     ctx: ActuationContext,
 ): RunVerdict {
     // A vehicle is attached. One decision, made in one place, unchanged.
-    if (ctx.mode === 'vehicle') return mayRun(job, telegram, ledger, { moduleId: ctx.moduleId, motion: ctx.motion });
+    if (ctx.mode === 'vehicle') return mayRun(job, telegram, ledger, { moduleId: ctx.moduleId, motion: ctx.motion, group: ctx.group });
+
+    // Not on the screen at all is not on PRACTICE's screen either (policy.ts).
+    if (decisionFor(ctx.moduleId, job, ctx.group).how === 'off') {
+        if (job.class === 'programming') return { allowed: false, reason: 'run_block_programming' };
+        if (job.class === 'identity') return { allowed: false, reason: 'run_block_identity' };
+        return { allowed: false, reason: 'run_block_policyOff' };
+    }
 
     if (NEVER_RUN.has(job.class)) {
         return {
@@ -86,7 +96,11 @@ export function mayActuate(
 
     // PRACTICE measures too: the preflight runs against the simulated DME, so the path that stops
     // a read on a moving car has executed before a car is the first thing it executes against.
-    return { allowed: true, telegram, control: bytes[2], requires: 'parked' };
+    // A job that drives something carries its terms in PRACTICE too, so the permit, the battery and
+    // engine preflight and the time-out run here before they run on a car (policy: practice first).
+    const decision = decisionFor(ctx.moduleId, job, ctx.group);
+    const drives = !isReadNature(decision.nature) && !isReadOnlyControl(bytes[2], ctx.moduleId);
+    return { allowed: true, telegram, control: bytes[2], requires: 'parked', ...(drives ? { actuation: actuationTerms(job, decision) } : {}) };
 }
 
 /**
@@ -103,8 +117,11 @@ export function mayActuate(
  *
  * Returns the reason to refuse, or `null` to send.
  */
-export function whyNotSendable(control: number, mode: ActuationMode, moduleId?: string): string | null {
+export function whyNotSendable(control: number, mode: ActuationMode, moduleId?: string, permitted = false): string | null {
     if (READ_ONLY_CONTROLS.has(control)) return null;
+    // A frame the gate issued a permit for, checked against these exact bytes by the caller
+    // (runGate.permitCovers). The owner decided what may drive the car (policy.ts, 2026-11-15).
+    if (permitted) return null;
     // A module's own reads (runGate.MODULE_READ_ONLY_CONTROLS) only to that module.
     if (moduleId && isReadOnlyControl(control, moduleId)) return null;
     if (mode === 'practice') return null;

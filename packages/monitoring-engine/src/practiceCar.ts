@@ -81,6 +81,10 @@ export function ds2IdentData(ident: PracticeIdent): number[] {
 export interface PracticeCar {
     /** Road speed the DME reports (blocks' km/h fields). 0 = parked. */
     speedKmh: number;
+    /** Whether the engine runs (idles when parked). The battery and engine preflight read it. */
+    engineRunning: boolean;
+    /** A battery voltage to report instead of the alternator's or the battery's at rest. Null: as the engine says. */
+    batteryV: number | null;
     /** The DME's stored faults, encoded as the MSS54 records them. */
     dmeFaults: PracticeFault[];
     /** Addresses of the modules fitted besides the DME. */
@@ -152,6 +156,8 @@ export const CLEAN = [0x00];
 function defaults(): PracticeCar {
     return {
         speedKmh: 0,
+        engineRunning: true,
+        batteryV: null,
         dmeFaults: [
             { code: 0x2a, type: 0x08, frequency: 3 },
             { code: 0xd1, type: 0x02, frequency: 1 },

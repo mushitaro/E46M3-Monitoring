@@ -13,11 +13,11 @@ const overview = (page) => tool(page, 'monitoring_run_overview');
 
 const scenario = {
     id: 'S16',
-    title: 'SMG II の値：走行中は読み取りが「停車中だけ」と待つ → 故障読取は先に行く → 止まると値と単位で返る → 学習値も',
+    title: 'SMG II の値：走行中も入出力と故障を読む（運営者 2026-11-15）→ 学習値は止まってから → 値と単位で返る',
     story:
-        '40 km/h で走りながら、SMG II の入出力の値・故障メモリ・油温の記録・学習値の計画を回す。走っている間、入出力の読み取りと学習値は' +
-        '「停車中だけ」と理由を付けて待ち、故障読取はその後ろからでも先に行く。油温のチャンネルは空のまま。止まると、入出力の読み取りが行き、' +
-        'エンジン回転数などが名前と単位つきで返り、油温が記録され、学習値（クラッチ・変速機・変速機データ）が読まれる。',
+        '40 km/h で走りながら、SMG II の入出力の値・故障メモリ・油温の記録・学習値の計画を回す。状態の値は走行中も読むと運営者が決めた' +
+        '（2026-11-15）ので、入出力の読み取りと故障読取は走行中に済み、油温も記録される。学習値は「停車中だけ」と理由を付けて待ち、' +
+        '止まると読まれる（クラッチ・変速機・変速機データ）。エンジン回転数などは名前と単位つきで返る。',
     car: { dmeFaults: [], speedKmh: 40 },
     steps: [
         { say: WORDS },
@@ -42,13 +42,13 @@ const scenario = {
         { wait: 3000 },
         {
             check: {
-                desc: '走行中：入出力と学習値は「停車中だけ」と待ち、故障読取は済み、油温は空',
+                desc: '走行中：入出力と故障読取は済み、学習値だけ「停車中だけ」と待つ',
                 run: async (page) => {
                     const o = await overview(page);
                     const [read, faults, , adapt] = o.steps ?? [];
                     const ok =
                         o.running &&
-                        read?.state === 'pending' && /parked only/.test(read.waiting ?? '') &&
+                        read?.state === 'done' &&
                         faults?.state === 'done' &&
                         adapt?.state === 'pending' && /parked only/.test(adapt.waiting ?? '');
                     return ok ? true : JSON.stringify(o).slice(0, 600);

@@ -42,6 +42,8 @@ export function useHub(input: {
     catalogError: string | null;
     /** Present when the selected job is an SMG II procedure. Opens its wizard. */
     openProcedure?: () => void;
+    /** A job that drives something: confirmed on the screen first (the owner's rule), then sent with its permit. */
+    confirmRun?: () => void;
     /** Present while a PROBE plan runs (hooks/useProbe). */
     probe?: { progress: ProbeProgress; stop: () => void };
     /** Present on DIAGNOSIS with ALL MODULES: the scan, and how far one in progress has got. */
@@ -113,7 +115,8 @@ export function useHub(input: {
                     // The gate's answer, used — not re-derived. `mayRun` decided
                     // this once, and the hub and the panel read the same object.
                     if (runVerdict?.allowed === true && selectedJob) {
-                        void link.runRead(selectedJob.id, runVerdict.telegram.hex, runVerdict.requires);
+                        if (runVerdict.actuation) input.confirmRun?.();
+                        else void link.runRead(selectedJob.id, runVerdict.telegram.hex, runVerdict.requires);
                     }
                 },
             },

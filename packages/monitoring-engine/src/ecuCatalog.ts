@@ -370,6 +370,8 @@ export interface EcuProfile {
     sgbd: string;
     /** DS2 slave address, from the SGBD. */
     address: number;
+    /** The module's group in the index (engine, comfort, …). Part of how a job's nature is judged (policy.ts). */
+    group?: string;
     /** Whether any of this has been confirmed against a real car. */
     verified: boolean;
     generatedFrom: {

@@ -66,7 +66,15 @@ def text_of(cat: dict, ref) -> str:
 def values_of(cat: dict, arg: dict) -> list[str]:
     """The values to try for one argument: its options, else the upper-case words its comment lists, else numbers."""
     if arg.get("options"):
-        return [o["value"] for o in arg["options"]]
+        # An option drawn from a table names its row: the job looks the name up (SMG II's STELLGLIEDER:
+        # STELLGLIED "HYDROPUMPE", PIN 0x05 — the argument is the name). Both are tried, the name first.
+        out = []
+        for o in arg["options"]:
+            note = (o.get("note") or "").strip()
+            if arg.get("optionsFrom", {}).get("table") and re.fullmatch(r"[A-Z][A-Z0-9_]+", note):
+                out.append(note)
+            out.append(o["value"])
+        return list(dict.fromkeys(out))
     words = re.findall(r"(?<![A-Za-z0-9_])([A-Z][A-Z0-9_]{2,})(?![A-Za-z0-9_])", text_of(cat, arg.get("comment")))
     words = [w for w in dict.fromkeys(words) if w not in {"ECU", "SGBD", "ACHTUNG", "INFO", "BYTE"}]
     if words and arg.get("type") == "string":

@@ -46,7 +46,7 @@ describe('a job’s nature (the owner’s decision, 2026-11-15, is by nature)', 
             expect(d, nature).toBeDefined();
             if (!isReadNature(nature)) expect(d.when, nature).toBe('parked');
         }
-        expect(OWNER_DECISION.a_brake.how).toBe('show');
+        expect(OWNER_DECISION.a_brake).toEqual({ when: 'parked', how: 'run', who: 'screen' });
         expect(OWNER_DECISION.w.how).toBe('off');
         expect(OWNER_DECISION.a_safety.how).toBe('off');
         expect(decisionFor('smg2', j('TESTPRG_STARTEN', 'calibration'))).toMatchObject({ nature: 'p_smg', how: 'run', who: 'screen' });

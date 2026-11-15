@@ -47,6 +47,18 @@ RESULT_JOBS = {
     ),
 }
 
+# M3 でない E46 の DME（index の `fit: nonm3`）は、故障を `faultLayouts` で読むので下の all_jobs から外れる。
+# ただし車速は、その DME 自身の STATUS_GESCHWINDIGKEIT のコードで読めるようにしておく：停車を確かめる
+# 出所の候補（packages/monitoring-engine/src/speedSources.ts）。開くのは実車が確かめてから（人の承認）。
+SPEED_JOBS = {
+    "ms420ds0": "MS420DS0.prg",
+    "ms430ds0": "MS430DS0.prg",
+    "bms43ds0": "BMS43DS0.prg",
+    "bms46ds0": "BMS46DS0.prg",
+    "bms46ds1": "BMS46DS1.prg",
+}
+SPEED_JOB = "STATUS_GESCHWINDIGKEIT"
+
 # 故障メモリの読取（FS_LESEN）は下の all_jobs が、SGBD に FS_LESEN があるモジュール全部に足す。
 # 2026-11-13 の #56 は、アプリが送るページとジョブが同じ順で送るモジュールだけ（34）を載せていたが、
 # いまはジョブ自身が実車相手に読み取りを進める（packages/monitoring-engine/src/sgbd/faultRead.ts）ので、先に識別やログインを
@@ -159,6 +171,9 @@ def all_jobs():
     """Module id -> (SGBD, jobs to carry): RESULT_JOBS, plus FS_LESEN wherever the module's SGBD has one."""
     out = {mid: (sgbd, list(names)) for mid, (sgbd, names) in RESULT_JOBS.items()}
     skip = FAULT_SKIP | _nonm3()
+    for mid, sgbd in SPEED_JOBS.items():
+        sg, names = out.get(mid, (sgbd, []))
+        out[mid] = (sg, names + [SPEED_JOB])
     for f in sorted(os.listdir(OUT)):
         if not f.endswith(".telegrams.json"):
             continue

@@ -44,7 +44,8 @@ Next.js 16 / React 19 / Tailwind v4、`output: 'export'` の静的書き出し�
   作らない。部品を動かすものは、練習モードで一度動かしたあと（台帳の `practiced`）、停車中に、画面の確認のあとで、
   `permitFor` の許可をつけて送る。リンクは許可がその電文そのものかを確かめ、送る直前に車速・電圧（12 V 以上）・
   SGBD が言うエンジンの状態を測る（`session.ts` の `preflightRun`）。一度に一つ、時間切れで止める（`useActuatorArming`）。
-  実車での実行は台帳に残る（`recordVehicleRun`）。
+  実車での実行は台帳に残る（`recordVehicleRun`）。SMG II の手順は `mayRunProcedure`（手順ごとに練習で一度、
+  状態の問い直しは測り直さない `follow` の許可）。
 - **モジュールには、そのモジュール自身の SGBD が送るものだけを送る。** 宛先は送るたびに名前で
   言う（`link.to(address)`）。IDENT・消去・ハートビートは `packages/monitoring-engine/src/moduleProtocol.ts` が
   そのモジュールのテレグラム表から完全一致で取る。故障読取は、そのモジュール自身の FS_LESEN ジョブを

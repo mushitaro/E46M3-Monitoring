@@ -148,5 +148,17 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('a LinkSession on the practice car', () => {
             practiceCar.batteryV = 12.6;
             expect(await s.runRead(job.id, v.telegram.hex, v.requires, permit)).not.toBeNull();
         });
+
+        it('asks a running thing again without measuring, and releases it whatever is measured', async () => {
+            const s = sessionFor('mss54');
+            await s.connect('practice');
+            const { job, v } = drive((j) => j.preconditions.includes('engine_off'));
+            const run = permitFor(v, 'mss54', job.id, Date.now())!;
+            const before = s.getSnapshot().log.length;
+            // The engine idles, which the run itself would refuse: a re-ask and a release are not held back by it.
+            expect(await s.runRead(job.id, v.telegram.hex, 'parked', { ...run, kind: 'follow' })).not.toBeNull();
+            expect(await s.runRead(job.id, v.telegram.hex, 'none', { ...run, kind: 'stop' })).not.toBeNull();
+            expect(s.getSnapshot().log.slice(before).some((l) => /preflight/.test(l.text))).toBe(false);
+        });
     });
 });

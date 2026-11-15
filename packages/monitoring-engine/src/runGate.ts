@@ -193,7 +193,9 @@ export type RunVerdict =
  * a measurement.
  */
 export interface ActuationPermit {
-    kind: 'run' | 'stop';
+    /** `run`: a start, measured first. `follow`: the same running thing asked again (a procedure's
+     *  status re-ask), not measured again. `stop`: its release, never held back. */
+    kind: 'run' | 'follow' | 'stop';
     moduleId: string;
     jobId: string;
     hex: string;
@@ -218,7 +220,46 @@ export const PERMIT_MAX_AGE_MS = 120_000;
 /** Whether a permit is for exactly this frame, now. */
 export function permitCovers(permit: ActuationPermit, moduleId: string, jobId: string, hex: string, now: number): boolean {
     if (permit.moduleId !== moduleId || permit.jobId !== jobId || permit.hex !== normHex(hex)) return false;
-    return permit.kind === 'stop' || now - permit.issuedAt <= PERMIT_MAX_AGE_MS;
+    return permit.kind !== 'run' || now - permit.issuedAt <= PERMIT_MAX_AGE_MS;
+}
+
+/**
+ * A module's own procedure — SMG II's TESTPRG_STARTEN with a program number — under the owner's
+ * decision (`p_smg`, 2026-11-15): run, parked, once it has run in PRACTICE on this device. The
+ * ledger keeps each program apart (`smg2:TESTPRG_STARTEN(0x01)`): practising one bleeds nothing
+ * else open. Its frame is built from the job's own arguments (lib/procedureRun).
+ */
+export function mayRunProcedure(
+    moduleId: string,
+    startJob: Pick<CatalogJob, 'id' | 'class'>,
+    program: string,
+    ledger: Ledger,
+    motion: Motion,
+): { allowed: true; id: string } | { allowed: false; reason: RunBlockKey } {
+    const decision = decisionFor(moduleId, startJob);
+    if (decision.how === 'off') return { allowed: false, reason: 'run_block_policyOff' };
+    if (decision.how === 'show') return { allowed: false, reason: 'run_block_policyShow' };
+    const id = `${moduleId}:${startJob.id}(${program})`;
+    if (withdrawn(ledger, id) || withdrawn(ledger, `${moduleId}:${startJob.id}`)) return { allowed: false, reason: 'run_block_revoked' };
+    if (!hasPracticed(ledger, id)) return { allowed: false, reason: 'run_block_practiceFirst' };
+    if (motion === 'moving') return { allowed: false, reason: 'run_block_moving' };
+    return { allowed: true, id };
+}
+
+/** The three permits a procedure runs on: its start (measured), its status re-asks, its stop. */
+export function procedurePermits(
+    moduleId: string,
+    start: { jobId: string; hex: string },
+    stop: { jobId: string; hex: string },
+    engine: 'off' | 'run' | null,
+    now: number,
+): { start: ActuationPermit; follow: ActuationPermit; stop: ActuationPermit } {
+    const base = { moduleId, engine, issuedAt: now };
+    return {
+        start: { ...base, kind: 'run', jobId: start.jobId, hex: normHex(start.hex) },
+        follow: { ...base, kind: 'follow', jobId: start.jobId, hex: normHex(start.hex), engine: null },
+        stop: { ...base, kind: 'stop', jobId: stop.jobId, hex: normHex(stop.hex), engine: null },
+    };
 }
 
 const normHex = (hex: string) => hex.trim().toLowerCase().replace(/\s+/g, ' ');

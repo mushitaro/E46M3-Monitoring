@@ -42,7 +42,7 @@
 import { buildArgFrame, encodingBlocker, type ArgFrameBlockKey } from './argFrame';
 import type { CatalogJob } from '@tsunagi/monitoring-engine';
 import type { Smg2Procedure } from './smg2Workflows';
-import { bestTelegram, type TelegramTable } from '@tsunagi/monitoring-engine';
+import { bestTelegram, mayRunProcedure, procedurePermits, type ActuationPermit, type Ledger, type Motion, type RunBlockKey, type TelegramTable } from '@tsunagi/monitoring-engine';
 
 export const START_JOB = 'TESTPRG_STARTEN';
 export const STOP_JOB = 'TESTPRG_STOP';
@@ -60,6 +60,7 @@ export const ECU_TIMEOUT_MS = 10_000;
 export const STATUS_INTERVAL_MS = 1_000;
 
 export type ProcedureBlockKey =
+    | RunBlockKey
     | 'proc_block_vehicle'
     | 'proc_block_noJob'
     | 'proc_block_selection'
@@ -74,6 +75,10 @@ export interface ProcedurePlan {
     statusIntervalMs: number;
     /** The SGBD's own maximum for this procedure, or null where it states none. */
     durMaxSec: number | null;
+    /** What the start is called in the ledger and the log: `TESTPRG_STARTEN(0x01)`, one per program. */
+    startJobId: string;
+    /** The permits the frames go with (runGate.procedurePermits): measured start, re-asks, stop. */
+    permits: { start: ActuationPermit; follow: ActuationPermit; stop: ActuationPermit };
 }
 
 export type ProcedurePlanResult =
@@ -86,6 +91,8 @@ export interface PlanInput {
     jobs: ReadonlyMap<string, CatalogJob>;
     telegrams: TelegramTable | null;
     mode: 'vehicle' | 'practice';
+    /** On a car: the ledger and the car as last measured, for the owner's decision (runGate.mayRunProcedure). */
+    gate?: { ledger: Ledger; motion: Motion };
     /**
      * AUSWAHLBYTE, for the one procedure that selects something. 0x0A engages an
      * arbitrary gear: "0 = Neutral, 1-6 = Gang 1-6, 7 = Rueckwaertsgang".
@@ -98,15 +105,18 @@ export interface PlanInput {
 export function planProcedure(input: PlanInput): ProcedurePlanResult {
     const { procedure, jobs, telegrams, mode } = input;
 
-    // A car is attached. `TESTPRG_STARTEN` writes, and nothing has verified it
-    // against an ECU, so the vehicle gate refuses it — and this says so plainly
-    // instead of building a frame nobody may send.
-    if (mode === 'vehicle') return { ok: false, reason: 'proc_block_vehicle' };
-
     const start = jobs.get(START_JOB);
     const stop = jobs.get(STOP_JOB);
     if (!start || !stop) {
         return { ok: false, reason: 'proc_block_noJob', detail: !start ? START_JOB : STOP_JOB };
+    }
+
+    // A car is attached: the owner's decision (2026-11-15, `p_smg`: run, parked, after a PRACTICE run
+    // of this same program), asked of the one gate. No gate given, nothing goes.
+    if (mode === 'vehicle') {
+        if (!input.gate) return { ok: false, reason: 'proc_block_vehicle' };
+        const v = mayRunProcedure('smg2', start, procedure.testprg, input.gate.ledger, input.gate.motion);
+        if (!v.allowed) return { ok: false, reason: v.reason };
     }
 
     const stopTel = bestTelegram(telegrams, STOP_JOB);
@@ -139,6 +149,8 @@ export function planProcedure(input: PlanInput): ProcedurePlanResult {
     const stopFrame = buildArgFrame(stop, stopTel, {});
     if (!stopFrame.ok) return { ok: false, reason: stopFrame.reason, detail: stopFrame.detail };
 
+    const startJobId = `${START_JOB}(${procedure.testprg})`;
+    const engine = procedure.engine === 'off' ? 'off' : procedure.engine === 'run' ? 'run' : null;
     return {
         ok: true,
         plan: {
@@ -146,6 +158,8 @@ export function planProcedure(input: PlanInput): ProcedurePlanResult {
             startHex: startFrame.hex,
             statusIntervalMs: STATUS_INTERVAL_MS,
             durMaxSec: procedure.durMaxSec,
+            startJobId,
+            permits: procedurePermits('smg2', { jobId: startJobId, hex: startFrame.hex }, { jobId: STOP_JOB, hex: stopFrame.hex }, engine, Date.now()),
         },
     };
 }

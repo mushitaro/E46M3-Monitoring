@@ -3,14 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { JobRunResult } from '@/hooks/useDs2Link';
 import {
-    START_JOB,
     STOP_JOB,
     decodeTestStatus,
     finishedWell,
     stillRunning,
     type ProcedurePlan,
 } from '@/lib/procedureRun';
-import type { SendRequirement } from '@tsunagi/monitoring-engine';
+import type { ActuationPermit, SendRequirement } from '@tsunagi/monitoring-engine';
 
 /**
  * Driving one SMG II test program, and knowing when it is over.
@@ -60,11 +59,13 @@ const IDLE: ProcedureRunState = {
 };
 
 export function useProcedureRun(
-    send: (jobId: string, hex: string, requires?: SendRequirement) => Promise<JobRunResult | null>,
+    send: (jobId: string, hex: string, requires?: SendRequirement, permit?: ActuationPermit) => Promise<JobRunResult | null>,
 ) {
     const [state, setState] = useState<ProcedureRunState>(IDLE);
     const cancelled = useRef(false);
     const stopHex = useRef<string | null>(null);
+    // The stop's permit (runGate.procedurePermits): on a car the release goes with it, never measured.
+    const stopPermit = useRef<ActuationPermit | undefined>(undefined);
 
     /** Fire TESTPRG_STOP. Never throws — an ending must not fail to end. */
     const sendStop = useCallback(async () => {
@@ -73,7 +74,7 @@ export function useProcedureRun(
         stopHex.current = null;
         try {
             // `none`: an ending is never held back by the speed preflight.
-            await send(STOP_JOB, hex, 'none');
+            await send(STOP_JOB, hex, 'none', stopPermit.current);
         } catch {
             // The link reports its own failures. Swallowing here only stops one
             // failed stop from masking the reason the run ended.
@@ -108,11 +109,12 @@ export function useProcedureRun(
         async (plan: ProcedurePlan) => {
             cancelled.current = false;
             stopHex.current = plan.stopHex;
+            stopPermit.current = plan.permits.stop;
             setState({ ...IDLE, phase: 'starting' });
 
             // The ECU's rule, not a habit of ours: STOP goes first, even with
             // nothing running. `lib/procedureRun` quotes it.
-            const cleared = await send(STOP_JOB, plan.stopHex, 'none');
+            const cleared = await send(STOP_JOB, plan.stopHex, 'none', plan.permits.stop);
             if (cancelled.current) return;
             if (cleared?.error) {
                 setState((s) => ({ ...s, phase: 'ended', error: cleared.error }));
@@ -121,6 +123,7 @@ export function useProcedureRun(
             stopHex.current = plan.stopHex;
 
             const began = Date.now();
+            let polls = 0;
             setState((s) => ({ ...s, phase: 'running' }));
 
             // The first START and every re-ask are the same call. Splitting them
@@ -128,7 +131,10 @@ export function useProcedureRun(
             // the first answer is the one that says whether it started at all.
             for (;;) {
                 if (cancelled.current) return;
-                const answer = await send(START_JOB, plan.startHex);
+                // The first START is measured (stationary, battery, engine as the procedure asks) and
+                // counts as the run; every re-ask after it is the same run asked again.
+                const answer = await send(plan.startJobId, plan.startHex, 'parked', polls === 0 ? plan.permits.start : plan.permits.follow);
+                polls++;
                 if (cancelled.current) return;
 
                 if (!answer || answer.error) {

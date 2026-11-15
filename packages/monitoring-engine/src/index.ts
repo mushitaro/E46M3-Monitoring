@@ -39,6 +39,7 @@ export * from './sgbd/vm.ts';
 export * from './sgbd/results.ts';
 export * from './sgbd/faultRead.ts';
 export * from './sgbd/logChannels.ts';
+export * from './sgbd/jobFrame.ts';
 export * from './link/types.ts';
 export * from './link/session.ts';
 export * from './intake/intakeCheck.ts';

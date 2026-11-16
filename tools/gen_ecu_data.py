@@ -233,6 +233,20 @@ def _drop_internal_name(text: str) -> str:
     return stripped or text
 
 
+def _contradicts_erase(name: str, comment: str) -> bool:
+    """An erase job whose SGBD comment only says "read" must not take the comment as its label.
+
+    MSS54 and MS43 ship FS_SELEKTIV_LOESCHEN with the comment copied from FS_LESEN
+    ("Auslesen des Fehlerspeichers"), so the label became 「故障メモリの読出」 on a job
+    that erases. A label that names the opposite action is worse than the identifier's
+    own words; the comment stays in `desc` with its original German.
+    """
+    if "LOESCHEN" not in name.upper():
+        return False
+    low = comment.lower()
+    return "lesen" in low and not ("loesch" in low or "lösch" in low)
+
+
 def lbl_for(name: str, comment: str | None, sgbd: str | None = None) -> tuple[str, str, dict | None]:
     """ラベルと説明を分離して生成。gen_from_dump.py から移設（唯一の流用箇所）。
 
@@ -244,7 +258,7 @@ def lbl_for(name: str, comment: str | None, sgbd: str | None = None) -> tuple[st
     c = (comment or "").strip()
     keep = bool(c) and c.lower() not in GENERIC and len(c) > 3
     # 値域だけの説明文は desc には残すが、ラベル候補にはしない（GENERIC_RANGE 参照）。
-    meaningful = keep and not GENERIC_RANGE.match(c)
+    meaningful = keep and not GENERIC_RANGE.match(c) and not _contradicts_erase(name, c)
 
     base = re.sub(r"_(WERT)$", "", name)
     ja_id, en_id = translate(base, "ja", sgbd=sgbd), translate(base, "en", sgbd=sgbd)

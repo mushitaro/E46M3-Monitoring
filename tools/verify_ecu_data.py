@@ -233,6 +233,18 @@ for mid, p in profiles.items():
         check(bool(g.get(k)), f"{mid}: generatedFrom.{k} missing")
     check(len(g.get("dumpSha256", "")) == 64, f"{mid}: dumpSha256 is not a sha256")
 
+# --- 13. 消すジョブが「読む」と名乗らない ------------------------------------
+# MSS54・MS43 の FS_SELEKTIV_LOESCHEN は SGBD の説明文が FS_LESEN の写しで、
+# ラベルが「故障メモリの読出」になっていた。消去の名前に読出だけの訳は付けない。
+for mid, p in profiles.items():
+    for j in p["jobs"]:
+        if "LOESCHEN" in j["id"]:
+            ja, en = j.get("ja", ""), j.get("en", "")
+            check(not (("読" in ja and "消" not in ja and "リセット" not in ja)
+                       or (en.lower().startswith("read") and "erase" not in en.lower()
+                           and "clear" not in en.lower())),
+                  f"{mid}: {j['id']} erases but is labelled as a read: {ja} / {en}")
+
 if FAILS:
     print(f"FAIL ({len(FAILS)})")
     for f in FAILS:

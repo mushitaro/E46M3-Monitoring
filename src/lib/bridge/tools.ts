@@ -271,6 +271,25 @@ export const MONITORING_TOOLS = {
             "Put a job on the screen — SERVICE, with the job selected, its preconditions, and the gate's answer — for a person to run there, parked. Sends nothing. Only for the module in session; the screen says why a job cannot run yet.",
         inputSchema: obj({ module: MODULE, job: str('The job id from monitoring_catalog.') }, ['module', 'job']),
     },
+    monitoring_actuate: {
+        scope: 'control',
+        description:
+            "Start one job that makes the car do something — only those the owner's table opens to the assistant (the rest: monitoring_stage, for a person on the screen). Before calling: read back to the owner what will move, on which module, and its preconditions, and wait for their OK; pass their words as owner_said. Parked only: refused while the car moves. The same gate as the screen's RUN, the car measured (standstill, battery 12 V or more, engine state) just before it is sent, one output on at a time, each stopping by itself after its time-out. phase start leaves the output on until its stop (monitoring_stop_outputs, the screen's STOP, or the time-out); pulse sends it once. Only for the module in session; practised first on PRACTICE before it runs on a car.",
+        inputSchema: obj(
+            {
+                module: MODULE,
+                job: str('The job id from monitoring_catalog.'),
+                phase: str('start: on until stopped or timed out. pulse: once.', { enum: ['start', 'pulse'] }),
+                owner_said: str("The owner's own words of OK, given after the read-back."),
+            },
+            ['module', 'job', 'owner_said'],
+        ),
+    },
+    monitoring_stop_outputs: {
+        scope: 'control',
+        description: 'Stop every output that is on, oldest first: each one\'s stop frame is sent and it is taken off whatever the module answers. Never refused — anyone may stop, any time, moving or not.',
+        inputSchema: obj({}),
+    },
     monitoring_start_log: {
         scope: 'control',
         description:

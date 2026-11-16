@@ -68,6 +68,12 @@ export interface SgbdRun {
 export type SgbdTables = Readonly<Record<string, readonly (readonly string[])[]>>;
 
 const MAX_STEPS = 200_000;
+/**
+ * The largest index a string register can be read at. EdiabasLib sizes its string registers from the
+ * job file (`ArrayMaxBufSize`, 1024 in the SGBDs it reads) and refuses a read past one less than that
+ * (EDIABAS_BIP_0001).
+ */
+const ARRAY_MAX = 1023;
 const OP = {
     move: 0x00, clear: 0x01, comp: 0x02, subb: 0x03, adds: 0x04, mult: 0x05, divs: 0x06, and: 0x07, or: 0x08, xor: 0x09,
     not: 0x0a, jump: 0x0b, jc: 0x0e, jae: 0x0f, jz: 0x10, jnz: 0x11, jmi: 0x14, jpl: 0x15, clrc: 0x16, setc: 0x17,
@@ -186,6 +192,13 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
         flags.s = signed(v, width) < 0;
     };
 
+    // Before the job has an answer, a read past a string's end gives zeros (as a number) or what is
+    // there (as a string), as EdiabasLib's does: Operand.GetRawData returns an empty array and
+    // GetValueData pads it. SMG II's STEUERN_STELLGLIED reads S0[0] before anything is in S0 and sends
+    // its frame on EdiabasLib. Once an answer is in, a short one stops the run instead: reading it as
+    // zeros would report values the module never sent.
+    let answered = false;
+
     const fail = (reason: string): never => {
         throw new Stop(reason);
     };
@@ -284,7 +297,7 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
             const i = o.index();
             let v = 0;
             for (let k = width - 1; k >= 0; k--) v = v * 256 + (s[i + k] ?? 0);
-            if (i + width > s.length) fail('read past the end of a string');
+            if (i + width > s.length && (answered || i + 1 > ARRAY_MAX)) fail('read past the end of a string');
             return v;
         }
         return fail('a number from a non-number');
@@ -296,7 +309,7 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
             const s = strings[o.s];
             const i = o.index();
             const l = o.len ? o.len() : 1;
-            if (i + l > s.length) fail('read past the end of a string');
+            if (i + l > s.length && (answered || i + l > ARRAY_MAX)) fail('read past the end of a string');
             return s.slice(i, i + l);
         }
         return fail('a string from a non-string');
@@ -547,6 +560,7 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
                     if (a.m !== 'reg' || a.r.t !== 'str') fail('a send into a non-string');
                     const answer: Uint8Array | null = yield req.slice();
                     if (answer === null) return { results, request, stopped: null };
+                    answered = true;
                     strings[(a as { r: { n: number } }).r.n] = answer.slice();
                     break;
                 }

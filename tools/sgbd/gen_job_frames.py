@@ -120,11 +120,12 @@ def run_once(sgbd: str, job: str, args: list[str], known: list[tuple[list[int], 
         sends = []
         if os.path.exists(TRC):
             sends = re.findall(r"\(Send sim\): ([0-9A-F ]+)", open(TRC, encoding="latin-1").read())
-        # The frame sent after the known ones, without its checksum.
+        # The frame sent after the known ones. EdiabasLib's trace shows it without the checksum the
+        # interface appends (SMG II's ADAPTIONSWERTE_LOESCHEN: "32 05 43 00" for 0, "32 05 43 01" for 1),
+        # so nothing is cut off: cutting the last byte lost every frame's last value.
         nxt = None
         if len(sends) > len(known):
-            b = [int(x, 16) for x in sends[len(known)].split()]
-            nxt = b[:-1] if len(b) > 1 else b
+            nxt = [int(x, 16) for x in sends[len(known)].split()]
         return out.stdout + out.stderr, nxt
     finally:
         shutil.rmtree(d, ignore_errors=True)

@@ -233,7 +233,7 @@ describe('nothing that drives the car runs on it before it has run in PRACTICE (
                 ran.push(`${id}.${j.id}`);
                 expect(v.requires).toBe('parked');
                 expect(v.actuation, `${id}.${j.id}`).toBeDefined();
-                expect(['a_safety', 'c_mode', 'c_setup', 'w']).not.toContain(v.actuation!.nature);
+                expect(['a_safety', 'w']).not.toContain(v.actuation!.nature);
                 expect(j.args).toEqual([]);
                 expect(mayRun(j, tel as never, practised, { moduleId: id, motion: 'moving', group }).allowed).toBe(false);
             }

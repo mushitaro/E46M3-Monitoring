@@ -88,9 +88,11 @@ describe('the run gate', () => {
         const unclassified: CatalogJob = { ...base, class: 'unclassified' };
         expect(mayRun(unclassified, tele, EMPTY_LEDGER, ctx('mss54'))).toMatchObject({ allowed: true, requires: 'parked' });
         expect(mayRun(unclassified, tele, EMPTY_LEDGER, { moduleId: 'mss54', motion: 'moving' })).toEqual({ allowed: false, reason: 'run_block_moving' });
-        // Named as a mode change: shown only (owner, 2026-11-15).
+        // Named as a mode change: runs (owner, 2026-11-16; shown only before), so like every job
+        // that drives something it goes only after practice — never as a read.
         const mode: CatalogJob = { ...base, id: 'SLEEP_MODE', class: 'unclassified' };
-        expect(mayRun(mode, tele, EMPTY_LEDGER, ctx('mss54'))).toEqual({ allowed: false, reason: 'run_block_policyShow' });
+        expect(mayRun(mode, tele, EMPTY_LEDGER, ctx('mss54')).allowed).toBe(false);
+        expect(mayRun(mode, tele, EMPTY_LEDGER, ctx('mss54'))).not.toMatchObject({ reason: 'run_block_policyShow' });
     });
 
     it('does not ship a single job that claims to be a read without an operation kind', () => {
@@ -205,7 +207,7 @@ describe('the run gate', () => {
         expect(mayRun(target, tele, EMPTY_LEDGER, { ...ctx('mss54'), group: 'engine' })).toEqual({ allowed: false, reason: 'run_block_practiceFirst' });
         const practiced = recordPracticeRun(EMPTY_LEDGER, id, '2026-11-15T00:00:00Z');
         const v = mayRun(target, tele, practiced, { ...ctx('mss54'), group: 'engine' });
-        expect(v).toMatchObject({ allowed: true, requires: 'parked', actuation: { nature: 'a_engine', who: 'screen' } });
+        expect(v).toMatchObject({ allowed: true, requires: 'parked', actuation: { nature: 'a_engine', who: 'ai' } });
         // Never while moving, and never once withdrawn.
         expect(mayRun(target, tele, practiced, { moduleId: 'mss54', motion: 'moving', group: 'engine' })).toEqual({ allowed: false, reason: 'run_block_moving' });
         const killed: Ledger = { ...practiced, records: { [id]: { ...practiced.records[id], status: 'revoked', reason: 'x' } } };

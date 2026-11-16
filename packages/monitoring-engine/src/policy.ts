@@ -87,6 +87,15 @@ export const NATURES: ReadonlyArray<{ nature: Nature; ja: string; en: string }> 
  * the assistant's, not the owner's. Corrected by the owner the same day: the brake hydraulics are not
  * shown-only (「DSCの油圧系は表示だけにしていません」); they run like the other actuators, parked, on the
  * screen. Any other nature the owner sets differently is corrected here the same way.
+ *
+ * 2026-11-16 the owner chose, of three ways put to them (A: the assistant too, one table for MONITORING
+ * and the shop's SUITE; B: the assistant only in the shop; C: as it was), A: clearing faults,
+ * actuator tests, procedures, function checks, simulations and adaptation resets are `who: 'ai'`, and
+ * operating modes and initialisation/settings go from shown-only to `run`. `when` stays parked;
+ * safety deployment and writes stay off. Every rule in OWNER_RULES still holds for the assistant —
+ * it reads back and waits for "yes", reads only while moving, measures before sending, practises
+ * first, one at a time, stoppable. `who: 'ai'` opens nothing by itself: the assistant reaches a run
+ * only through a facade tool, and none exists for these yet.
  */
 export const OWNER_DECISION: Readonly<Record<Nature, Decision>> = {
     r_ident: { when: 'moving', how: 'run', who: 'ai' },
@@ -95,19 +104,19 @@ export const OWNER_DECISION: Readonly<Record<Nature, Decision>> = {
     a_disp: { when: 'parked', how: 'run', who: 'ai' },
     a_av: { when: 'parked', how: 'run', who: 'ai' },
     a_comfort: { when: 'parked', how: 'run', who: 'ai' },
-    a_body: { when: 'parked', how: 'run', who: 'screen' },
-    a_chassis: { when: 'parked', how: 'run', who: 'screen' },
-    a_engine: { when: 'parked', how: 'run', who: 'screen' },
-    a_smg: { when: 'parked', how: 'run', who: 'screen' },
-    a_brake: { when: 'parked', how: 'run', who: 'screen' },
+    a_body: { when: 'parked', how: 'run', who: 'ai' },
+    a_chassis: { when: 'parked', how: 'run', who: 'ai' },
+    a_engine: { when: 'parked', how: 'run', who: 'ai' },
+    a_smg: { when: 'parked', how: 'run', who: 'ai' },
+    a_brake: { when: 'parked', how: 'run', who: 'ai' },
     a_safety: { when: 'parked', how: 'off', who: 'screen' },
-    p_smg: { when: 'parked', how: 'run', who: 'screen' },
-    c_check: { when: 'parked', how: 'run', who: 'screen' },
-    c_sim: { when: 'parked', how: 'run', who: 'screen' },
-    c_adapt: { when: 'parked', how: 'run', who: 'screen' },
-    c_mode: { when: 'parked', how: 'show', who: 'screen' },
-    c_setup: { when: 'parked', how: 'show', who: 'screen' },
-    c_clear: { when: 'parked', how: 'run', who: 'screen' },
+    p_smg: { when: 'parked', how: 'run', who: 'ai' },
+    c_check: { when: 'parked', how: 'run', who: 'ai' },
+    c_sim: { when: 'parked', how: 'run', who: 'ai' },
+    c_adapt: { when: 'parked', how: 'run', who: 'ai' },
+    c_mode: { when: 'parked', how: 'run', who: 'ai' },
+    c_setup: { when: 'parked', how: 'run', who: 'ai' },
+    c_clear: { when: 'parked', how: 'run', who: 'ai' },
     w: { when: 'parked', how: 'off', who: 'screen' },
 };
 

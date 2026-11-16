@@ -5,13 +5,14 @@ import { useMemo, useState } from 'react';
 import { GateDialog } from '@/components/gate/GateDialog';
 import { DataList, DataRow, LABEL, ListControls, Pill, Section, TextButton, humanName } from '@/components/ui';
 import type { Arming } from '@/hooks/useActuatorArming';
-import { DEFAULT_RUN_TIMEOUT_S, mayActuate, permitFor, stopPermit, type ActuationMode, type ActuationPermit } from '@tsunagi/monitoring-engine';
+import { mayActuate, type ActuationMode, type ActuationPermit } from '@tsunagi/monitoring-engine';
+import { startActuation } from '@/lib/actuation';
+import { operationFor } from '@tsunagi/monitoring-engine';
 import type { Phase } from '@/lib/actuatorArgs';
 import type { CatalogJob, EcuProfile } from '@tsunagi/monitoring-engine';
 import { execStyleOf } from '@/lib/execStyle';
 import { useLang } from '@/lib/i18n';
 import { cautionFor, type JobTextTable } from '@/lib/jobText';
-import { operationFor } from '@tsunagi/monitoring-engine';
 import { isOn } from '@/lib/jobSurface';
 import type { Ledger } from '@tsunagi/monitoring-engine';
 import type { RunVerdict, SendRequirement } from '@tsunagi/monitoring-engine';
@@ -127,29 +128,10 @@ export function ActuatorView({
         const p = pending;
         if (!p) return;
         setPending(null);
-        // On a car, a frame that drives something goes with the gate's permit for exactly its bytes;
-        // the link measures the car (stationary, battery, engine) before it sends.
-        const permit = permitFor(p.verdict, profile.id, p.job.id, Date.now()) ?? undefined;
-        const result = await onRun(p.job.id, p.verdict.telegram.hex, p.verdict.requires, permit);
-        // Not started (refused, not measured, no answer): nothing to stop, nothing armed.
-        if (result === null || result === undefined) return;
-        if (p.phase !== 'start') return;
-        const op = operationFor(p.job);
-        const stopId = op.stopJob;
-        const stopHex = stopId ? bestTelegram(telegrams, stopId)?.hex : undefined;
-        // Cannot resolve the release? Then it was never armed. `lib/arming` will
-        // not hold an entry without one, which is the point: there is no state
-        // where an output is on and nothing knows how to end it.
-        if (stopId && stopHex) {
-            arming.arm({
-                jobId: p.job.id,
-                stopJobId: stopId,
-                stopHex,
-                at: Date.now(),
-                stopPermit: permit ? stopPermit(permit, stopId, stopHex) : undefined,
-                timeoutS: p.verdict.actuation?.timeoutS ?? DEFAULT_RUN_TIMEOUT_S,
-            });
-        }
+        if (p.phase === 'stop') return;
+        // The same path the assistant's monitoring_actuate takes (lib/actuation): the permit for
+        // exactly these bytes, the link's measurement, and the stop resolved before anything is armed.
+        await startActuation({ moduleId: profile.id, job: p.job, phase: p.phase, verdict: p.verdict, telegrams, send: onRun, arm: arming.arm, now: Date.now() });
     };
 
     return (

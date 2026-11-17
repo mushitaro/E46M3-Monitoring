@@ -84,6 +84,10 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('a LinkSession on the practice car', () => {
         const cleared = await s.clearFaults();
         expect(cleared).toBeNull();
         expect(s.lastError()).toMatch(/not sent — the car could not be shown to be stationary \(moving\)/);
+        // The same refusal as a shape, with the speed the DME gave (for SUITE's maintenance_car_run).
+        expect(s.lastNotSent()).toMatchObject({ reason: 'moving', measured: { motion: 'moving', speedKmh: 40 } });
+        s.clearError();
+        expect(s.lastNotSent()).toBeNull();
         expect(s.getSnapshot().state).toBe('connected');
     });
 
@@ -138,13 +142,18 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('a LinkSession on the practice car', () => {
             const permit = permitFor(v, 'mss54', job.id, Date.now())!;
             expect(await s.runRead(job.id, '12 05 0b 03 1f', v.requires, permit)).toBeNull();
             expect(s.lastError()).toMatch(/the permit does not cover this frame/);
+            expect(s.lastNotSent()).toMatchObject({ reason: 'permission', what: job.id });
             // The practice car idles: an engine-off job is not sent.
             expect(await s.runRead(job.id, v.telegram.hex, v.requires, permit)).toBeNull();
             expect(s.lastError()).toMatch(/asks for the engine stopped/);
+            expect(s.lastNotSent()).toMatchObject({ reason: 'engine', measured: { engineWanted: 'off' } });
+            expect(s.lastNotSent()?.measured.voltageV).toBeGreaterThanOrEqual(12);
+            expect(s.lastNotSent()?.measured.rpm).toBeGreaterThan(0);
             practiceCar.engineRunning = false;
             practiceCar.batteryV = 11.4;
             expect(await s.runRead(job.id, v.telegram.hex, v.requires, permit)).toBeNull();
             expect(s.lastError()).toMatch(/battery reads 11\.4 V, under 12 V/);
+            expect(s.lastNotSent()).toMatchObject({ reason: 'voltage', measured: { voltageV: 11.4, minVoltageV: 12 } });
             practiceCar.batteryV = 12.6;
             expect(await s.runRead(job.id, v.telegram.hex, v.requires, permit)).not.toBeNull();
         });

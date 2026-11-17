@@ -22,10 +22,10 @@ const scenario = {
     id: 'S22',
     title: '作動テスト：確認のあと、電圧とエンジンの状態を測ってから動かす（練習モード）',
     story:
-        'オーナーの決定（2026-11-15）：部品を動かすものは停車中に画面の人が実行する。練習モードで一度動かしたものが実車で動く。' +
+        'オーナーの決定（2026-11-15、誰がは 11-16 に AI も）：部品を動かすものは停車中に実行する。練習モードで一度動かしたものが実車で動く。' +
         'ACTUATOR で RUN を押すと確認が出て、確かめる項目に印を付けると実行できる。送る直前に車速・電圧・エンジンの状態を測る。' +
         'エンジン停止を条件にする点火コイルは、エンジンがかかっていると送られない。止めると送られる。電圧が 12 V を切ると何も送られない。' +
-        'AI が始める口（monitoring_actuate）はあるが、画面の人と決めた項目は断り、画面に置く道（monitoring_stage）を言う。',
+        'AI も始められる（決定 2026-11-16）が、AI の頼みも同じ測りを通る：12 V を切っていれば送られない。',
     steps: [
         ...connectPractice,
         { ui: 'tab', name: 'ACTUATOR', means: 'ACTUATOR を開く' },
@@ -70,10 +70,10 @@ const scenario = {
         { shot: 'actuator' },
         {
             check: {
-                desc: '画面の人が押すと決めた項目（点火コイル）は、AI が頼まれても始めず、画面に置く道を言う',
+                desc: 'AI が「いいよ」のあとに頼んでも、12 V を切っていれば点火コイルは送られない',
                 run: async (page) => {
                     const r = await tool(page, 'monitoring_actuate', { module: 'mss54', job: 'STEUERN_ZS1', phase: 'pulse', owner_said: 'いいよ' });
-                    return r?.started === false && /monitoring_stage/.test(r.reason ?? '') ? true : JSON.stringify(r).slice(0, 200);
+                    return r?.started === false && /under 12 V|battery/.test(r.reason ?? '') ? true : JSON.stringify(r).slice(0, 200);
                 },
             },
         },

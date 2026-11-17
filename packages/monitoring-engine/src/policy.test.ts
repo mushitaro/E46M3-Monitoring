@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { EcuIndex, EcuProfile } from './ecuCatalog.ts';
-import { NATURES, OWNER_DECISION, decisionFor, isReadNature, natureOf, type Nature } from './policy.ts';
+import { NATURES, OWNER_DECISION, OWNER_RULES, decisionFor, isReadNature, natureOf, type Nature } from './policy.ts';
 import { HAVE_SHIPPED_DATA, readShipped } from './testing/shipped.ts';
 
 const j = (id: string, cls: string) => ({ id, class: cls }) as Parameters<typeof natureOf>[1];
@@ -46,10 +46,20 @@ describe('a job’s nature (the owner’s decision, 2026-11-15, is by nature)', 
             expect(d, nature).toBeDefined();
             if (!isReadNature(nature)) expect(d.when, nature).toBe('parked');
         }
-        expect(OWNER_DECISION.a_brake).toEqual({ when: 'parked', how: 'run', who: 'screen' });
+        expect(OWNER_DECISION.a_brake).toEqual({ when: 'parked', how: 'run', who: 'ai' });
         expect(OWNER_DECISION.w.how).toBe('off');
         expect(OWNER_DECISION.a_safety.how).toBe('off');
-        expect(decisionFor('smg2', j('TESTPRG_STARTEN', 'calibration'))).toMatchObject({ nature: 'p_smg', how: 'run', who: 'screen' });
+        expect(decisionFor('smg2', j('TESTPRG_STARTEN', 'calibration'))).toMatchObject({ nature: 'p_smg', how: 'run', who: 'ai' });
+    });
+
+    it('opens clearing, actuators, procedures, checks, simulations, resets, modes and setup to the assistant (owner, 2026-11-16: A)', () => {
+        for (const n of ['a_body', 'a_chassis', 'a_engine', 'a_smg', 'a_brake', 'p_smg', 'c_check', 'c_sim', 'c_adapt', 'c_mode', 'c_setup', 'c_clear'] as const) {
+            expect(OWNER_DECISION[n], n).toEqual({ when: 'parked', how: 'run', who: 'ai' });
+        }
+        expect(OWNER_DECISION.a_safety).toEqual({ when: 'parked', how: 'off', who: 'screen' });
+        expect(OWNER_DECISION.w).toEqual({ when: 'parked', how: 'off', who: 'screen' });
+        expect(OWNER_RULES.aiReadsBack).toBe(true);
+        expect(OWNER_RULES.aiMovingReadsOnly).toBe(true);
     });
 });
 

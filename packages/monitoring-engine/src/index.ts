@@ -42,5 +42,6 @@ export * from './sgbd/logChannels.ts';
 export * from './sgbd/jobFrame.ts';
 export * from './link/types.ts';
 export * from './link/session.ts';
+export * from './link/notSent.ts';
 export * from './intake/intakeCheck.ts';
 export * from './intake/build.ts';

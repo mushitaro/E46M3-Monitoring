@@ -158,6 +158,7 @@ export function ModuleRow({
     onChangeEcu,
     allowAll = false,
     all = false,
+    practiceEngine,
 }: {
     index: EcuIndex | null;
     ecuId: string;
@@ -172,6 +173,8 @@ export function ModuleRow({
     allowAll?: boolean;
     /** ALL MODULES is chosen. Shown only where it is offered. */
     all?: boolean;
+    /** PRACTICE's simulated engine, running or stopped: what a job asking for the engine off or on is practised against. */
+    practiceEngine?: { running: boolean; onChange: (v: boolean) => void };
 }) {
     const { t } = useLang();
     return (
@@ -188,6 +191,12 @@ export function ModuleRow({
                     <PracticeToggle checked={practiceArmed} disabled={false} onChange={onPractice} />
                 ) : (
                     <>
+                        {mode === 'practice' && practiceEngine && (
+                            <label className={`flex shrink-0 cursor-pointer items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider ${practiceEngine.running ? 'text-indigo-400' : 'text-slate-500'}`} title={t.practice_engine_title}>
+                                <input type="checkbox" checked={practiceEngine.running} onChange={(e) => practiceEngine.onChange(e.target.checked)} className="size-3 accent-indigo-500" />
+                                {t.practice_engine}
+                            </label>
+                        )}
                         <LinkReadout mode={mode} state={state} />
                         <TextButton onClick={onDisconnect} tone="danger">
                             {t.disconnect}

@@ -25,7 +25,7 @@ E46M3 /// MONITORING の診断エンジンを、画面から切り離した部�
 |---|---|
 | リンクのセッション（React を持たない核）。送るガード・停車の事前読取・IDENT による変種の確認・走行の境目・ハートビートの判断 | `link/session.ts`（`src/hooks/useDs2Link.ts` から移した）、`link/types.ts` |
 | 薄い React のフック（`@tsunagi/monitoring-engine/react`） | `react.ts` の `useLinkSession` |
-| 電文の台帳と送るかの判断 | `telegrams.ts`、`moduleProtocol.ts`、`kwpOnDs2.ts`、`runGate.ts`、`actuationGate.ts`、`ledger.ts`、`vehicleState.ts` |
+| 電文の台帳と送るかの判断 | `telegrams.ts`、`moduleProtocol.ts`、`kwpOnDs2.ts`、`policy.ts`、`runGate.ts`、`actuationGate.ts`、`ledger.ts`、`vehicleState.ts` |
 | SGBD の分類を読む（`classify.py` の結果） | `ecuCatalog.ts`、`jobOps.ts`、`humanName.ts` |
 | 変種の選び方 | `variants.ts`、`identity.ts` |
 | 全モジュールの走査、故障の読み・解読 | `probe/scan.ts`、`probe/modules.ts`、（PROBE の実行器）`probe/executor.ts`・`plan.ts`・`criteria.ts` |
@@ -60,7 +60,7 @@ MSS54 の表と解読は `packages/ds2-mss54`。エンジンはこの二つに�
 - `packages/monitoring-engine/src/boundary.test.ts`：エンジンは `@/…` も、パッケージの外への相対パスも
   import しない（GREN BLUE には私たちの `src/` が無い）。外は `@tsunagi/ds2-core`・`@tsunagi/ds2-mss54` だけ。
   React を import するのは `react.ts` だけ。試験の道具は入口に入れない。
-- `.github/autonomy.json` と `CODEOWNERS`：車に何を送ってよいかを決めるファイル（`runGate.ts`・`ledger.ts`・
+- `.github/autonomy.json` と `CODEOWNERS`：車に何を送ってよいかを決めるファイル（`policy.ts`・`runGate.ts`・`ledger.ts`・
   `actuationGate.ts`・`vehicleState.ts`・`variants.ts`）は人の承認（`autonomy:human`）で、自律ループは自分でマージできない。
   エンジンのほかのファイルは、運営者の 2026-11-13 の決まり（CI が通れば自動で取り込む）に従う。GREN BLUE に届くのは、
   Mainstay の側の必須のチェックが通った版だけ（§6）。
@@ -71,14 +71,16 @@ MSS54 の表と解読は `packages/ds2-mss54`。エンジンはこの二つに�
 
 | 役目 | 名前 |
 |---|---|
-| リンク | `LinkSession`（`connect`・`reconnectPermitted`・`disconnect`・`readIdent`・`readFaults`・`readAdaptations`・`runRead`・`clearFaults`・`startLog`・`stopLog`・`startProbe`・`scanAll`・`readVehicleState`・`heartbeat`・`releaseWhileHidden`・`clearLog`・`clearError`・`lastError`・`subscribe`・`getSnapshot`・`setTarget`・`setHandlers`・`dispose`）、`KEEP_ALIVE_INTERVAL_MS`、型 `LinkSnapshot`・`LinkHandlers`・`LinkState`・`LinkMode`・`CommsLogLine`・`LiveSample`・`JobRunResult`・`AdaptationRead`・`RawFaultRead`・`LinkFailure`・`ParkedObservation` |
+| リンク | `LinkSession`（`connect`・`reconnectPermitted`・`disconnect`・`readIdent`・`readFaults`・`readAdaptations`・`runRead`・`clearFaults`・`startLog`・`stopLog`・`startProbe`・`scanAll`・`readVehicleState`・`heartbeat`・`releaseWhileHidden`・`clearLog`・`clearError`・`lastError`・`lastNotSent`・`subscribe`・`getSnapshot`・`setTarget`・`setHandlers`・`dispose`）、`KEEP_ALIVE_INTERVAL_MS`、型 `LinkSnapshot`・`LinkHandlers`・`LinkState`・`LinkMode`・`CommsLogLine`・`LiveSample`・`JobRunResult`・`AdaptationRead`・`RawFaultRead`・`LinkFailure`・`ParkedObservation` |
+| 送らなかった理由の形 | `lastNotSent()` が返す `NotSent`（`reason`：`link` 車の状態が測れなかった・`moving` 0 km/h でない・`voltage` 電圧・`engine` エンジンの状態が SGBD の求めと違う・`permission` 許可がその電文でない。`measured` にそのとき測った車速・電圧・回転数）、`NotSentError`・`notSentOf`。門（`mayRun`・`mayActuate`）の断り（練習がまだ・表で出さない等）はリンクに来る前の `{ allowed: false, reason }` で返る |
 | React（`/react`） | `useLinkSession({ target, onFailure?, onObserved?, onRead? })` → `{ session, snapshot }` |
 | 非公開データ | `configureEcuData`、`readEcuData`、`fetchEcuDataFromPage`、型 `EcuDataLoader`・`EcuDataResponse` |
 | カタログ | `loadEcuIndex`、`loadEcuCatalog`、`label`・`text`・`description`、`jobIndex`、`jobRiskOf`、`verdictFor`、`facetCounts`、`humanName` |
 | 電文 | `loadTelegrams`、`bestTelegram`、`moduleProtocol`、`noProtocol`、`hasIdent`、`hasFaultRead`、`mayTryFaultRead`、`kwpFrameOf`、`kwpExchange`、`parseDtcsByStatus` |
-| 送るかの判断 | `mayRun`、`mayRunProtocolRead`、`mayJobSend`、`telegramBytes`、`clearFaultsCommand`、`READ_ONLY_CONTROLS`、`isReadOnlyControl`、`mayActuate`、`whyNotSendable` |
+| 送るかの判断 | `mayRun`、`mayRunProtocolRead`、`mayJobSend`、`telegramBytes`、`clearFaultsCommand`、`READ_ONLY_CONTROLS`、`isReadOnlyControl`、`mayActuate`、`whyNotSendable`、`permitFor`、`stopPermit`、`permitCovers`、`actuationTerms` |
+| 運営者の決定 | `OWNER_DECISION`、`OWNER_RULES`、`natureOf`、`decisionFor`、`isReadNature`、`NATURES`、`MIN_RUN_VOLTAGE`、`DEFAULT_RUN_TIMEOUT_S` |
 | SGBD のジョブ | `loadSgbdResults`、`runSgbdJob`、`decodeRead`、`decodeFaultRead`（ジョブのコードで故障の答えを読む）、`readFaultsByJob`、`hasFaultJob`、`moduleLogReads`・`moduleChannels`・`moduleLogGate` |
-| 台帳 | `EMPTY_LEDGER`、`recordParkedObservation`、`recordClear`、`grantMovingOk`、`mayReadWhileMoving`、`applyKillList`、`fetchKillList`、`mayRunOnVehicle` |
+| 台帳 | `EMPTY_LEDGER`、`recordParkedObservation`、`recordClear`、`grantMovingOk`、`mayReadWhileMoving`、`applyKillList`、`fetchKillList`、`mayRunOnVehicle`、`recordPracticeRun`、`hasPracticed`、`recordVehicleRun` |
 | 車の状態 | `vehicleStateFrom`、`motionOf`、`VEHICLE_STATE_MAX_AGE_MS` |
 | 変種 | `loadIdentity`、`loadVariantRules`、`fittedFrom`、`isM3`、`mayModuleBeSent`、`frameVerdict`、`commonIdent`、`isCommonIdent`、`DME_ADDRESS` |
 | 走査 | `loadScanTargets`、`scanTargets`、`runScan`、`scanCounts`、`ALL_MODULES` |
@@ -93,7 +95,7 @@ MSS54 の表と解読は `packages/ds2-mss54`。エンジンはこの二つに�
 ### 使う側の決まり（GREN BLUE SUITE も同じ）
 
 - **車に送れるのは `LinkSession` の操作だけ。** 送るガード（`Ds2Link.setSendGuard`）、IDENT での変種の確認、
-  停車の事前読取（DME の車速 0 だけ）、`runGate` の判断は全部セッションの中にあり、画面からは迂回できない。
+  停車の事前読取（DME の車速 0。部品を動かすものは電圧とエンジンの状態も）、`runGate` の判断は全部セッションの中にあり、画面からは迂回できない。
 - **`clearFaults` は確認しない。** 呼ぶ前に、停車中に、画面で人に確かめるのは呼ぶ側の仕事（このアプリでは
   確認ダイアログ）。送る関数が確認を持つと、確認なしで呼べる関数になるから。
 - 走行中の読取を認める（`grantMovingOk`）のは画面の人だけ。アプリもアシスタントも格上げしない。

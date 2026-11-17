@@ -9,6 +9,7 @@ import type { JobRunResult } from '@/hooks/useDs2Link';
 import type { CatalogJob } from '@tsunagi/monitoring-engine';
 import { useLang } from '@/lib/i18n';
 import { planProcedure, type ProcedureBlockKey } from '@/lib/procedureRun';
+import type { ActuationPermit, Ledger, Motion, SendRequirement } from '@tsunagi/monitoring-engine';
 import type { Smg2Procedure, Smg2Workflows } from '@/lib/smg2Workflows';
 import type { TelegramTable } from '@tsunagi/monitoring-engine';
 import {
@@ -63,6 +64,7 @@ export function WizardDialog({
     jobs,
     telegrams,
     mode,
+    gate,
     send,
     onClose,
 }: {
@@ -71,7 +73,9 @@ export function WizardDialog({
     jobs: ReadonlyMap<string, CatalogJob>;
     telegrams: TelegramTable | null;
     mode: 'vehicle' | 'practice';
-    send: (jobId: string, hex: string) => Promise<JobRunResult | null>;
+    /** On a car: the ledger and the car as last measured, for the owner's decision (runGate.mayRunProcedure). */
+    gate: { ledger: Ledger; motion: Motion };
+    send: (jobId: string, hex: string, requires?: SendRequirement, permit?: ActuationPermit) => Promise<JobRunResult | null>;
     onClose: () => void;
 }) {
     const { lang, t } = useLang();
@@ -105,9 +109,10 @@ export function WizardDialog({
                 jobs,
                 telegrams,
                 mode,
+                gate,
                 selection: procedure.auswahl ? gear : undefined,
             }),
-        [procedure, jobs, telegrams, mode, gear],
+        [procedure, jobs, telegrams, mode, gate, gear],
     );
 
     const startRun = useCallback(() => {
@@ -355,8 +360,10 @@ function Check({
 
 function Blocked({ reason, detail }: { reason: ProcedureBlockKey; detail?: string }) {
     const { t } = useLang();
+    // The gate's own refusals (runGate.mayRunProcedure) are the gate's sentences, the same ones a job's row says.
     const text =
-        reason === 'proc_block_vehicle' ? t.procBlock.proc_block_vehicle
+        reason.startsWith('run_block_') ? t.runBlock[reason as keyof typeof t.runBlock]
+        : reason === 'proc_block_vehicle' ? t.procBlock.proc_block_vehicle
         : reason === 'proc_block_noJob' ? t.procBlock.proc_block_noJob
         : reason === 'proc_block_selection' ? t.procBlock.proc_block_selection
         : t.procBlock.proc_block_frame;

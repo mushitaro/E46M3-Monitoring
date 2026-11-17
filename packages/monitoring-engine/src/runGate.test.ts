@@ -10,9 +10,11 @@ import {
     isReadOnlyControl,
     mayRun,
     mayRunProtocolRead,
+    permitCovers,
+    permitFor,
     telegramBytes,
 } from './runGate.ts';
-import { EMPTY_LEDGER, type Ledger } from './ledger.ts';
+import { EMPTY_LEDGER, recordPracticeRun, type Ledger } from './ledger.ts';
 import { bestTelegram, type Telegram, type TelegramTable } from './telegrams.ts';
 import type { CatalogJob, EcuProfile } from './ecuCatalog.ts';
 
@@ -77,15 +79,18 @@ describe('the run gate', () => {
      * telegram, no arguments, a control byte on the read allowlist — and it is still refused,
      * because not knowing what a job does is not evidence that it is harmless.
      */
-    it('refuses an unclassified job even when everything else about it is perfect', () => {
+    it('judges an unclassified job by its nature: a read name reads, anything else is the owner’s decision', () => {
         const base = job('mss54', 'STATUS_DIGITAL');
         const tele = bestTelegram(telegrams('mss54'), 'STATUS_DIGITAL');
         expect(mayRun(base, tele, EMPTY_LEDGER, ctx('mss54')).allowed).toBe(true);
 
+        // Named as a read: a read filed away (policy r_misc), parked, and its frame must read.
         const unclassified: CatalogJob = { ...base, class: 'unclassified' };
-        const v = mayRun(unclassified, tele, EMPTY_LEDGER, ctx('mss54'));
-        expect(v.allowed).toBe(false);
-        if (!v.allowed) expect(v.reason).toBe('run_block_notVerified');
+        expect(mayRun(unclassified, tele, EMPTY_LEDGER, ctx('mss54'))).toMatchObject({ allowed: true, requires: 'parked' });
+        expect(mayRun(unclassified, tele, EMPTY_LEDGER, { moduleId: 'mss54', motion: 'moving' })).toEqual({ allowed: false, reason: 'run_block_moving' });
+        // Named as a mode change: shown only (owner, 2026-11-15).
+        const mode: CatalogJob = { ...base, id: 'SLEEP_MODE', class: 'unclassified' };
+        expect(mayRun(mode, tele, EMPTY_LEDGER, ctx('mss54'))).toEqual({ allowed: false, reason: 'run_block_policyShow' });
     });
 
     it('does not ship a single job that claims to be a read without an operation kind', () => {
@@ -188,24 +193,40 @@ describe('the run gate', () => {
 
     // A ledger entry unlocks a non-read. Proves the gate is a gate and not a
     // permanent wall — the wall is the empty shipped ledger.
-    it('opens for a non-read once the ledger vouches for it', () => {
+    it('drives an engine actuator the owner decided to run, once it has run in PRACTICE, parked', () => {
+        const tables = telegrams('mss54');
         const target = profile('mss54').jobs.find(
-            (j) => j.class === 'test' && j.args.length === 0,
+            (j) => j.class === 'test' && j.args.length === 0 && j.id.startsWith('STEUERN_') && bestTelegram(tables, j.id)?.confidence === 'single',
         )!;
-        const ledger: Ledger = {
-            version: 1,
-            records: {
-                [`mss54:${target.id}`]: { id: `mss54:${target.id}`, status: 'verified', verifiedAt: '2026-01-01' },
-            },
-        };
-        const before = mayRun(target, bestTelegram(telegrams('mss54'), target.id), EMPTY_LEDGER, ctx('mss54'));
-        const after = mayRun(target, bestTelegram(telegrams('mss54'), target.id), ledger, ctx('mss54'));
-        expect(before.allowed).toBe(false);
-        if (!before.allowed) expect(before.reason).toBe('run_block_notVerified');
-        // Verified, and STILL blocked — but for the honest reason: this app has
-        // no execution path for an actuator test yet. Two different sentences.
-        expect(after.allowed).toBe(false);
-        if (!after.allowed) expect(after.reason).toBe('run_block_notRead');
+        expect(target).toBeDefined();
+        const tele = bestTelegram(tables, target.id);
+        const id = `mss54:${target.id}`;
+        // Not before it has run in PRACTICE on this device (OWNER_RULES.practiceFirst).
+        expect(mayRun(target, tele, EMPTY_LEDGER, { ...ctx('mss54'), group: 'engine' })).toEqual({ allowed: false, reason: 'run_block_practiceFirst' });
+        const practiced = recordPracticeRun(EMPTY_LEDGER, id, '2026-11-15T00:00:00Z');
+        const v = mayRun(target, tele, practiced, { ...ctx('mss54'), group: 'engine' });
+        expect(v).toMatchObject({ allowed: true, requires: 'parked', actuation: { nature: 'a_engine', who: 'screen' } });
+        // Never while moving, and never once withdrawn.
+        expect(mayRun(target, tele, practiced, { moduleId: 'mss54', motion: 'moving', group: 'engine' })).toEqual({ allowed: false, reason: 'run_block_moving' });
+        const killed: Ledger = { ...practiced, records: { [id]: { ...practiced.records[id], status: 'revoked', reason: 'x' } } };
+        expect(mayRun(target, tele, killed, { ...ctx('mss54'), group: 'engine' })).toEqual({ allowed: false, reason: 'run_block_revoked' });
+        // The permit is for exactly this frame.
+        if (v.allowed) {
+            const permit = permitFor(v, 'mss54', target.id, 1000)!;
+            expect(permitCovers(permit, 'mss54', target.id, v.telegram.hex, 1000)).toBe(true);
+            expect(permitCovers(permit, 'smg2', target.id, v.telegram.hex, 1000)).toBe(false);
+            expect(permitCovers(permit, 'mss54', target.id, '12 05 0b 03 1f', 1000)).toBe(false);
+        }
+    });
+
+    it('runs the brake hydraulics like the other actuators — practised first, parked — and offers no writes (owner, 2026-11-15)', () => {
+        const dsc = profile('dsc_e46');
+        const pump = dsc.jobs.find((j) => j.id === 'DRUCKHALTEN')!;
+        const v = mayRun(pump, bestTelegram(telegrams('dsc_e46'), pump.id), EMPTY_LEDGER, ctx('dsc_e46'));
+        expect(v.allowed).toBe(false);
+        if (!v.allowed) expect(v.reason).not.toBe('run_block_policyShow');
+        const write = profile('mss54').jobs.find((j) => j.id === 'SPEICHER_SCHREIBEN')!;
+        expect(mayRun(write, null, EMPTY_LEDGER, ctx('mss54')).allowed).toBe(false);
     });
 });
 
@@ -350,18 +371,22 @@ describe('the car, as the gate sees it', () => {
     } as unknown as CatalogJob;
     const T = tel('12 05 0b 03 1f');
 
-    it('lets a read go only to a stationary car, and says the link must measure that first', () => {
-        const v = mayRun(READ, T, EMPTY_LEDGER, { moduleId: 'mss54', motion: 'parked' });
-        expect(v).toMatchObject({ allowed: true, requires: 'parked' });
-        // Unknown is not a refusal at render time — the preflight at the wire decides — and it is
-        // never treated as parked: the requirement still says measure.
-        expect(mayRun(READ, T, EMPTY_LEDGER, { moduleId: 'mss54', motion: 'unknown' })).toMatchObject({ allowed: true, requires: 'parked' });
+    it('lets a status read go whatever the car is doing: the owner decided status values are read while moving (2026-11-15)', () => {
+        for (const motion of ['parked', 'moving', 'unknown'] as const) {
+            expect(mayRun(READ, T, EMPTY_LEDGER, { moduleId: 'mss54', motion })).toMatchObject({ allowed: true, requires: 'none' });
+            expect(mayRun({ ...READ, id: 'STATUS_Y' }, tel('32 05 0b 03 3f'), EMPTY_LEDGER, { moduleId: 'smg2', motion })).toMatchObject({ allowed: true, requires: 'none' });
+        }
     });
 
-    it('refuses a read on a moving car unless the owner cleared it for one', () => {
-        expect(mayRun(READ, T, EMPTY_LEDGER, { moduleId: 'mss54', motion: 'moving' })).toEqual({ allowed: false, reason: 'run_block_moving' });
-        const cleared: Ledger = { version: 1, records: { 'mss54:STATUS_X': { id: 'mss54:STATUS_X', status: 'moving-ok' } } };
-        expect(mayRun(READ, T, cleared, { moduleId: 'mss54', motion: 'moving' })).toMatchObject({ allowed: true, requires: 'none' });
+    it('lets a read filed with the writes go only to a stationary car, and says the link must measure that first', () => {
+        const filed: CatalogJob = { ...READ, id: 'READ_CODING_DATA', class: 'unclassified' };
+        expect(mayRun(filed, T, EMPTY_LEDGER, { moduleId: 'mss54', motion: 'parked' })).toMatchObject({ allowed: true, requires: 'parked' });
+        // Unknown is not a refusal at render time — the preflight at the wire decides — and it is
+        // never treated as parked: the requirement still says measure.
+        expect(mayRun(filed, T, EMPTY_LEDGER, { moduleId: 'mss54', motion: 'unknown' })).toMatchObject({ allowed: true, requires: 'parked' });
+        expect(mayRun(filed, T, EMPTY_LEDGER, { moduleId: 'mss54', motion: 'moving' })).toEqual({ allowed: false, reason: 'run_block_moving' });
+        const cleared: Ledger = { version: 1, records: { 'mss54:READ_CODING_DATA': { id: 'mss54:READ_CODING_DATA', status: 'moving-ok' } } };
+        expect(mayRun(filed, T, cleared, { moduleId: 'mss54', motion: 'moving' })).toMatchObject({ allowed: true, requires: 'none' });
     });
 
     it('refuses a withdrawn read whatever the car is doing', () => {

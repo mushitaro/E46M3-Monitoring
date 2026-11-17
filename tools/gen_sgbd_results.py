@@ -23,6 +23,7 @@
 # ============================================================================
 import base64
 import json
+import re
 import os
 import struct
 import sys
@@ -46,6 +47,18 @@ RESULT_JOBS = {
         ],
     ),
 }
+
+# M3 でない E46 の DME（index の `fit: nonm3`）は、故障を `faultLayouts` で読むので下の all_jobs から外れる。
+# ただし車速は、その DME 自身の STATUS_GESCHWINDIGKEIT のコードで読めるようにしておく：停車を確かめる
+# 出所の候補（packages/monitoring-engine/src/speedSources.ts）。開くのは実車が確かめてから（人の承認）。
+SPEED_JOBS = {
+    "ms420ds0": "MS420DS0.prg",
+    "ms430ds0": "MS430DS0.prg",
+    "bms43ds0": "BMS43DS0.prg",
+    "bms46ds0": "BMS46DS0.prg",
+    "bms46ds1": "BMS46DS1.prg",
+}
+SPEED_JOB = "STATUS_GESCHWINDIGKEIT"
 
 # 故障メモリの読取（FS_LESEN）は下の all_jobs が、SGBD に FS_LESEN があるモジュール全部に足す。
 # 2026-11-13 の #56 は、アプリが送るページとジョブが同じ順で送るモジュールだけ（34）を載せていたが、
@@ -109,7 +122,7 @@ def dump_tables(sgbd):
     return json.load(open(os.path.join(d, hit), encoding="utf-8")).get("tables", {})
 
 
-def build(mid, sgbd, names):
+def build(mid, sgbd, names, optional=()):
     raw = open(resolve_prg(sgbd), "rb").read()
     dec = dexor(raw)
     jobs = jobtable(raw)
@@ -118,10 +131,16 @@ def build(mid, sgbd, names):
     for name in names:
         k = next((i for i, (_, n) in enumerate(jobs) if n == name), None)
         if k is None:
+            if name in optional:
+                continue
             raise KeyError(f"{mid}: no job {name}")
         start = jobs[k][0]
         end = jobs[k + 1][0] if k + 1 < len(jobs) else len(dec)
         last, tables = reach(dec, start, end)
+        # A drive job whose tables the dump lacks is left out (it stays shown, not run), rather than
+        # failing the module's reads with it.
+        if name in optional and any(t.upper() not in all_tables for t in tables):
+            continue
         used |= {t.upper() for t in tables}
         out_jobs[name] = {"base": start, "bytes": last - start,
                           "code": base64.b64encode(dec[start:last]).decode("ascii"),
@@ -159,6 +178,9 @@ def all_jobs():
     """Module id -> (SGBD, jobs to carry): RESULT_JOBS, plus FS_LESEN wherever the module's SGBD has one."""
     out = {mid: (sgbd, list(names)) for mid, (sgbd, names) in RESULT_JOBS.items()}
     skip = FAULT_SKIP | _nonm3()
+    for mid, sgbd in SPEED_JOBS.items():
+        sg, names = out.get(mid, (sgbd, []))
+        out[mid] = (sg, names + [SPEED_JOB])
     for f in sorted(os.listdir(OUT)):
         if not f.endswith(".telegrams.json"):
             continue
@@ -200,7 +222,39 @@ def all_jobs():
             continue
         sg, names = out.get(mid, (tel["sgbd"], []))
         out[mid] = (sg, names + [n for n in status if n not in names])
+    # The jobs that take values and drive something (運営者 2026-11-15「実装をお願いします」: 作動テスト・検査・
+    # 模擬・学習のリセット・SMG II の駆動を、値を選んで実車で): their own code builds the frame for the values
+    # chosen (packages/monitoring-engine/src/sgbd/jobFrame.ts, a dry run). Writes are never carried: a name that
+    # writes, or a coding, identity or programming job.
+    for f in sorted(os.listdir(OUT)):
+        if not f.endswith(".jobs.json"):
+            continue
+        mid = f[: -len(".jobs.json")]
+        tel_path = os.path.join(OUT, f"{mid}.telegrams.json")
+        if mid in _nonm3() or not os.path.exists(tel_path):
+            continue
+        tel = json.load(open(tel_path, encoding="utf-8"))
+        if tel.get("framing") == "kwp-ds2":
+            continue
+        cat = json.load(open(os.path.join(OUT, f), encoding="utf-8"))
+        drive = [
+            j["id"] for j in cat["jobs"]
+            if j.get("args") and j.get("class") in ("test", "calibration", "unclassified")
+            and not WRITES.search(j["id"])
+        ]
+        if not drive:
+            continue
+        sg, names = out.get(mid, (tel["sgbd"], []))
+        out[mid] = (sg, names + [n for n in drive if n not in names])
+        DRIVE[mid] = set(drive) - set(names)
     return out
+
+
+DRIVE: dict = {}
+
+
+# The same rule as packages/monitoring-engine/src/policy.ts: a name that writes is a write, whatever else it says.
+WRITES = re.compile(r"SCHREIBEN|^WRITE_|_WRITE_|CODIER|FLASH|BAUDRATE|PRUEFSTEMPEL|ZIF_BACKUP|SET_EDIC|NAVDVDPIN")
 
 
 if __name__ == "__main__":
@@ -210,7 +264,7 @@ if __name__ == "__main__":
     for mid, (sgbd, names) in all_jobs().items():
         if only and mid not in only:
             continue
-        data = build(mid, sgbd, names)
+        data = build(mid, sgbd, names, DRIVE.get(mid, ()))
         dest = os.path.join(OUT, f"{mid}.results.json")
         with open(dest + ".tmp", "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=1)

@@ -26,11 +26,15 @@ import type { ChannelId } from '@tsunagi/ds2-mss54';
 import { listLocal } from '@/lib/sync/sessionStore';
 import type { Mode, Tab } from '@/lib/tabs';
 import type { ProbeSessions } from '@/views/probe/useProbeSessions';
-import { bestTelegram, loadTelegrams } from '@tsunagi/monitoring-engine';
+import { agreedCases, bestTelegram, decisionFor, loadTelegrams, operationFor, telegramOfAgreed } from '@tsunagi/monitoring-engine';
+import { agreedChoices } from '@/lib/agreedChoices';
 import { LAUNCHER_QUERY, deviceLabel, isHeadUnit, type DeviceKind } from '@/hooks/useAssistantBridge';
 import type { Datalog } from '@/views/datalog/useDatalog';
 import type { Sessions } from '@/views/sessions/useSessions';
 import { appNow } from '@tsunagi/monitoring-engine';
+import { mayActuate } from '@tsunagi/monitoring-engine';
+import { assistantMayStart, startActuation } from '@/lib/actuation';
+import type { Arming } from '@/hooks/useActuatorArming';
 
 
 /** What the assistant is told with codes read from a module's own layout (engine faultLayouts). */
@@ -93,6 +97,8 @@ export function useMonitoringFacade(input: {
     /** Which window shares the screen with HUB below 900: the tab's rows (list) or its picture (visu). */
     showPane: (pane: 'list' | 'visu') => void;
     selectJob: (job: EcuProfile['jobs'][number]) => void;
+    /** The outputs on now, and how to start and stop them (useActuatorArming). */
+    arming: Arming;
     /** Another module on the screen, the link opened again for it if it was open (page.tsx). */
     switchModule: (id: string) => Promise<string | null>;
     /** Every module's fault read, shown on DIAGNOSIS under ALL MODULES (page.tsx). How many addresses, or why not. */
@@ -412,6 +418,82 @@ export function useMonitoringFacade(input: {
                 runsOnScreen: v.allowed ? 'The screen may run it, when a person presses it, parked.' : null,
                 reason: v.allowed ? null : en.runBlock[v.reason],
             };
+        },
+
+        actuate: async ({ module, job: jobId, phase, ownerSaid, values }) => {
+            if (module !== ecuId) {
+                return { started: false, reason: `The screen is on ${moduleName(ecuId)}. Put ${moduleName(module)} on it first (monitoring_module).` };
+            }
+            const job = catalog?.jobs.find((j) => j.id === jobId);
+            if (!job) return { started: false, reason: `${jobId} is not a job of ${moduleName(module)}.` };
+            // A job that takes values runs only with a whole set its own code and EdiabasLib build alike
+            // (lib/agreedChoices); without one, the answer is the sets to choose from.
+            let choice: ReturnType<typeof agreedChoices>[number] | undefined;
+            if (job.args.length > 0) {
+                const cases = catalog ? await agreedCases(module, catalog.address, job.id) : [];
+                const agreed = agreedChoices(job, operationFor(job), cases, cases).filter((c) => phase === 'start' || !c.stop);
+                if (!agreed.length) return { started: false, reason: `No set of values for ${job.id} has been compared with EdiabasLib: it is not run.` };
+                // Only the sets the owner's table opens to the assistant (SMG II: its lamps, not its valves).
+                const sets = agreed.filter((c) => decisionFor(module, job, catalog?.group, c.start.args).who === 'ai');
+                if (!sets.length)
+                    return { started: false, reason: `The owner's table keeps every set of ${job.id} for a person on the screen. monitoring_stage puts it there for them to press.` };
+                choice = values ? sets.find((c) => c.start.args.length === values.length && c.start.args.every((x, i) => x === values[i])) : undefined;
+                if (!choice) {
+                    return {
+                        started: false,
+                        reason: values
+                            ? `${job.id}(${values.join(', ')}) is not one of the sets compared with EdiabasLib. Choose one of these.`
+                            : `${job.id} takes values (${job.args.map((a) => a.name).join(', ')}). Read back the set meant, wait for the OK, and pass it as values.`,
+                        sets: sets.slice(0, 120).map((c) => c.start.args),
+                    };
+                }
+            }
+            const may = assistantMayStart(module, job, catalog?.group, link.motion, ownerSaid, choice?.start.args);
+            if (!may.ok) return { started: false, reason: may.reason };
+            if (link.state !== 'connected') return { started: false, reason: `The link is ${link.state}; a job starts from connected and idle.` };
+            // One thing driven at a time (the owner's rule, 2026-11-15).
+            if (input.arming.anyArmed) return { started: false, reason: `${[...input.arming.armed.keys()].join(', ')} is on. Stop it first (monitoring_stop_outputs).` };
+            const telegrams = await loadTelegrams(module);
+            // The very gate ACTUATOR's row asks, with the same inputs.
+            const v = mayActuate(job, choice ? telegramOfAgreed(choice.start) : bestTelegram(telegrams, job.id), ledger, {
+                moduleId: module,
+                mode: link.mode,
+                motion: link.motion,
+                group: catalog?.group,
+                ...(choice ? { args: choice.start.args, agreed: choice.start } : {}),
+            });
+            if (!v.allowed) return { started: false, reason: en.runBlock[v.reason] };
+            input.selectJob(job);
+            input.changeTab('actuator');
+            const r = await startActuation({
+                moduleId: module,
+                job,
+                phase,
+                verdict: v,
+                telegrams,
+                args: choice?.start.args,
+                stop: choice?.stop,
+                send: link.runRead,
+                arm: input.arming.arm,
+                now: Date.now(),
+            });
+            return {
+                started: r.sent,
+                job: job.id,
+                ...(choice ? { values: choice.start.args } : {}),
+                name: job.en,
+                mode: link.mode,
+                on: r.armed,
+                stopsByItselfAfterS: r.timeoutS,
+                ownerSaid,
+                reason: r.sent ? null : (link.error ?? 'Not sent: the link refused or the module did not answer.'),
+            };
+        },
+
+        stopOutputs: async () => {
+            const on = [...input.arming.armed.keys()];
+            await input.arming.stopAll();
+            return { stopped: on };
         },
 
         startLog: () => {

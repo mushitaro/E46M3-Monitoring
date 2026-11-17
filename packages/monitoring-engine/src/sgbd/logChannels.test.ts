@@ -39,12 +39,12 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('SMG II as DATALOG channels', () => {
         wanted: new Set(['STAT_MOTORDREHZAHL_WERT']),
     });
 
-    it('goes parked, waits moving or unmeasured, and goes moving once the owner has cleared it', () => {
-        expect(moduleLogGate(read(), EMPTY_LEDGER, 'parked')).toEqual({ frame: Uint8Array.from([0x32, 0x05, 0x0b, 0x03, 0x3f]) });
-        expect(moduleLogGate(read(), EMPTY_LEDGER, 'moving')).toEqual({ frame: null });
-        expect(moduleLogGate(read(), EMPTY_LEDGER, 'unknown')).toEqual({ frame: null });
-        const ok: Ledger = { ...EMPTY_LEDGER, records: { 'smg2:STATUS_IO_LESEN': { id: 'smg2:STATUS_IO_LESEN', status: 'moving-ok' } } };
-        expect('frame' in moduleLogGate(read(), ok, 'moving') && moduleLogGate(read(), ok, 'moving')).toEqual({ frame: Uint8Array.from([0x32, 0x05, 0x0b, 0x03, 0x3f]) });
+    it('goes parked, moving and unmeasured: the owner decided status values are read while moving (2026-11-15)', () => {
+        const frame = { frame: Uint8Array.from([0x32, 0x05, 0x0b, 0x03, 0x3f]) };
+        for (const motion of ['parked', 'moving', 'unknown'] as const) expect(moduleLogGate(read(), EMPTY_LEDGER, motion)).toEqual(frame);
+        // A withdrawal still stops it.
+        const killed: Ledger = { ...EMPTY_LEDGER, records: { 'smg2:STATUS_IO_LESEN': { id: 'smg2:STATUS_IO_LESEN', status: 'revoked', reason: 'x' } } };
+        expect(moduleLogGate(read(), killed, 'moving')).toEqual({ refused: 'run_block_revoked' });
     });
 
     it('takes the wanted value from the answer', () => {

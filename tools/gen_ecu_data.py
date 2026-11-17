@@ -233,6 +233,20 @@ def _drop_internal_name(text: str) -> str:
     return stripped or text
 
 
+def _contradicts_erase(name: str, comment: str) -> bool:
+    """An erase job whose SGBD comment only says "read" must not take the comment as its label.
+
+    MSS54 and MS43 ship FS_SELEKTIV_LOESCHEN with the comment copied from FS_LESEN
+    ("Auslesen des Fehlerspeichers"), so the label became 「故障メモリの読出」 on a job
+    that erases. A label that names the opposite action is worse than the identifier's
+    own words; the comment stays in `desc` with its original German.
+    """
+    if "LOESCHEN" not in name.upper():
+        return False
+    low = comment.lower()
+    return "lesen" in low and not ("loesch" in low or "lösch" in low)
+
+
 def lbl_for(name: str, comment: str | None, sgbd: str | None = None) -> tuple[str, str, dict | None]:
     """ラベルと説明を分離して生成。gen_from_dump.py から移設（唯一の流用箇所）。
 
@@ -244,7 +258,7 @@ def lbl_for(name: str, comment: str | None, sgbd: str | None = None) -> tuple[st
     c = (comment or "").strip()
     keep = bool(c) and c.lower() not in GENERIC and len(c) > 3
     # 値域だけの説明文は desc には残すが、ラベル候補にはしない（GENERIC_RANGE 参照）。
-    meaningful = keep and not GENERIC_RANGE.match(c)
+    meaningful = keep and not GENERIC_RANGE.match(c) and not _contradicts_erase(name, c)
 
     base = re.sub(r"_(WERT)$", "", name)
     ja_id, en_id = translate(base, "ja", sgbd=sgbd), translate(base, "en", sgbd=sgbd)
@@ -461,8 +475,11 @@ ARG_TABLES: dict[tuple[str, str], ArgTable] = {
     ("TESTPRG_STARTEN", "TESTPRG_NR"): ArgTable(
         "TESTPRG", "TESTPRG_NR", "TESTPRG_NAME",
         why="SGBD 逐語: siehe table Testprg TESTPRG_NR TESTPRG_NAME"),
+    # 値は STELLGLIED の名前で、PIN ではない。ジョブはこの表を STELLGLIED の列で引き、
+    # PIN を渡すと ERROR__PARAMETER_STELLGL_MISSING で何も送らない（EdiabasLib で確かめた、
+    # job-frames.oracle.json）。TESTPRG_NR は番号で引くので、表ごとに列が違う。
     ("STEUERN_STELLGLIED", "STELLGL"): ArgTable(
-        "STELLGLIEDER", "PIN", "STELLGLIED",
+        "STELLGLIEDER", "STELLGLIED", "PIN",
         why="SGBD 逐語: Anzusteuerndes Stellglied"),
 }
 

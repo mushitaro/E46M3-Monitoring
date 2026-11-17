@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     NO_ARMED,
     arm as armIn,
@@ -9,7 +9,7 @@ import {
     type ArmedJob,
     type ArmedMap,
 } from '@/lib/arming';
-import type { SendRequirement } from '@tsunagi/monitoring-engine';
+import type { ActuationPermit, SendRequirement } from '@tsunagi/monitoring-engine';
 
 /**
  * The React skin over `lib/arming`. The rules live there and are tested there;
@@ -38,7 +38,7 @@ import type { SendRequirement } from '@tsunagi/monitoring-engine';
  */
 export interface ArmingLink {
     /** Send a job's telegram. The same call the run path uses. */
-    send: (jobId: string, hex: string, requires?: SendRequirement) => Promise<unknown>;
+    send: (jobId: string, hex: string, requires?: SendRequirement, permit?: ActuationPermit) => Promise<unknown>;
 }
 
 export interface Arming {
@@ -72,14 +72,23 @@ export function useActuatorArming(link: ArmingLink): Arming {
     // skipped because a callback was made one render too early.
     const armedRef = useRef<ArmedMap>(NO_ARMED);
 
+    // The time-outs (policy: always stoppable). One per armed job; cleared when it is stopped.
+    const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+
     const write = useCallback((next: ArmedMap) => {
         armedRef.current = next;
         setArmed(next);
     }, []);
 
+    // Reached through a ref: the time-out fires after the render that armed it.
+    const stopRef = useRef<(jobId: string) => Promise<void>>(async () => {});
+
     const arm = useCallback(
         (entry: ArmedJob) => {
             write(armIn(armedRef.current, entry));
+            if (entry.timeoutS && entry.timeoutS > 0) {
+                timers.current.set(entry.jobId, setTimeout(() => void stopRef.current(entry.jobId), entry.timeoutS * 1000));
+            }
         },
         [write],
     );
@@ -90,9 +99,12 @@ export function useActuatorArming(link: ArmingLink): Arming {
             // and if the operator presses again while this one is in flight, the
             // second press should find nothing rather than send a second stop.
             write(disarmIn(armedRef.current, entry.jobId));
+            const timer = timers.current.get(entry.jobId);
+            if (timer) clearTimeout(timer);
+            timers.current.delete(entry.jobId);
             // `none`: a STOP is never held back by the speed preflight. A failed speed read must not
-            // be the reason an output stays energised.
-            await link.send(entry.stopJobId, entry.stopHex, 'none').catch(() => {
+            // be the reason an output stays energised. On a car it carries the permit its start was given.
+            await link.send(entry.stopJobId, entry.stopHex, 'none', entry.stopPermit).catch(() => {
                 // Swallowed on purpose. The caller's own log already records the
                 // failure; rethrowing here would abort `stopAll` partway and
                 // leave later outputs energised because an earlier one failed.
@@ -109,6 +121,10 @@ export function useActuatorArming(link: ArmingLink): Arming {
         },
         [stopOne],
     );
+
+    useEffect(() => {
+        stopRef.current = stop;
+    }, [stop]);
 
     const stopAll = useCallback(async () => {
         for (const entry of pendingStops(armedRef.current)) {

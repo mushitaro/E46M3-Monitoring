@@ -68,6 +68,12 @@ export interface SgbdRun {
 export type SgbdTables = Readonly<Record<string, readonly (readonly string[])[]>>;
 
 const MAX_STEPS = 200_000;
+/**
+ * The largest index a string register can be read at. EdiabasLib sizes its string registers from the
+ * job file (`ArrayMaxBufSize`, 1024 in the SGBDs it reads) and refuses a read past one less than that
+ * (EDIABAS_BIP_0001).
+ */
+const ARRAY_MAX = 1023;
 const OP = {
     move: 0x00, clear: 0x01, comp: 0x02, subb: 0x03, adds: 0x04, mult: 0x05, divs: 0x06, and: 0x07, or: 0x08, xor: 0x09,
     not: 0x0a, jump: 0x0b, jc: 0x0e, jae: 0x0f, jz: 0x10, jnz: 0x11, jmi: 0x14, jpl: 0x15, clrc: 0x16, setc: 0x17,
@@ -76,6 +82,9 @@ const OP = {
     fadd: 0x3b, fsub: 0x3c, fmul: 0x3d, fdiv: 0x3e, ergy: 0x3f, enewset: 0x40, etag: 0x41, atsp: 0x50, jg: 0x5a, jge: 0x5b, jl: 0x5c,
     jle: 0x5d, ja: 0x5e, jbe: 0x5f, parb: 0x55, parw: 0x56, parl: 0x57, pars: 0x58, a2fix: 0x67, fix2flt: 0x68, fix2hex: 0x79, fix2dez: 0x7a, tabset: 0x7b,
     tabseek: 0x7c, tabget: 0x7d, strcat: 0x7e, ergl: 0x82, strcmp: 0x8f,
+    // The arguments' count, a real, the binary argument, hex text to bytes, a string's length
+    // (EdiabasLib's numbering, as the rest; the jobs that take values use them).
+    parr: 0x69, pary: 0x7f, parn: 0x80, hex2y: 0x8e, strlen: 0x90,
     scmp: 0x20, gettmr: 0x43, settmr: 0x44, clrt: 0x46, jt: 0x47, wait: 0x6b,
 } as const;
 
@@ -183,6 +192,13 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
         flags.s = signed(v, width) < 0;
     };
 
+    // Before the job has an answer, a read past a string's end gives zeros (as a number) or what is
+    // there (as a string), as EdiabasLib's does: Operand.GetRawData returns an empty array and
+    // GetValueData pads it. SMG II's STEUERN_STELLGLIED reads S0[0] before anything is in S0 and sends
+    // its frame on EdiabasLib. Once an answer is in, a short one stops the run instead: reading it as
+    // zeros would report values the module never sent.
+    let answered = false;
+
     const fail = (reason: string): never => {
         throw new Stop(reason);
     };
@@ -281,7 +297,7 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
             const i = o.index();
             let v = 0;
             for (let k = width - 1; k >= 0; k--) v = v * 256 + (s[i + k] ?? 0);
-            if (i + width > s.length) fail('read past the end of a string');
+            if (i + width > s.length && (answered || i + 1 > ARRAY_MAX)) fail('read past the end of a string');
             return v;
         }
         return fail('a number from a non-number');
@@ -293,7 +309,7 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
             const s = strings[o.s];
             const i = o.index();
             const l = o.len ? o.len() : 1;
-            if (i + l > s.length) fail('read past the end of a string');
+            if (i + l > s.length && (answered || i + l > ARRAY_MAX)) fail('read past the end of a string');
             return s.slice(i, i + l);
         }
         return fail('a string from a non-string');
@@ -437,9 +453,11 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
                 case OP.asl:
                 case OP.lsl:
                 case OP.lsr: {
-                    // `comp` only reads its first operand, so it may be a byte of a string (DSC_MK60's
-                    // FS_LESEN: `comp S3[2], 0x7f`, a negative answer), as wide as the second operand.
-                    const indexed = op === OP.comp && a.m === 'idx';
+                    // The first operand may be bytes of a string, as wide as the second operand: `comp`
+                    // reads it (DSC_MK60's FS_LESEN: `comp S3[2], 0x7f`, a negative answer) and the others
+                    // write it back (SMG II's STEUERN_STELLGLIED upper-cases its argument with
+                    // `subb S5[I0], #0x20`).
+                    const indexed = a.m === 'idx';
                     const r = indexed ? null : numOrFail(a);
                     const w = r ? r.width : (widthOf(b) ?? 1);
                     const x = r ? getNum(r) : u(readNum(a, w), w);
@@ -488,7 +506,10 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
                             v = y >= w * 8 ? 0 : x * 2 ** y;
                     }
                     setFlags(v, w);
-                    if (r && op !== OP.comp) setNum(r, v);
+                    if (op !== OP.comp) {
+                        if (r) setNum(r, v);
+                        else writeNum(a, v, w);
+                    }
                     break;
                 }
                 case OP.not: {
@@ -539,6 +560,7 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
                     if (a.m !== 'reg' || a.r.t !== 'str') fail('a send into a non-string');
                     const answer: Uint8Array | null = yield req.slice();
                     if (answer === null) return { results, request, stopped: null };
+                    answered = true;
                     strings[(a as { r: { n: number } }).r.n] = answer.slice();
                     break;
                 }
@@ -570,6 +592,55 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
                         flags.z = false;
                         flags.s = signed(v, r.width) < 0;
                     }
+                    break;
+                }
+                case OP.parn: {
+                    // How many arguments the job was given.
+                    const r = numOrFail(a);
+                    const n = (opts.args ?? []).length;
+                    setNum(r, n);
+                    setFlags(n, r.width);
+                    break;
+                }
+                case OP.parr: {
+                    // Argument n (from 1) as a real. Absent or not a number: Z set, as for parl.
+                    const n = readNum(b, 4);
+                    const text = (opts.args ?? [])[n - 1]?.trim() ?? '';
+                    const v = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(text) ? Number(text) : null;
+                    if (v === null) flags.z = true;
+                    else {
+                        floats[fltOrFail(a)] = v;
+                        flags.z = false;
+                    }
+                    break;
+                }
+                case OP.pary: {
+                    // The binary argument. The app passes text only: there is none, Z set.
+                    if (a.m !== 'reg' || a.r.t !== 'str') fail('pary into a non-string');
+                    strings[(a as { r: { n: number } }).r.n] = new Uint8Array(0);
+                    flags.z = true;
+                    break;
+                }
+                case OP.hex2y: {
+                    // Hex text ("0A 1B" or "0A1B") to its bytes. Not hex: Z set, nothing written.
+                    if (a.m !== 'reg' || a.r.t !== 'str') fail('hex2y into a non-string');
+                    const text = latin1(readStr(b)).replace(/\s+/g, '');
+                    if (!/^([0-9a-f]{2})*$/i.test(text)) {
+                        flags.z = true;
+                        break;
+                    }
+                    strings[(a as { r: { n: number } }).r.n] = Uint8Array.from(text.match(/../g) ?? [], (x) => parseInt(x, 16));
+                    flags.z = false;
+                    break;
+                }
+                case OP.strlen: {
+                    // The text's length, to its first NUL.
+                    const r = numOrFail(a);
+                    const s = readStr(b);
+                    const end = s.indexOf(0);
+                    const n = end === -1 ? s.length : end;
+                    setNum(r, n);
+                    setFlags(n, r.width);
                     break;
                 }
                 case OP.pars: {

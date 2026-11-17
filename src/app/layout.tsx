@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { OfflineCache } from "@/components/OfflineCache";
+import { LauncherFullscreen } from "@/components/LauncherFullscreen";
 import "./globals.css";
 
 // Two families, split by meaning: Inter for UI chrome, JetBrains Mono for
@@ -85,6 +86,9 @@ export default function RootLayout({
         {/* Renders nothing. Mounted here so the registration effect runs once,
             on the client, after hydration — see components/OfflineCache.tsx. */}
         <OfflineCache />
+        {/* Renders nothing: takes the head unit's screen back when Chrome showed the launcher's
+            page with its address bar — see lib/launcherFullscreen.ts. */}
+        <LauncherFullscreen />
       </body>
     </html>
   );

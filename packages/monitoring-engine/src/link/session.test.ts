@@ -5,6 +5,12 @@ import { moduleProtocol } from '../moduleProtocol.ts';
 import { practiceCar, resetPracticeCar } from '../practiceCar.ts';
 import type { TelegramTable } from '../telegrams.ts';
 import { HAVE_SHIPPED_DATA, readShipped } from '../testing/shipped.ts';
+import type { EcuProfile } from '../ecuCatalog.ts';
+import { mayActuate } from '../actuationGate.ts';
+import { EMPTY_LEDGER } from '../ledger.ts';
+import { decisionFor } from '../policy.ts';
+import { permitFor } from '../runGate.ts';
+import { bestTelegram } from '../telegrams.ts';
 import { LinkSession, type LinkSnapshot } from './session.ts';
 
 /**
@@ -78,6 +84,10 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('a LinkSession on the practice car', () => {
         const cleared = await s.clearFaults();
         expect(cleared).toBeNull();
         expect(s.lastError()).toMatch(/not sent — the car could not be shown to be stationary \(moving\)/);
+        // The same refusal as a shape, with the speed the DME gave (for SUITE's maintenance_car_run).
+        expect(s.lastNotSent()).toMatchObject({ reason: 'moving', measured: { motion: 'moving', speedKmh: 40 } });
+        s.clearError();
+        expect(s.lastNotSent()).toBeNull();
         expect(s.getSnapshot().state).toBe('connected');
     });
 
@@ -97,5 +107,67 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('a LinkSession on the practice car', () => {
         expect(s.getSnapshot()).toBe(before);
         await s.connect('practice');
         expect(s.getSnapshot()).not.toBe(before);
+    });
+
+    describe('a job that drives something (owner, 2026-11-15)', () => {
+        /** An MSS54 job the owner decided to run, with a certain frame and no arguments, and its verdict in PRACTICE. */
+        const drive = (pred: (j: EcuProfile['jobs'][number]) => boolean = () => true) => {
+            const profile = readShipped<EcuProfile>('mss54.jobs.json');
+            const tables = readShipped<TelegramTable>('mss54.telegrams.json');
+            for (const job of profile.jobs) {
+                if (!pred(job)) continue;
+                const v = mayActuate(job, bestTelegram(tables, job.id), EMPTY_LEDGER, { moduleId: 'mss54', mode: 'practice', motion: 'parked', group: 'engine' });
+                if (v.allowed && v.actuation && decisionFor('mss54', job, 'engine').how === 'run') return { job, v };
+            }
+            throw new Error('no such job');
+        };
+
+        it('runs in PRACTICE with its permit, measures the battery and engine first, and counts as practised', async () => {
+            const practised: string[] = [];
+            const s = new LinkSession({ target: moduleProtocol('mss54', 0x12, readShipped<TelegramTable>('mss54.telegrams.json')), onPracticed: (p) => practised.push(p.jobId) });
+            opened.push(s);
+            await s.connect('practice');
+            const { job, v } = drive((j) => !j.preconditions.includes('engine_off'));
+            const permit = permitFor(v, 'mss54', job.id, Date.now())!;
+            const r = await s.runRead(job.id, v.telegram.hex, v.requires, permit);
+            expect(r, s.lastError() ?? '').not.toBeNull();
+            expect(practised).toEqual([job.id]);
+            expect(s.getSnapshot().log.some((l) => /Battery and engine preflight/.test(l.text))).toBe(true);
+        });
+
+        it('sends nothing on a permit for another frame, a weak battery, or an engine its SGBD wants stopped', async () => {
+            const s = sessionFor('mss54');
+            await s.connect('practice');
+            const { job, v } = drive((j) => j.preconditions.includes('engine_off'));
+            const permit = permitFor(v, 'mss54', job.id, Date.now())!;
+            expect(await s.runRead(job.id, '12 05 0b 03 1f', v.requires, permit)).toBeNull();
+            expect(s.lastError()).toMatch(/the permit does not cover this frame/);
+            expect(s.lastNotSent()).toMatchObject({ reason: 'permission', what: job.id });
+            // The practice car idles: an engine-off job is not sent.
+            expect(await s.runRead(job.id, v.telegram.hex, v.requires, permit)).toBeNull();
+            expect(s.lastError()).toMatch(/asks for the engine stopped/);
+            expect(s.lastNotSent()).toMatchObject({ reason: 'engine', measured: { engineWanted: 'off' } });
+            expect(s.lastNotSent()?.measured.voltageV).toBeGreaterThanOrEqual(12);
+            expect(s.lastNotSent()?.measured.rpm).toBeGreaterThan(0);
+            practiceCar.engineRunning = false;
+            practiceCar.batteryV = 11.4;
+            expect(await s.runRead(job.id, v.telegram.hex, v.requires, permit)).toBeNull();
+            expect(s.lastError()).toMatch(/battery reads 11\.4 V, under 12 V/);
+            expect(s.lastNotSent()).toMatchObject({ reason: 'voltage', measured: { voltageV: 11.4, minVoltageV: 12 } });
+            practiceCar.batteryV = 12.6;
+            expect(await s.runRead(job.id, v.telegram.hex, v.requires, permit)).not.toBeNull();
+        });
+
+        it('asks a running thing again without measuring, and releases it whatever is measured', async () => {
+            const s = sessionFor('mss54');
+            await s.connect('practice');
+            const { job, v } = drive((j) => j.preconditions.includes('engine_off'));
+            const run = permitFor(v, 'mss54', job.id, Date.now())!;
+            const before = s.getSnapshot().log.length;
+            // The engine idles, which the run itself would refuse: a re-ask and a release are not held back by it.
+            expect(await s.runRead(job.id, v.telegram.hex, 'parked', { ...run, kind: 'follow' })).not.toBeNull();
+            expect(await s.runRead(job.id, v.telegram.hex, 'none', { ...run, kind: 'stop' })).not.toBeNull();
+            expect(s.getSnapshot().log.slice(before).some((l) => /preflight/.test(l.text))).toBe(false);
+        });
     });
 });

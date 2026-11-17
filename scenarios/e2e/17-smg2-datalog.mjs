@@ -12,11 +12,11 @@ const stat = (r, c) => (r?.stats ?? []).find((x) => x.channel === c);
 
 const scenario = {
     id: 'S17',
-    title: 'DATALOG と SMG II：油圧ユニット温度を探して選ぶ → 走行中は空 → 止まると値と単位が入る → 画面にも出る',
+    title: 'DATALOG と SMG II：油圧ユニット温度を探して選ぶ → 走行中も値と単位が入る（運営者 2026-11-15）→ 画面にも出る',
     story:
         'オーナーが「SMG の油温もログに入れて」と頼む。AI は DATALOG のチャンネルを探し、SMG II の油圧ユニット温度とエンジン回転数を、' +
-        'DME のエンジン回転数と一緒に選ぶ。40 km/h で走っている間に記録を始めると、DME の値は入り、SMG II の値は空のまま。止まると SMG II の値が入り、' +
-        '要約に名前と単位が付く。画面の DATALOG の「ほかのモジュールの値」にも SMG II の欄と値が出る。',
+        'DME のエンジン回転数と一緒に選ぶ。状態の値は走行中も読むと運営者が決めた（2026-11-15）ので、40 km/h で走っている間に記録を始めると、' +
+        'DME の値も SMG II の値も入り、要約に名前と単位が付く。止まっても入り続ける。画面の DATALOG の「ほかのモジュールの値」にも SMG II の欄と値が出る。',
     car: { dmeFaults: [], speedKmh: 40 },
     steps: [
         { say: 'SMG の油温もログに入れて' },
@@ -37,17 +37,17 @@ const scenario = {
         { wait: 3000 },
         {
             check: {
-                desc: '走行中：DME の回転数は入り、SMG II の値は空（停車中だけ）',
+                desc: '走行中：DME の回転数も SMG II の値も入る',
                 run: async (page) => {
                     const r = await tool(page, 'monitoring_datalog', { max: 5 });
-                    return r.running && stat(r, '3:n')?.n > 0 && stat(r, HYD)?.n === 0 ? true : JSON.stringify(r).slice(0, 500);
+                    return r.running && stat(r, '3:n')?.n > 0 && stat(r, HYD)?.n > 0 ? true : JSON.stringify(r).slice(0, 500);
                 },
             },
         },
         { car: { speedKmh: 0 }, means: '車が止まる' },
         {
             check: {
-                desc: '止まると SMG II の値が入り、要約に名前と単位（Grad C、1/min）が付く',
+                desc: '止まっても SMG II の値が入り、要約に名前と単位（Grad C、1/min）が付く',
                 run: async (page) => {
                     for (let i = 0; i < 30; i++) {
                         const r = await tool(page, 'monitoring_datalog', { max: 5, seconds: 3 });

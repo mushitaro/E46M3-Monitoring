@@ -75,7 +75,9 @@ import { hasFaultJob, readFaultsByJob, type JobFaultRead } from '../sgbd/faultRe
 import { moduleLogGate, moduleLogValues, type ModuleLogRead } from '../sgbd/logChannels.ts';
 import { DME_ADDRESS, commonIdent, fittedFrom, frameVerdict, isCommonIdent, isM3, mayModuleBeSent, ruleFor, type Fitment, type Fitted } from '../variants.ts';
 import type { Ledger } from '../ledger.ts';
-import { clearFaultsCommand, telegramBytes, type SendRequirement } from '../runGate.ts';
+import { clearFaultsCommand, isReadOnlyControl, permitCovers, telegramBytes, type ActuationPermit, type SendRequirement } from '../runGate.ts';
+import { MIN_RUN_VOLTAGE } from '../policy.ts';
+import { NotSentError, notSentOf, type NotSent } from './notSent.ts';
 import {
     VEHICLE_STATE_MAX_AGE_MS,
     motionOf,
@@ -173,6 +175,10 @@ const hex2 = (n: number) => `0x${n.toString(16).padStart(2, '0')}`;
 const DME = Ds2Address.DME;
 /** MSS54 live block 19, "operating measurements": `v` and `v_asc` at offsets 0 and 2. */
 const SPEED_BLOCK = 19;
+/** Engine speed (`n`) and battery (`ub`): measured before a job that drives something. */
+const ENGINE_BLOCK = 3;
+/** Below this the engine is not taken as running (an idling S54 is ~900 rpm). */
+const ENGINE_RUNNING_RPM = 400;
 
 /** A cable this browser has already been allowed: an FTDI device over WebUSB, or a port over Web Serial. */
 async function hasPermittedCable(): Promise<boolean> {
@@ -241,6 +247,10 @@ export interface LinkHandlers {
     /** Told about every read sent to the car and what came back, either way (the preview's read
      *  records). Vehicle only: PRACTICE sends nothing to a car. */
     onRead?: (r: Omit<ReadRecord, 'id'>) => void;
+    /** Told when a job that drives something ran in PRACTICE through this send path (policy: practice first). */
+    onPracticed?: (p: { moduleId: string; jobId: string; at: string }) => void;
+    /** Told about every run of a job that drives something on the car, either way (policy: record runs). Vehicle only. */
+    onActuated?: (r: { moduleId: string; jobId: string; kind: 'run' | 'follow' | 'stop'; telegram: string; response: string | null; outcome: 'ok' | 'rejected' | 'failed'; reason: string | null; at: string; ecuIdent?: string }) => void;
 }
 
 const INITIAL: LinkSnapshot = {
@@ -306,6 +316,7 @@ export class LinkSession {
     // The last failure's sentence, readable at once by a caller that awaited the operation — the
     // assistant's facade, which must say why a read was not sent rather than that it was.
     private lastErrorNow: string | null = null;
+    private lastNotSentNow: NotSent | null = null;
     private handlers: LinkHandlers = {};
     private transportKindNow: TransportKind | null = null;
     /**
@@ -325,8 +336,8 @@ export class LinkSession {
 
     constructor(options: { target: ModuleProtocol } & LinkHandlers) {
         this.target = options.target;
-        const { onFailure, onObserved, onRead } = options;
-        this.handlers = { onFailure, onObserved, onRead };
+        const { onFailure, onObserved, onRead, onPracticed, onActuated } = options;
+        this.handlers = { onFailure, onObserved, onRead, onPracticed, onActuated };
     }
 
     // -- What the screen reads -----------------------------------------------------------------
@@ -342,6 +353,12 @@ export class LinkSession {
 
     /** Why the last operation failed, or null: read straight after awaiting it. */
     readonly lastError = (): string | null => this.lastErrorNow;
+    /**
+     * The last error's shape when it was the link's own refusal just before sending (moving, battery,
+     * engine, permit, or the car's state could not be measured), with the values it measured; null
+     * otherwise. Cleared with the error.
+     */
+    readonly lastNotSent = (): NotSent | null => this.lastNotSentNow;
 
     /** The module operations go to (latched at connect; see `target`). */
     readonly setTarget = (target: ModuleProtocol): void => {
@@ -382,6 +399,7 @@ export class LinkSession {
     private failWith(e: unknown): void {
         const message = e instanceof Error ? e.message : String(e);
         this.lastErrorNow = message;
+        this.lastNotSentNow = notSentOf(e);
         this.update({ error: message, errorKind: isDs2Error(e) ? e.kind : 'unclassified' });
         this.append('error', message);
     }
@@ -389,6 +407,7 @@ export class LinkSession {
     /** One helper clears both. */
     readonly clearError = (): void => {
         this.lastErrorNow = null;
+        this.lastNotSentNow = null;
         this.update({ error: null, errorKind: null });
     };
 
@@ -574,12 +593,48 @@ export class LinkSession {
         if (requires !== 'parked') return null;
         const measured = await this.measureMotion(link);
         if (measured !== 'parked') {
-            throw new Error(
-                `${what}: not sent — the car could not be shown to be stationary (${measured}). ` +
-                    'Just before sending, the DME speed (block 19) is read; only 0 km/h lets a read go.',
+            throw new NotSentError(
+                what,
+                measured === 'moving' ? 'moving' : 'link',
+                `the car could not be shown to be stationary (${measured}). ` +
+                    'Just before sending, the DME speed (block 19) is read; only 0 km/h lets a read go',
+                { motion: measured, speedKmh: measured === 'moving' ? (this.vehicleNow?.speedKmh ?? null) : null },
             );
         }
         return measured;
+    }
+
+    /**
+     * Before a job that drives something: the battery and the engine, measured now from the DME's
+     * block 3 (`ub`, `n`), on top of the speed the parked preflight already read (policy
+     * OWNER_RULES.measureBeforeSend). Anything unmeasured, a battery under MIN_RUN_VOLTAGE, or the
+     * engine not as the job's own SGBD asks, and nothing is sent.
+     */
+    private async preflightRun(link: Ds2Link, what: string, engine: 'off' | 'run' | null): Promise<void> {
+        const block = blockBySelection(ENGINE_BLOCK);
+        const wanted = engine ?? undefined;
+        const notSent = (reason: 'link' | 'voltage' | 'engine', why: string, measured: { voltageV?: number | null; rpm?: number | null } = {}) =>
+            new NotSentError(what, reason, why, { ...measured, ...(wanted ? { engineWanted: wanted } : {}), minVoltageV: MIN_RUN_VOLTAGE });
+        if (!block) throw notSent('link', 'the battery and the engine could not be measured');
+        const req = liveBlockRequest(ENGINE_BLOCK);
+        this.append('tx', `Battery and engine preflight (DME block ${ENGINE_BLOCK})`);
+        let values: LiveValues;
+        try {
+            const frame = await this.readFrame(link.to(DME), 'mss54', `LIVE_${ENGINE_BLOCK}`, req.control, req.payload, { attempts: 2 });
+            link.assertPositive(frame, `Battery and engine (DME block ${ENGINE_BLOCK})`);
+            values = {};
+            for (const v of decodeLiveBlock(block, frame)) values[channelId(ENGINE_BLOCK, v.symbol)] = v.value;
+        } catch (e) {
+            throw notSent('link', `the battery and the engine could not be measured (${e instanceof Error ? e.message : String(e)})`);
+        }
+        const ub = values[`${ENGINE_BLOCK}:ub`] ?? null;
+        const rpm = values[`${ENGINE_BLOCK}:n`] ?? null;
+        this.append('rx', `battery ${ub ?? '—'} V, engine ${rpm ?? '—'} rpm`);
+        const measured = { voltageV: ub, rpm };
+        if (ub === null || !Number.isFinite(ub)) throw notSent('voltage', 'the battery voltage could not be read', measured);
+        if (ub < MIN_RUN_VOLTAGE) throw notSent('voltage', `the battery reads ${ub.toFixed(1)} V, under ${MIN_RUN_VOLTAGE} V`, measured);
+        if (engine === 'off' && (rpm === null || rpm > 0)) throw notSent('engine', `its SGBD asks for the engine stopped, and it reads ${rpm ?? '—'} rpm`, measured);
+        if (engine === 'run' && (rpm === null || rpm < ENGINE_RUNNING_RPM)) throw notSent('engine', `its SGBD asks for the engine running, and it reads ${rpm ?? '—'} rpm`, measured);
     }
 
     /**
@@ -1022,7 +1077,7 @@ export class LinkSession {
      * re-checks the frame anyway — a function that transmits should not take
      * "somebody upstream checked" on trust.
      */
-    readonly runRead = (jobId: string, hex: string, requires: SendRequirement = 'parked') =>
+    readonly runRead = (jobId: string, hex: string, requires: SendRequirement = 'parked', permit?: ActuationPermit) =>
         this.run(`Run ${jobId}`, async (link) => {
             const { target, to } = this.session(link);
             // A KWP-on-DS2 module is sent its identity and its fault read, and nothing else: the
@@ -1051,15 +1106,29 @@ export class LinkSession {
             // said, unchanged. The simulated ECU is where the actuator send
             // path gets to execute before an M3 is the first thing it
             // executes against.
-            const refusal = whyNotSendable(control, this.modeNow, target.moduleId);
+            // A frame that drives something goes with the gate's permit for exactly these bytes.
+            const permitted = permit !== undefined && permitCovers(permit, target.moduleId, jobId, hex, Date.now());
+            if (permit && !permitted) throw new NotSentError(jobId, 'permission', 'the permit does not cover this frame');
+            const refusal = whyNotSendable(control, this.modeNow, target.moduleId, permitted);
             if (refusal) throw new Error(`${jobId}: ${refusal}`);
             const payload = bytes.slice(3, bytes.length - 1);
             // A read the owner has not cleared for a moving car goes only when the DME says
-            // 0 km/h in this same call.
-            const measured = await this.preflight(link, jobId, requires);
+            // 0 km/h in this same call. A run that drives something is measured further (battery,
+            // engine); its stop is never held back by a measurement.
+            const measured = permit && permit.kind !== 'run' ? null : await this.preflight(link, jobId, permit ? 'parked' : requires);
+            if (permit?.kind === 'run') await this.preflightRun(link, jobId, permit.engine);
             this.append('tx', `${jobId}: ${hex}`);
-            const frame = await this.readFrame(to, target.moduleId, jobId, control, payload);
-            link.assertPositive(frame, jobId);
+            const drives = permitted || !isReadOnlyControl(control, target.moduleId);
+            const frame = await this.readFrame(to, target.moduleId, jobId, control, payload)
+                .then((f) => {
+                    link.assertPositive(f, jobId);
+                    return f;
+                })
+                .catch((e: unknown) => {
+                    if (drives) this.noteRun(target.moduleId, jobId, permit?.kind ?? 'run', hex, null, isDs2Error(e) && e.code === 'NEGATIVE_RESPONSE' ? 'rejected' : 'failed', e);
+                    throw e;
+                });
+            if (drives) this.noteRun(target.moduleId, jobId, permit?.kind ?? 'run', hex, toHex(frame.payload), 'ok', null);
             // Read by the job's own code where it ships. A failure to read is not a failure of
             // the read: the bytes stand either way.
             let decoded: DecodedRead | null = null;
@@ -1095,6 +1164,22 @@ export class LinkSession {
             }
             return result;
         });
+
+    /** A run of a job that drives something: PRACTICE's is practice, the car's is a record. */
+    private noteRun(moduleId: string, jobId: string, kind: 'run' | 'follow' | 'stop', telegram: string, response: string | null, outcome: 'ok' | 'rejected' | 'failed', e: unknown) {
+        // A procedure's status re-ask is the same run asked again: only its failures are news.
+        if (kind === 'follow' && outcome === 'ok') return;
+        const at = new Date(appNow()).toISOString();
+        try {
+            if (this.modeNow === 'practice') {
+                if (outcome === 'ok' && kind === 'run') this.handlers.onPracticed?.({ moduleId, jobId, at });
+                return;
+            }
+            this.handlers.onActuated?.({ moduleId, jobId, kind, telegram, response, outcome, reason: e ? (e instanceof Error ? e.message : String(e)).slice(0, 300) : null, at, ecuIdent: this.identNow?.hex });
+        } catch {
+            /* recording a run must never fail it */
+        }
+    }
 
     /**
      * Clears fault memory. The one mutating command this app sends.

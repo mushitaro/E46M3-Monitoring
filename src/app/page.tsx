@@ -43,12 +43,13 @@ import {
 } from '@tsunagi/monitoring-engine';
 import { useLang } from '@/lib/i18n';
 import { hasStopControl, operationFor } from '@tsunagi/monitoring-engine';
-import { loadJobText, type JobTextTable } from '@/lib/jobText';
+import { cautionFor, loadJobText, type JobTextTable } from '@/lib/jobText';
+import { GateDialog } from '@/components/gate/GateDialog';
 import { PRIVACY_PREVIEW } from '@/lib/links';
 import { loadDscHydraulics, type DscHydraulics } from '@/lib/dscHydraulics';
 import { enabledTabs, featureEnabled } from '@/lib/features';
-import { EMPTY_LEDGER, applyKillList, fetchKillList, grantMovingOk, recordClear, recordParkedObservation, type KillList, type Ledger } from '@tsunagi/monitoring-engine';
-import { mayRun, type RunVerdict } from '@tsunagi/monitoring-engine';
+import { EMPTY_LEDGER, applyKillList, fetchKillList, grantMovingOk, permitFor, recordClear, recordParkedObservation, recordPracticeRun, recordVehicleRun, type KillList, type Ledger } from '@tsunagi/monitoring-engine';
+import { mayActuate, mayRun, practiceCar, type RunVerdict } from '@tsunagi/monitoring-engine';
 import { loadSmg2Workflows, type Smg2Workflows } from '@/lib/smg2Workflows';
 import { MODE_HOME, TAB_MODE, TAB_ORDER, type Mode, type Tab } from '@/lib/tabs';
 import { addEntries } from '@/lib/notebook/store';
@@ -251,6 +252,18 @@ export default function Home() {
             ),
         [],
     );
+    // A job that drives something, run in PRACTICE through the real send path: the evidence the
+    // owner's rule asks for before it goes to the car (policy: practice first). And every run on the
+    // car, either way, into the ledger (policy: record runs).
+    const onPracticed = useCallback(
+        (p: { moduleId: string; jobId: string; at: string }) => setObserved((l) => recordPracticeRun(l, `${p.moduleId}:${p.jobId}`, p.at)),
+        [],
+    );
+    const onActuated = useCallback(
+        (r: { moduleId: string; jobId: string; telegram: string; response: string | null; outcome: 'ok' | 'rejected' | 'failed'; at: string; ecuIdent?: string }) =>
+            setObserved((l) => recordVehicleRun(l, `${r.moduleId}:${r.jobId}`, { at: r.at, telegram: r.telegram, response: r.response, outcome: r.outcome, ecuIdent: r.ecuIdent })),
+        [],
+    );
     // The owner's press in SESSION SYNC → WHILE MOVING, after the confirmation. grantMovingOk refuses
     // anything without enough stationary answers, so a stale screen cannot clear more than it showed.
     const onGrantMovingOk = useCallback(
@@ -258,7 +271,7 @@ export default function Home() {
         [],
     );
     // Every read sent to the car, either way, is a read record in the WORKS build (lib/sync/readRecords).
-    const link = useDs2Link({ onFailure: failures.onFailure, target, onObserved, onRead: sessionsEnabled ? recordRead : undefined });
+    const link = useDs2Link({ onFailure: failures.onFailure, target, onObserved, onRead: sessionsEnabled ? recordRead : undefined, onPracticed, onActuated });
 
     // The kill list: fetched when the page opens and every ten minutes, from this origin. It can
     // only withdraw, never grant (lib/ledger), and a failed fetch leaves the last list standing.
@@ -293,6 +306,10 @@ export default function Home() {
     const [loaded, setLoaded] = useState<{ id: string; catalog: EcuProfile } | null>(null);
     const [catalogError, setCatalogError] = useState<string | null>(null);
     const catalog = loaded?.id === ecuId ? loaded.catalog : null;
+    // The module's group in the index: part of how the owner's decision judges a job (policy.ts).
+    const moduleGroup = useMemo(() => ecuIndex?.modules.find((m) => m.id === ecuId)?.group, [ecuIndex, ecuId]);
+    // SMG II's procedures ask the same gate, with the ledger and the car as they stand.
+    const procedureGate = useMemo(() => ({ ledger, motion: link.motion }), [ledger, link.motion]);
 
     // Datalog state lives here so the right column can visualise a run while
     // the datalog tab is not the one on the left.
@@ -393,6 +410,8 @@ export default function Home() {
     // get out of sync with a cascading render.
     const [clearOpen, setClearOpen] = useState(false);
     const [selection, setSelection] = useState<{ ecuId: string; job: CatalogJob } | null>(null);
+    // A SERVICE job that drives something waits for this confirmation (the owner's rule, 2026-11-15).
+    const [serviceGate, setServiceGate] = useState<{ job: CatalogJob; verdict: Extract<RunVerdict, { allowed: true }> } | null>(null);
     const selectedJob = selection?.ecuId === ecuId ? selection.job : null;
     const selectJob = useCallback((job: CatalogJob) => setSelection({ ecuId, job }), [ecuId]);
 
@@ -552,6 +571,18 @@ export default function Home() {
     // checkbox the hub reads CONNECT either way and the box says which link you
     // will get — which is also why it is disabled once a session is open.
     const [practiceArmed, setPracticeArmed] = useState(false);
+    // PRACTICE's simulated engine (lib/practiceCar): jobs whose SGBD asks for the engine stopped are practised with it off.
+    const [practiceEngineOn, setPracticeEngineOn] = useState(true);
+    const practiceEngine = useMemo(
+        () => ({
+            running: practiceEngineOn,
+            onChange: (v: boolean) => {
+                practiceCar.engineRunning = v;
+                setPracticeEngineOn(v);
+            },
+        }),
+        [practiceEngineOn],
+    );
     const [faultOpen, setFaultOpen] = useState(false);
     const [creditsOpen, setCreditsOpen] = useState(false);
 
@@ -628,7 +659,7 @@ export default function Home() {
     // until switched on on this device). The facade is what the tools may reach — the screen's own
     // controls, never a run.
     const buildId = useBuildId();
-    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, probeSessions, mode, tab, changeTab, showPane: setPane, selectJob, switchModule, startScan, updateWaiting, allModules: scopeAll, syncInvestigations, defaultDevice: t.assistant_defaultDevice });
+    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, probeSessions, mode, tab, changeTab, showPane: setPane, selectJob, arming, switchModule, startScan, updateWaiting, allModules: scopeAll, syncInvestigations, defaultDevice: t.assistant_defaultDevice });
     // The end-to-end scenarios' door to the same tools (lib/e2e): a test build only.
     useE2EDoor(facade);
     const assistant = useAssistantBridge({
@@ -659,8 +690,11 @@ export default function Home() {
     // can fire ends up beside a panel that says it cannot.
     const runVerdict: RunVerdict | null =
         tab === 'service' && selectedJob
-            ? mayRun(selectedJob, bestTelegram(telegrams, selectedJob.id), ledger, { moduleId: ecuId, motion: link.motion })
+            ? link.mode === 'practice'
+                ? mayActuate(selectedJob, bestTelegram(telegrams, selectedJob.id), ledger, { moduleId: ecuId, mode: 'practice', motion: link.motion, group: moduleGroup })
+                : mayRun(selectedJob, bestTelegram(telegrams, selectedJob.id), ledger, { moduleId: ecuId, motion: link.motion, group: moduleGroup })
             : null;
+
 
     // Two pure deciders, wired to this app's glyphs and strings in one hook —
     // `lib/hub` for the link's tiers, `lib/viewHub` for the view's.
@@ -675,6 +709,9 @@ export default function Home() {
         runVerdict,
         catalogError,
         openProcedure: procedure ? () => setWizardOpen(true) : undefined,
+        confirmRun: () => {
+            if (selectedJob && runVerdict?.allowed) setServiceGate({ job: selectedJob, verdict: runVerdict });
+        },
         probe: probe.progress ? { progress: probe.progress, stop: probe.stop } : undefined,
         scan: scopeAll ? { run: () => void startScan(), progress: link.scanProgress } : undefined,
         probeRun:
@@ -893,6 +930,7 @@ export default function Home() {
                                     state={link.state}
                                     practiceArmed={practiceArmed}
                                     onPractice={setPracticeArmed}
+                                    practiceEngine={practiceEngine}
                                     onDisconnect={disconnect}
                                     onChangeEcu={chooseModule}
                                     allowAll={tab === 'diagnosis'}
@@ -1135,8 +1173,28 @@ export default function Home() {
                     jobs={jobIndex(catalog)}
                     telegrams={telegrams}
                     mode={link.mode}
+                    gate={procedureGate}
                     send={link.runRead}
                     onClose={() => setWizardOpen(false)}
+                />
+            )}
+
+            {serviceGate && catalog && (
+                <GateDialog
+                    job={serviceGate.job}
+                    sgbd={catalog.sgbd}
+                    address={catalog.address}
+                    mode={link.mode}
+                    verdict={serviceGate.verdict}
+                    phase="pulse"
+                    argValues={{}}
+                    caution={cautionFor(jobText, serviceGate.job.id, lang) ?? undefined}
+                    onRun={() => {
+                        const g = serviceGate;
+                        setServiceGate(null);
+                        void link.runRead(g.job.id, g.verdict.telegram.hex, g.verdict.requires, permitFor(g.verdict, ecuId, g.job.id, Date.now()) ?? undefined);
+                    }}
+                    onCancel={() => setServiceGate(null)}
                 />
             )}
 

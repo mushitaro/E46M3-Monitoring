@@ -69,6 +69,16 @@ export interface VerificationRecord {
     clears?: number;
     faultsBefore?: number | null;
     faultsAfter?: number | null;
+    /**
+     * A job that drives something, run in PRACTICE on this device through the app's own send path
+     * (policy OWNER_RULES.practiceFirst: nothing goes to the car that has not run in PRACTICE first).
+     */
+    practiced?: number;
+    practicedAt?: string;
+    /** Runs of a job that drives something, on the car: how many, the last one and how it ended. */
+    runs?: number;
+    lastRunAt?: string;
+    lastRunOutcome?: 'ok' | 'rejected' | 'failed';
 }
 
 export interface Ledger {
@@ -110,6 +120,50 @@ export function recordParkedObservation(
                   lastObservedAt: seen.at,
                   ecuIdent: seen.ecuIdent ?? prior?.ecuIdent,
               };
+    return { ...ledger, records: { ...ledger.records, [id]: record } };
+}
+
+/**
+ * Records a PRACTICE run of a job that drives something (policy OWNER_RULES.practiceFirst).
+ *
+ * Evidence about this app, not about the car: the send path, the frame and the stop ran against the
+ * simulated ECU. It changes no status — a withdrawn job stays withdrawn, and the gate still decides.
+ */
+export function recordPracticeRun(ledger: Ledger, id: string, at: string): Ledger {
+    const prior = ledger.records[id];
+    const record: VerificationRecord = { ...(prior ?? { id, status: 'candidate' }), practiced: (prior?.practiced ?? 0) + 1, practicedAt: at };
+    return { ...ledger, records: { ...ledger.records, [id]: record } };
+}
+
+/** Whether a job has run in PRACTICE on this device (`recordPracticeRun`). */
+export function hasPracticed(ledger: Ledger, id: string): boolean {
+    return (ledger.records[id]?.practiced ?? 0) > 0;
+}
+
+/**
+ * Records a run of a job that drives something, on the car (policy OWNER_RULES.recordRuns).
+ *
+ * Kept whatever the outcome; a positive answer makes the record `observed-parked` evidence of the
+ * bytes, as a read's would, without promoting it further. A withdrawal stays what it is.
+ */
+export function recordVehicleRun(
+    ledger: Ledger,
+    id: string,
+    run: { at: string; telegram: string; response: string | null; outcome: 'ok' | 'rejected' | 'failed'; ecuIdent?: string },
+): Ledger {
+    const prior = ledger.records[id];
+    const base: VerificationRecord = prior ?? { id, status: 'candidate' };
+    const keep = base.status === 'revoked' || base.status === 'refuted' || base.status === 'verified' || base.status === 'moving-ok';
+    const record: VerificationRecord = {
+        ...base,
+        status: keep || run.outcome !== 'ok' ? base.status : 'observed-parked',
+        telegram: run.telegram,
+        observedResponse: run.response ?? base.observedResponse,
+        runs: (base.runs ?? 0) + 1,
+        lastRunAt: run.at,
+        lastRunOutcome: run.outcome,
+        ecuIdent: run.ecuIdent ?? base.ecuIdent,
+    };
     return { ...ledger, records: { ...ledger.records, [id]: record } };
 }
 

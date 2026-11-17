@@ -27,6 +27,8 @@
  * happened, not tracking a confirmation the link cannot give.
  */
 
+import type { ActuationPermit } from '@tsunagi/monitoring-engine';
+
 export interface ArmedJob {
     /** The job that energised the output. */
     jobId: string;
@@ -35,6 +37,10 @@ export interface ArmedJob {
     stopHex: string;
     /** When it was armed. Rendered as an elapsed time; never used for logic. */
     at: number;
+    /** The release's permit on a car (runGate.stopPermit): the stop of a run the gate allowed. */
+    stopPermit?: ActuationPermit;
+    /** Stopped by itself after this many seconds (policy: always stoppable — the SGBD's limit, else 10 s). */
+    timeoutS?: number;
 }
 
 export type ArmedMap = ReadonlyMap<string, ArmedJob>;

@@ -49,9 +49,12 @@ if (args.Length >= 3 && args[0] == "--exec")
         ed.SetConfigProperty("TraceBuffering", "0");
         ed.ResolveSgbdFile(sg);
         // If argStr looks like hex (all hex digits, even length), pass it as a BINARY argument
-        // — this is how the flash jobs receive their pre-filled BINAER_BUFFER.
+        // — this is how the flash jobs receive their pre-filled BINAER_BUFFER. `--string` after it
+        // forces the text form: a value like "10" is a number the job parses, not a byte
+        // (tools/sgbd/gen_job_frames.py).
+        bool forceString = args.Length >= 5 && args[4] == "--string";
         string hex = argStr.Replace(" ", "");
-        bool isHex = hex.Length >= 2 && hex.Length % 2 == 0 && System.Text.RegularExpressions.Regex.IsMatch(hex, "^[0-9A-Fa-f]+$");
+        bool isHex = !forceString && hex.Length >= 2 && hex.Length % 2 == 0 && System.Text.RegularExpressions.Regex.IsMatch(hex, "^[0-9A-Fa-f]+$");
         if (isHex)
         {
             byte[] bin = new byte[hex.Length / 2];

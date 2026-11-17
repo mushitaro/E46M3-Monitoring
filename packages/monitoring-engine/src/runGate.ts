@@ -51,12 +51,14 @@
  *
  * ## What is allowed out of the box
  *
- * Reads, and only reads. A DS2 read command cannot change the ECU: it names a
- * block and the ECU answers. Everything that CAN change the car — actuator
- * tests, calibration writes, coding, programming, the SMG II procedures, the
- * DSC hydraulics — is refused twice over: the shipped ledger vouches for none of
- * them, and even with a ledger entry this app has no code that executes one. The
- * two refusals are separate sentences on purpose.
+ * Since 2026-11-15 it is the owner's decision (`policy.ts`): every job has a nature, and each
+ * nature a when (moving / parked), a how far (run / show / off) and a who (screen / assistant).
+ * A read goes as before, its frame carrying a read control byte, and goes while moving where the
+ * owner said so. A job that drives something goes when its nature is `run`, its frame is certain
+ * and takes no arguments, it has run in PRACTICE on this device, and the car is not moving; the
+ * verdict carries its terms and `permitFor` the permit the link checks against the exact bytes,
+ * before measuring the car (stationary, battery, engine) and sending. `show` is on the screen and
+ * never sent; `off` is not on the screen.
  *
  * Fault-memory clearing is the exception and it is handled separately — see
  * `clearFaultsCommand`.
@@ -64,7 +66,9 @@
 
 import { Ds2Control } from '@tsunagi/ds2-core';
 import type { CatalogJob } from './ecuCatalog.ts';
-import { mayReadWhileMoving, mayRunOnVehicle, withdrawn, type Ledger } from './ledger.ts';
+import { hasPracticed, mayReadWhileMoving, withdrawn, type Ledger } from './ledger.ts';
+import { DEFAULT_RUN_TIMEOUT_S, decisionFor, isReadNature, type Nature, type PolicyWho } from './policy.ts';
+import { isAgreedFor, runName, type AgreedFrame } from './sgbd/agreedFrame.ts';
 import { telegramIsCertain, type Telegram } from './telegrams.ts';
 import type { Motion } from './vehicleState.ts';
 
@@ -149,7 +153,10 @@ export type RunBlockKey =
     | 'run_block_controlWrites'
     | 'run_block_notVerified'
     | 'run_block_revoked'
-    | 'run_block_moving';
+    | 'run_block_moving'
+    | 'run_block_policyShow'
+    | 'run_block_policyOff'
+    | 'run_block_practiceFirst';
 
 /**
  * What the link must measure immediately before the bytes go.
@@ -161,9 +168,102 @@ export type RunBlockKey =
  */
 export type SendRequirement = 'parked' | 'none';
 
+/**
+ * The terms a job that drives something runs on, from the owner's decision (policy.ts) and the
+ * job's own SGBD: who may start it, the engine state its SGBD asks for (measured before the send),
+ * how long it may stay on, and the job that stops it.
+ */
+export interface ActuationTerms {
+    nature: Nature;
+    who: PolicyWho;
+    /** `off`: the SGBD asks for the engine stopped; `run`: running; null: it says nothing. */
+    engine: 'off' | 'run' | null;
+    /** Stopped after this many seconds: the SGBD's own limit, else DEFAULT_RUN_TIMEOUT_S. */
+    timeoutS: number;
+    stopJob: string | null;
+}
+
 export type RunVerdict =
-    | { allowed: true; telegram: Telegram; control: number; requires: SendRequirement }
+    | { allowed: true; telegram: Telegram; control: number; requires: SendRequirement; actuation?: ActuationTerms }
     | { allowed: false; reason: RunBlockKey };
+
+/**
+ * What lets a frame that is not a read leave on a vehicle: issued by `permitFor` from an allowed
+ * verdict, checked by the link session against the exact frame (module, job, bytes) before it goes.
+ * A stop permit (`kind: 'stop'`) is the release of a run already started; it is never held back by
+ * a measurement.
+ */
+export interface ActuationPermit {
+    /** `run`: a start, measured first. `follow`: the same running thing asked again (a procedure's
+     *  status re-ask), not measured again. `stop`: its release, never held back. */
+    kind: 'run' | 'follow' | 'stop';
+    moduleId: string;
+    jobId: string;
+    hex: string;
+    engine: 'off' | 'run' | null;
+    issuedAt: number;
+}
+
+/** A permit for an allowed verdict that drives something; null for a read. */
+export function permitFor(verdict: RunVerdict, moduleId: string, jobId: string, now: number): ActuationPermit | null {
+    if (!verdict.allowed || !verdict.actuation) return null;
+    return { kind: 'run', moduleId, jobId, hex: normHex(verdict.telegram.hex), engine: verdict.actuation.engine, issuedAt: now };
+}
+
+/** The release of a run that a permit started: its stop job's frame, sent whatever is measured. */
+export function stopPermit(run: ActuationPermit, stopJobId: string, stopHex: string): ActuationPermit {
+    return { kind: 'stop', moduleId: run.moduleId, jobId: stopJobId, hex: normHex(stopHex), engine: null, issuedAt: run.issuedAt };
+}
+
+/** How long a run permit stays good: from the press to the bytes. A stop permit does not expire. */
+export const PERMIT_MAX_AGE_MS = 120_000;
+
+/** Whether a permit is for exactly this frame, now. */
+export function permitCovers(permit: ActuationPermit, moduleId: string, jobId: string, hex: string, now: number): boolean {
+    if (permit.moduleId !== moduleId || permit.jobId !== jobId || permit.hex !== normHex(hex)) return false;
+    return permit.kind !== 'run' || now - permit.issuedAt <= PERMIT_MAX_AGE_MS;
+}
+
+/**
+ * A module's own procedure — SMG II's TESTPRG_STARTEN with a program number — under the owner's
+ * decision (`p_smg`, 2026-11-15): run, parked, once it has run in PRACTICE on this device. The
+ * ledger keeps each program apart (`smg2:TESTPRG_STARTEN(0x01)`): practising one bleeds nothing
+ * else open. Its frame is built from the job's own arguments (lib/procedureRun).
+ */
+export function mayRunProcedure(
+    moduleId: string,
+    startJob: Pick<CatalogJob, 'id' | 'class'>,
+    program: string,
+    ledger: Ledger,
+    motion: Motion,
+): { allowed: true; id: string } | { allowed: false; reason: RunBlockKey } {
+    const decision = decisionFor(moduleId, startJob);
+    if (decision.how === 'off') return { allowed: false, reason: 'run_block_policyOff' };
+    if (decision.how === 'show') return { allowed: false, reason: 'run_block_policyShow' };
+    const id = `${moduleId}:${startJob.id}(${program})`;
+    if (withdrawn(ledger, id) || withdrawn(ledger, `${moduleId}:${startJob.id}`)) return { allowed: false, reason: 'run_block_revoked' };
+    if (!hasPracticed(ledger, id)) return { allowed: false, reason: 'run_block_practiceFirst' };
+    if (motion === 'moving') return { allowed: false, reason: 'run_block_moving' };
+    return { allowed: true, id };
+}
+
+/** The three permits a procedure runs on: its start (measured), its status re-asks, its stop. */
+export function procedurePermits(
+    moduleId: string,
+    start: { jobId: string; hex: string },
+    stop: { jobId: string; hex: string },
+    engine: 'off' | 'run' | null,
+    now: number,
+): { start: ActuationPermit; follow: ActuationPermit; stop: ActuationPermit } {
+    const base = { moduleId, engine, issuedAt: now };
+    return {
+        start: { ...base, kind: 'run', jobId: start.jobId, hex: normHex(start.hex) },
+        follow: { ...base, kind: 'follow', jobId: start.jobId, hex: normHex(start.hex), engine: null },
+        stop: { ...base, kind: 'stop', jobId: stop.jobId, hex: normHex(stop.hex), engine: null },
+    };
+}
+
+const normHex = (hex: string) => hex.trim().toLowerCase().replace(/\s+/g, ' ');
 
 export interface RunContext {
     moduleId: string;
@@ -173,6 +273,16 @@ export interface RunContext {
      * link measures before it sends — but it is never treated as `parked` either.
      */
     motion: Motion;
+    /** The module's group in the index (engine, comfort, …): part of how a job's nature is judged. */
+    group?: string;
+    /** Values chosen for the job's arguments, where its nature depends on one. */
+    args?: readonly string[];
+    /**
+     * For a job that takes values: the frame for `args` that the app and EdiabasLib build alike
+     * (sgbd/agreedFrame.ts). Without it, or when it is not for this job, these values and the
+     * telegram handed in, a job that takes values is refused: a scraped frame carries values nobody chose.
+     */
+    agreed?: AgreedFrame;
 }
 
 /**
@@ -209,22 +319,15 @@ export function mayRun(
     ledger: Ledger,
     ctx: RunContext,
 ): RunVerdict {
-    if (job.class === 'programming') return { allowed: false, reason: 'run_block_programming' };
-    // Same shape as the line above, and a different sentence. "we do not flash ECUs" and
-    // "we do not write your car's identity" are not the same refusal, and a reader who is
-    // told the wrong one will go looking for the wrong thing.
-    if (job.class === 'identity') return { allowed: false, reason: 'run_block_identity' };
-
-    // Anything that is not a read needs evidence, and even with evidence this
-    // app has no execution path for it yet. Both refusals are real and they are
-    // different sentences: "nobody has proven this" and "we have not built it".
-    // Saying the first when the second is true would make the ledger look like
-    // the only thing standing in the way.
-    if (job.class !== 'read') {
-        return mayRunOnVehicle(ledger, `${ctx.moduleId}:${job.id}`).allowed
-            ? { allowed: false, reason: 'run_block_notRead' }
-            : { allowed: false, reason: 'run_block_notVerified' };
+    // The owner's decision for this job (policy.ts, 2026-11-15): when, how far, who.
+    const decision = decisionFor(ctx.moduleId, job, ctx.group, ctx.args);
+    if (decision.how === 'off') {
+        // Same refusal, and the sentence a reader of the job's class expects.
+        if (job.class === 'programming') return { allowed: false, reason: 'run_block_programming' };
+        if (job.class === 'identity') return { allowed: false, reason: 'run_block_identity' };
+        return { allowed: false, reason: 'run_block_policyOff' };
     }
+    if (!isReadNature(decision.nature)) return mayDrive(job, telegram, ledger, ctx, decision);
 
     // PRACTICE is NOT a reason to refuse.
     //
@@ -238,12 +341,12 @@ export function mayRun(
 
     // An argument-taking job cannot be sent from a scraped frame. The frame the
     // extractor recovered embeds whatever argument values the SGBD's bytecode
-    // happened to hold; we did not choose them and we have no mapping from the
-    // operator's chosen values back into the payload. Sending it anyway would
-    // read a block nobody asked for. (The block reads the operator CAN vary —
-    // live values and adaptation blocks — are built from the protocol in
-    // ds2-core, not from a scrape, and do not come through here.)
-    if (job.args.length > 0) return { allowed: false, reason: 'run_block_needsArgs' };
+    // happened to hold; we did not choose them. It goes only as the frame built
+    // for the chosen values by the job's own code, where EdiabasLib builds the
+    // same (ctx.agreed). (The block reads the operator CAN vary — live values and
+    // adaptation blocks — are built from the protocol in ds2-core, not from a
+    // scrape, and do not come through here.)
+    if (job.args.length > 0 && !isAgreedFor(ctx.agreed, ctx.moduleId, job.id, ctx.args, telegram.hex)) return { allowed: false, reason: 'run_block_needsArgs' };
 
     const bytes = telegramBytes(telegram.hex);
     if (!bytes) return { allowed: false, reason: 'run_block_noTelegram' };
@@ -263,9 +366,47 @@ export function mayRun(
     // The car. A read the owner cleared for a moving car goes whatever the speed; any other read
     // goes only to a car measured stationary, and a car measured moving is refused here so the
     // screen can say so. Unknown is left to the preflight at the wire.
-    if (mayReadWhileMoving(ledger, id)) return { allowed: true, telegram, control, requires: 'none' };
+    if (decision.when === 'moving' || mayReadWhileMoving(ledger, id)) return { allowed: true, telegram, control, requires: 'none' };
     if (ctx.motion === 'moving') return { allowed: false, reason: 'run_block_moving' };
     return { allowed: true, telegram, control, requires: 'parked' };
+}
+
+/**
+ * A job that drives something — an output, a check, a simulation, a reset, a procedure, a clear —
+ * under the owner's decision. Its frame does not carry a read control byte; the link lets it go
+ * only with the permit this verdict issues (`permitFor`), and only after measuring the car.
+ */
+function mayDrive(job: CatalogJob, telegram: Telegram | null, ledger: Ledger, ctx: RunContext, decision: ReturnType<typeof decisionFor>): RunVerdict {
+    if (decision.how === 'show') return { allowed: false, reason: 'run_block_policyShow' };
+    if (!telegramIsCertain(telegram)) return { allowed: false, reason: 'run_block_noTelegram' };
+    // Arguments are chosen on the screen and the frame built by the job's own SGBD, and it goes only
+    // where EdiabasLib builds the same for those values (ctx.agreed); a scraped frame carries values
+    // nobody chose.
+    if (job.args.length > 0 && !isAgreedFor(ctx.agreed, ctx.moduleId, job.id, ctx.args, telegram.hex)) return { allowed: false, reason: 'run_block_needsArgs' };
+    const bytes = telegramBytes(telegram.hex);
+    if (!bytes) return { allowed: false, reason: 'run_block_noTelegram' };
+    const id = `${ctx.moduleId}:${job.id}`;
+    // A job that takes values is practised and recorded per part it drives (agreedFrame.runName).
+    const runId = `${ctx.moduleId}:${runName(job.id, job.args.length ? ctx.args : undefined)}`;
+    if (withdrawn(ledger, id) || withdrawn(ledger, runId)) return { allowed: false, reason: 'run_block_revoked' };
+    if (!hasPracticed(ledger, runId)) return { allowed: false, reason: 'run_block_practiceFirst' };
+    // Every nature that drives something was decided `parked` (2026-11-15), and a job whose own SGBD
+    // asks for the car stationary goes parked whatever is decided (OWNER_RULES.sgbdStationaryWins).
+    if (ctx.motion === 'moving') return { allowed: false, reason: 'run_block_moving' };
+    return { allowed: true, telegram, control: bytes[2], requires: 'parked', actuation: actuationTerms(job, decision) };
+}
+
+/** The terms a job that drives something runs on: its decision, and its own SGBD's engine state, limit and stop. */
+export function actuationTerms(job: CatalogJob, decision: { nature: Nature; who: PolicyWho }): ActuationTerms {
+    const engine = job.preconditions.includes('engine_off') ? 'off' : job.preconditions.includes('engine_running') ? 'run' : null;
+    const sgbdTimeout = job.op?.maxHoldSec ?? job.op?.ecuTimeoutSec ?? null;
+    return {
+        nature: decision.nature,
+        who: decision.who,
+        engine,
+        timeoutS: typeof sgbdTimeout === 'number' && sgbdTimeout > 0 ? sgbdTimeout : DEFAULT_RUN_TIMEOUT_S,
+        stopJob: job.op?.stopJob ?? null,
+    };
 }
 
 /**

@@ -15,7 +15,7 @@ const scenario = {
         'オーナーの決定（2026-11-15）：部品を動かすジョブは、画面で選んだ値で動かす。値を取るジョブは、選んだ値の組でジョブ自身の SGBD のコードが組む電文が、' +
         'EdiabasLib の組む電文と同じになる組だけを出す。ACTUATOR の STEUERN_STELLGLIED は、部品ごとにまとめた値の組を選ぶ。選ぶまで START は押せない。' +
         '選んで START を押すと、確認に始めと止めの呼び出しが出て、実行すると送られ、止める電文が手元に置かれる。STOP で止まる。' +
-        'AI には、オーナーの表が AI に開いた組（故障ランプなどの表示）だけが返り、弁の組は画面に置く道を言う。',
+        'オーナーの決定（2026-11-16）で、部品を動かすものは AI も始められる。AI が値を渡さずに頼むと、EdiabasLib と比べた組が返り、比べていない組では始めない。',
     steps: [
         { ui: 'module', value: 'smg2', means: 'SMG II を選ぶ' },
         { ui: 'practice' },
@@ -83,13 +83,12 @@ const scenario = {
         },
         {
             check: {
-                desc: 'AI が値を渡さずに頼むと、AI に開いた組（表示）だけが返る。弁の組は返らない',
+                desc: 'AI が値を渡さずに頼むと、EdiabasLib と比べた組が返る（弁の組も。決定 2026-11-16）',
                 run: async (page) => {
                     const r = await tool(page, 'monitoring_actuate', { module: 'smg2', job: 'STEUERN_STELLGLIED', phase: 'start', owner_said: 'いいよ' });
                     if (r?.started !== false || !Array.isArray(r.sets) || !r.sets.length) return JSON.stringify(r).slice(0, 300);
-                    const parts = new Set(r.sets.map((s) => s[0]));
-                    if (parts.has('HYDROPUMPE') || parts.has('MAGNETVENTIL_KUPPLUNG')) return `弁の組が AI に返った: ${[...parts].join(', ')}`;
-                    return parts.has('STOERANZEIGE') ? true : `表示の組が無い: ${[...parts].join(', ')}`;
+                    const parts = [...new Set(r.sets.map((s) => s[0]))];
+                    return parts.some((p) => /^MAGNETVENTIL_|^HYDROPUMPE$/.test(p)) ? true : `弁の組が無い: ${parts.join(', ')}`;
                 },
             },
         },

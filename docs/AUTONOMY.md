@@ -108,7 +108,7 @@ guide が名乗るツールは `src/lib/bridge/tools.ts` の一覧だけ（`guid
 | 読取は、送る直前に DME の車速が 0 と読めたときだけ。読めなければ出さない | `packages/monitoring-engine/src/link/session.ts` の事前読取（`preflight`）、`packages/monitoring-engine/src/vehicleState.ts` | 済（2026-10-27） |
 | 走行中に送ってよい読取はオーナーが決める。アプリもアシスタントも格上げしない | `packages/monitoring-engine/src/ledger.ts` の `grantMovingOk`。画面は SESSION SYNC の WHILE MOVING（`views/sessions/MovingOkSection.tsx`、確認のあと、走行中は押せない）。`monitoring_ledger` は読むだけ | 済（画面は #9、2026-10-28）。認めた分はページを開いている間だけ |
 | 意味的失敗（0xB0 など）は再送しない。再送は transport の失敗だけ | `packages/ds2-core/src/link.ts` | 済（以前から） |
-| 読取以外は画面に置くだけ。実行は停車中に画面で人。DSC 油圧系は出さない | `mayRun`（非読取は拒否）、`monitoring_stage` | 拒否は済。stage は段 3 |
+| 読取以外は、運営者の表（`policy.ts`）の「誰が」に従う。画面の人のものは画面に置くだけ（`monitoring_stage`）。AI に開いたものは、AI が読み返してオーナーの「いいよ」のあと、停車中に、画面の RUN と同じ関門・測定・時間切れで始める（`monitoring_actuate`）。走行中の AI は始めない。止めるは誰でもいつでも（`monitoring_stop_outputs`） | `mayRun`・`mayActuate`、`src/lib/actuation.ts`（`assistantMayStart`・`startActuation`、画面と AI が同じ道） | stage は段 3。AI の口は 2026-11-16（デモテスト S24） |
 | キルリストで任意のジョブを即時に止める | `public/kill-list.json`、`packages/monitoring-engine/src/ledger.ts`、SW は precache しない | 取得と適用は済。D1 からの配信は段 2 |
 | タブは新しい計画の版と新しいビルドを停車中・リンク休止中にだけ採る | 計画は `useProbe` が開始時に一度だけ読む（開始は画面の人、または AI モードでアシスタントの `monitoring_probe`。運営者 2026-11-01）。ビルドは、リンクが 1 分続けて切れていて未保存が無いときだけ（`lib/adoptBuild.ts`） | 済（ビルドは 2026-10-28） |
 | 送るのは、委任が立っている調査だけ。取り下げたら、まだ送っていないものも送らない | `lib/investigation/share.ts`（タブ・`functions/api/notebook`・`/runs`・机が同じ関数を使う） | 済（2026-10-28） |

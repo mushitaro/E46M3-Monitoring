@@ -31,6 +31,9 @@ import { LAUNCHER_QUERY, deviceLabel, isHeadUnit, type DeviceKind } from '@/hook
 import type { Datalog } from '@/views/datalog/useDatalog';
 import type { Sessions } from '@/views/sessions/useSessions';
 import { appNow } from '@tsunagi/monitoring-engine';
+import { mayActuate } from '@tsunagi/monitoring-engine';
+import { assistantMayStart, startActuation } from '@/lib/actuation';
+import type { Arming } from '@/hooks/useActuatorArming';
 
 
 /** What the assistant is told with codes read from a module's own layout (engine faultLayouts). */
@@ -93,6 +96,8 @@ export function useMonitoringFacade(input: {
     /** Which window shares the screen with HUB below 900: the tab's rows (list) or its picture (visu). */
     showPane: (pane: 'list' | 'visu') => void;
     selectJob: (job: EcuProfile['jobs'][number]) => void;
+    /** The outputs on now, and how to start and stop them (useActuatorArming). */
+    arming: Arming;
     /** Another module on the screen, the link opened again for it if it was open (page.tsx). */
     switchModule: (id: string) => Promise<string | null>;
     /** Every module's fault read, shown on DIAGNOSIS under ALL MODULES (page.tsx). How many addresses, or why not. */
@@ -412,6 +417,42 @@ export function useMonitoringFacade(input: {
                 runsOnScreen: v.allowed ? 'The screen may run it, when a person presses it, parked.' : null,
                 reason: v.allowed ? null : en.runBlock[v.reason],
             };
+        },
+
+        actuate: async ({ module, job: jobId, phase, ownerSaid }) => {
+            if (module !== ecuId) {
+                return { started: false, reason: `The screen is on ${moduleName(ecuId)}. Put ${moduleName(module)} on it first (monitoring_module).` };
+            }
+            const job = catalog?.jobs.find((j) => j.id === jobId);
+            if (!job) return { started: false, reason: `${jobId} is not a job of ${moduleName(module)}.` };
+            const may = assistantMayStart(module, job, catalog?.group, link.motion, ownerSaid);
+            if (!may.ok) return { started: false, reason: may.reason };
+            if (link.state !== 'connected') return { started: false, reason: `The link is ${link.state}; a job starts from connected and idle.` };
+            // One thing driven at a time (the owner's rule, 2026-11-15).
+            if (input.arming.anyArmed) return { started: false, reason: `${[...input.arming.armed.keys()].join(', ')} is on. Stop it first (monitoring_stop_outputs).` };
+            const telegrams = await loadTelegrams(module);
+            // The very gate ACTUATOR's row asks, with the same inputs.
+            const v = mayActuate(job, bestTelegram(telegrams, job.id), ledger, { moduleId: module, mode: link.mode, motion: link.motion, group: catalog?.group });
+            if (!v.allowed) return { started: false, reason: en.runBlock[v.reason] };
+            input.selectJob(job);
+            input.changeTab('actuator');
+            const r = await startActuation({ moduleId: module, job, phase, verdict: v, telegrams, send: link.runRead, arm: input.arming.arm, now: Date.now() });
+            return {
+                started: r.sent,
+                job: job.id,
+                name: job.en,
+                mode: link.mode,
+                on: r.armed,
+                stopsByItselfAfterS: r.timeoutS,
+                ownerSaid,
+                reason: r.sent ? null : (link.error ?? 'Not sent: the link refused or the module did not answer.'),
+            };
+        },
+
+        stopOutputs: async () => {
+            const on = [...input.arming.armed.keys()];
+            await input.arming.stopAll();
+            return { stopped: on };
         },
 
         startLog: () => {

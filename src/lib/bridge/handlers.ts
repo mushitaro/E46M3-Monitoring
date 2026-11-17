@@ -89,6 +89,13 @@ export interface TabFacade {
     /** LIST or VISU, the window that shares the screen with HUB below 900. */
     pane(pane: 'list' | 'visu'): void;
     stage(module: string, job: string): Promise<unknown>;
+    /**
+     * Start a job the owner's table opens to the assistant (policy `who: 'ai'`), after the owner's OK:
+     * the same gate, permit, measurement and arming as ACTUATOR's RUN. Says why not otherwise.
+     */
+    actuate(q: { module: string; job: string; phase: 'start' | 'pulse'; ownerSaid: string; values?: string[] }): Promise<unknown>;
+    /** Stop every output that is on. Not gated: anyone, any time. */
+    stopOutputs(): Promise<unknown>;
     /** Null when it started; otherwise why not. */
     startLog(): string | null;
     /** DATALOG: what is selected and recording now, and the run summed up (lib/datalogQuery). */
@@ -502,6 +509,17 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
         },
 
         monitoring_stage: async (args) => f.stage(text(args.module, 'module'), text(args.job, 'job')),
+
+        monitoring_actuate: async (args) =>
+            f.actuate({
+                module: text(args.module, 'module'),
+                job: text(args.job, 'job'),
+                phase: args.phase === 'start' ? 'start' : 'pulse',
+                ownerSaid: typeof args.owner_said === 'string' ? args.owner_said : '',
+                values: Array.isArray(args.values) ? args.values.map((v) => String(v)) : undefined,
+            }),
+
+        monitoring_stop_outputs: async () => f.stopOutputs(),
 
         monitoring_start_log: async () => {
             const refused = f.startLog();

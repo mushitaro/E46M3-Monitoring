@@ -9,8 +9,8 @@ describe('a job’s nature (the owner’s decision, 2026-11-15, is by nature)', 
     it('judges the examples the decision page showed', () => {
         const cases: [string, string, string, string | undefined, Nature, string[]?][] = [
             ['smg2', 'TESTPRG_STARTEN', 'calibration', 'drivetrain', 'p_smg'],
-            ['smg2', 'STEUERN_STELLGLIED', 'test', 'drivetrain', 'a_smg', ['0x05']],
-            ['smg2', 'STEUERN_STELLGLIED', 'test', 'drivetrain', 'a_disp', ['0x3E']],
+            ['smg2', 'STEUERN_STELLGLIED', 'test', 'drivetrain', 'a_smg', ['HYDROPUMPE']],
+            ['smg2', 'STEUERN_STELLGLIED', 'test', 'drivetrain', 'a_disp', ['STOERANZEIGE']],
             ['smg2', 'ANSTEUERUNG_VORBEREITEN', 'unclassified', 'drivetrain', 'a_smg'],
             ['dsc_e46', 'DRUCKHALTEN', 'test', 'chassis', 'a_brake'],
             ['dsc_mk60', 'STEUERN_DIGITAL_WARNLAMPEN', 'test', 'chassis', 'a_disp'],

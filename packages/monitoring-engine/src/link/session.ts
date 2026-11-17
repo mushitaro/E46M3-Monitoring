@@ -77,6 +77,7 @@ import { DME_ADDRESS, commonIdent, fittedFrom, frameVerdict, isCommonIdent, isM3
 import type { Ledger } from '../ledger.ts';
 import { clearFaultsCommand, isReadOnlyControl, permitCovers, telegramBytes, type ActuationPermit, type SendRequirement } from '../runGate.ts';
 import { MIN_RUN_VOLTAGE } from '../policy.ts';
+import { NotSentError, notSentOf, type NotSent } from './notSent.ts';
 import {
     VEHICLE_STATE_MAX_AGE_MS,
     motionOf,
@@ -315,6 +316,7 @@ export class LinkSession {
     // The last failure's sentence, readable at once by a caller that awaited the operation — the
     // assistant's facade, which must say why a read was not sent rather than that it was.
     private lastErrorNow: string | null = null;
+    private lastNotSentNow: NotSent | null = null;
     private handlers: LinkHandlers = {};
     private transportKindNow: TransportKind | null = null;
     /**
@@ -351,6 +353,12 @@ export class LinkSession {
 
     /** Why the last operation failed, or null: read straight after awaiting it. */
     readonly lastError = (): string | null => this.lastErrorNow;
+    /**
+     * The last error's shape when it was the link's own refusal just before sending (moving, battery,
+     * engine, permit, or the car's state could not be measured), with the values it measured; null
+     * otherwise. Cleared with the error.
+     */
+    readonly lastNotSent = (): NotSent | null => this.lastNotSentNow;
 
     /** The module operations go to (latched at connect; see `target`). */
     readonly setTarget = (target: ModuleProtocol): void => {
@@ -391,6 +399,7 @@ export class LinkSession {
     private failWith(e: unknown): void {
         const message = e instanceof Error ? e.message : String(e);
         this.lastErrorNow = message;
+        this.lastNotSentNow = notSentOf(e);
         this.update({ error: message, errorKind: isDs2Error(e) ? e.kind : 'unclassified' });
         this.append('error', message);
     }
@@ -398,6 +407,7 @@ export class LinkSession {
     /** One helper clears both. */
     readonly clearError = (): void => {
         this.lastErrorNow = null;
+        this.lastNotSentNow = null;
         this.update({ error: null, errorKind: null });
     };
 
@@ -583,9 +593,12 @@ export class LinkSession {
         if (requires !== 'parked') return null;
         const measured = await this.measureMotion(link);
         if (measured !== 'parked') {
-            throw new Error(
-                `${what}: not sent — the car could not be shown to be stationary (${measured}). ` +
-                    'Just before sending, the DME speed (block 19) is read; only 0 km/h lets a read go.',
+            throw new NotSentError(
+                what,
+                measured === 'moving' ? 'moving' : 'link',
+                `the car could not be shown to be stationary (${measured}). ` +
+                    'Just before sending, the DME speed (block 19) is read; only 0 km/h lets a read go',
+                { motion: measured, speedKmh: measured === 'moving' ? (this.vehicleNow?.speedKmh ?? null) : null },
             );
         }
         return measured;
@@ -599,8 +612,10 @@ export class LinkSession {
      */
     private async preflightRun(link: Ds2Link, what: string, engine: 'off' | 'run' | null): Promise<void> {
         const block = blockBySelection(ENGINE_BLOCK);
-        const notSent = (why: string) => new Error(`${what}: not sent — ${why}.`);
-        if (!block) throw notSent('the battery and the engine could not be measured');
+        const wanted = engine ?? undefined;
+        const notSent = (reason: 'link' | 'voltage' | 'engine', why: string, measured: { voltageV?: number | null; rpm?: number | null } = {}) =>
+            new NotSentError(what, reason, why, { ...measured, ...(wanted ? { engineWanted: wanted } : {}), minVoltageV: MIN_RUN_VOLTAGE });
+        if (!block) throw notSent('link', 'the battery and the engine could not be measured');
         const req = liveBlockRequest(ENGINE_BLOCK);
         this.append('tx', `Battery and engine preflight (DME block ${ENGINE_BLOCK})`);
         let values: LiveValues;
@@ -610,15 +625,16 @@ export class LinkSession {
             values = {};
             for (const v of decodeLiveBlock(block, frame)) values[channelId(ENGINE_BLOCK, v.symbol)] = v.value;
         } catch (e) {
-            throw notSent(`the battery and the engine could not be measured (${e instanceof Error ? e.message : String(e)})`);
+            throw notSent('link', `the battery and the engine could not be measured (${e instanceof Error ? e.message : String(e)})`);
         }
         const ub = values[`${ENGINE_BLOCK}:ub`] ?? null;
         const rpm = values[`${ENGINE_BLOCK}:n`] ?? null;
         this.append('rx', `battery ${ub ?? '—'} V, engine ${rpm ?? '—'} rpm`);
-        if (ub === null || !Number.isFinite(ub)) throw notSent('the battery voltage could not be read');
-        if (ub < MIN_RUN_VOLTAGE) throw notSent(`the battery reads ${ub.toFixed(1)} V, under ${MIN_RUN_VOLTAGE} V`);
-        if (engine === 'off' && (rpm === null || rpm > 0)) throw notSent(`its SGBD asks for the engine stopped, and it reads ${rpm ?? '—'} rpm`);
-        if (engine === 'run' && (rpm === null || rpm < ENGINE_RUNNING_RPM)) throw notSent(`its SGBD asks for the engine running, and it reads ${rpm ?? '—'} rpm`);
+        const measured = { voltageV: ub, rpm };
+        if (ub === null || !Number.isFinite(ub)) throw notSent('voltage', 'the battery voltage could not be read', measured);
+        if (ub < MIN_RUN_VOLTAGE) throw notSent('voltage', `the battery reads ${ub.toFixed(1)} V, under ${MIN_RUN_VOLTAGE} V`, measured);
+        if (engine === 'off' && (rpm === null || rpm > 0)) throw notSent('engine', `its SGBD asks for the engine stopped, and it reads ${rpm ?? '—'} rpm`, measured);
+        if (engine === 'run' && (rpm === null || rpm < ENGINE_RUNNING_RPM)) throw notSent('engine', `its SGBD asks for the engine running, and it reads ${rpm ?? '—'} rpm`, measured);
     }
 
     /**
@@ -1092,7 +1108,7 @@ export class LinkSession {
             // executes against.
             // A frame that drives something goes with the gate's permit for exactly these bytes.
             const permitted = permit !== undefined && permitCovers(permit, target.moduleId, jobId, hex, Date.now());
-            if (permit && !permitted) throw new Error(`${jobId}: the permit does not cover this frame; nothing is sent`);
+            if (permit && !permitted) throw new NotSentError(jobId, 'permission', 'the permit does not cover this frame');
             const refusal = whyNotSendable(control, this.modeNow, target.moduleId, permitted);
             if (refusal) throw new Error(`${jobId}: ${refusal}`);
             const payload = bytes.slice(3, bytes.length - 1);

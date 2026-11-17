@@ -49,6 +49,8 @@ function tab(over: Partial<TabFacade> = {}) {
         }),
         pane: vi.fn(),
         stage: async () => ({}),
+        actuate: vi.fn(async (q) => ({ started: true, ...q })),
+        stopOutputs: vi.fn(async () => ({ stopped: [] })),
         startLog: () => null,
         datalog: () => ({ selected: ['3:n'], samples: 0 }),
         logChannels: (q) => ({ query: q.query ?? null }),
@@ -460,3 +462,20 @@ describe('the PROBE board', () => {
         await expect(h.monitoring_show({ set: [{ id: 'p1', show: ['peak'] }] })).rejects.toThrow(/part.show/);
     });
 });
+
+describe('monitoring_actuate and monitoring_stop_outputs', () => {
+    it('hands the owner\'s words, the module and the job to the facade, pulse unless start is asked', async () => {
+        const { f, h } = tab();
+        await h.monitoring_actuate({ module: 'radio', job: 'STEUERN_SEEK_UP', owner_said: 'いいよ' });
+        expect(f.actuate).toHaveBeenCalledWith({ module: 'radio', job: 'STEUERN_SEEK_UP', phase: 'pulse', ownerSaid: 'いいよ' });
+        await h.monitoring_actuate({ module: 'radio', job: 'STEUERN_FADER_LV', phase: 'start' });
+        expect(f.actuate).toHaveBeenLastCalledWith({ module: 'radio', job: 'STEUERN_FADER_LV', phase: 'start', ownerSaid: '' });
+    });
+
+    it('stops without asking anything', async () => {
+        const { f, h } = tab();
+        expect(await h.monitoring_stop_outputs({})).toEqual({ stopped: [] });
+        expect(f.stopOutputs).toHaveBeenCalled();
+    });
+});
+

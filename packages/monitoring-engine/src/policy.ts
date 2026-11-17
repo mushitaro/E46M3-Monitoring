@@ -159,8 +159,12 @@ const SIM = /_SIM|SIMULATION|^STEUERN_(AUSSENTEMPERATUR|BELADUNGSSENSOR|DIMMER|D
 const CHECK = /TEST|CHECK|PRUEF|DICHTHEIT|VERSTELLZEIT|SG_PRUEFLAUF|^STEUERN_(DISPLAY|IO)$/;
 const ADAPT = /ABGLEICH|ADAPT|RESET|SYNC|EICHLAUF|KALIBRIER|LERN|_INK$|_DEK$|SIA_|BETRIEBSSTUNDEN|BETR_H|SCHRITTVERLUSTE|VERTEILUNG|DEFAULT_SOUND|LOESCHEN/;
 const DISPLAY = /ANZEIGE|GONG|PIEZO|LEUCHTE|BELEUCHTUNG|HELLIGKEIT|BFD_LED|WARNLAMPEN|TACHO|POWER_DISPLAY/;
-/** SMG II outputs that only light something: fault lamp, selector gear display, cluster comfort index. */
-const SMG_DISPLAY_OUTPUTS = new Set(['0x3E', '0x42', '0x43']);
+/**
+ * SMG II outputs that only light something: fault lamp, selector gear display, cluster comfort index.
+ * By name, as STEUERN_STELLGLIED takes them (its STELLGLIEDER row; the PIN 0x3E/0x42/0x43 makes the job
+ * refuse with ERROR__PARAMETER_STELLGL_MISSING, as EdiabasLib showed in job-frames.oracle.json).
+ */
+const SMG_DISPLAY_OUTPUTS = new Set(['STOERANZEIGE', 'GANG_WAHLHEBEL_ANZEIGE', 'KOMBIANZEIGE_KOMFORTINDEX']);
 
 /**
  * A job's nature.
@@ -193,7 +197,7 @@ export function natureOf(moduleId: string, job: Pick<CatalogJob, 'id' | 'class'>
     if (ADAPT.test(id) || job.class === 'calibration') return 'c_adapt';
     if (/^STEUERN_|^IO_STATUS_VORGEBEN$|^SPRACHAUSGABE$/.test(id)) {
         if (DISPLAY.test(id)) return 'a_disp';
-        if (moduleId === 'smg2') return args?.[0] && SMG_DISPLAY_OUTPUTS.has(args[0].toUpperCase().replace(/^0X/, '0x')) ? 'a_disp' : 'a_smg';
+        if (moduleId === 'smg2') return args?.[0] && SMG_DISPLAY_OUTPUTS.has(args[0].toUpperCase()) ? 'a_disp' : 'a_smg';
         if (/^ews/.test(moduleId)) return 'a_body';
         switch (group) {
             case 'engine':

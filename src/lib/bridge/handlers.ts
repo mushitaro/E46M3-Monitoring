@@ -93,7 +93,7 @@ export interface TabFacade {
      * Start a job the owner's table opens to the assistant (policy `who: 'ai'`), after the owner's OK:
      * the same gate, permit, measurement and arming as ACTUATOR's RUN. Says why not otherwise.
      */
-    actuate(q: { module: string; job: string; phase: 'start' | 'pulse'; ownerSaid: string }): Promise<unknown>;
+    actuate(q: { module: string; job: string; phase: 'start' | 'pulse'; ownerSaid: string; values?: string[] }): Promise<unknown>;
     /** Stop every output that is on. Not gated: anyone, any time. */
     stopOutputs(): Promise<unknown>;
     /** Null when it started; otherwise why not. */
@@ -516,6 +516,7 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
                 job: text(args.job, 'job'),
                 phase: args.phase === 'start' ? 'start' : 'pulse',
                 ownerSaid: typeof args.owner_said === 'string' ? args.owner_said : '',
+                values: Array.isArray(args.values) ? args.values.map((v) => String(v)) : undefined,
             }),
 
         monitoring_stop_outputs: async () => f.stopOutputs(),

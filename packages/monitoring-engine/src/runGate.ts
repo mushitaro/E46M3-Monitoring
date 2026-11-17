@@ -68,6 +68,7 @@ import { Ds2Control } from '@tsunagi/ds2-core';
 import type { CatalogJob } from './ecuCatalog.ts';
 import { hasPracticed, mayReadWhileMoving, withdrawn, type Ledger } from './ledger.ts';
 import { DEFAULT_RUN_TIMEOUT_S, decisionFor, isReadNature, type Nature, type PolicyWho } from './policy.ts';
+import { isAgreedFor, runName, type AgreedFrame } from './sgbd/agreedFrame.ts';
 import { telegramIsCertain, type Telegram } from './telegrams.ts';
 import type { Motion } from './vehicleState.ts';
 
@@ -276,6 +277,12 @@ export interface RunContext {
     group?: string;
     /** Values chosen for the job's arguments, where its nature depends on one. */
     args?: readonly string[];
+    /**
+     * For a job that takes values: the frame for `args` that the app and EdiabasLib build alike
+     * (sgbd/agreedFrame.ts). Without it, or when it is not for this job, these values and the
+     * telegram handed in, a job that takes values is refused: a scraped frame carries values nobody chose.
+     */
+    agreed?: AgreedFrame;
 }
 
 /**
@@ -334,12 +341,12 @@ export function mayRun(
 
     // An argument-taking job cannot be sent from a scraped frame. The frame the
     // extractor recovered embeds whatever argument values the SGBD's bytecode
-    // happened to hold; we did not choose them and we have no mapping from the
-    // operator's chosen values back into the payload. Sending it anyway would
-    // read a block nobody asked for. (The block reads the operator CAN vary —
-    // live values and adaptation blocks — are built from the protocol in
-    // ds2-core, not from a scrape, and do not come through here.)
-    if (job.args.length > 0) return { allowed: false, reason: 'run_block_needsArgs' };
+    // happened to hold; we did not choose them. It goes only as the frame built
+    // for the chosen values by the job's own code, where EdiabasLib builds the
+    // same (ctx.agreed). (The block reads the operator CAN vary — live values and
+    // adaptation blocks — are built from the protocol in ds2-core, not from a
+    // scrape, and do not come through here.)
+    if (job.args.length > 0 && !isAgreedFor(ctx.agreed, ctx.moduleId, job.id, ctx.args, telegram.hex)) return { allowed: false, reason: 'run_block_needsArgs' };
 
     const bytes = telegramBytes(telegram.hex);
     if (!bytes) return { allowed: false, reason: 'run_block_noTelegram' };
@@ -372,14 +379,17 @@ export function mayRun(
 function mayDrive(job: CatalogJob, telegram: Telegram | null, ledger: Ledger, ctx: RunContext, decision: ReturnType<typeof decisionFor>): RunVerdict {
     if (decision.how === 'show') return { allowed: false, reason: 'run_block_policyShow' };
     if (!telegramIsCertain(telegram)) return { allowed: false, reason: 'run_block_noTelegram' };
-    // Arguments are chosen on the screen and the frame built by the job's own SGBD; until a job's
-    // frame is built that way, a scraped frame carries values nobody chose.
-    if (job.args.length > 0) return { allowed: false, reason: 'run_block_needsArgs' };
+    // Arguments are chosen on the screen and the frame built by the job's own SGBD, and it goes only
+    // where EdiabasLib builds the same for those values (ctx.agreed); a scraped frame carries values
+    // nobody chose.
+    if (job.args.length > 0 && !isAgreedFor(ctx.agreed, ctx.moduleId, job.id, ctx.args, telegram.hex)) return { allowed: false, reason: 'run_block_needsArgs' };
     const bytes = telegramBytes(telegram.hex);
     if (!bytes) return { allowed: false, reason: 'run_block_noTelegram' };
     const id = `${ctx.moduleId}:${job.id}`;
-    if (withdrawn(ledger, id)) return { allowed: false, reason: 'run_block_revoked' };
-    if (!hasPracticed(ledger, id)) return { allowed: false, reason: 'run_block_practiceFirst' };
+    // A job that takes values is practised and recorded per part it drives (agreedFrame.runName).
+    const runId = `${ctx.moduleId}:${runName(job.id, job.args.length ? ctx.args : undefined)}`;
+    if (withdrawn(ledger, id) || withdrawn(ledger, runId)) return { allowed: false, reason: 'run_block_revoked' };
+    if (!hasPracticed(ledger, runId)) return { allowed: false, reason: 'run_block_practiceFirst' };
     // Every nature that drives something was decided `parked` (2026-11-15), and a job whose own SGBD
     // asks for the car stationary goes parked whatever is decided (OWNER_RULES.sgbdStationaryWins).
     if (ctx.motion === 'moving') return { allowed: false, reason: 'run_block_moving' };

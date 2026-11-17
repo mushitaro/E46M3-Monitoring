@@ -475,8 +475,11 @@ ARG_TABLES: dict[tuple[str, str], ArgTable] = {
     ("TESTPRG_STARTEN", "TESTPRG_NR"): ArgTable(
         "TESTPRG", "TESTPRG_NR", "TESTPRG_NAME",
         why="SGBD 逐語: siehe table Testprg TESTPRG_NR TESTPRG_NAME"),
+    # 値は STELLGLIED の名前で、PIN ではない。ジョブはこの表を STELLGLIED の列で引き、
+    # PIN を渡すと ERROR__PARAMETER_STELLGL_MISSING で何も送らない（EdiabasLib で確かめた、
+    # job-frames.oracle.json）。TESTPRG_NR は番号で引くので、表ごとに列が違う。
     ("STEUERN_STELLGLIED", "STELLGL"): ArgTable(
-        "STELLGLIEDER", "PIN", "STELLGLIED",
+        "STELLGLIEDER", "STELLGLIED", "PIN",
         why="SGBD 逐語: Anzusteuerndes Stellglied"),
 }
 

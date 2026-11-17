@@ -47,7 +47,10 @@ from gen_fault_layouts import EXE, SIM_SRC, TRC, frame, hx, oracle_ident  # noqa
 
 # The same rule as packages/monitoring-engine/src/policy.ts and tools/gen_sgbd_results.py.
 WRITES = re.compile(r"SCHREIBEN|^WRITE_|_WRITE_|CODIER|FLASH|BAUDRATE|PRUEFSTEMPEL|ZIF_BACKUP|SET_EDIC|NAVDVDPIN")
-MAX_COMBOS = 200
+# Every combination up to this many is run. SMG II's STEUERN_STELLGLIED: 10 parts × 4 modes × the
+# values its comment lists for the third argument (1-6, 0-9, 16…240) — all of them, so each start
+# has its stop (INAKTIV over the same values) compared too.
+MAX_COMBOS = 1000
 MAX_SENDS = 8
 NUMERIC_SAMPLES = ["0", "1", "100"]
 
@@ -63,23 +66,31 @@ def text_of(cat: dict, ref) -> str:
     return ""
 
 
+def listed_numbers(comment: str) -> list[str]:
+    """The numbers an argument's comment lists as its values: ranges (`1-6`) and lists of three or more
+    (`16,32,48`). Not every number in it: `Timeout: 10s` and `100 bar` are not values."""
+    out: list[int] = []
+    for lo, hi in re.findall(r"(?<![\d.])(\d{1,3})\s*-\s*(\d{1,3})(?![\d.])", comment):
+        a, b = int(lo), int(hi)
+        if a < b and b - a <= 15:
+            out += range(a, b + 1)
+    for run in re.findall(r"(?<![\d.])\d{1,3}(?:\s*,\s*\d{1,3}){2,}(?![\d.])", comment):
+        out += [int(x) for x in re.split(r"\s*,\s*", run)]
+    return [str(n) for n in sorted(set(out)) if n <= 255]
+
+
 def values_of(cat: dict, arg: dict) -> list[str]:
     """The values to try for one argument: its options, else the upper-case words its comment lists, else numbers."""
     if arg.get("options"):
-        # An option drawn from a table names its row: the job looks the name up (SMG II's STELLGLIEDER:
-        # STELLGLIED "HYDROPUMPE", PIN 0x05 — the argument is the name). Both are tried, the name first.
-        out = []
-        for o in arg["options"]:
-            note = (o.get("note") or "").strip()
-            if arg.get("optionsFrom", {}).get("table") and re.fullmatch(r"[A-Z][A-Z0-9_]+", note):
-                out.append(note)
-            out.append(o["value"])
-        return list(dict.fromkeys(out))
-    words = re.findall(r"(?<![A-Za-z0-9_])([A-Z][A-Z0-9_]{2,})(?![A-Za-z0-9_])", text_of(cat, arg.get("comment")))
+        # The catalog's own values: what the screen offers is what is compared. (SMG II's STELLGLIEDER
+        # offers the part's name, as the job looks it up; a PIN makes the job refuse.)
+        return list(dict.fromkeys(o["value"] for o in arg["options"]))
+    comment = text_of(cat, arg.get("comment"))
+    words = re.findall(r"(?<![A-Za-z0-9_])([A-Z][A-Z0-9_]{2,})(?![A-Za-z0-9_])", comment)
     words = [w for w in dict.fromkeys(words) if w not in {"ECU", "SGBD", "ACHTUNG", "INFO", "BYTE"}]
     if words and arg.get("type") == "string":
         return words
-    return NUMERIC_SAMPLES
+    return list(dict.fromkeys(NUMERIC_SAMPLES + listed_numbers(comment)))
 
 
 def combos(values: list[list[str]]) -> list[list[str]]:
@@ -120,11 +131,12 @@ def run_once(sgbd: str, job: str, args: list[str], known: list[tuple[list[int], 
         sends = []
         if os.path.exists(TRC):
             sends = re.findall(r"\(Send sim\): ([0-9A-F ]+)", open(TRC, encoding="latin-1").read())
-        # The frame sent after the known ones, without its checksum.
+        # The frame sent after the known ones. EdiabasLib's trace shows it without the checksum the
+        # interface appends (SMG II's ADAPTIONSWERTE_LOESCHEN: "32 05 43 00" for 0, "32 05 43 01" for 1),
+        # so nothing is cut off: cutting the last byte lost every frame's last value.
         nxt = None
         if len(sends) > len(known):
-            b = [int(x, 16) for x in sends[len(known)].split()]
-            nxt = b[:-1] if len(b) > 1 else b
+            nxt = [int(x, 16) for x in sends[len(known)].split()]
         return out.stdout + out.stderr, nxt
     finally:
         shutil.rmtree(d, ignore_errors=True)

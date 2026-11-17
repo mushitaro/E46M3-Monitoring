@@ -18,8 +18,10 @@ import {
     isReadNature,
     operationFor,
     permitFor,
+    runName,
     stopPermit,
     type ActuationPermit,
+    type AgreedFrame,
     type CatalogJob,
     type Motion,
     type RunVerdict,
@@ -37,6 +39,13 @@ export interface StartActuation {
     phase: Phase;
     verdict: Extract<RunVerdict, { allowed: true }>;
     telegrams: TelegramTable | null;
+    /**
+     * For a job that takes values: the values chosen (the verdict's frame is the one agreed for them),
+     * and, for a start, the agreed frame of its stop for the same part (its `stopArgs` over these
+     * values). A start whose stop is not in hand is not sent: nothing is left on that cannot be ended.
+     */
+    args?: readonly string[];
+    stop?: AgreedFrame;
     /** Send a job's frame: the link's run path, which owns the busy lock, the log and the preflight. */
     send: (jobId: string, hex: string, requires?: SendRequirement, permit?: ActuationPermit) => Promise<unknown>;
     arm: (entry: ArmedJob) => void;
@@ -53,25 +62,32 @@ export interface Started {
 }
 
 export async function startActuation(p: StartActuation): Promise<Started> {
+    const withValues = p.job.args.length > 0;
+    // A job that takes values is sent, permitted and recorded per part it drives (agreedFrame.runName).
+    const name = runName(p.job.id, withValues ? p.args : undefined);
+    const stopId = operationFor(p.job).stopJob;
+    // Its stop is the same job or its companion over the same part, built and agreed before anything is
+    // sent: a start of one whose stop is not in hand does not go.
+    if (withValues && p.phase === 'start' && stopId && (!p.stop || p.stop.jobId !== stopId || p.stop.moduleId !== p.moduleId)) return { sent: false, armed: false, timeoutS: null };
     // On a car, a frame that drives something goes with the gate's permit for exactly its bytes;
     // the link measures the car (stationary, battery, engine) before it sends.
-    const permit = permitFor(p.verdict, p.moduleId, p.job.id, p.now) ?? undefined;
-    const result = await p.send(p.job.id, p.verdict.telegram.hex, p.verdict.requires, permit);
+    const permit = permitFor(p.verdict, p.moduleId, name, p.now) ?? undefined;
+    const result = await p.send(name, p.verdict.telegram.hex, p.verdict.requires, permit);
     // Not started (refused, not measured, no answer): nothing to stop, nothing armed.
     if (result === null || result === undefined) return { sent: false, armed: false, timeoutS: null };
     if (p.phase !== 'start') return { sent: true, armed: false, timeoutS: null };
-    const stopId = operationFor(p.job).stopJob;
-    const stopHex = stopId ? bestTelegram(p.telegrams, stopId)?.hex : undefined;
+    const stopHex = withValues ? p.stop?.hex : stopId ? bestTelegram(p.telegrams, stopId)?.hex : undefined;
+    const stopName = withValues && stopId ? runName(stopId, p.stop?.args) : stopId;
     // Cannot resolve the release? Then it was never armed: there is no state where an output is on
     // and nothing knows how to end it (lib/arming).
-    if (!stopId || !stopHex) return { sent: true, armed: false, timeoutS: null };
+    if (!stopId || !stopHex || !stopName) return { sent: true, armed: false, timeoutS: null };
     const timeoutS = p.verdict.actuation?.timeoutS ?? DEFAULT_RUN_TIMEOUT_S;
     p.arm({
         jobId: p.job.id,
-        stopJobId: stopId,
+        stopJobId: stopName,
         stopHex,
         at: p.now,
-        stopPermit: permit ? stopPermit(permit, stopId, stopHex) : undefined,
+        stopPermit: permit ? stopPermit(permit, stopName, stopHex) : undefined,
         timeoutS,
     });
     return { sent: true, armed: true, timeoutS };
@@ -89,8 +105,10 @@ export function assistantMayStart(
     group: string | undefined,
     motion: Motion,
     ownerSaid: string,
+    /** The values chosen, for a job whose nature depends on one (SMG II's lamps against its valves). */
+    args?: readonly string[],
 ): { ok: true } | { ok: false; reason: string } {
-    const d = decisionFor(moduleId, job, group);
+    const d = decisionFor(moduleId, job, group, args);
     if (isReadNature(d.nature)) return { ok: false, reason: `${job.id} reads; it is read with the read tools (monitoring_read and the rest), not started.` };
     if (d.how === 'off') return { ok: false, reason: `The owner keeps ${job.id} off: it is not run from here at all.` };
     if (d.how === 'show') return { ok: false, reason: `The owner shows ${job.id} on the screen only: it is not run.` };

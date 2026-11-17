@@ -174,6 +174,8 @@ export interface Localised {
     /** How few of a module's actuator jobs this app can actually send. */
     actuator_runnable: (n: number, total: number) => string;
     actuator_onlyRunnable: string;
+    /** The placeholder of a job's value sets: the sets the app and EdiabasLib build alike. */
+    actuator_values: string;
     actuator_armed: string;
     gate_plan: string;
     gate_preconditions: string;

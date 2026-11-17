@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { CatalogJob, RunVerdict, TelegramTable } from '@tsunagi/monitoring-engine';
+import type { AgreedFrame, CatalogJob, RunVerdict, TelegramTable } from '@tsunagi/monitoring-engine';
 import { assistantMayStart, startActuation } from './actuation';
 
 const job = (id: string, cls: CatalogJob['class'] = 'test', stopJob?: string): CatalogJob =>
@@ -59,5 +59,53 @@ describe('startActuation: one path from an allowed verdict to a sent frame and a
         const r = await startActuation({ moduleId: 'radio', job: job('STEUERN_FADER_LV', 'test', 'STEUERN_ENDE'), phase: 'start', verdict, telegrams: null, send: async () => ({}), arm, now: 1 });
         expect(r).toEqual({ sent: true, armed: false, timeoutS: null });
         expect(arm).not.toHaveBeenCalled();
+    });
+});
+
+describe('startActuation with values: per part, and never without its stop in hand', () => {
+    const vjob = {
+        id: 'STEUERN_STELLGLIED',
+        class: 'test',
+        args: [{ name: 'STELLGL' }, { name: 'STEUERART1' }, { name: 'STEUERART2' }],
+        op: { stopJob: 'STEUERN_STELLGLIED', stopArgs: { STEUERART1: 'INAKTIV' } },
+    } as unknown as CatalogJob;
+    const verdict = {
+        allowed: true,
+        telegram: { hex: '32 07 0c 05 01 00 3d', confidence: 'single' },
+        control: 0x0c,
+        requires: 'parked',
+        actuation: { nature: 'a_smg', who: 'screen', engine: null, timeoutS: 10, stopJob: 'STEUERN_STELLGLIED' },
+    } as unknown as Extract<RunVerdict, { allowed: true }>;
+    const stop = { moduleId: 'smg2', jobId: 'STEUERN_STELLGLIED', args: ['HYDROPUMPE', 'INAKTIV', '0'], hex: '32 07 0c 05 00 00 3c' } as unknown as AgreedFrame;
+    const args = ['HYDROPUMPE', 'AKTIV', '0'];
+
+    it('sends nothing to start a part whose stop is not in hand', async () => {
+        const send = vi.fn(async () => ({}));
+        const r = await startActuation({ moduleId: 'smg2', job: vjob, phase: 'start', verdict, telegrams: null, args, send, arm: vi.fn(), now: 1 });
+        expect(r.sent).toBe(false);
+        expect(send).not.toHaveBeenCalled();
+    });
+
+    it("sends and permits under the part's name, and arms its agreed stop", async () => {
+        const send = vi.fn(async () => ({}));
+        const arm = vi.fn();
+        const r = await startActuation({ moduleId: 'smg2', job: vjob, phase: 'start', verdict, telegrams: null, args, stop, send, arm, now: 5 });
+        expect(r).toEqual({ sent: true, armed: true, timeoutS: 10 });
+        expect(send).toHaveBeenCalledWith('STEUERN_STELLGLIED(HYDROPUMPE)', '32 07 0c 05 01 00 3d', 'parked', expect.objectContaining({ jobId: 'STEUERN_STELLGLIED(HYDROPUMPE)' }));
+        expect(arm).toHaveBeenCalledWith(
+            expect.objectContaining({
+                jobId: 'STEUERN_STELLGLIED',
+                stopJobId: 'STEUERN_STELLGLIED(HYDROPUMPE)',
+                stopHex: '32 07 0c 05 00 00 3c',
+                stopPermit: expect.objectContaining({ kind: 'stop', jobId: 'STEUERN_STELLGLIED(HYDROPUMPE)', hex: '32 07 0c 05 00 00 3c' }),
+            }),
+        );
+    });
+
+    it('refuses a stop for another module', async () => {
+        const send = vi.fn(async () => ({}));
+        const r = await startActuation({ moduleId: 'mss54', job: vjob, phase: 'start', verdict, telegrams: null, args, stop, send, arm: vi.fn(), now: 1 });
+        expect(r.sent).toBe(false);
+        expect(send).not.toHaveBeenCalled();
     });
 });

@@ -57,7 +57,9 @@ const gate = createGate({
 // exact paths, not a prefix; nothing else of this origin is served without the gate. The doors a
 // Mainstay's server uses (engine reports, the engine's data) are not here either: they are the engine
 // door of M's platform (tsunagi-m-platform services/engine, `/engine/*`), deployed apart from this
-// WORKS build (operator 2026-11-12). The desk's inbox for those reports is workers/desk.
+// WORKS build (operator 2026-11-12). The desk's inbox for those reports is workers/desk. This build's
+// own /ecu-data/ is read from that same door once it is configured here (functions/ecu-data, operator
+// 2026-11-14) — still behind this gate: the route runs after it.
 const DEV_PATHS = ['/api/bridge/dev-request', '/api/bridge/dev-status'];
 
 export const onRequest = async (context: GateContext): Promise<Response> => {

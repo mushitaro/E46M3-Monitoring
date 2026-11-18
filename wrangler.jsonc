@@ -46,9 +46,17 @@
     // wakes the moment it asks something (functions/_lib/wake.ts). Firing it also takes
     // LOOP_FIRE_TOKEN, the task's API-trigger token — a Pages secret, never here; without it, the
     // loop keeps only its scheduled turns.
-    "LOOP_TRIGGER_ID": "trig_01TrL8w14QvVQNPv64HA4TYW"
+    "LOOP_TRIGGER_ID": "trig_01TrL8w14QvVQNPv64HA4TYW",
     // The Mainstays' doors (engine reports, the engine's data) are not this build's: they are the
     // engine door of M's platform (tsunagi-m-platform services/engine), and the desk's inbox for
     // the reports is workers/desk.
+    //
+    // This build reads its own module data from that door too (operator, 2026-11-14;
+    // functions/ecu-data, docs/ENGINE.md §4). It does so only when all three are set: the two vars
+    // below and the Pages secret M_ENGINE_DATA_KEY (the platform's `engine-data` key for Mainstay
+    // m3, issued with the operator's CLI — never here). Until the secret exists, /ecu-data/ is the
+    // build's own copy, as before. M_ENGINE_DATA_KEY_ID (not a secret) only while two keys live.
+    "M_ENGINE_DATA_URL": "https://tsunagi-m.pages.dev/engine/data",
+    "M_MAINSTAY": "m3"
   }
 }

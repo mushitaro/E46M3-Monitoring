@@ -47,6 +47,71 @@ const ASSETS = __ASSETS__;
 /** Every .html in the export. The navigate branch resolves against this rather than assuming one. */
 const DOCUMENTS = __DOCUMENTS__;
 
+/**
+ * The module data (/ecu-data/*), when it comes from M's platform instead of the build (operator,
+ * 2026-11-14; functions/ecu-data/[[path]].ts). It is a different thing from the app: its version is
+ * the data set's, not the build's, so it lives in its own cache, `ecu-data-<version>`, which an app
+ * update does not drop. The rules, from the platform's decision for tools used in the car:
+ *
+ *   - kept only on this device, behind the owner gate, and only while the version is the same: a
+ *     file of a new version replaces the cache, and the old version's cache is deleted at once;
+ *   - network first, because the version can change without a deploy; the held copy answers only
+ *     when the network cannot (offline, the platform's day spent, could not ask);
+ *   - a 401/403 or a bounce through /_gate/ means this device is no longer signed in: the held data
+ *     is deleted and the refusal is returned, never a held copy in its place.
+ *
+ * While the build still carries the data (before the door is configured for this deployment), the
+ * files are precached with the app as before and answered from there.
+ */
+const DATA_CACHE_PREFIX = 'ecu-data-';
+const DATA_VERSION = /^[a-z0-9][a-z0-9._-]{0,39}$/;
+
+async function dropData() {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter((k) => k.startsWith(DATA_CACHE_PREFIX)).map((k) => caches.delete(k)));
+}
+
+async function heldData(url) {
+    const keys = await caches.keys();
+    for (const k of keys.filter((n) => n.startsWith(DATA_CACHE_PREFIX))) {
+        const hit = await (await caches.open(k)).match(url);
+        if (hit) return hit;
+    }
+    return null;
+}
+
+async function ecuData(request) {
+    const precached = await caches.match(request.url, { cacheName: CACHE });
+    if (precached) return precached;
+
+    let res = null;
+    try {
+        res = await fetch(request);
+    } catch {
+        res = null;
+    }
+    const bounced = res && res.redirected && new URL(res.url).pathname.startsWith('/_gate/');
+    if (res && (res.status === 401 || res.status === 403 || bounced)) {
+        await dropData();
+        return res;
+    }
+    if (res && res.ok && res.type === 'basic' && !res.redirected) {
+        const version = res.headers.get('x-m-dataset-version');
+        if (version && DATA_VERSION.test(version)) {
+            const name = DATA_CACHE_PREFIX + version;
+            await (await caches.open(name)).put(request.url, rewrap(await res.clone().blob(), res));
+            const keys = await caches.keys();
+            await Promise.all(keys.filter((k) => k.startsWith(DATA_CACHE_PREFIX) && k !== name).map((k) => caches.delete(k)));
+        }
+        return res;
+    }
+    if (res && res.status === 404) return res;
+    const held = await heldData(request.url);
+    if (held) return held;
+    if (res) return res;
+    return new Response(JSON.stringify({ error: 'offline' }), { status: 503, headers: { 'content-type': 'application/json' } });
+}
+
 /** How often the install tells the page where it has got to. 10 Hz, the same rate the DME link
  *  throttles its own transfer progress to, and for the same reason: it is already smoother than a
  *  bar needs, and the page paints at 60 Hz regardless of how often it is told. */
@@ -239,7 +304,9 @@ self.addEventListener('activate', (event) => {
         // own contents, so anything that is not the current name is a build
         // nobody can reach any more.
         const keys = await caches.keys();
-        await Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)));
+        // The module data's caches are not the build's: their version is the data set's (see
+        // DATA_CACHE_PREFIX), so an app update leaves them alone.
+        await Promise.all(keys.filter((k) => k !== CACHE && !k.startsWith(DATA_CACHE_PREFIX)).map((k) => caches.delete(k)));
         await self.clients.claim();
     })());
 });
@@ -337,6 +404,11 @@ self.addEventListener('fetch', (event) => {
                 throw new Error('offline and no cached shell');
             }
         })());
+        return;
+    }
+
+    if (url.pathname.startsWith('/ecu-data/')) {
+        event.respondWith(ecuData(request));
         return;
     }
 

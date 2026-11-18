@@ -34,6 +34,8 @@ import type { Sessions } from '@/views/sessions/useSessions';
 import { appNow } from '@tsunagi/monitoring-engine';
 import { mayActuate } from '@tsunagi/monitoring-engine';
 import { assistantMayStart, startActuation } from '@/lib/actuation';
+import { procedureAsJob } from '@/views/service/ServiceView';
+import type { Smg2Workflows } from '@/lib/smg2Workflows';
 import type { Arming } from '@/hooks/useActuatorArming';
 
 
@@ -101,6 +103,8 @@ export function useMonitoringFacade(input: {
     arming: Arming;
     /** Opens an SMG II procedure's dialog and runs it on the owner's spoken OK (page.tsx, views/service/WizardDialog). */
     startProcedure: (job: EcuProfile['jobs'][number], ownerSaid: string, gear?: number) => void;
+    /** SMG II's test programs (smg2-workflows.json), the procedures monitoring_procedure starts. */
+    workflows: Smg2Workflows | null;
     /** Another module on the screen, the link opened again for it if it was open (page.tsx). */
     switchModule: (id: string) => Promise<string | null>;
     /** Every module's fault read, shown on DIAGNOSIS under ALL MODULES (page.tsx). How many addresses, or why not. */
@@ -495,7 +499,8 @@ export function useMonitoringFacade(input: {
         procedure: async ({ procedure, gear, ownerSaid }) => {
             if (ecuId !== 'smg2') return { started: false, reason: `Procedures are SMG II's. Put SMG II on the screen first (monitoring_module).` };
             const want = procedure.trim().toLowerCase();
-            const job = catalog?.jobs.find((j) => j.id.startsWith(PROCEDURE_PREFIX) && j.id.slice(PROCEDURE_PREFIX.length).toLowerCase() === want);
+            const p = input.workflows?.procedures.find((x) => x.id.toLowerCase() === want || x.testprg.toLowerCase() === want);
+            const job = p ? procedureAsJob(p) : undefined;
             const startJob = catalog?.jobs.find((j) => j.id === 'TESTPRG_STARTEN');
             if (!job || !startJob) return { started: false, reason: `${procedure} is not one of SMG II's procedures (monitoring_catalog lists them).` };
             const program = job.id.slice(PROCEDURE_PREFIX.length);

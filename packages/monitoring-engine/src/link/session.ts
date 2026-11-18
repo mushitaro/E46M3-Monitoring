@@ -1204,6 +1204,9 @@ export class LinkSession {
                 args: permit.args ?? [],
                 tables: table.tables as SgbdTables,
                 shm: initialShm(table),
+                // PRACTICE answers as EdiabasLib's simulation did (bare positive frames): read them as it
+                // does. On a car a short answer stops the run.
+                padAnswers: this.modeNow === 'practice',
                 maxSends: 16,
                 exchange: async (req) => {
                     const built = finishFrame(req, target.address);

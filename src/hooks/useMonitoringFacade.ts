@@ -26,7 +26,7 @@ import type { ChannelId } from '@tsunagi/ds2-mss54';
 import { listLocal } from '@/lib/sync/sessionStore';
 import type { Mode, Tab } from '@/lib/tabs';
 import type { ProbeSessions } from '@/views/probe/useProbeSessions';
-import { agreedCases, bestTelegram, decisionFor, loadTelegrams, operationFor, telegramOfAgreed } from '@tsunagi/monitoring-engine';
+import { PROCEDURE_PREFIX, agreedCases, bestTelegram, decisionFor, loadTelegrams, operationFor, telegramOfAgreed } from '@tsunagi/monitoring-engine';
 import { agreedChoices } from '@/lib/agreedChoices';
 import { LAUNCHER_QUERY, deviceLabel, isHeadUnit, type DeviceKind } from '@/hooks/useAssistantBridge';
 import type { Datalog } from '@/views/datalog/useDatalog';
@@ -99,6 +99,8 @@ export function useMonitoringFacade(input: {
     selectJob: (job: EcuProfile['jobs'][number]) => void;
     /** The outputs on now, and how to start and stop them (useActuatorArming). */
     arming: Arming;
+    /** Opens an SMG II procedure's dialog and runs it on the owner's spoken OK (page.tsx, views/service/WizardDialog). */
+    startProcedure: (job: EcuProfile['jobs'][number], ownerSaid: string, gear?: number) => void;
     /** Another module on the screen, the link opened again for it if it was open (page.tsx). */
     switchModule: (id: string) => Promise<string | null>;
     /** Every module's fault read, shown on DIAGNOSIS under ALL MODULES (page.tsx). How many addresses, or why not. */
@@ -487,6 +489,30 @@ export function useMonitoringFacade(input: {
                 stopsByItselfAfterS: r.timeoutS,
                 ownerSaid,
                 reason: r.sent ? null : (link.error ?? 'Not sent: the link refused or the module did not answer.'),
+            };
+        },
+
+        procedure: async ({ procedure, gear, ownerSaid }) => {
+            if (ecuId !== 'smg2') return { started: false, reason: `Procedures are SMG II's. Put SMG II on the screen first (monitoring_module).` };
+            const want = procedure.trim().toLowerCase();
+            const job = catalog?.jobs.find((j) => j.id.startsWith(PROCEDURE_PREFIX) && j.id.slice(PROCEDURE_PREFIX.length).toLowerCase() === want);
+            const startJob = catalog?.jobs.find((j) => j.id === 'TESTPRG_STARTEN');
+            if (!job || !startJob) return { started: false, reason: `${procedure} is not one of SMG II's procedures (monitoring_catalog lists them).` };
+            const program = job.id.slice(PROCEDURE_PREFIX.length);
+            const may = assistantMayStart(ecuId, startJob, catalog?.group, link.motion, ownerSaid, [program]);
+            if (!may.ok) return { started: false, reason: may.reason };
+            if (link.state !== 'connected') return { started: false, reason: `The link is ${link.state}; a procedure starts from connected and idle.` };
+            if (input.arming.anyArmed) return { started: false, reason: `${[...input.arming.armed.keys()].join(', ')} is on. Stop it first (monitoring_stop_outputs).` };
+            const g = gear === undefined ? undefined : Number(gear);
+            if (g !== undefined && !Number.isInteger(g)) return { started: false, reason: `${gear} is not a gear its dialog offers.` };
+            input.startProcedure(job, ownerSaid, g);
+            return {
+                started: true,
+                procedure: program,
+                name: job.en,
+                mode: link.mode,
+                ownerSaid,
+                note: 'Its dialog is on the screen and runs it through the gate; it may still refuse there (not practised, not measured parked, battery, engine), and the dialog says why. It ends by itself, or with ABORT or monitoring_stop_outputs.',
             };
         },
 

@@ -184,7 +184,7 @@ export interface ActuationTerms {
 }
 
 export type RunVerdict =
-    | { allowed: true; telegram: Telegram; control: number; requires: SendRequirement; actuation?: ActuationTerms }
+    | { allowed: true; telegram: Telegram; control: number; requires: SendRequirement; actuation?: ActuationTerms; args?: readonly string[] }
     | { allowed: false; reason: RunBlockKey };
 
 /**
@@ -202,12 +202,30 @@ export interface ActuationPermit {
     hex: string;
     engine: 'off' | 'run' | null;
     issuedAt: number;
+    /**
+     * A job that sends several frames: all of them, in order (`hex` the first), as its own code and
+     * EdiabasLib send them (sgbd/agreedFrame). The link runs the job and sends each frame it builds
+     * only if it is the next of these (or one already sent, a status it asks again).
+     */
+    sequence?: string[];
+    /** The values the job runs with, for a link that runs its code (a sequence, a KWP-on-DS2 module). */
+    args?: string[];
 }
 
 /** A permit for an allowed verdict that drives something; null for a read. */
 export function permitFor(verdict: RunVerdict, moduleId: string, jobId: string, now: number): ActuationPermit | null {
     if (!verdict.allowed || !verdict.actuation) return null;
-    return { kind: 'run', moduleId, jobId, hex: normHex(verdict.telegram.hex), engine: verdict.actuation.engine, issuedAt: now };
+    const seq = verdict.telegram.sequence;
+    return {
+        kind: 'run',
+        moduleId,
+        jobId,
+        hex: normHex(verdict.telegram.hex),
+        engine: verdict.actuation.engine,
+        issuedAt: now,
+        ...(seq && seq.length > 1 ? { sequence: seq.map(normHex) } : {}),
+        ...(verdict.args ? { args: [...verdict.args] } : {}),
+    };
 }
 
 /** The release of a run that a permit started: its stop job's frame, sent whatever is measured. */
@@ -215,12 +233,22 @@ export function stopPermit(run: ActuationPermit, stopJobId: string, stopHex: str
     return { kind: 'stop', moduleId: run.moduleId, jobId: stopJobId, hex: normHex(stopHex), engine: null, issuedAt: run.issuedAt };
 }
 
+/** A stop permit for a stop that sends several frames, or runs with values (a run's own job, or its stop job's). */
+export function stopPermitOf(run: ActuationPermit, stopJobId: string, stop: { hex: string; sequence?: readonly string[] }, args?: readonly string[]): ActuationPermit {
+    return {
+        ...stopPermit(run, stopJobId, stop.hex),
+        ...(stop.sequence && stop.sequence.length > 1 ? { sequence: stop.sequence.map(normHex) } : {}),
+        ...(args ? { args: [...args] } : {}),
+    };
+}
+
 /** How long a run permit stays good: from the press to the bytes. A stop permit does not expire. */
 export const PERMIT_MAX_AGE_MS = 120_000;
 
-/** Whether a permit is for exactly this frame, now. */
+/** Whether a permit is for exactly this frame (one of the frames of its sequence), now. */
 export function permitCovers(permit: ActuationPermit, moduleId: string, jobId: string, hex: string, now: number): boolean {
-    if (permit.moduleId !== moduleId || permit.jobId !== jobId || permit.hex !== normHex(hex)) return false;
+    const h = normHex(hex);
+    if (permit.moduleId !== moduleId || permit.jobId !== jobId || (permit.hex !== h && !(permit.sequence ?? []).includes(h))) return false;
     return permit.kind !== 'run' || now - permit.issuedAt <= PERMIT_MAX_AGE_MS;
 }
 
@@ -300,8 +328,10 @@ export function telegramBytes(hex: string): Uint8Array | null {
         if (!/^[0-9a-fA-F]{2}$/.test(parts[i])) return null;
         out[i] = parseInt(parts[i], 16);
     }
-    // length byte counts the whole frame including checksum
-    if (out[1] !== out.length) return null;
+    // DS2: the length byte counts the whole frame, checksum included. KWP on DS2 (the DSC MK60,
+    // kwpOnDs2): `B8 <target> F1 <LL> …`, LL counting the data.
+    const kwp = out[0] === 0xb8 && out[2] === 0xf1 && out.length === out[3] + 5;
+    if (!kwp && out[1] !== out.length) return null;
     let ck = 0;
     for (let i = 0; i < out.length - 1; i++) ck ^= out[i];
     if (ck !== out[out.length - 1]) return null;
@@ -393,7 +423,7 @@ function mayDrive(job: CatalogJob, telegram: Telegram | null, ledger: Ledger, ct
     // Every nature that drives something was decided `parked` (2026-11-15), and a job whose own SGBD
     // asks for the car stationary goes parked whatever is decided (OWNER_RULES.sgbdStationaryWins).
     if (ctx.motion === 'moving') return { allowed: false, reason: 'run_block_moving' };
-    return { allowed: true, telegram, control: bytes[2], requires: 'parked', actuation: actuationTerms(job, decision) };
+    return { allowed: true, telegram, control: bytes[2], requires: 'parked', actuation: actuationTerms(job, decision), ...(job.args.length ? { args: [...(ctx.args ?? [])] } : {}) };
 }
 
 /** The terms a job that drives something runs on: its decision, and its own SGBD's engine state, limit and stop. */

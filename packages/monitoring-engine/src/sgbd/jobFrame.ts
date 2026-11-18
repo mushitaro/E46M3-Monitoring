@@ -38,12 +38,22 @@ export function jobFrameFrom(table: SgbdResultsTable | null, address: number, jo
     }
     const req = run.request;
     if (!req) return { ok: false, why: run.stopped ? `the job stopped before sending: ${run.stopped.reason}` : 'the job sent nothing' };
+    return finishFrame(req, address);
+}
+
+/**
+ * A frame as the interface sends it: the job's bytes and the XOR checksum the interface appends. DS2
+ * counts every byte in its second; KWP on DS2 (the DSC MK60: `B8 <target> F1 <LL> …`, ../kwpOnDs2)
+ * counts the data in its fourth. Either way it must be to this module and its length must be its own.
+ */
+export function finishFrame(req: Uint8Array, address: number): JobFrame {
     if (req.length < 3 || req[0] !== address) return { ok: false, why: `the job would send ${hexOf(req)}, not to this module` };
-    // The interface appends the XOR checksum; the job's string carries none.
     const bytes = new Uint8Array(req.length + 1);
     bytes.set(req);
     bytes[req.length] = req.reduce((x, b) => x ^ b, 0);
-    if (bytes[1] !== bytes.length) return { ok: false, why: `the job built ${hexOf(bytes)}, whose length byte is not its length` };
+    const kwp = address === 0xb8;
+    const whole = kwp ? (bytes.length >= 5 ? bytes[3] + 5 : -1) : bytes[1];
+    if (whole !== bytes.length) return { ok: false, why: `the job built ${hexOf(bytes)}, whose length byte is not its length` };
     return { ok: true, hex: hexOf(bytes), bytes };
 }
 

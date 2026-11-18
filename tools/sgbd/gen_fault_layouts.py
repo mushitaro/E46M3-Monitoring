@@ -57,6 +57,9 @@ MODULES: dict[str, tuple[str, int]] = {
 
 
 def exe() -> str:
+    # SGBD_DUMP_EXE names a build elsewhere (Linux: SgbdDump built against EdiabasLib's sources, no .exe).
+    if os.environ.get("SGBD_DUMP_EXE"):
+        return os.environ["SGBD_DUMP_EXE"]
     found = glob.glob(os.path.join(ROOT, "tools", "SgbdDump", "bin", "Release", "*", "SgbdDump.exe"))
     if not found:
         raise SystemExit("[FATAL] tools/SgbdDump/bin/Release/*/SgbdDump.exe is missing: build tools/SgbdDump first.")

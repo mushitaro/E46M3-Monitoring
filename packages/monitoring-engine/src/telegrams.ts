@@ -34,6 +34,8 @@
  */
 
 import { readEcuData } from './ecuData.ts';
+import { loadJobFramesOracle, withAgreedFrames } from './sgbd/agreedFrame.ts';
+import { loadSgbdResults } from './sgbd/results.ts';
 
 export type TelegramConfidence = 'single' | 'multiple' | 'shared';
 
@@ -47,6 +49,11 @@ export interface Telegram {
     occurrences: number;
     sharedWithJobs?: number;
     confidence: TelegramConfidence;
+    /**
+     * Every frame of a job that sends several, in order, the first (`hex`) included: what its own code
+     * and EdiabasLib send for it (sgbd/agreedFrame.ts). Absent: the job sends one frame.
+     */
+    sequence?: string[];
 }
 
 export interface TelegramTable {
@@ -75,7 +82,10 @@ export async function loadTelegrams(moduleId: string): Promise<TelegramTable | n
             cache.set(moduleId, null);
             return null;
         }
-        const table = (await res.json()) as TelegramTable;
+        const raw = (await res.json()) as TelegramTable;
+        // A job that takes no values sends what its own code and EdiabasLib build alike (sgbd/agreedFrame).
+        const [oracle, results] = await Promise.all([loadJobFramesOracle(), loadSgbdResults(moduleId)]);
+        const table = withAgreedFrames(raw, oracle, results);
         cache.set(moduleId, table);
         return table;
     } catch {

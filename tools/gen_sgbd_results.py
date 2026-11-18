@@ -222,24 +222,23 @@ def all_jobs():
             continue
         sg, names = out.get(mid, (tel["sgbd"], []))
         out[mid] = (sg, names + [n for n in status if n not in names])
-    # The jobs that take values and drive something (運営者 2026-11-15「実装をお願いします」: 作動テスト・検査・
-    # 模擬・学習のリセット・SMG II の駆動を、値を選んで実車で): their own code builds the frame for the values
-    # chosen (packages/monitoring-engine/src/sgbd/jobFrame.ts, a dry run). Writes are never carried: a name that
-    # writes, or a coding, identity or programming job.
+    # Every job that drives something (運営者 2026-11-15「実装をお願いします」, 2026-11-18「M3 と E46 の項目も
+    # 全部」): with values or without, on every module — the non-M3 E46's and the DSC MK60 too. Their own code
+    # builds the frames for the values chosen (packages/monitoring-engine/src/sgbd/jobFrame.ts, a dry run), and
+    # the app sends only those EdiabasLib builds alike (job-frames.oracle.json). Writes are never carried: a
+    # name that writes, or a coding, identity or programming job.
     for f in sorted(os.listdir(OUT)):
         if not f.endswith(".jobs.json"):
             continue
         mid = f[: -len(".jobs.json")]
         tel_path = os.path.join(OUT, f"{mid}.telegrams.json")
-        if mid in _nonm3() or not os.path.exists(tel_path):
+        if not os.path.exists(tel_path):
             continue
         tel = json.load(open(tel_path, encoding="utf-8"))
-        if tel.get("framing") == "kwp-ds2":
-            continue
         cat = json.load(open(os.path.join(OUT, f), encoding="utf-8"))
         drive = [
             j["id"] for j in cat["jobs"]
-            if j.get("args") and j.get("class") in ("test", "calibration", "unclassified")
+            if j.get("class") in ("test", "calibration", "unclassified")
             and not WRITES.search(j["id"])
         ]
         if not drive:

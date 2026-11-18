@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useReducer, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { AlertTriangle, PlayCircle, Square } from 'lucide-react';
 import { DialogFrame } from '@/components/DialogFrame';
 import { DialogButton, Field, LABEL, MicroLabel, Provenance, Well, emphasise } from '@/components/ui';
@@ -66,6 +66,7 @@ export function WizardDialog({
     mode,
     gate,
     send,
+    assistant,
     onClose,
 }: {
     procedure: Smg2Procedure;
@@ -76,6 +77,12 @@ export function WizardDialog({
     /** On a car: the ledger and the car as last measured, for the owner's decision (runGate.mayRunProcedure). */
     gate: { ledger: Ledger; motion: Motion };
     send: (jobId: string, hex: string, requires?: SendRequirement, permit?: ActuationPermit) => Promise<JobRunResult | null>;
+    /**
+     * Started by the assistant on the owner's spoken OK (monitoring_procedure, after it read back every
+     * precondition): the word ticks the boxes and START is pressed once — through the same plan and gate
+     * as a press here. Everything else is as on the screen, ABORT included.
+     */
+    assistant?: { ownerSaid: string; gear?: number };
     onClose: () => void;
 }) {
     const { lang, t } = useLang();
@@ -120,6 +127,22 @@ export function WizardDialog({
         dispatch({ type: 'started' });
         void run.start(plan.plan).then(() => dispatch({ type: 'finished', ok: run.finishedWell }));
     }, [plan, run]);
+
+    // The assistant's start: once, when the plan allows it (a refusal stays on the dialog, with its reason).
+    const assistantStarted = useRef(false);
+    useEffect(() => {
+        if (!assistant || assistantStarted.current) return;
+        if (procedure.auswahl && assistant.gear !== undefined && gear !== assistant.gear) {
+            setGear(assistant.gear);
+            return;
+        }
+        if (!plan.ok) return;
+        assistantStarted.current = true;
+        for (const key of [...shape.prereqChecks, ...shape.safetyChecks]) dispatch({ type: 'toggle', key });
+        dispatch({ type: 'next' });
+        dispatch({ type: 'next' });
+        startRun();
+    }, [assistant, plan, gear, procedure, shape, startRun]);
 
     const abort = useCallback(() => {
         void run.abort();

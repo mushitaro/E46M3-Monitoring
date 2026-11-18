@@ -24,6 +24,7 @@ import {
 } from '@tsunagi/ds2-mss54';
 import { SimulatedSerialPort, type ExchangeBehavior, type SerialOptions, type SerialPortLike, type SimulatedEcuOptions } from '@tsunagi/ds2-core';
 import { KWP_FORMAT, KWP_TESTER, xorOf } from './kwpOnDs2.ts';
+import type { JobFramesOracle } from './sgbd/agreedFrame.ts';
 import { CLEAN, clusterVinAnswer, ds2IdentData, practiceCar } from './practiceCar.ts';
 
 const START = Date.now();
@@ -367,16 +368,53 @@ export function practiceEcu(): SimulatedEcuOptions {
                 case Ds2Control.READ_SYSTEM_ADDRESSES: // 0x0d
                     return null; // bare ACK
 
-                default:
+                default: {
+                    // A frame EdiabasLib was run with (job-frames.oracle.json) gets the answer its
+                    // simulation gave — a bare positive one — so every job the owner's table opens
+                    // runs in PRACTICE before a car (operator, 2026-11-18). Nothing more is invented.
+                    const known = practiceAnswerFor(request.address, request.controlOrStatus, request.payload);
+                    if (known) return known;
                     // An unimplemented job is REFUSED, not quietly acknowledged.
                     // A mock that says OKAY to everything is why the tuner's
                     // failure path had never once executed. What changed above is
                     // only that the commands the app IS allowed to send are now
                     // implemented; everything else still gets refused.
                     return { status: Ds2Status.REJECTED };
+                }
             }
         },
     };
+}
+
+/**
+ * What EdiabasLib's simulation answered each frame it was run with (sgbd/agreedFrame's oracle):
+ * frame (checksum included, lowercase hex) → answer frame. Set at a PRACTICE connect.
+ */
+let simulated: ReadonlyMap<string, Uint8Array> = new Map();
+
+/** Hands PRACTICE the frames EdiabasLib was run with and what it was answered. */
+export function setPracticeAnswers(oracle: JobFramesOracle | null): void {
+    const map = new Map<string, Uint8Array>();
+    for (const entry of Object.values(oracle?.jobs ?? {})) {
+        for (const c of entry.cases) {
+            c.sends.forEach((send, i) => {
+                const a = c.answers?.[i];
+                if (a) map.set(send, Uint8Array.from(a.split(' '), (h) => parseInt(h, 16)));
+            });
+        }
+    }
+    simulated = map;
+}
+
+const hexOf = (b: ArrayLike<number>) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join(' ');
+
+/** PRACTICE's answer to a DS2 frame EdiabasLib was run with: its status and data, as the simulation answered. */
+function practiceAnswerFor(address: number, control: number, payload: Uint8Array): { status?: number; payload?: Uint8Array } | null {
+    const body = [address, payload.length + 4, control, ...payload];
+    const answer = simulated.get(hexOf([...body, xorOf(body)]));
+    if (!answer || answer.length < 4) return null;
+    const status = answer[2];
+    return status === 0xa0 ? { payload: answer.slice(3, answer.length - 1) } : { status };
 }
 
 /** The DSC MK60's KWP target, behind wire address 0xB8 (lib/kwpOnDs2). */
@@ -396,7 +434,12 @@ export function practiceKwpAnswer(chunk: Uint8Array): Uint8Array[] | null {
     let data: number[];
     if (sid === 0x1a) data = [0x5a, chunk[5], 0x34, 0x51, 0x12, 0x07];
     else if (sid === 0x18) data = [0x58, practiceCar.dscMk60.length, ...practiceCar.dscMk60.flatMap((d) => [d.code >> 8, d.code & 0xff, d.status])];
-    else data = [0x7f, sid, 0x11];
+    else {
+        // A frame EdiabasLib was run with: its simulation's answer. Anything else: not supported.
+        const known = simulated.get(hexOf(chunk));
+        if (known) return [echo, known];
+        data = [0x7f, sid, 0x11];
+    }
     const head = [KWP_FORMAT, KWP_TESTER, MK60_TARGET, data.length, ...data];
     return [echo, Uint8Array.from([...head, xorOf(head)])];
 }

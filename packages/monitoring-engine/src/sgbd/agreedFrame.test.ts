@@ -29,10 +29,19 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('the frames a job that takes values may send
     it('agrees on nothing EdiabasLib was not run with, or sent nothing for', () => {
         // A PIN in place of the name: EdiabasLib's job refuses it.
         expect(agreedFrameFrom(oracle(), smg2(), 'smg2', 0x32, 'STEUERN_STELLGLIED', ['0x05', 'AKTIV', '0']).ok).toBe(false);
-        // A value nobody compared.
-        expect(agreedFrameFrom(oracle(), smg2(), 'smg2', 0x32, 'STEUERN_STELLGLIED', ['HYDROPUMPE', 'AKTIV', '77']).ok).toBe(false);
+        // A number outside every stretch EdiabasLib was run with, and a fraction where only whole numbers were.
+        expect(agreedFrameFrom(oracle(), smg2(), 'smg2', 0x32, 'STEUERN_STELLGLIED', ['HYDROPUMPE', 'AKTIV', '300']).ok).toBe(false);
+        expect(agreedFrameFrom(oracle(), smg2(), 'smg2', 0x32, 'STEUERN_STELLGLIED', ['HYDROPUMPE', 'AKTIV', '7.5']).ok).toBe(false);
+        // A word nobody tried.
+        expect(agreedFrameFrom(oracle(), smg2(), 'smg2', 0x32, 'STEUERN_STELLGLIED', ['HYDROPUMPE', 'HALB', '0']).ok).toBe(false);
         // No oracle at all.
         expect(agreedFrameFrom(null, smg2(), 'smg2', 0x32, 'STEUERN_STELLGLIED', HYDRO).ok).toBe(false);
+    });
+
+    it('opens a number between two tried values only where every tried value between them agreed', () => {
+        // 0, 1, 2, 10, 100, 127, 128, 200, 254, 255 were tried; 77 lies between 10 and 100.
+        const r = agreedFrameFrom(oracle(), smg2(), 'smg2', 0x32, 'STEUERN_STELLGLIED', ['MAGNETVENTIL_KUPPLUNG', 'POSITIONSVORGABE', '77']);
+        expect(r).toMatchObject({ ok: true, frame: { basis: 'range', args: ['MAGNETVENTIL_KUPPLUNG', 'POSITIONSVORGABE', '77'], hex: '32 07 0c 0a 00 4d 7e' } });
     });
 
     it('lists only agreed sets, all for this job', () => {

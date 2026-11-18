@@ -30,8 +30,14 @@ describe('the sets of values a job that takes them is offered with', () => {
         expect(agreedChoices(job, once, cases, []).map((x) => x.stop)).toEqual([undefined, undefined, undefined, undefined]);
     });
 
-    it('offers nothing to hold when the stop is another job: its values would need comparing too', () => {
+    it('holds with another job as the stop only where that job\'s own values were compared too', () => {
+        // The stop job's frames are not among these: nothing to hold.
         expect(agreedChoices(job, { ...hold, stopJob: 'TESTPRG_STOP' }, cases, cases)).toEqual([]);
+        // Its frame with no values, compared: every start that is not itself a stop, with it.
+        const stop = f([], 'TESTPRG_STOP');
+        const c = agreedChoices(job, { ...hold, stopJob: 'TESTPRG_STOP', stopArgs: {} }, cases, [stop], []);
+        expect(c.length).toBe(cases.length);
+        expect(c.every((x) => x.stop === stop)).toBe(true);
     });
 
     it('keeps to what the start imposes', () => {

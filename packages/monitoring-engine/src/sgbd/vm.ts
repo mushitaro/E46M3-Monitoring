@@ -826,6 +826,35 @@ export function runSgbdJob(job: SgbdJobCode, opts: SgbdRunOptions): SgbdRun {
     return r.value;
 }
 
+/**
+ * Every frame a job sends when each of them is answered by `answer` — synchronously, nothing on a line.
+ * How a job that sends several frames is compared with EdiabasLib (sgbd/agreedFrame.ts): EdiabasLib's
+ * answers are handed back in order, and the frames the job builds must be the ones EdiabasLib sent.
+ * `reply` returning null ends the run there (the job stops as on a silent module); `requests` then
+ * holds the frame it was answering for last, so a caller sees what the job wanted to send next.
+ */
+export function traceSgbdJob(
+    job: SgbdJobCode,
+    opts: Omit<SgbdRunOptions, 'sent' | 'answer' | 'exchanges'> & { reply(request: Uint8Array, index: number): Uint8Array | null; maxSends?: number },
+): { run: SgbdRun; requests: Uint8Array[] } {
+    const { reply, maxSends, ...rest } = opts;
+    const g = jobSteps(job, rest);
+    const requests: Uint8Array[] = [];
+    const max = maxSends ?? 16;
+    let r = g.next();
+    while (!r.done) {
+        const req = r.value;
+        requests.push(req.slice());
+        if (requests.length > max) {
+            r = g.throw(new Stop(`more than ${max} sends`));
+            continue;
+        }
+        const a = reply(req, requests.length - 1);
+        r = a ? g.next(a) : g.throw(new Stop('no answer'));
+    }
+    return { run: r.value, requests };
+}
+
 export interface SgbdLiveOptions extends Omit<SgbdRunOptions, 'sent' | 'answer'> {
     /**
      * Send one frame the job built (no checksum) and give back the module's answer as it came off the

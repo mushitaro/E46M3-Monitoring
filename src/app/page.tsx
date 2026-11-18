@@ -591,6 +591,18 @@ export default function Home() {
     // read by re-asking, up to sixteen minutes with the clutch energised — and
     // the hub cannot express any of that. `lib/procedureRun` holds the protocol.
     const [wizardOpen, setWizardOpen] = useState(false);
+    // The assistant started the procedure on the owner's spoken OK (monitoring_procedure): the dialog
+    // takes the word as the ticks and runs it, through the same gate as its START.
+    const [wizardAssistant, setWizardAssistant] = useState<{ ownerSaid: string; gear?: number } | null>(null);
+    const startProcedure = useCallback(
+        (job: CatalogJob, ownerSaid: string, gear?: number) => {
+            selectJob(job);
+            changeTab('service');
+            setWizardAssistant({ ownerSaid, gear });
+            setWizardOpen(true);
+        },
+        [selectJob, changeTab],
+    );
     const procedure = selectedJob ? procedureForJob(selectedJob, workflows) : null;
 
     // The one-time acknowledgement, read from storage as an external store so
@@ -659,7 +671,7 @@ export default function Home() {
     // until switched on on this device). The facade is what the tools may reach — the screen's own
     // controls, never a run.
     const buildId = useBuildId();
-    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, probeSessions, mode, tab, changeTab, showPane: setPane, selectJob, arming, switchModule, startScan, updateWaiting, allModules: scopeAll, syncInvestigations, defaultDevice: t.assistant_defaultDevice });
+    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, probeSessions, mode, tab, changeTab, showPane: setPane, selectJob, arming, startProcedure, switchModule, startScan, updateWaiting, allModules: scopeAll, syncInvestigations, defaultDevice: t.assistant_defaultDevice });
     // The end-to-end scenarios' door to the same tools (lib/e2e): a test build only.
     useE2EDoor(facade);
     const assistant = useAssistantBridge({
@@ -1175,7 +1187,11 @@ export default function Home() {
                     mode={link.mode}
                     gate={procedureGate}
                     send={link.runRead}
-                    onClose={() => setWizardOpen(false)}
+                    assistant={wizardAssistant ?? undefined}
+                    onClose={() => {
+                        setWizardOpen(false);
+                        setWizardAssistant(null);
+                    }}
                 />
             )}
 

@@ -19,7 +19,7 @@ import {
     operationFor,
     permitFor,
     runName,
-    stopPermit,
+    stopPermitOf,
     type ActuationPermit,
     type AgreedFrame,
     type CatalogJob,
@@ -76,7 +76,8 @@ export async function startActuation(p: StartActuation): Promise<Started> {
     // Not started (refused, not measured, no answer): nothing to stop, nothing armed.
     if (result === null || result === undefined) return { sent: false, armed: false, timeoutS: null };
     if (p.phase !== 'start') return { sent: true, armed: false, timeoutS: null };
-    const stopHex = withValues ? p.stop?.hex : stopId ? bestTelegram(p.telegrams, stopId)?.hex : undefined;
+    const stopTelegram = withValues ? p.stop : stopId ? bestTelegram(p.telegrams, stopId) : null;
+    const stopHex = stopTelegram?.hex;
     const stopName = withValues && stopId ? runName(stopId, p.stop?.args) : stopId;
     // Cannot resolve the release? Then it was never armed: there is no state where an output is on
     // and nothing knows how to end it (lib/arming).
@@ -87,7 +88,7 @@ export async function startActuation(p: StartActuation): Promise<Started> {
         stopJobId: stopName,
         stopHex,
         at: p.now,
-        stopPermit: permit ? stopPermit(permit, stopName, stopHex) : undefined,
+        stopPermit: permit && stopTelegram ? stopPermitOf(permit, stopName, stopTelegram, p.stop?.args) : undefined,
         timeoutS,
     });
     return { sent: true, armed: true, timeoutS };

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { EcuIndex, EcuProfile, JobFramesOracle, SgbdResultsTable, TelegramTable } from '@tsunagi/monitoring-engine';
@@ -7,8 +7,9 @@ import { runCoverage, type CoverageItem } from './runCoverage';
 /**
  * Every job the owner's table opens runs, or cannot for a reason outside this app (operator,
  * 2026-11-18: the completion criteria — 「表で『実行』なのに動かない項目の一覧を、CI が毎回出す。直せない
- * 理由が付いたもの以外が 1 件でもあれば落ちる」). The list is written to docs/RUN-COVERAGE.md with
- * WRITE_COVERAGE=1 (npm run coverage:runs), so the owner reads what the test reads.
+ * 理由が付いたもの以外が 1 件でもあれば落ちる」). The counts print on every run; the whole list is written
+ * to run-coverage/RUN-COVERAGE.md with WRITE_COVERAGE=1 (npm run coverage:runs) and kept in the private
+ * data repository, so the owner reads what the test reads.
  */
 const DATA = path.resolve(import.meta.dirname, '..', '..', 'public', 'ecu-data');
 const HAVE = existsSync(path.join(DATA, 'job-frames.oracle.json'));
@@ -63,7 +64,15 @@ function report(items: CoverageItem[]): string {
 
 describe.skipIf(!HAVE)('every job the owner’s table opens runs (operator, 2026-11-18)', () => {
     const items = HAVE ? coverage() : [];
-    if (process.env.WRITE_COVERAGE === '1') writeFileSync(path.resolve(import.meta.dirname, '..', '..', 'docs', 'RUN-COVERAGE.md'), report(items));
+    if (process.env.WRITE_COVERAGE === '1') {
+        // Job names in bulk are SGBD-derived: the list stays out of this public repository (run-coverage/
+        // is ignored) and goes to the private data repository with the data it was measured on.
+        const dir = path.resolve(import.meta.dirname, '..', '..', 'run-coverage');
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(path.join(dir, 'RUN-COVERAGE.md'), report(items));
+    }
+    // The counts, always: what CI shows on every run.
+    if (HAVE) console.log(report(items).split('## 未完了')[0]);
 
     it('covers the E46 M3, the non-M3 E46 and the DSC MK60', () => {
         const modules = new Set(items.map((i) => i.module));

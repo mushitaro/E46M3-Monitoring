@@ -88,7 +88,7 @@ export function WizardDialog({
     const { lang, t } = useLang();
     const pick = (b: { ja: string; en: string }) => (lang === 'en' ? b.en : b.ja);
 
-    const [gear, setGear] = useState<number>(0);
+    const [gear, setGear] = useState<number>(assistant?.gear ?? 0);
     const run = useProcedureRun(send);
 
     // Every precondition the SGBD lists, plus one acknowledgement of the safety
@@ -131,18 +131,13 @@ export function WizardDialog({
     // The assistant's start: once, when the plan allows it (a refusal stays on the dialog, with its reason).
     const assistantStarted = useRef(false);
     useEffect(() => {
-        if (!assistant || assistantStarted.current) return;
-        if (procedure.auswahl && assistant.gear !== undefined && gear !== assistant.gear) {
-            setGear(assistant.gear);
-            return;
-        }
-        if (!plan.ok) return;
+        if (!assistant || assistantStarted.current || !plan.ok) return;
         assistantStarted.current = true;
         for (const key of [...shape.prereqChecks, ...shape.safetyChecks]) dispatch({ type: 'toggle', key });
         dispatch({ type: 'next' });
         dispatch({ type: 'next' });
         startRun();
-    }, [assistant, plan, gear, procedure, shape, startRun]);
+    }, [assistant, plan, shape, startRun]);
 
     const abort = useCallback(() => {
         void run.abort();

@@ -15,10 +15,12 @@
  * Pure: the caller hands in the shipped data. src/lib/runCoverage.test.ts runs it over all of it.
  */
 import {
+    CLOCK,
     EMPTY_LEDGER,
     agreedCasesFrom,
     agreedFrameFrom,
     bestTelegram,
+    ownFrames,
     decisionFor,
     isReadNature,
     mayRun,
@@ -50,6 +52,9 @@ export interface CoverageItem {
     sets?: number;
     /** Sets EdiabasLib sent something for that the app does not build alike, with the first reason. */
     disagree?: { count: number; first: string };
+    /** A job that runs: the frames it sends (its first set), and its stop's, for PRACTICE to answer. */
+    frames?: string[];
+    stopFrames?: string[];
 }
 
 export interface CoverageInput {
@@ -59,6 +64,13 @@ export interface CoverageInput {
     results: ReadonlyMap<string, SgbdResultsTable | null>;
     oracle: JobFramesOracle;
 }
+
+/**
+ * Reasons outside the app: the module's own SGBD sends the frame to another module's address (the
+ * owner's rule: a module is sent only what is addressed to it), or the frame carries the clock (a
+ * login's seed) and so is never the one EdiabasLib was seen to send.
+ */
+const outside = (why: string) => why.includes(CLOCK) || /not to this module/.test(why);
 
 const practised = (moduleId: string, jobId: string, args?: readonly string[]) => recordPracticeRun(EMPTY_LEDGER, `${moduleId}:${runName(jobId, args)}`, '2026-11-18T00:00:00Z');
 
@@ -80,21 +92,24 @@ export function runCoverage(input: CoverageInput): CoverageItem[] {
                 let count = 0;
                 let first = '';
                 for (const c of entry.cases) {
-                    if (c.sends.length === 0) continue;
+                    if (ownFrames(input.oracle, m.id, job.id, c).sends.length === 0) continue;
                     const r = agreedFrameFrom(input.oracle, results, m.id, m.address, job.id, c.args);
-                    if (!r.ok) {
+                    if (!r.ok && !outside(r.why)) {
                         count++;
                         first ||= `${c.args.join(';') || '(no values)'}: ${r.why}`;
                     }
                 }
                 if (count) item.disagree = { count, first };
             }
-            const sendsNothing = !!entry && entry.cases.length > 0 && entry.cases.every((c) => c.sends.length === 0);
+            // What the job itself sends: EdiabasLib's trace begins with what its INITIALISIERUNG sent.
+            const own = (entry?.cases ?? []).map((c) => ownFrames(input.oracle, m.id, job.id, c));
+            const sendsNothing = own.length > 0 && own.every((c) => c.sends.length === 0);
             const op = operationFor(job);
             const hold = op.kind === 'hold' && !!op.stopJob;
             const stopJob = hold ? (profile.jobs as CatalogJob[]).find((j) => j.id === op.stopJob) : undefined;
             if (job.args.length === 0) {
-                const v = mayRun(job, bestTelegram(table, job.id), practised(m.id, job.id), { moduleId: m.id, motion: 'parked', group: m.group });
+                const tel = bestTelegram(table, job.id);
+                const v = mayRun(job, tel, practised(m.id, job.id), { moduleId: m.id, motion: 'parked', group: m.group });
                 if (v.allowed) {
                     if (hold && op.stopJob !== job.id) {
                         const stop = stopJob ? bestTelegram(table, stopJob.id) : null;
@@ -103,13 +118,20 @@ export function runCoverage(input: CoverageInput): CoverageItem[] {
                             out.push(item);
                             continue;
                         }
+                        item.stopFrames = stop.sequence ?? [stop.hex];
                     }
+                    item.frames = tel!.sequence ?? [tel!.hex];
                     item.status = 'runs';
                 } else if (sendsNothing) {
                     item.status = 'external';
-                    item.why = `EdiabasLib sends nothing for it${entry!.cases[0].jobStatus ? ` (${entry!.cases[0].jobStatus})` : ''}`;
+                    item.why = `EdiabasLib sends nothing for it${own[0].jobStatus ? ` (${own[0].jobStatus})` : ''}`;
                 } else {
-                    item.why = !entry ? 'EdiabasLib was not run with it' : (item.disagree?.first ?? v.reason);
+                    const c = own.find((x) => x.args.length === 0 && x.sends.length > 0);
+                    const r = c ? agreedFrameFrom(input.oracle, results, m.id, m.address, job.id, []) : null;
+                    if (r && !r.ok && outside(r.why)) {
+                        item.status = 'external';
+                        item.why = r.why;
+                    } else item.why = !entry ? 'EdiabasLib was not run with it' : (item.disagree?.first ?? v.reason);
                 }
                 out.push(item);
                 continue;
@@ -127,11 +149,17 @@ export function runCoverage(input: CoverageInput): CoverageItem[] {
                     args: first.start.args,
                     agreed: first.start,
                 });
-                if (v.allowed) item.status = 'runs';
-                else item.why = v.reason;
+                if (v.allowed) {
+                    item.status = 'runs';
+                    item.frames = first.start.sequence ? [...first.start.sequence] : [first.start.hex];
+                    if (first.stop) item.stopFrames = first.stop.sequence ? [...first.stop.sequence] : [first.stop.hex];
+                } else item.why = v.reason;
             } else if (sendsNothing) {
                 item.status = 'external';
-                item.why = `EdiabasLib sends nothing for it with any value tried${entry!.cases[0].jobStatus ? ` (${entry!.cases[0].jobStatus})` : ''}`;
+                item.why = `EdiabasLib sends nothing for it with any value tried${own[0].jobStatus ? ` (${own[0].jobStatus})` : ''}`;
+            } else if (entry && own.some((c) => c.sends.length > 0) && own.filter((c) => c.sends.length > 0).every((c) => { const r = agreedFrameFrom(input.oracle, results, m.id, m.address, job.id, c.args); return !r.ok && outside(r.why); })) {
+                item.status = 'external';
+                item.why = (() => { const c = own.find((x) => x.sends.length > 0)!; const r = agreedFrameFrom(input.oracle, results, m.id, m.address, job.id, c.args); return r.ok ? '' : r.why; })();
             } else {
                 item.why = !entry
                     ? 'EdiabasLib was not run with it'

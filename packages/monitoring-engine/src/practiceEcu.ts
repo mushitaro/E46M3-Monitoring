@@ -270,7 +270,8 @@ export function practiceEcu(): SimulatedEcuOptions {
                     if (adaptation) {
                         return { payload: new Uint8Array(adaptationBlockMinLength(adaptation)) };
                     }
-                    return { status: Ds2Status.PARAMETER_ERROR };
+                    // A selection EdiabasLib was run with (a VANOS test reads block 5 first): as its simulation answered.
+                    return practiceAnswerFor(request.address, request.controlOrStatus, request.payload) ?? { status: Ds2Status.PARAMETER_ERROR };
                 }
 
                 // --- The reads the run gate can emit ---------------------

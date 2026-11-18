@@ -238,7 +238,7 @@ def all_jobs():
         cat = json.load(open(os.path.join(OUT, f), encoding="utf-8"))
         drive = [
             j["id"] for j in cat["jobs"]
-            if j.get("class") in ("test", "calibration", "unclassified")
+            if j.get("class") in ("test", "calibration", "unclassified", "protocol")
             and not WRITES.search(j["id"])
         ]
         if not drive:

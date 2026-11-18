@@ -15,7 +15,7 @@
 import { runSgbdJob, type SgbdJobCode } from './vm.ts';
 import { loadSgbdResults, type SgbdResultsTable } from './results.ts';
 
-export type JobFrame = { ok: true; hex: string; bytes: Uint8Array } | { ok: false; why: string };
+export type JobFrame = { ok: true; hex: string; bytes: Uint8Array; usedClock?: boolean } | { ok: false; why: string; usedClock?: boolean };
 
 const fromBase64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 const hexOf = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join(' ');
@@ -32,13 +32,31 @@ export function jobFrameFrom(table: SgbdResultsTable | null, address: number, jo
     const job: SgbdJobCode = { code: fromBase64(entry.code), base: entry.base };
     let run;
     try {
-        run = runSgbdJob(job, { args, tables: table.tables });
+        run = runSgbdJob(job, { args, tables: table.tables, shm: initialShm(table) });
     } catch (e) {
         return { ok: false, why: `the job did not run: ${e instanceof Error ? e.message : String(e)}` };
     }
     const req = run.request;
     if (!req) return { ok: false, why: run.stopped ? `the job stopped before sending: ${run.stopped.reason}` : 'the job sent nothing' };
-    return finishFrame(req, address);
+    const f = finishFrame(req, address);
+    return run.usedClock ? { ...f, usedClock: true } : f;
+}
+
+/**
+ * EDIABAS's shared memory as the SGBD's INITIALISIERUNG leaves it: EDIABAS runs that job before the
+ * first job of an SGBD, and a job may read what it set (IHKA's drive jobs do). Run dry: it stops at a
+ * send, if it has one, as nothing of it goes on the line here.
+ */
+export function initialShm(table: SgbdResultsTable | null): Map<string, Uint8Array> {
+    const shm = new Map<string, Uint8Array>();
+    const init = table?.jobs.INITIALISIERUNG;
+    if (!table || !init) return shm;
+    try {
+        runSgbdJob({ code: fromBase64(init.code), base: init.base }, { tables: table.tables, shm });
+    } catch {
+        /* an INITIALISIERUNG the interpreter cannot run leaves nothing shared */
+    }
+    return shm;
 }
 
 /**

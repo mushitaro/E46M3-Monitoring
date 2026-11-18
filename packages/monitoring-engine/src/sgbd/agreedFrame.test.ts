@@ -30,7 +30,7 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('the frames a job that takes values may send
         // A PIN in place of the name: EdiabasLib's job refuses it.
         expect(agreedFrameFrom(oracle(), smg2(), 'smg2', 0x32, 'STEUERN_STELLGLIED', ['0x05', 'AKTIV', '0']).ok).toBe(false);
         // A number outside every stretch EdiabasLib was run with, and a fraction where only whole numbers were.
-        expect(agreedFrameFrom(oracle(), smg2(), 'smg2', 0x32, 'STEUERN_STELLGLIED', ['HYDROPUMPE', 'AKTIV', '300']).ok).toBe(false);
+        expect(agreedFrameFrom(oracle(), smg2(), 'smg2', 0x32, 'STEUERN_STELLGLIED', ['HYDROPUMPE', 'AKTIV', '70000']).ok).toBe(false);
         expect(agreedFrameFrom(oracle(), smg2(), 'smg2', 0x32, 'STEUERN_STELLGLIED', ['HYDROPUMPE', 'AKTIV', '7.5']).ok).toBe(false);
         // A word nobody tried.
         expect(agreedFrameFrom(oracle(), smg2(), 'smg2', 0x32, 'STEUERN_STELLGLIED', ['HYDROPUMPE', 'HALB', '0']).ok).toBe(false);

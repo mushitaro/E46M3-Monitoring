@@ -59,7 +59,7 @@ import {
 } from '@tsunagi/ds2-mss54';
 import { appNow } from '../clock.ts';
 import { kwpExchange, kwpFrameOf, parseDtcsByStatus, type KwpFrame } from '../kwpOnDs2.ts';
-import { finishFrame } from '../sgbd/jobFrame.ts';
+import { finishFrame, initialShm } from '../sgbd/jobFrame.ts';
 import { runSgbdJobLive, type SgbdTables } from '../sgbd/vm.ts';
 import { whyNotSendable } from '../actuationGate.ts';
 import type { ReadRecord } from '../investigation/readRecord.ts';
@@ -1203,6 +1203,7 @@ export class LinkSession {
             {
                 args: permit.args ?? [],
                 tables: table.tables as SgbdTables,
+                shm: initialShm(table),
                 maxSends: 16,
                 exchange: async (req) => {
                     const built = finishFrame(req, target.address);

@@ -22,7 +22,7 @@
  */
 
 import { readEcuData } from '../ecuData.ts';
-import { finishFrame, jobFrameFrom } from './jobFrame.ts';
+import { finishFrame, initialShm, jobFrameFrom } from './jobFrame.ts';
 import { loadSgbdResults, type SgbdResultsTable } from './results.ts';
 import { traceSgbdJob, type SgbdTables } from './vm.ts';
 import type { Telegram, TelegramTable } from '../telegrams.ts';
@@ -76,17 +76,37 @@ export interface AgreedFrame {
 export type AgreedResult = { ok: true; frame: AgreedFrame } | { ok: false; why: string };
 
 const key = (moduleId: string, jobId: string) => `${moduleId}:${jobId}`;
+/**
+ * Why a frame that reads the clock (time, date, ticks: a login's seed) differs: built at another moment,
+ * it is another frame, so it can never be the one EdiabasLib was seen to send.
+ */
+export const CLOCK = 'its frame carries the clock, so no run of it is the one compared: ';
 const same = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 const fromBase64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 const bytesOf = (hex: string) => Uint8Array.from(hex.trim().split(/\s+/), (h) => parseInt(h, 16));
 const make = (f: Omit<AgreedFrame, typeof agreed>) => f as unknown as AgreedFrame;
 
+/**
+ * The case as the job itself sends it. EDIABAS runs the SGBD's INITIALISIERUNG before its first job,
+ * and EdiabasLib's trace of a job begins with what that sent (an IDENT, for some modules); the app's
+ * link has its own start, so those frames are not the job's.
+ */
+export function ownFrames(oracle: JobFramesOracle | null, moduleId: string, jobId: string, c: OracleCase): OracleCase {
+    if (jobId === 'INITIALISIERUNG') return c;
+    const init = oracle?.jobs[key(moduleId, 'INITIALISIERUNG')]?.cases.find((x) => x.args.length === 0)?.sends ?? [];
+    if (init.length === 0 || init.length > c.sends.length || !init.every((s, i) => s === c.sends[i])) return c;
+    return { ...c, sends: c.sends.slice(init.length), answers: c.answers?.slice(init.length) };
+}
+
 /** The case EdiabasLib was run with for exactly these values, agreed or not. */
-function exactAgreement(entry: OracleEntry, table: SgbdResultsTable | null, moduleId: string, address: number, jobId: string, c: OracleCase): AgreedResult {
+function exactAgreement(entry: OracleEntry, table: SgbdResultsTable | null, moduleId: string, address: number, jobId: string, whole: OracleCase, oracle: JobFramesOracle | null = null): AgreedResult {
+    const c = ownFrames(oracle, moduleId, jobId, whole);
     if (c.sends.length === 0) return { ok: false, why: `EdiabasLib sends nothing for ${jobId}(${c.args.join(';')})${c.jobStatus ? ` — ${c.jobStatus}` : ''}` };
     if (c.sends.length === 1) {
         const built = jobFrameFrom(table, address, jobId, c.args);
         if (!built.ok) return { ok: false, why: built.why };
+        // A frame built from the clock is another frame at another moment: never the one compared.
+        if (built.usedClock) return { ok: false, why: `${CLOCK}the app builds ${built.hex} now, EdiabasLib ${c.sends[0]} then` };
         if (built.hex !== c.sends[0]) return { ok: false, why: `the app builds ${built.hex}, EdiabasLib ${c.sends[0]}` };
         return { ok: true, frame: make({ moduleId, jobId, args: [...c.args], hex: built.hex, basis: 'exact' }) };
     }
@@ -103,6 +123,8 @@ function exactAgreement(entry: OracleEntry, table: SgbdResultsTable | null, modu
             {
                 args: c.args,
                 tables: table.tables as SgbdTables,
+                shm: initialShm(table),
+                padAnswers: true,
                 maxSends: c.sends.length + 1,
                 reply: (req, i) => {
                     if (i >= c.sends.length) return null;
@@ -118,6 +140,7 @@ function exactAgreement(entry: OracleEntry, table: SgbdResultsTable | null, modu
     } catch (e) {
         return { ok: false, why: `the job did not run: ${e instanceof Error ? e.message : String(e)}` };
     }
+    if (traced?.run.usedClock) return { ok: false, why: `${CLOCK}${mismatch ?? 'its frames are built from the clock'}` };
     if (mismatch) return { ok: false, why: mismatch };
     if (traced.requests.length < c.sends.length) return { ok: false, why: `the app's job sends ${traced.requests.length} frames, EdiabasLib ${c.sends.length}` };
     // Past EdiabasLib's last frame the job may ask again (a status it polls): only a frame it already sent.
@@ -147,13 +170,14 @@ function numberSpans(
     jobId: string,
     around: readonly string[],
     i: number,
+    oracle: JobFramesOracle | null,
 ): Array<{ lo: number; hi: number; integer: boolean }> {
     const tried: Array<{ n: number; ok: boolean; integer: boolean }> = [];
     for (const c of entry.cases) {
         if (!c.args.every((v, j) => j === i || v === around[j])) continue;
         const n = asNumber(c.args[i]);
         if (n === null) continue;
-        const r = exactAgreement(entry, table, moduleId, address, jobId, c);
+        const r = exactAgreement(entry, table, moduleId, address, jobId, c, oracle);
         tried.push({ n, ok: r.ok && !r.frame.sequence, integer: Number.isInteger(n) });
     }
     tried.sort((a, b) => a.n - b.n);
@@ -183,7 +207,7 @@ export function agreedFrameFrom(
     const entry = oracle?.jobs[key(moduleId, jobId)];
     if (!entry) return { ok: false, why: `EdiabasLib's frames for ${jobId} are not here to compare with` };
     const exact = entry.cases.find((x) => same(x.args, args));
-    if (exact) return exactAgreement(entry, table, moduleId, address, jobId, exact);
+    if (exact) return exactAgreement(entry, table, moduleId, address, jobId, exact, oracle);
     // A number between tried values: every other value as in a case EdiabasLib was run with, and each
     // number that differs from that case inside a stretch every tried value of which agreed.
     const kinds = entry.kinds;
@@ -194,7 +218,7 @@ export function agreedFrameFrom(
     for (const i of numbers) {
         if (args[i] === base.args[i]) continue;
         const n = asNumber(args[i]);
-        const inside = n !== null && numberSpans(entry, table, moduleId, address, jobId, base.args, i).some((s) => n >= s.lo && n <= s.hi && (!s.integer || Number.isInteger(n)));
+        const inside = n !== null && numberSpans(entry, table, moduleId, address, jobId, base.args, i, oracle).some((s) => n >= s.lo && n <= s.hi && (!s.integer || Number.isInteger(n)));
         if (!inside) return { ok: false, why: `${args[i]} for ${jobId}'s argument ${i + 1} is outside what EdiabasLib was run with` };
     }
     const built = jobFrameFrom(table, address, jobId, args);
@@ -217,7 +241,7 @@ export function agreedCasesFrom(
     if (!entry) return [];
     const out: AgreedFrame[] = [];
     for (const c of entry.cases) {
-        const r = exactAgreement(entry, table, moduleId, address, jobId, c);
+        const r = exactAgreement(entry, table, moduleId, address, jobId, c, oracle);
         if (r.ok) out.push(r.frame);
     }
     return out;
@@ -244,7 +268,7 @@ export function telegramOfAgreed(frame: AgreedFrame): Telegram {
 /**
  * The module's telegram table with every job that takes no values given the frame(s) its own code
  * and EdiabasLib build alike. Where the table's scraped frame differs, EdiabasLib's is the one: BMW's
- * runner is the reference, the scrape a reading of it. Pure.
+ * runner is the reference, the scrape a reading of it; where they do not agree, the job has none. Pure.
  */
 export function withAgreedFrames(table: TelegramTable, oracle: JobFramesOracle | null, results: SgbdResultsTable | null): TelegramTable {
     if (!oracle) return table;
@@ -255,8 +279,10 @@ export function withAgreedFrames(table: TelegramTable, oracle: JobFramesOracle |
         const jobId = k.slice(prefix.length);
         const c = entry.cases.find((x) => x.args.length === 0);
         if (!c) continue;
-        const r = exactAgreement(entry, results, table.module, table.address, jobId, c);
-        if (r.ok) jobs[jobId] = [telegramOfAgreed(r.frame)];
+        const r = exactAgreement(entry, results, table.module, table.address, jobId, c, oracle);
+        // Where EdiabasLib was run with the job and the two do not agree (or it sends nothing, or its
+        // frame carries the clock), the scraped frame is not what the job sends either: none is kept.
+        jobs[jobId] = r.ok ? [telegramOfAgreed(r.frame)] : [];
     }
     return { ...table, jobs };
 }

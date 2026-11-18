@@ -63,6 +63,8 @@ export interface SgbdRun {
     request: Uint8Array | null;
     /** Why the run ended before `eoj`, or null when it reached it. */
     stopped: { at: number; reason: string } | null;
+    /** The job read the clock (time, date, ticks): what it built may differ from run to run. */
+    usedClock?: boolean;
 }
 
 export type SgbdTables = Readonly<Record<string, readonly (readonly string[])[]>>;
@@ -85,7 +87,11 @@ const OP = {
     // The arguments' count, a real, the binary argument, hex text to bytes, a string's length
     // (EdiabasLib's numbering, as the rest; the jobs that take values use them).
     parr: 0x69, pary: 0x7f, parn: 0x80, hex2y: 0x8e, strlen: 0x90,
+    test: 0x6a, xconnect: 0x26, xawlen: 0x29, xstopf: 0x2d, xreps: 0x42, date: 0x6c, ticks: 0xad, shmset: 0x93, shmget: 0x94, flt2a: 0x87,
     scmp: 0x20, gettmr: 0x43, settmr: 0x44, clrt: 0x46, jt: 0x47, wait: 0x6b,
+    // Float precision, float to integer, float compare, the clock, the interface's parameters
+    // (EdiabasLib: setflt, flt2fix, fcomp, time, xsetpar; the DMEs' and the body modules' drive jobs).
+    setflt: 0x88, flt2fix: 0x96, fcomp: 0xa1, time: 0x6d, xsetpar: 0x28,
 } as const;
 
 type Reg =
@@ -154,6 +160,16 @@ export interface SgbdRunOptions {
     args?: readonly string[];
     /** Each instruction's PRG address before it runs — for checking against a trace. */
     onStep?: (address: number) => void;
+    /**
+     * EDIABAS's shared memory (shmset/shmget), kept across the jobs of one SGBD as EDIABAS keeps it:
+     * its INITIALISIERUNG runs before the first job and may leave values the job reads.
+     */
+    shm?: Map<string, Uint8Array>;
+    /**
+     * Read past the end of an answer as zeros, as EdiabasLib does. Only for comparing with EdiabasLib,
+     * whose simulation answers with bare positive frames; on a car a short answer stops the run.
+     */
+    padAnswers?: boolean;
 }
 
 /**
@@ -198,6 +214,8 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
     // its frame on EdiabasLib. Once an answer is in, a short one stops the run instead: reading it as
     // zeros would report values the module never sent.
     let answered = false;
+    let usedClock = false;
+    let floatPrecision = 4;
 
     const fail = (reason: string): never => {
         throw new Stop(reason);
@@ -297,7 +315,7 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
             const i = o.index();
             let v = 0;
             for (let k = width - 1; k >= 0; k--) v = v * 256 + (s[i + k] ?? 0);
-            if (i + width > s.length && (answered || i + 1 > ARRAY_MAX)) fail('read past the end of a string');
+            if (i + width > s.length && ((answered && !opts.padAnswers) || i + 1 > ARRAY_MAX)) fail('read past the end of a string');
             return v;
         }
         return fail('a number from a non-number');
@@ -309,7 +327,7 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
             const s = strings[o.s];
             const i = o.index();
             const l = o.len ? o.len() : 1;
-            if (i + l > s.length && (answered || i + l > ARRAY_MAX)) fail('read past the end of a string');
+            if (i + l > s.length && ((answered && !opts.padAnswers) || i + l > ARRAY_MAX)) fail('read past the end of a string');
             return s.slice(i, i + l);
         }
         return fail('a string from a non-string');
@@ -382,15 +400,16 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
                     break;
                 }
                 case OP.eoj:
-                    return { results, request, stopped: null };
+                    return { results, request, stopped: null, usedClock };
 
                 case OP.move: {
                     if (a.m === 'reg' && a.r.t === 'str') {
                         strings[a.r.n] = readStr(b).slice();
                     } else if (a.m === 'reg' && a.r.t === 'flt') {
                         floats[a.r.n] = b.m === 'reg' && b.r.t === 'flt' ? floats[b.r.n] : fail('a float from a non-float');
-                    } else if (a.m === 'idx' && a.len) {
-                        // A substring written into a string.
+                    } else if (a.m === 'idx' && (a.len || b.m === 'str' || (b.m === 'reg' && b.r.t === 'str'))) {
+                        // A substring, or a whole string, written into a string at an index (LWS5's
+                        // ABGLEICH_VORGEBEN: `move S5[L0], S1`, S1 empty — nothing is written).
                         const src = readStr(b);
                         const i = a.index();
                         const s = strings[a.s];
@@ -484,8 +503,8 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
                             v = Number(BigInt.asIntN(64, BigInt(sx) * BigInt(sy)) & BigInt(2 ** (w * 8) - 1));
                             break;
                         case OP.divs:
-                            if (sy === 0) fail('division by zero');
-                            v = Math.trunc(sx / sy);
+                            // As EdiabasLib: a zero divisor leaves the dividend as it is (EDIABAS_BIP_0007 set, not raised).
+                            v = sy === 0 ? x : Math.trunc(sx / sy);
                             break;
                         case OP.and:
                             v = Number(BigInt(x) & BigInt(y));
@@ -559,7 +578,7 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
                     if (request === null) request = req.slice();
                     if (a.m !== 'reg' || a.r.t !== 'str') fail('a send into a non-string');
                     const answer: Uint8Array | null = yield req.slice();
-                    if (answer === null) return { results, request, stopped: null };
+                    if (answer === null) return { results, request, stopped: null, usedClock };
                     answered = true;
                     strings[(a as { r: { n: number } }).r.n] = answer.slice();
                     break;
@@ -605,7 +624,7 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
                 case OP.parr: {
                     // Argument n (from 1) as a real. Absent or not a number: Z set, as for parl.
                     const n = readNum(b, 4);
-                    const text = (opts.args ?? [])[n - 1]?.trim() ?? '';
+                    const text = ((opts.args ?? [])[n - 1]?.trim() ?? '').replace(/,/g, '.');
                     const v = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(text) ? Number(text) : null;
                     if (v === null) flags.z = true;
                     else {
@@ -633,6 +652,96 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
                     flags.z = false;
                     break;
                 }
+                case OP.test: {
+                    // An `and` that keeps only the flags (MS43's STEUERN_LL_MANIPULATION).
+                    const w = widthOf(a) ?? widthOf(b) ?? 1;
+                    const v = u(readNum(a, w), w) & u(readNum(b, w), w);
+                    flags.v = false;
+                    setFlags(v, w);
+                    break;
+                }
+                case OP.setflt:
+                    // The precision a float is written out with (flt2a).
+                    floatPrecision = readNum(a, 4) >>> 0;
+                    break;
+                case OP.flt2a: {
+                    // As EdiabasLib: rounded to the precision's significant digits, cut after that many digits.
+                    if (a.m !== 'reg' || a.r.t !== 'str') fail('flt2a into a non-string');
+                    const f = floats[fltOrFail(b)];
+                    const p = Math.max(1, Math.min(15, floatPrecision || 1));
+                    let text = f === 0 || !Number.isFinite(f) ? String(f) : String(Number(f.toPrecision(p)));
+                    let digits = 0;
+                    for (let k = 0; k < text.length; k++) {
+                        if (text[k] >= '0' && text[k] <= '9' && ++digits >= p) {
+                            text = text.slice(0, k + 1);
+                            break;
+                        }
+                    }
+                    strings[(a as { r: { n: number } }).r.n] = fromLatin1(text);
+                    break;
+                }
+                case OP.shmset: {
+                    const k = latin1(readStr(a)).toUpperCase();
+                    opts.shm?.set(k, readStr(b).slice());
+                    break;
+                }
+                case OP.shmget: {
+                    if (a.m !== 'reg' || a.r.t !== 'str') fail('shmget into a non-string');
+                    const v = opts.shm?.get(latin1(readStr(b)).toUpperCase());
+                    flags.c = v === undefined;
+                    strings[(a as { r: { n: number } }).r.n] = v ? v.slice() : new Uint8Array(0);
+                    break;
+                }
+                case OP.xconnect:
+                case OP.xawlen:
+                case OP.xstopf:
+                case OP.xreps:
+                    // The interface's line: opened, its answer lengths set, its repeated sends stopped, its retries counted — the
+                    // link has its own, and none of these sends anything.
+                    break;
+                case OP.date: {
+                    if (a.m !== 'reg' || a.r.t !== 'str') fail('date into a non-string');
+                    const now = new Date();
+                    usedClock = true;
+                    strings[(a as { r: { n: number } }).r.n] = Uint8Array.from([now.getDate(), now.getMonth() + 1, now.getFullYear() % 100]);
+                    break;
+                }
+                case OP.ticks: {
+                    usedClock = true;
+                    const r = numOrFail(a);
+                    setNum(r, Date.now() & 0x7fffffff);
+                    break;
+                }
+                case OP.flt2fix: {
+                    const r = numOrFail(a);
+                    const f = b.m === 'reg' && b.r.t === 'flt' ? floats[b.r.n] : fail('flt2fix from a non-float');
+                    const v = Number.isFinite(f) ? Math.trunc(f) : 0;
+                    setNum(r, v);
+                    flags.v = false;
+                    setFlags(v, r.width);
+                    break;
+                }
+                case OP.fcomp: {
+                    const x = floats[fltOrFail(a)];
+                    const y = floats[fltOrFail(b)];
+                    const d = x - y;
+                    if (!Number.isFinite(d)) flags.c = true;
+                    flags.z = x === y;
+                    flags.s = x < y;
+                    flags.v = false;
+                    break;
+                }
+                case OP.time: {
+                    // Hours, minutes, seconds: what the job reads is not sent.
+                    if (a.m !== 'reg' || a.r.t !== 'str') fail('time into a non-string');
+                    const now = new Date();
+                    usedClock = true;
+                    strings[(a as { r: { n: number } }).r.n] = Uint8Array.from([now.getHours(), now.getMinutes(), now.getSeconds()]);
+                    break;
+                }
+                case OP.xsetpar:
+                    // The interface's timing parameters; the link has its own.
+                    break;
                 case OP.strlen: {
                     // The text's length, to its first NUL.
                     const r = numOrFail(a);
@@ -648,7 +757,8 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
                     const n = readNum(b, 4);
                     const text = (opts.args ?? [])[n - 1];
                     strings[(a as { r: { n: number } }).r.n] = fromLatin1(text ?? '');
-                    flags.z = text === undefined;
+                    // An empty argument is no argument, as EDIABAS hands it over (IHKA's drive jobs branch on it).
+                    flags.z = text === undefined || text === '';
                     break;
                 }
                 case OP.etag:
@@ -682,7 +792,9 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
                     break;
                 }
                 case OP.a2flt: {
-                    const n = Number(latin1(readStr(b)).trim());
+                    // As EdiabasLib's StringToFloat: a comma is a decimal point ("0,75" in MS43's tables).
+                    const t = latin1(readStr(b)).replace(/\0.*$/, '').trim().replace(/,/g, '.');
+                    const n = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(t) ? Number(t) : NaN;
                     floats[fltOrFail(a)] = Number.isFinite(n) ? n : 0;
                     break;
                 }
@@ -692,15 +804,22 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
                 case OP.fdiv: {
                     const x = fltOrFail(a);
                     const y = floats[fltOrFail(b)];
-                    if (op === OP.fdiv && y === 0) fail('division by zero');
                     floats[x] = op === OP.fadd ? floats[x] + y : op === OP.fsub ? floats[x] - y : op === OP.fmul ? floats[x] * y : floats[x] / y;
                     break;
                 }
                 case OP.a2fix: {
                     const r = numOrFail(a);
-                    // The whole string or nothing: on the car's trace, "1B" became 0, not 1.
-                    const s = latin1(readStr(b)).trim();
-                    const n = /^0x[0-9a-f]+$/i.test(s) ? parseInt(s, 16) : /^[+-]?\d+$/.test(s) ? parseInt(s, 10) : 0;
+                    // As EdiabasLib's StringToValue: hex after 0x, binary after 0y, else the decimal before a
+                    // '.' or ',' ("2.56016" is 2: MS43's drive jobs scale a value and send its whole part).
+                    // The rest must be a number or it is 0: on the car's trace, "1B" became 0, not 1.
+                    const s = latin1(readStr(b)).replace(/\0.*$/, '').trimEnd();
+                    const lo = s.toLowerCase();
+                    const dec = s.trimStart().split(/[.,]/)[0];
+                    const n = lo.startsWith('0x')
+                        ? (/^0x[0-9a-f]+$/.test(lo) ? parseInt(lo.slice(2), 16) : 0)
+                        : lo.startsWith('0y')
+                          ? (/^0y[01]+$/.test(lo) ? parseInt(lo.slice(2), 2) : 0)
+                          : /^[+-]?\d+$/.test(dec) ? parseInt(dec, 10) : 0;
                     setNum(r, n);
                     setFlags(n, r.width);
                     break;
@@ -733,11 +852,12 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
                     break;
                 }
                 case OP.serase: {
-                    // S[i],len (or S[i]: one byte) removed from the string.
+                    // From S[i], as many bytes as the second operand says (EdiabasLib's OpSerase; LWS5's
+                    // ABGLEICH_VORGEBEN: `serase S1[0], L0` with L0 = 2). Without one, S[i],len or one byte.
                     if (a.m !== 'idx') fail('serase of a non-index');
                     const o = a as Extract<Operand, { m: 'idx' }>;
                     const i = o.index();
-                    const l = o.len ? o.len() : 1;
+                    const l = b.m !== 'none' ? readNum(b, widthOf(b) ?? 4) : o.len ? o.len() : 1;
                     const s = strings[o.s];
                     strings[o.s] = Uint8Array.from([...s.slice(0, i), ...s.slice(i + l)]);
                     break;
@@ -784,10 +904,10 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
         }
         fail('too many steps');
     } catch (e) {
-        if (e instanceof Stop) return { results, request, stopped: { at: base + pc, reason: e.message } };
+        if (e instanceof Stop) return { results, request, stopped: { at: base + pc, reason: e.message }, usedClock };
         throw e;
     }
-    return { results, request, stopped: null };
+    return { results, request, stopped: null, usedClock };
 }
 
 

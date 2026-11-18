@@ -291,6 +291,19 @@ export const MONITORING_TOOLS = {
             ['module', 'job', 'owner_said'],
         ),
     },
+    monitoring_procedure: {
+        scope: 'control',
+        description:
+            "Start one of SMG II's guided procedures (its test programs: bleeding, clutch bite point, valve characteristics, accumulator pressure, gear positions, a complete gearbox adaptation…), where the owner's table opens procedures to the assistant. Before calling: read back the procedure, every precondition its dialog lists and what will move, wait for the owner's OK, and pass their words as owner_said. Parked only, with SMG II on the screen and connected. The screen opens the procedure's dialog with its preconditions ticked on the owner's word and runs it through the same gate as its START: practised first on PRACTICE, the car measured (standstill, battery, engine as the procedure asks), the test program stopped first and last. It runs to its end; the screen's ABORT or monitoring_stop_outputs ends it sooner.",
+        inputSchema: obj(
+            {
+                procedure: str('Its program number, as monitoring_catalog lists it (0x01 … 0x15).'),
+                gear: str('For the procedure that engages a gear (0x0A): which, as its dialog offers (0 … 7).'),
+                owner_said: str("The owner's own words of OK, given after the read-back."),
+            },
+            ['procedure', 'owner_said'],
+        ),
+    },
     monitoring_stop_outputs: {
         scope: 'control',
         description: 'Stop every output that is on, oldest first: each one\'s stop frame is sent and it is taken off whatever the module answers. Never refused — anyone may stop, any time, moving or not.',

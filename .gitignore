@@ -84,3 +84,6 @@ desk-work/
 
 # End-to-end demo test reports (npm run e2e)
 /e2e-report/
+
+# The run coverage list (npm run coverage:runs): BMW SGBD job names in bulk, kept with the private data
+/run-coverage/

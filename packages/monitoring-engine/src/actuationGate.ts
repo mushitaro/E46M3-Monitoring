@@ -100,8 +100,10 @@ export function mayActuate(
     // a read on a moving car has executed before a car is the first thing it executes against.
     // A job that drives something carries its terms in PRACTICE too, so the permit, the battery and
     // engine preflight and the time-out run here before they run on a car (policy: practice first).
+    // As on a car (runGate.mayDrive): what is not a read by its nature drives something, and goes after
+    // the screen's confirmation with its permit, whatever its control byte (a clear's 0x05 included).
     const decision = decisionFor(ctx.moduleId, job, ctx.group, ctx.args);
-    const drives = !isReadNature(decision.nature) && !isReadOnlyControl(bytes[2], ctx.moduleId);
+    const drives = !isReadNature(decision.nature);
     return { allowed: true, telegram, control: bytes[2], requires: 'parked', ...(drives ? { actuation: actuationTerms(job, decision) } : {}) };
 }
 

@@ -55,10 +55,10 @@ describe('floats', () => {
         expect(value(r, 'UBAT')).toBeCloseTo(13.325, 6);
     });
 
-    it('stops, keeping what it had, on a division by zero', () => {
+    it('divides by zero as EdiabasLib does: an infinity, and the job goes on', () => {
         const r = run([...ergi('BEFORE', I0), ...movL(L0, 0), [0x68, 0x34, F1, L0], [0x3e, 0x11, F0, F1], ...ergr('X', F0), ...eoj].flat());
-        expect(r.results.map((x) => x.name)).toEqual(['BEFORE']);
-        expect(r.stopped?.reason).toBe('division by zero');
+        expect(r.results.map((x) => x.name)).toEqual(['BEFORE', 'X']);
+        expect(r.stopped).toBeNull();
     });
 });
 

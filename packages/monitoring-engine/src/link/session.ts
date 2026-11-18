@@ -58,11 +58,14 @@ import {
     type ErrorMemoryQuickTest,
 } from '@tsunagi/ds2-mss54';
 import { appNow } from '../clock.ts';
-import { kwpExchange, parseDtcsByStatus, type KwpFrame } from '../kwpOnDs2.ts';
+import { kwpExchange, kwpFrameOf, parseDtcsByStatus, type KwpFrame } from '../kwpOnDs2.ts';
+import { finishFrame, initialShm } from '../sgbd/jobFrame.ts';
+import { runSgbdJobLive, type SgbdTables } from '../sgbd/vm.ts';
 import { whyNotSendable } from '../actuationGate.ts';
 import type { ReadRecord } from '../investigation/readRecord.ts';
 import type { ModuleProtocol } from '../moduleProtocol.ts';
-import { PracticePort } from '../practiceEcu.ts';
+import { PracticePort, setPracticeAnswers } from '../practiceEcu.ts';
+import { loadJobFramesOracle } from '../sgbd/agreedFrame.ts';
 import { practiceCar } from '../practiceCar.ts';
 import { runProbe, type ProbeDeps, type ProbePlan, type ProbeRun } from '../probe/executor.ts';
 import { modulesOf } from '../probe/plan.ts';
@@ -725,6 +728,8 @@ export class LinkSession {
             // simulated port in a REAL WebSerialTransport, so the simulator drives the actual
             // transport class rather than a mock of it.
             const address = this.target.address;
+            // PRACTICE answers the frames EdiabasLib was run with as its simulation did (practiceEcu).
+            if (nextMode === 'practice') setPracticeAnswers(await loadJobFramesOracle());
             const selected =
                 nextMode === 'practice'
                     ? {
@@ -1080,9 +1085,12 @@ export class LinkSession {
     readonly runRead = (jobId: string, hex: string, requires: SendRequirement = 'parked', permit?: ActuationPermit) =>
         this.run(`Run ${jobId}`, async (link) => {
             const { target, to } = this.session(link);
-            // A KWP-on-DS2 module is sent its identity and its fault read, and nothing else: the
-            // catalogue path builds DS2 frames, which this module would read as something else.
-            if (target.kwp) refuse(`${jobId}: ${target.moduleId} speaks KWP2000-shaped frames; only its identity and fault read are built for it.`);
+            // A job that sends several frames, and anything that drives a KWP-on-DS2 module, runs as
+            // its own code runs (`runByCode`): each frame it builds goes only if the permit names it.
+            if (permit && (target.kwp || (permit.sequence?.length ?? 0) > 1)) return this.runByCode(link, jobId, hex, permit);
+            // Otherwise a KWP-on-DS2 module is sent its identity and its fault read, and nothing else:
+            // the catalogue path builds DS2 frames, which this module would read as something else.
+            if (target.kwp) refuse(`${jobId}: ${target.moduleId} speaks KWP2000-shaped frames; only its identity, its fault read and what the owner's table opens are built for it.`);
             const bytes = telegramBytes(hex);
             if (!bytes) {
                 // A plain Error on purpose: this is the APP refusing, not
@@ -1164,6 +1172,82 @@ export class LinkSession {
             }
             return result;
         });
+
+    /**
+     * A job that drives something, run as its own SGBD code runs (sgbd/vm `runSgbdJobLive`): the job
+     * builds each frame, reads each answer and decides what to send next, as EDIABAS runs it. Each frame
+     * goes only if it is the next of the permit's frames — the ones its code and EdiabasLib send
+     * (sgbd/agreedFrame) — or one already sent, asked again (a status it polls). A frame the module's
+     * answer led somewhere else is not sent, and the run ends there. DS2 frames go as every frame does
+     * (`readFrame`); a KWP-on-DS2 module's (the DSC MK60) as its reads do (`kwpExchange`).
+     */
+    private async runByCode(link: Ds2Link, jobId: string, hex: string, permit: ActuationPermit): Promise<JobRunResult> {
+        const { target, to } = this.session(link);
+        if (!permitCovers(permit, target.moduleId, jobId, hex, Date.now())) throw new NotSentError(jobId, 'permission', 'the permit does not cover this frame');
+        const table = await loadSgbdResults(target.moduleId);
+        // A run of a job that takes values goes by the part it drives (`STEUERN_STELLGLIED(HYDROPUMPE)`).
+        const code = table?.jobs[jobId.replace(/\(.*\)$/, '')];
+        if (!table || !code) throw new Error(`${jobId}: its code is not carried, so its frames cannot be built here`);
+        const frames = permit.sequence ?? [permit.hex];
+        if (permit.kind === 'run') {
+            await this.preflight(link, jobId, 'parked');
+            await this.preflightRun(link, jobId, permit.engine);
+        }
+        if (target.kwp) await this.clearFor(target.address, target.moduleId);
+        const transport = target.kwp ? (this.transport ?? refuse('No open transport.')) : null;
+        const sent: string[] = [];
+        let last: { payload: string; length: number } = { payload: '', length: 0 };
+        let rejected = false;
+        const run = await runSgbdJobLive(
+            { code: Uint8Array.from(atob(code.code), (c) => c.charCodeAt(0)), base: code.base },
+            {
+                args: permit.args ?? [],
+                tables: table.tables as SgbdTables,
+                shm: initialShm(table),
+                // PRACTICE answers as EdiabasLib's simulation did (bare positive frames): read them as it
+                // does. On a car a short answer stops the run.
+                padAnswers: this.modeNow === 'practice',
+                maxSends: 16,
+                exchange: async (req) => {
+                    const built = finishFrame(req, target.address);
+                    if (!built.ok) throw new Error(`${jobId}: ${built.why}`);
+                    const i = sent.length;
+                    if (built.hex !== frames[i] && !(i >= frames.length && sent.includes(built.hex))) {
+                        throw new NotSentError(jobId, 'permission', `frame ${i + 1}: the job would send ${built.hex}, not ${frames[i] ?? 'more than it was compared with'}`);
+                    }
+                    sent.push(built.hex);
+                    this.append('tx', `${jobId} [${i + 1}/${frames.length}]: ${built.hex}`);
+                    if (transport) {
+                        const f = kwpFrameOf(built.hex, `${jobId} (its own code)`);
+                        if (!f) throw new Error(`${jobId}: ${built.hex} is not a KWP-on-DS2 frame`);
+                        const answer = await link.withGate(() => kwpExchange(transport, f));
+                        this.append('rx', toHex(answer.bytes));
+                        last = { payload: toHex(answer.data), length: answer.data.length };
+                        return answer.bytes;
+                    }
+                    const f = await this.readFrame(to, target.moduleId, jobId, built.bytes[2], built.bytes.slice(3, built.bytes.length - 1));
+                    if (f.controlOrStatus !== 0xa0) rejected = true;
+                    this.append('rx', `${f.payload.length} bytes`);
+                    last = { payload: toHex(f.payload), length: f.payload.length };
+                    return answerFrame(f.address, f.controlOrStatus, f.payload);
+                },
+            },
+        ).catch((e: unknown) => {
+            this.noteRun(target.moduleId, jobId, permit.kind, sent.join(' | ') || hex, null, 'failed', e);
+            throw e;
+        });
+        if (run.stopped && sent.length === 0) {
+            const e = new Error(`${jobId}: ${run.stopped.reason}`);
+            this.noteRun(target.moduleId, jobId, permit.kind, hex, null, 'failed', e);
+            throw e;
+        }
+        const failed = run.stopped && !/no answer|more than/.test(run.stopped.reason) ? run.stopped.reason : null;
+        this.noteRun(target.moduleId, jobId, permit.kind, sent.join(' | '), last.payload, failed ? 'failed' : rejected ? 'rejected' : 'ok', failed ? new Error(failed) : null);
+        if (failed) throw new Error(`${jobId}: ${failed}`);
+        const result: JobRunResult = { jobId, request: sent.join(' | '), response: last.payload, payloadLength: last.length, at: appNow(), error: null, decoded: null };
+        this.update({ lastRun: result });
+        return result;
+    }
 
     /** A run of a job that drives something: PRACTICE's is practice, the car's is a record. */
     private noteRun(moduleId: string, jobId: string, kind: 'run' | 'follow' | 'stop', telegram: string, response: string | null, outcome: 'ok' | 'rejected' | 'failed', e: unknown) {

@@ -50,6 +50,7 @@ function tab(over: Partial<TabFacade> = {}) {
         pane: vi.fn(),
         stage: async () => ({}),
         actuate: vi.fn(async (q) => ({ started: true, ...q })),
+        procedure: vi.fn(async (q) => ({ started: true, ...q })),
         stopOutputs: vi.fn(async () => ({ stopped: [] })),
         startLog: () => null,
         datalog: () => ({ selected: ['3:n'], samples: 0 }),

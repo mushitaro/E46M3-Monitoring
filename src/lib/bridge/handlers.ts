@@ -94,6 +94,7 @@ export interface TabFacade {
      * the same gate, permit, measurement and arming as ACTUATOR's RUN. Says why not otherwise.
      */
     actuate(q: { module: string; job: string; phase: 'start' | 'pulse'; ownerSaid: string; values?: string[] }): Promise<unknown>;
+    procedure(q: { procedure: string; gear?: string; ownerSaid: string }): Promise<unknown>;
     /** Stop every output that is on. Not gated: anyone, any time. */
     stopOutputs(): Promise<unknown>;
     /** Null when it started; otherwise why not. */
@@ -517,6 +518,13 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
                 phase: args.phase === 'start' ? 'start' : 'pulse',
                 ownerSaid: typeof args.owner_said === 'string' ? args.owner_said : '',
                 values: Array.isArray(args.values) ? args.values.map((v) => String(v)) : undefined,
+            }),
+
+        monitoring_procedure: async (args) =>
+            f.procedure({
+                procedure: text(args.procedure, 'procedure'),
+                gear: typeof args.gear === 'string' ? args.gear : undefined,
+                ownerSaid: typeof args.owner_said === 'string' ? args.owner_said : '',
             }),
 
         monitoring_stop_outputs: async () => f.stopOutputs(),

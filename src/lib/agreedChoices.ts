@@ -4,9 +4,9 @@
  * A set is offered only where the app and EdiabasLib build the same frame for exactly those values
  * (`agreedCasesFrom`, the engine's sgbd/agreedFrame.ts). For a start that leaves something on, its
  * stop must be agreed too: the job's `stopArgs` laid over the same values (SMG II's
- * STEUERN_STELLGLIED: the same part with STEUERART1 = INAKTIV). A start whose stop is not agreed is
- * not offered, nor one whose stop is another job, and a "start" that is its own stop (INAKTIV as the
- * mode) is not a start.
+ * STEUERN_STELLGLIED: the same part with STEUERART1 = INAKTIV), or the stop job's own values (its
+ * arguments taken by name from the start's, or none). A start whose stop is not agreed is not offered,
+ * and a "start" that is its own stop (INAKTIV as the mode) is not a start.
  *
  * The choices are whole sets, never one value at a time: values chosen one by one can make a set
  * nobody compared.
@@ -33,12 +33,12 @@ export function agreedChoices(
     op: Pick<JobOperation, 'kind' | 'stopJob' | 'startArgs' | 'stopArgs'>,
     starts: readonly AgreedFrame[],
     stops: readonly AgreedFrame[],
+    /** The stop job's own argument names, where the stop is another job. Absent: it takes the same as this one. */
+    stopArgNames?: readonly string[],
 ): AgreedChoice[] {
     const names = job.args.map((a) => a.name);
     const hold = op.kind === 'hold' && !!op.stopJob;
-    // A stop by another job would need that job's own values compared; until one does, a start that
-    // leaves something on is offered only where it ends itself (its own job with its stop's values).
-    if (hold && op.stopJob !== job.id) return [];
+    const stopNames = op.stopJob === job.id ? names : (stopArgNames ?? names);
     const stopArgs = op.stopArgs ?? {};
     const startArgs = op.startArgs ?? {};
     const out: AgreedChoice[] = [];
@@ -50,8 +50,9 @@ export function agreedChoices(
         let stop: AgreedFrame | undefined;
         if (hold) {
             // A start that already carries its stop's values is the stop, not a start.
-            if (Object.keys(stopArgs).length && Object.entries(stopArgs).every(([k, v]) => values[k] === v)) continue;
-            const want = names.map((n, i) => (n in stopArgs ? stopArgs[n] : s.args[i]));
+            if (op.stopJob === job.id && Object.keys(stopArgs).length && Object.entries(stopArgs).every(([k, v]) => values[k] === v)) continue;
+            // The stop's values: its own arguments, each from what the stop imposes, else the start's same-named value.
+            const want = stopNames.map((n) => (n in stopArgs ? stopArgs[n] : (values[n] ?? '')));
             stop = stops.find((x) => x.jobId === op.stopJob && same(x.args, want));
             if (!stop) continue;
         }

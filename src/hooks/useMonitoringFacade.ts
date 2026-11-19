@@ -37,6 +37,7 @@ import { mayActuate } from '@tsunagi/monitoring-engine';
 import { assistantMayStart, startActuation } from '@/lib/actuation';
 import { procedureAsJob } from '@/views/service/ServiceView';
 import type { Smg2Workflows } from '@/lib/smg2Workflows';
+import { isProcedureStart, procedureRows, runWith } from '@/lib/catalogRoutes';
 import type { Arming } from '@/hooks/useActuatorArming';
 
 
@@ -349,10 +350,21 @@ export function useMonitoringFacade(input: {
                         preconditions: j.preconditions,
                         mayRunNow: v.allowed,
                         reason: v.allowed ? null : en.runBlock[v.reason],
+                        // A job that takes values has its own door (car, 2026-11-19: a bare "takes values" read as "cannot be run").
+                        ...(runWith(module, j) ? { runWith: runWith(module, j) } : {}),
                         ledger: rec ? { status: rec.status, observations: rec.observations ?? 0 } : null,
                     };
                 });
-            return { module, name: moduleName(module), jobs, inSession: module === ecuId };
+            // SMG II's procedures are not SGBD jobs (one job, TESTPRG_STARTEN, with a program number):
+            // listed here so monitoring_procedure's number can be found (lib/catalogRoutes).
+            const procedures =
+                !kind || kind === 'calibration' || kind === 'test'
+                    ? procedureRows(module, input.workflows, profile.jobs.find((j) => j.id === 'TESTPRG_STARTEN'), profile.group, ledger, link.motion, words).map((p) => ({
+                          ...p,
+                          reason: p.reason ? en.runBlock[p.reason] : null,
+                      }))
+                    : [];
+            return { module, name: moduleName(module), jobs, ...(procedures.length ? { procedures } : {}), inSession: module === ecuId };
         },
 
         entries: () => listAllEntries(),
@@ -437,6 +449,9 @@ export function useMonitoringFacade(input: {
             }
             const job = catalog?.jobs.find((j) => j.id === jobId);
             if (!job) return { started: false, reason: `${jobId} is not a job of ${moduleName(module)}.` };
+            // A test program is a procedure: stopped first and last, followed to its end by its dialog.
+            if (isProcedureStart(module, job.id))
+                return { started: false, reason: `${job.id} is started as a procedure: monitoring_procedure with its program number (monitoring_catalog lists the procedures).` };
             // A job that takes values runs only with a whole set its own code and EdiabasLib build alike
             // (lib/agreedChoices); without one, the answer is the sets to choose from.
             // A job that stays on until its stop (SMG II's actuators: AKTIV, then INAKTIV) always starts

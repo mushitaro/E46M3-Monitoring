@@ -67,7 +67,7 @@ export const MONITORING_TOOLS = {
     monitoring_catalog: {
         scope: 'read',
         description:
-            "Jobs of a module from its own SGBD, matched against a query: name, description, kind (read, test, calibration, live), and whether this tab may send it now — and if not, the gate's reason (no certain telegram, needs an argument, not a read, withdrawn, car moving, standstill not measured). Also the ledger standing of each read.",
+            "Jobs of a module from its own SGBD, matched against a query: name, description, kind (read, test, calibration, live), and whether this tab may send it now — and if not, the gate's reason (no certain telegram, needs an argument, not a read, withdrawn, car moving, standstill not measured). A job that takes values says in runWith which tool runs it (monitoring_actuate with a set of values, or monitoring_procedure). For SMG II also its procedures (the test programs monitoring_procedure starts): program number, name, what each asks of the engine, its preconditions, and whether it may start now. Also the ledger standing of each read.",
         inputSchema: obj(
             {
                 module: MODULE,

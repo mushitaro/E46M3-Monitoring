@@ -160,3 +160,23 @@ describe('the upper register file and the trap mask (DSC_MK60’s FS_LESEN)', ()
         expect(r.results.map((x) => x.name)).toContain('SKIPPED');
     });
 });
+
+describe('a table row found by number (tabseeku)', () => {
+    // tabset "T"; tabseeku "NR", L0; tabget S1, "TEXT"; ergs.
+    const seek = (v: number) =>
+        run(
+            [[0x7b, 0x80, ...name('T')], ...movL(L0, v), [0x9a, 0x84, ...name('NR'), L0], [0x7d, 0x18, S1, ...name('TEXT')], [0x39, 0x81, ...name('TEXT'), S1], ...eoj].flat(),
+            { tables: { T: [['NR', 'TEXT'], ['0x17', 'odometer'], ['28', 'ambient'], ['0x1C', 'ambient again'], ['0xFF', 'unknown']] } },
+        );
+    const text = (r: ReturnType<typeof run>) => (r.results.find((x) => x.name === 'TEXT')!.value as { value: string }).value;
+
+    it('compares the column as a number, as EdiabasLib does: 0x17 is 23, and the first match wins', () => {
+        expect(seek(23).stopped).toBeNull();
+        expect(text(seek(23))).toBe('odometer');
+        expect(text(seek(28))).toBe('ambient');
+    });
+
+    it('stands on the last row when no row has the value', () => {
+        expect(text(seek(5))).toBe('unknown');
+    });
+});

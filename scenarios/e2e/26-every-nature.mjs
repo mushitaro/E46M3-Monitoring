@@ -118,7 +118,16 @@ const scenario = {
                 run: async (page) => {
                     const off = await onModule(page, 'smg2');
                     if (off) return off;
-                    const r = await tool(page, 'monitoring_procedure', { procedure: '0x01', owner_said: 'いいよ' });
+                    // The catalogue leads there: the start job names its tool, the procedures carry the number
+                    // (car, 2026-11-19: a bare "takes values" and no list read as "nothing can be run").
+                    const cat = await tool(page, 'monitoring_catalog', { module: 'smg2', query: 'TESTPRG_STARTEN bleeding' });
+                    const start = cat?.jobs?.find((j) => j.job === 'TESTPRG_STARTEN');
+                    if (!/^monitoring_procedure/.test(start?.runWith ?? '')) return `catalogue: no route for TESTPRG_STARTEN: ${JSON.stringify(start).slice(0, 200)}`;
+                    const listed = cat?.procedures?.find((p) => p.procedure === '0x01');
+                    if (!listed?.assistantMayStart) return `catalogue: procedure 0x01 not listed for the assistant: ${JSON.stringify(cat?.procedures).slice(0, 200)}`;
+                    const bare = await tool(page, 'monitoring_actuate', { module: 'smg2', job: 'TESTPRG_STARTEN', owner_said: 'いいよ' });
+                    if (bare?.started !== false || !/monitoring_procedure/.test(bare?.reason ?? '')) return `monitoring_actuate did not send TESTPRG_STARTEN to monitoring_procedure: ${JSON.stringify(bare).slice(0, 200)}`;
+                    const r = await tool(page, 'monitoring_procedure', { procedure: listed.procedure, owner_said: 'いいよ' });
                     if (r?.started !== true) return JSON.stringify(r).slice(0, 240);
                     const dialog = page.locator('[role=dialog]').first();
                     await dialog.waitFor({ timeout: 4000 });

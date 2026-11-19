@@ -6,6 +6,7 @@ import type { useProbe } from '@/hooks/useProbe';
 import type { FreshFaults, TabFacade } from '@/lib/bridge/handlers';
 import { jobRiskOf, loadEcuCatalog, text as resolveText, type DecodedFault, type EcuIndex, type EcuProfile, type JobClass } from '@tsunagi/monitoring-engine';
 import { normCode } from '@/lib/faultCode';
+import { CHROME } from '@/lib/i18n/chrome';
 import { en } from '@/lib/i18n/en';
 import { TUNER_WORKS } from '@/lib/links';
 import type { Ledger } from '@tsunagi/monitoring-engine';
@@ -258,7 +259,11 @@ export function useMonitoringFacade(input: {
             device: deviceLabel(input.defaultDevice),
             practice: link.mode === 'practice',
             link: link.state,
-            module: { id: ecuId, name: moduleName(ecuId) },
+            // What the module select on the screen says. With ALL MODULES chosen on DIAGNOSIS no one module
+            // is selected, and saying the link's module here read as "MSS54 is selected" (operator, 2026-11-19).
+            module: tab === 'diagnosis' && input.allModules ? { id: null, name: CHROME.module_all, all: true } : { id: ecuId, name: moduleName(ecuId) },
+            // The one module the link opens on, and the single-module tools act on, whatever the select says.
+            linkModule: { id: ecuId, name: moduleName(ecuId) },
             speedKmh: link.vehicleState?.speedKmh ?? null,
             // DSC's speed over CAN. Above 1 km/h it alone makes the car moving (lib/vehicleState).
             speedCanKmh: link.vehicleState?.speedCanKmh ?? null,

@@ -124,6 +124,20 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('the six that refused on the car, by their o
         expect(typeof r.read.faults[0].code).toBe('number');
     });
 
+    it('SMG II: an entry is read to the job’s end, its conditions looked up by number (tabseeku)', async () => {
+        // A made-up entry (not a car's): one fault at location 0x13 with one set of conditions.
+        const m = module(0x32, [0x01, 0x13, 0x81, 0x00, 0x3f, 0x10, 0x00, 0x40, 0x01, 0x80, ...new Array<number>(56).fill(0)]);
+        const r = await readFaultsByJob(table('smg2'), 'smg2', 0x32, m.exchange, never);
+        expect(m.sent).toEqual(['32 05 04 01']);
+        expect(r).toMatchObject({ outcome: 'answered', read: { status: 'OKAY', stopped: null } });
+        expect(r.read.faults).toHaveLength(1);
+        expect(r.read.faults[0]).toMatchObject({ code: 19, text: 'Ansteuerung Shift Lock' });
+        const named = (n: string) => r.read.faults[0].values.find((v) => v.name === n);
+        expect(named('F_UW1_TEXT')?.value).toBe('Kilometerstand');
+        expect(named('F_UW1_WERT')?.unit).toBe('km');
+        expect(named('F_UW3_WERT')?.unit).toBe('V');
+    });
+
     it('a module that is not there is silent, not refused', async () => {
         const r = await readFaultsByJob(table('alc_ds2'), 'alc_ds2', 0x66, async () => { throw Object.assign(new Error('timeout'), { silent: true }); }, (e) => (e as { silent?: boolean }).silent === true);
         expect(r.outcome).toBe('silent');

@@ -91,8 +91,24 @@ const OP = {
     scmp: 0x20, gettmr: 0x43, settmr: 0x44, clrt: 0x46, jt: 0x47, wait: 0x6b,
     // Float precision, float to integer, float compare, the clock, the interface's parameters
     // (EdiabasLib: setflt, flt2fix, fcomp, time, xsetpar; the DMEs' and the body modules' drive jobs).
-    setflt: 0x88, flt2fix: 0x96, fcomp: 0xa1, time: 0x6d, xsetpar: 0x28,
+    setflt: 0x88, flt2fix: 0x96, tabseeku: 0x9a, fcomp: 0xa1, time: 0x6d, xsetpar: 0x28,
 } as const;
+
+/**
+ * A text read as a whole number, as EdiabasLib's StringToValue: hex after 0x, binary after 0y, else the
+ * decimal before a '.' or ',' ("2.56016" is 2: MS43's drive jobs scale a value and send its whole part).
+ * The rest must be a number or it is 0: on the car's trace, "1B" became 0, not 1.
+ */
+function textValue(text: string): number {
+    const s = text.replace(/\0.*$/, '').trimEnd();
+    const lo = s.toLowerCase();
+    const dec = s.trimStart().split(/[.,]/)[0];
+    return lo.startsWith('0x')
+        ? (/^0x[0-9a-f]+$/.test(lo) ? parseInt(lo.slice(2), 16) : 0)
+        : lo.startsWith('0y')
+          ? (/^0y[01]+$/.test(lo) ? parseInt(lo.slice(2), 2) : 0)
+          : /^[+-]?\d+$/.test(dec) ? parseInt(dec, 10) : 0;
+}
 
 type Reg =
     | { t: 'num'; at: number; width: 1 | 2 | 4 }
@@ -812,14 +828,7 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
                     // As EdiabasLib's StringToValue: hex after 0x, binary after 0y, else the decimal before a
                     // '.' or ',' ("2.56016" is 2: MS43's drive jobs scale a value and send its whole part).
                     // The rest must be a number or it is 0: on the car's trace, "1B" became 0, not 1.
-                    const s = latin1(readStr(b)).replace(/\0.*$/, '').trimEnd();
-                    const lo = s.toLowerCase();
-                    const dec = s.trimStart().split(/[.,]/)[0];
-                    const n = lo.startsWith('0x')
-                        ? (/^0x[0-9a-f]+$/.test(lo) ? parseInt(lo.slice(2), 16) : 0)
-                        : lo.startsWith('0y')
-                          ? (/^0y[01]+$/.test(lo) ? parseInt(lo.slice(2), 2) : 0)
-                          : /^[+-]?\d+$/.test(dec) ? parseInt(dec, 10) : 0;
+                    const n = textValue(latin1(readStr(b)));
                     setNum(r, n);
                     setFlags(n, r.width);
                     break;
@@ -885,6 +894,20 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
                     if (col < 0) fail('tabseek on a missing column');
                     const want = latin1(readStr(b)).toUpperCase();
                     const hit = t.findIndex((r, i) => i > 0 && (r[col] ?? '').toUpperCase() === want);
+                    row = hit > 0 ? hit : t.length - 1;
+                    flags.z = hit <= 0;
+                    break;
+                }
+                case OP.tabseeku: {
+                    // As EdiabasLib's OpTabseeku: the row whose column, read as a number (StringToValue,
+                    // unsigned 32 bits), equals the value; the first such row. Not found: the last row, Z set.
+                    // SMG II's FS_LESEN looks its environment conditions up this way.
+                    if (!table) fail('tabseeku with no table');
+                    const t = table!;
+                    const col = t[0].findIndex((c) => c.toUpperCase() === latin1(readStr(a)).toUpperCase());
+                    if (col < 0) fail('tabseeku on a missing column');
+                    const want = readNum(b, widthOf(b) ?? 4) >>> 0;
+                    const hit = t.findIndex((r, i) => i > 0 && textValue(r[col] ?? '') >>> 0 === want);
                     row = hit > 0 ? hit : t.length - 1;
                     flags.z = hit <= 0;
                     break;

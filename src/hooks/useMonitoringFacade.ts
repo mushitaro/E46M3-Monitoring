@@ -439,10 +439,15 @@ export function useMonitoringFacade(input: {
             if (!job) return { started: false, reason: `${jobId} is not a job of ${moduleName(module)}.` };
             // A job that takes values runs only with a whole set its own code and EdiabasLib build alike
             // (lib/agreedChoices); without one, the answer is the sets to choose from.
+            // A job that stays on until its stop (SMG II's actuators: AKTIV, then INAKTIV) always starts
+            // with its stop armed and its time-out running, whatever phase was asked: sent once without
+            // them it would be left on (car, 2026-11-19: pulse found none of STEUERN_STELLGLIED's sets).
+            const op = operationFor(job);
+            const runPhase = op.kind === 'hold' && op.stopJob ? 'start' : phase;
             let choice: ReturnType<typeof agreedChoices>[number] | undefined;
             if (job.args.length > 0) {
                 const cases = catalog ? await agreedCases(module, catalog.address, job.id) : [];
-                const agreed = agreedChoices(job, operationFor(job), cases, cases).filter((c) => phase === 'start' || !c.stop);
+                const agreed = agreedChoices(job, op, cases, cases).filter((c) => runPhase === 'start' || !c.stop);
                 if (!agreed.length) return { started: false, reason: `No set of values for ${job.id} has been compared with EdiabasLib: it is not run.` };
                 // Only the sets the owner's table opens to the assistant (SMG II: its lamps, not its valves).
                 const sets = agreed.filter((c) => decisionFor(module, job, catalog?.group, c.start.args).who === 'ai');
@@ -479,7 +484,7 @@ export function useMonitoringFacade(input: {
             const r = await startActuation({
                 moduleId: module,
                 job,
-                phase,
+                phase: runPhase,
                 verdict: v,
                 telegrams,
                 args: choice?.start.args,

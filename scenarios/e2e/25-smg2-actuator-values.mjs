@@ -94,6 +94,20 @@ const scenario = {
         },
         {
             check: {
+                desc: 'AI が「一度だけ」（pulse）で頼んでも、入れて止める形のジョブなので組が返り、選んだ組で始まって止まる（実車 2026-11-19 の不具合）',
+                run: async (page) => {
+                    const r = await tool(page, 'monitoring_actuate', { module: 'smg2', job: 'STEUERN_STELLGLIED', phase: 'pulse', owner_said: 'いいよ' });
+                    if (r?.started !== false || !Array.isArray(r.sets) || !r.sets.length) return `組が返らない: ${JSON.stringify(r).slice(0, 300)}`;
+                    const set = r.sets.find((x) => x[0] === 'HYDROPUMPE') ?? r.sets[0];
+                    const go = await tool(page, 'monitoring_actuate', { module: 'smg2', job: 'STEUERN_STELLGLIED', phase: 'pulse', owner_said: 'いいよ', values: set });
+                    if (go?.started !== true || go.on !== true) return `始まらない、または止める支度が無い: ${JSON.stringify(go).slice(0, 300)}`;
+                    await tool(page, 'monitoring_stop_outputs');
+                    return true;
+                },
+            },
+        },
+        {
+            check: {
                 desc: 'AI が比べていない値の組を渡すと、始めない',
                 run: async (page) => {
                     const r = await tool(page, 'monitoring_actuate', { module: 'smg2', job: 'STEUERN_STELLGLIED', phase: 'start', owner_said: 'いいよ', values: ['STOERANZEIGE', 'AKTIV', '77'] });

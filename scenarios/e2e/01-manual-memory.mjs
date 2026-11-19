@@ -15,7 +15,10 @@ const scenario = {
                 desc: '起動直後のモジュールは ALL MODULES（運営者 2026-11-13）',
                 run: async (page) => {
                     const r = await page.evaluate(() => window.__monitoringE2E.tool('monitoring_status', {}));
-                    return r.showing === 'all-modules' ? true : `showing ${r.showing}`;
+                    // The status says what the screen's select says: ALL MODULES, not the link's module (operator, 2026-11-19).
+                    return r.showing === 'all-modules' && r.module?.all === true && r.module.id === null && r.module.name === 'ALL MODULES' && r.linkModule?.id === 'mss54'
+                        ? true
+                        : `showing ${r.showing}, module ${JSON.stringify(r.module)}, linkModule ${JSON.stringify(r.linkModule)}`;
                 },
             },
         },

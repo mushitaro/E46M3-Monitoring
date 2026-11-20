@@ -132,6 +132,73 @@ export interface PracticeCar {
     inject: PracticeInjection[];
     /** A drive the car follows: speed, rpm, pedal, gear and the cams over time. Null: parked or `speedKmh`. */
     drive: PracticeDrive | null;
+    /**
+     * What a sick S54 shows in the MSS54's live values (practice values, set by a scenario; nothing a
+     * car said). Null: a healthy engine. See `PracticeSymptoms`.
+     */
+    symptoms: PracticeSymptoms | null;
+    /**
+     * The MSS54's learned values (adaptation blocks 6, 22, 38, 54 and 195), by the field's symbol
+     * (`laa_offset1`, `lu_adapt[2]`, `auss_sum_adap[4]` …), in the field's own unit. A symbol not
+     * listed reads as the zero of its own scale, which nobody can take for a car's. ADAPT_LOESCHEN
+     * (`43 FF 00`) empties it, as the job says it does.
+     */
+    mss54Adapt: Record<string, number>;
+    /** How many times the DME has been told to clear all its learned values (`43 FF 00`). */
+    mss54AdaptClears: number;
+}
+
+/**
+ * The symptoms the practice car's MSS54 shows, so a diagnosis can be practised end to end: a datalog that
+ * shows the fault, a read of the learned values, a repair (a part, a calibration or a test), and a datalog
+ * after it that shows the fault gone. Every value goes through the field's own scale, as the rest of
+ * PRACTICE does, so what the app shows is what its decoder made of the bytes.
+ */
+export interface PracticeSymptoms {
+    /** How far the idle swings either side, rpm (a healthy one: about 15). */
+    idleRpmSwing?: number;
+    /** The lambda controllers' factors, bank 1 and bank 2 (`la_f_regler1/2`, block 19). 1 = no correction. */
+    lambdaFactor?: [number, number];
+    /**
+     * Rough running, cylinder 1 to 6 in the physical order, % (`ll_abw1..6` at idle, block 21; `lu[0..5]`,
+     * block 179). A healthy cylinder: about 0.
+     */
+    roughness?: number[];
+    /**
+     * Misfires this driving cycle, cylinder 1 to 6 (`auss_sum_dc[0..5]`, adaptation block 22). They add to
+     * the lifetime counters (`auss_sum_adap[0..5]`) unless `mss54Adapt` says otherwise.
+     */
+    misfires?: number[];
+    /**
+     * The cause is a learned value gone wrong, not a part: clearing the learned values (ADAPT_LOESCHEN)
+     * cures it, and the next datalog reads healthy. False or absent: a part, which a clear does not cure.
+     */
+    curedByAdaptClear?: boolean;
+}
+
+/** The six cylinders' values of a symptom, a missing one as `healthy`. */
+export function perCylinder(values: readonly number[] | undefined, healthy: number): number[] {
+    return Array.from({ length: 6 }, (_, i) => values?.[i] ?? healthy);
+}
+
+/**
+ * The value the practice car's MSS54 holds for one learned value: `mss54Adapt`'s, else the misfire counters
+ * the symptoms imply, else null (the zero of its own scale).
+ */
+export function practiceAdaptation(symbol: string): number | null {
+    const set = practiceCar.mss54Adapt[symbol];
+    if (typeof set === 'number') return set;
+    const m = /^auss_sum_(dc|adap)\[(\d)\]$/.exec(symbol);
+    const misfires = practiceCar.symptoms?.misfires;
+    if (m && misfires) return misfires[Number(m[2])] ?? null;
+    return null;
+}
+
+/** ADAPT_LOESCHEN: every learned value back to its zero, and a symptom a learned value caused, gone. */
+export function clearPracticeAdaptations(): void {
+    practiceCar.mss54Adapt = {};
+    practiceCar.mss54AdaptClears++;
+    if (practiceCar.symptoms?.curedByAdaptClear) practiceCar.symptoms = null;
 }
 
 /** One frame as the practice car heard it. */
@@ -262,6 +329,9 @@ function defaults(): PracticeCar {
         wire: [],
         inject: [],
         drive: null,
+        symptoms: null,
+        mss54Adapt: {},
+        mss54AdaptClears: 0,
     };
 }
 

@@ -167,35 +167,59 @@ export function momentOf(samples: readonly Sample[], centre: number, windowS: nu
 }
 
 /**
- * At most `cap` samples of a window, keeping its shape: in each of `cap / 2` stretches, the samples
- * where the engine speed (else the first channel) is lowest and highest. Even thinning stepped over a
- * pull's top when it lasted less than a step, and a trace without its peak is not the run.
+ * At most `cap` samples of a window, keeping its shape: two thirds spread evenly over time, the rest where
+ * each asked channel is lowest and highest in its stretch, and where each target/actual pair (`…_soll` and `…_ist`) is furthest
+ * apart. Even thinning stepped over a pull's top when it lasted less than a step, and thinning on the
+ * engine speed alone dropped the moment a cam fell furthest behind its target: the assistant then said a
+ * smaller lag than the car had (SC13). A trace without its peaks is not the run.
  */
 function thinKeepingPeaks(window: readonly Sample[], channels: readonly string[], cap: number): number[] {
-    const key = channels.find((c) => /:n$/.test(c)) ?? channels[0];
-    const value = (i: number) => {
-        const v = window[i].values[key];
-        if (typeof v === 'number') return v;
-        // The same quantity read from another block in another segment of the run.
-        for (const c of channels) if (c !== key && c.split(':').pop() === key.split(':').pop() && typeof window[i].values[c] === 'number') return window[i].values[c] as number;
+    const suffix = (c: string) => c.split(':').pop() ?? c;
+    // A quantity by its name, from whichever block this sample read it (a run's segments differ).
+    const value = (i: number, name: string): number | null => {
+        for (const c of channels) {
+            if (suffix(c) !== name) continue;
+            const v = window[i].values[c];
+            if (typeof v === 'number' && Number.isFinite(v)) return v;
+        }
         return null;
     };
-    const buckets = Math.max(1, Math.floor(cap / 2));
-    const out: number[] = [];
-    for (let b = 0; b < buckets; b++) {
+    const names = [...new Set(channels.map(suffix))];
+    const series: Array<(i: number) => number | null> = names.map((n) => (i: number) => value(i, n));
+    for (const n of names) {
+        if (!n.endsWith('_soll')) continue;
+        const ist = n.replace(/_soll$/, '_ist');
+        if (!names.includes(ist)) continue;
+        series.push((i) => {
+            const a = value(i, n);
+            const b = value(i, ist);
+            return a === null || b === null ? null : a - b;
+        });
+    }
+    // Two thirds of the budget spread evenly over time, so the trace has no holes; the rest on the peaks.
+    const even = Math.max(2, Math.ceil((cap * 2) / 3));
+    const keep = new Set<number>();
+    for (let k = 0; k < Math.min(even, window.length); k++) keep.add(Math.round((k * (window.length - 1)) / (Math.min(even, window.length) - 1)));
+    let room = cap - keep.size;
+    const buckets = Math.max(1, Math.floor(room / (2 * Math.max(1, series.length))));
+    for (let b = 0; b < buckets && room > 0; b++) {
         const from = Math.floor((b * window.length) / buckets);
         const to = Math.floor(((b + 1) * window.length) / buckets);
-        if (to <= from) continue;
-        let lo = from;
-        let hi = from;
-        for (let i = from; i < to; i++) {
-            const v = value(i);
-            if (v === null) continue;
-            if ((value(lo) ?? Infinity) > v) lo = i;
-            if ((value(hi) ?? -Infinity) < v) hi = i;
+        for (const f of series) {
+            let lo = -1;
+            let hi = -1;
+            for (let i = from; i < to; i++) {
+                const v = f(i);
+                if (v === null) continue;
+                if (lo < 0 || (f(lo) as number) > v) lo = i;
+                if (hi < 0 || (f(hi) as number) < v) hi = i;
+            }
+            for (const i of [lo, hi]) {
+                if (i < 0 || keep.has(i) || room <= 0) continue;
+                keep.add(i);
+                room--;
+            }
         }
-        out.push(...(lo === hi ? [lo] : lo < hi ? [lo, hi] : [hi, lo]));
     }
-    if (out[out.length - 1] !== window.length - 1) out[out.length - 1] = window.length - 1;
-    return out;
+    return [...keep].sort((x, y) => x - y);
 }

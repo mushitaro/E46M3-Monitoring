@@ -190,7 +190,7 @@ const scenario = {
                     let asked = null;
                     page.once('dialog', (d) => {
                         asked = d.message();
-                        void d.accept();
+                        void d.accept().catch(() => {});
                     });
                     await b.first().click();
                     await page.waitForTimeout(5000);

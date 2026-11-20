@@ -133,7 +133,21 @@ const scenario = {
             const row = await scanRow(page, '0x56');
             return row && /ASC/.test(row) ? true : `0x56 の行: ${row}`;
         }),
-        check('IJ21：画面の 0x56 の行の名前が ASC だけに変わる（DSC の名前が出ない）', async (page) => {
+        check('IJ21：オーナーが ACTUATOR で一度「ABS/ASC MK20」と答える（同じアドレスの機種は名乗りから決められない）', async (page) => {
+            const off = await onModule(page, 'ascmk20');
+            if (off) return off;
+            await page.locator('[role=tab]:has-text("ACTUATOR")').first().click();
+            await page.waitForTimeout(500);
+            const pick = page.locator('button:visible').filter({ hasText: /ASC MK20/ }).first();
+            if (!(await pick.count())) return 'ACTUATOR に機種を答える行が無い';
+            await pick.click();
+            await page.waitForTimeout(400);
+            await page.locator('select:has(option[value="all"])').first().selectOption('all').catch(() => {});
+            await page.locator('[role=tab]:has-text("DIAGNOSIS")').first().click();
+            await page.waitForTimeout(600);
+            return true;
+        }),
+        check('IJ21：答えたあと、画面の 0x56 の行の名前が ASC だけに変わる（DSC の名前が出ない）', async (page) => {
             const row = await scanRow(page, '0x56');
             return row && /ASC/.test(row) && !/DSC/.test(row) ? true : `0x56 の行: ${row}`;
         }),

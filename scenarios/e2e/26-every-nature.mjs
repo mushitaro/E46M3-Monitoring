@@ -42,11 +42,12 @@ const onModule = async (page, module) => {
  * 0x56 is ASC MK20 on an early car and DSC on a late one, with no group rule to tell them apart: the owner
  * says which once, on ACTUATOR, before anything that drives goes there (IJ21). The practice car is late.
  */
+const ANSWER = { dsc_e46: /DSC \(E46\)/, zke5: /\(ZKE5\)$/ };
 const answerVariant = async (page, module) => {
-    if (module !== 'dsc_e46') return;
+    if (!ANSWER[module]) return;
     await page.locator('[role=tab]:has-text("ACTUATOR")').first().click();
     await page.waitForTimeout(500);
-    const pick = page.locator('button:visible').filter({ hasText: /^DSC \(E46\)/ }).first();
+    const pick = page.locator('button:visible').filter({ hasText: ANSWER[module] }).first();
     if (await pick.count()) {
         await pick.click();
         await page.waitForTimeout(400);

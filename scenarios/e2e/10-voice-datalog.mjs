@@ -61,8 +61,8 @@ const scenario = {
         {
             ai: 'monitoring_log_channels',
             args: { channels: ['3:n'] },
-            means: '記録中は選び直せない',
-            expect: (r) => (r && r.changed === false ? true : JSON.stringify(r)),
+            means: '記録中も選び直せる：記録は止まらず、区切りが入る（IJ24・SC13）',
+            expect: (r) => (r && r.changed === true ? true : JSON.stringify(r)),
         },
         { ai: 'monitoring_stop_log', args: { confirmed: true }, means: '復唱のあと止める', expect: (r) => (r && r.stopped === 'recording' ? true : JSON.stringify(r)) },
         { wait: 1000 },

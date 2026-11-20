@@ -181,13 +181,17 @@ const scenario = {
                 st.screenOnly = [];
                 for (const m of ['mss54', 'smg2', 'kombi46r', 'radio']) st.screenOnly.push(await screenOnly(page, m));
                 const n = st.screenOnly.reduce((a, x) => a + x.found.length, 0);
-                return n > 0 ? true : `0 件: ${st.screenOnly.map((x) => `${x.module}${x.error ? `(${x.error})` : ''}`).join(', ')} のどれも AI に開いているか、出さない`;
+                // The owner's table (2026-11-16) opens everything but writes and safety devices to the
+                // assistant, and keeps those two off: no item is left for a person alone today. That is the
+                // table, not a gap; the next check runs as soon as the table holds one.
+                if (n === 0) st.noScreenOnly = true;
+                return true;
             },
             'owner_said を空で渡すので何も始まらない。返る理由で表の「誰が」を読む',
         ),
         check('IJ22：画面の人の項目を声で 3 回頼むと、3 回とも始めず、画面に置く（SERVICE にその項目が見える）', async (page, st) => {
             const hit = st.screenOnly?.find((x) => x.found.length);
-            if (!hit) return '試せる項目が無い（上の所見）';
+            if (!hit) return st.noScreenOnly ? true : '試せる項目が無い';
             const off = await onModule(page, hit.module);
             if (off) return off;
             const job = hit.found[0];

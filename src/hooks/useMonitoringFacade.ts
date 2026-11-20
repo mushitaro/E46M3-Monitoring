@@ -351,6 +351,14 @@ export function useMonitoringFacade(input: {
     };
 
 
+    /** Whether every module that may answer at this address carries this job with the very same frame. */
+    const commonToCandidates = async (address: number, jobId: string): Promise<boolean> => {
+        const ids = (ecuIndex?.modules ?? []).filter((m) => m.address === address).map((m) => m.id);
+        if (ids.length < 2) return false;
+        const hexes = await Promise.all(ids.map(async (id) => bestTelegram(await loadTelegrams(id), jobId)?.hex ?? null));
+        return hexes.every((h) => h !== null && h === hexes[0]);
+    };
+
     /** A job the table keeps for a person on the screen, put on SERVICE for them to press (IJ F19). */
     const stageOnScreen = async (module: string, job: CatalogJob): Promise<boolean> => {
         if (module !== ecuId) return false;
@@ -711,7 +719,10 @@ export function useMonitoringFacade(input: {
             // An address several modules may answer at (0x56: ASC MK20 on an early car, DSC on a late one)
             // gets nothing but the common frames until the owner has said which, once, on the screen.
             const unconfirmed = input.variantUnconfirmed(module);
-            if (unconfirmed) return { started: false, reason: unconfirmed };
+            // A job without values whose frame every candidate at the address carries byte for byte (a
+            // fault-memory clear, mostly) is the common frame the house rule allows: whichever module is
+            // fitted, the bytes are its own (MM01: the sunroof's clear).
+            if (unconfirmed && !(job.args.length === 0 && catalog && (await commonToCandidates(catalog.address, job.id)))) return { started: false, reason: unconfirmed };
             // The phase and the set of values (lib/agreedChoices: the screen and the coverage count ask
             // the same; a job that stays on until its stop always starts with it armed).
             const choices = job.args.length > 0 && catalog ? await loadChoices(module, catalog.address, job, catalog.jobs as CatalogJob[]) : [];

@@ -27,6 +27,8 @@ export interface ScanShown {
     onSelect: (address: string | null) => void;
     /** What to do first, said where the list will be while nothing is connected (SC01 step 1). */
     idleHint?: string;
+    /** The module the owner said answers at an address no IDENT rule decides (0x56 ASC or DSC; lib/variantChoice). */
+    ownerChose?: (address: number) => string | null;
 }
 
 /**
@@ -93,7 +95,9 @@ export function sgbdFaultsOf(r: ScanResult): SgbdFault[] | null {
  * Which module a row is (F03, IJ15): the one its IDENT chose, or the one SGBD at the address. Where
  * several stay possible, a `?` with the candidates — never the candidates listed as if all were fitted.
  */
-function rowName(r: ScanResult, nameOf: (id: string) => string, t: ReturnType<typeof useLang>['t']): string {
+function rowName(r: ScanResult, nameOf: (id: string) => string, t: ReturnType<typeof useLang>['t'], ownerChose?: (address: number) => string | null): string {
+    const owner = ownerChose?.(typeof r.address === 'number' ? r.address : parseInt(String(r.address), 16));
+    if (owner && r.modules.includes(owner)) return nameOf(owner);
     const chosen = r.variant?.moduleId;
     if (chosen && r.modules.includes(chosen) && r.variant?.basis !== 'm3-fitment') return nameOf(chosen);
     if (r.modules.length === 1) return nameOf(r.modules[0]);
@@ -140,7 +144,7 @@ const hhmm = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digi
  * module of the row opened last on the screen. Rows open and close on their own, so two modules'
  * faults can be read side by side (SC02 step 2).
  */
-export const ScanList = memo(function ScanList({ run, progress, index, mss54, selected, onSelect, idleHint }: ScanShown) {
+export const ScanList = memo(function ScanList({ run, progress, index, mss54, selected, onSelect, idleHint, ownerChose }: ScanShown) {
     const { lang, t } = useLang();
     const nameOf = (id: string) => {
         const m = index?.modules.find((x) => x.id === id);
@@ -187,7 +191,7 @@ export const ScanList = memo(function ScanList({ run, progress, index, mss54, se
                                 key={r.address}
                                 code={r.address}
                                 codeTone={s.rank === 0 ? 'danger' : 'neutral'}
-                                name={humanName(rowName(r, nameOf, t))}
+                                name={humanName(rowName(r, nameOf, t, ownerChose))}
                                 selected={isOpen}
                                 onSelect={() => toggle(r.address)}
                                 trailing={<span className={`shrink-0 ${LABEL} ${s.tone}`}>{s.word}</span>}

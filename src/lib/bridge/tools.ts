@@ -287,6 +287,7 @@ export const MONITORING_TOOLS = {
                     maxItems: 16,
                     description: "For a job that takes values: one whole set, in the job's order, from the sets the answer lists (HYDROPUMPE, AKTIV, 0).",
                 },
+                query: str("Without values: the part meant, in any language the list carries (油圧ポンプ, pump, HYDROPUMPE). The answer then lists every set of that part; without it, every part by name with its plain sets."),
             },
             ['module', 'job', 'owner_said'],
         ),

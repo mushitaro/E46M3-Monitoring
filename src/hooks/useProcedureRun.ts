@@ -9,7 +9,7 @@ import {
     stillRunning,
     type ProcedurePlan,
 } from '@/lib/procedureRun';
-import type { ActuationPermit, SendRequirement } from '@tsunagi/monitoring-engine';
+import type { ActuationPermit, NotSent, SendRequirement } from '@tsunagi/monitoring-engine';
 
 /**
  * Driving one SMG II test program, and knowing when it is over.
@@ -58,8 +58,27 @@ const IDLE: ProcedureRunState = {
     error: null,
 };
 
+/** How a run ended, as the dialog, the page and the assistant say it (IJ06). */
+export interface ProcedureOutcome {
+    ended: 'ok' | 'notOk' | 'aborted' | 'refused' | 'failed';
+    /** The link's sentence for a failure: the module's refusal with its status, or why it was not sent. */
+    error: string | null;
+    /** The module's negative answer, when it refused a step. */
+    refusedStatus: number | null;
+    /** The link's own refusal before sending (the engine not as asked, moving, battery), with what it measured. */
+    notSent?: NotSent | null;
+}
+
+/** The status byte of a module's refusal, read from the link's sentence (ds2-core `assertPositive`). */
+export function refusedStatusOf(error: string | null): number | null {
+    const m = error ? /rejected by the ECU:.*\(status 0x([0-9a-f]{2})\)/i.exec(error) : null;
+    return m ? Number.parseInt(m[1], 16) : null;
+}
+
 export function useProcedureRun(
     send: (jobId: string, hex: string, requires?: SendRequirement, permit?: ActuationPermit) => Promise<JobRunResult | null>,
+    /** Why the last send came back empty: the link's own sentence and shape, read straight after the await. */
+    why?: () => { error: string | null; notSent: NotSent | null },
 ) {
     const [state, setState] = useState<ProcedureRunState>(IDLE);
     const cancelled = useRef(false);
@@ -106,7 +125,12 @@ export function useProcedureRun(
     }, [sendStop]);
 
     const start = useCallback(
-        async (plan: ProcedurePlan) => {
+        async (plan: ProcedurePlan): Promise<ProcedureOutcome> => {
+            const ended = (error: string | null): ProcedureOutcome => {
+                const refusedStatus = refusedStatusOf(error);
+                return { ended: refusedStatus !== null ? 'refused' : 'failed', error, refusedStatus };
+            };
+            const aborted: ProcedureOutcome = { ended: 'aborted', error: null, refusedStatus: null };
             cancelled.current = false;
             stopHex.current = plan.stopHex;
             stopPermit.current = plan.permits.stop;
@@ -115,10 +139,10 @@ export function useProcedureRun(
             // The ECU's rule, not a habit of ours: STOP goes first, even with
             // nothing running. `lib/procedureRun` quotes it.
             const cleared = await send(STOP_JOB, plan.stopHex, 'none', plan.permits.stop);
-            if (cancelled.current) return;
+            if (cancelled.current) return aborted;
             if (cleared?.error) {
                 setState((s) => ({ ...s, phase: 'ended', error: cleared.error }));
-                return;
+                return ended(cleared.error);
             }
             stopHex.current = plan.stopHex;
 
@@ -130,22 +154,27 @@ export function useProcedureRun(
             // would give the first answer a different path from the rest, and
             // the first answer is the one that says whether it started at all.
             for (;;) {
-                if (cancelled.current) return;
+                if (cancelled.current) return aborted;
                 // The first START is measured (stationary, battery, engine as the procedure asks) and
                 // counts as the run; every re-ask after it is the same run asked again.
                 const answer = await send(plan.startJobId, plan.startHex, 'parked', polls === 0 ? plan.permits.start : plan.permits.follow);
                 polls++;
-                if (cancelled.current) return;
+                if (cancelled.current) return aborted;
 
                 if (!answer || answer.error) {
+                    // The module's refusal (a negative answer, with its status) or the link's reason
+                    // for not sending (moving, battery), said in the dialog — not a bare "no answer".
+                    const told = why?.() ?? null;
+                    const error = answer?.error ?? told?.error ?? 'no answer';
+                    const notSent = told?.notSent ?? null;
                     setState((s) => ({
                         ...s,
                         phase: 'ended',
-                        error: answer?.error ?? 'no answer',
+                        error,
                         elapsedSec: Math.round((Date.now() - began) / 1000),
                     }));
                     await sendStop();
-                    return;
+                    return { ...ended(error), ...(notSent ? { ended: 'failed' as const, notSent } : {}) };
                 }
 
                 const decoded = decodeTestStatus(answer.response);
@@ -166,17 +195,17 @@ export function useProcedureRun(
                 if (!decoded) {
                     setState((s) => ({ ...s, phase: 'ended', error: 'unreadable status' }));
                     await sendStop();
-                    return;
+                    return { ended: 'failed', error: 'unreadable status', refusedStatus: null };
                 }
                 if (!stillRunning(decoded.statusByte)) {
                     setState((s) => ({ ...s, phase: 'ended' }));
                     await sendStop();
-                    return;
+                    return { ended: finishedWell(decoded.statusByte) ? 'ok' : 'notOk', error: null, refusedStatus: null };
                 }
                 await sleep(plan.statusIntervalMs);
             }
         },
-        [send, sendStop],
+        [send, sendStop, why],
     );
 
     const reset = useCallback(() => {

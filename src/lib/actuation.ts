@@ -90,15 +90,62 @@ export async function startActuation(p: StartActuation): Promise<Started> {
         at: p.now,
         stopPermit: permit && stopTelegram ? stopPermitOf(permit, stopName, stopTelegram, p.stop?.args) : undefined,
         timeoutS,
+        moduleId: p.moduleId,
+        ...(withValues && p.args ? { args: [...p.args] } : {}),
     });
     return { sent: true, armed: true, timeoutS };
+}
+/**
+ * What the owner's table says of a job for the assistant, before any value is chosen and before the
+ * owner's words: a read is read, an item kept off or shown only is not run, an item kept for a person
+ * on the screen is theirs (`screen: true`: the caller puts it on the screen for them). Asked first, so
+ * a write is refused as a write, not as "no set of values" (IJ F08). Null: the assistant may go on.
+ */
+export function tableRefusal(
+    moduleId: string,
+    job: Pick<CatalogJob, 'id' | 'class'>,
+    group: string | undefined,
+    args?: readonly string[],
+): { reason: string; screen: boolean } | null {
+    const d = decisionFor(moduleId, job, group, args);
+    if (isReadNature(d.nature)) return { reason: `${job.id} reads; it is read with the read tools (monitoring_read and the rest), not started.`, screen: false };
+    if (d.how === 'off') {
+        // Said by what it is (MM02 F26): a safety device's deployment, a write — then the owner's rule.
+        const what = d.nature === 'a_safety' ? `${job.id} deploys a safety device` : d.nature === 'w' ? `${job.id} writes to the module (coding, programming, identity or flash)` : null;
+        return { reason: `${what ? `${what}: ` : ''}the owner keeps ${what ? 'it' : job.id} off, and it is not run from here at all. Tell the owner it cannot be done.`, screen: false };
+    }
+    if (d.how === 'show') return { reason: `The owner shows ${job.id} on the screen only: it is not run.`, screen: false };
+    if (d.who !== 'ai')
+        return { reason: `The owner's table keeps ${job.id} for a person on the screen. It has been put on the screen for them to press: say so.`, screen: true };
+    return null;
+}
+
+/**
+ * Words that only hesitate are not an OK (IJ07: 「うーん、どうしようかな」「まあいいか」). The assistant is
+ * told to ask again; a clear yes said with them (「うーん、いいよ」) is a yes. A no or a wait is never one.
+ */
+const NO = /ううん|いいえ|いや(?!、?いいよ)|だめ|ダメ|やめ|待って|まって|ストップ|\bno\b|\bnope\b|\bwait\b|don'?t|\bstop\b/i;
+const HESITANT = /うーん|う〜ん|うーむ|ううむ|どうしよう|まあいいか|まぁいいか|まあ、?いいか|迷|悩|かな|たぶん|多分|やっぱ|どうかな|\bhmm+\b|\bmaybe\b|not sure|i guess|\bperhaps\b|let me think/i;
+const YES = /いいよ|いいです|いいね|いいぞ|はい|お願い|おねがい|やって|動かして|どうぞ|オッケー|オーケー|\bok\b|\bokay\b|\byes\b|\bsure\b|go ahead|うん(?!ー)/i;
+
+/** Why the owner's words are not an OK, or null when they are one. */
+export function notAnOk(ownerSaid: string): string | null {
+    const said = ownerSaid.trim();
+    if (!said) return 'Read back what will move and its preconditions, wait for the owner\'s OK, and pass their words as owner_said.';
+    if (NO.test(said)) return `The owner's words are a no or a wait, not an OK (「${said}」). Nothing was started.`;
+    // The last thing said decides: 「うーん、いいよ」 ends on a yes, 「動かしていいかな」 on a question.
+    const last = said.split(/[、。,.!！?？\s]+/).filter(Boolean).at(-1) ?? said;
+    if (HESITANT.test(last) || (HESITANT.test(said) && !YES.test(last)))
+        return `The owner's words only hesitate (「${said}」): that is not an OK, and nothing was started. Ask again whether to run it, and wait for a clear yes.`;
+    return null;
 }
 
 /**
  * Whether the assistant may start this job, before the gate is asked: the owner's table says who
  * (policy.ts `who`), and the assistant starts nothing while the car moves (the owner, 2026-11-16:
- * "走行中の AI は読むだけ"). Its reasons are sentences for the assistant to say. A yes here is not a
- * yes to send: the same gate the screen asks comes after, and the link measures before it sends.
+ * "走行中の AI は読むだけ"), nor on words that are not a clear OK. Its reasons are sentences for the
+ * assistant to say. A yes here is not a yes to send: the same gate the screen asks comes after, and
+ * the link measures before it sends.
  */
 export function assistantMayStart(
     moduleId: string,
@@ -108,15 +155,11 @@ export function assistantMayStart(
     ownerSaid: string,
     /** The values chosen, for a job whose nature depends on one (SMG II's lamps against its valves). */
     args?: readonly string[],
-): { ok: true } | { ok: false; reason: string } {
-    const d = decisionFor(moduleId, job, group, args);
-    if (isReadNature(d.nature)) return { ok: false, reason: `${job.id} reads; it is read with the read tools (monitoring_read and the rest), not started.` };
-    if (d.how === 'off') return { ok: false, reason: `The owner keeps ${job.id} off: it is not run from here at all.` };
-    if (d.how === 'show') return { ok: false, reason: `The owner shows ${job.id} on the screen only: it is not run.` };
-    if (d.who !== 'ai')
-        return { ok: false, reason: `The owner's table keeps ${job.id} for a person on the screen. monitoring_stage puts it there for them to press.` };
+): { ok: true } | { ok: false; reason: string; screen?: boolean } {
+    const table = tableRefusal(moduleId, job, group, args);
+    if (table) return { ok: false, reason: table.reason, ...(table.screen ? { screen: true } : {}) };
     if (motion === 'moving') return { ok: false, reason: 'The car is moving: the assistant only reads while it moves. Ask again parked.' };
-    if (!ownerSaid.trim())
-        return { ok: false, reason: 'Read back what will move and its preconditions, wait for the owner\'s OK, and pass their words as owner_said.' };
+    const words = notAnOk(ownerSaid);
+    if (words) return { ok: false, reason: words };
     return { ok: true };
 }

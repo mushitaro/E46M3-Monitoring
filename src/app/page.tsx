@@ -15,7 +15,15 @@ import { ControlPanel } from '@/components/shell/ControlPanel';
 import { ModeCorner } from '@/components/shell/ModeCorner';
 import { Overlaid } from '@/components/shell/Overlaid';
 import { LABEL, TextButton } from '@/components/ui';
-import { useActuatorArming } from '@/hooks/useActuatorArming';
+import { takeLeftRunning, useActuatorArming, type LeftRunning } from '@/hooks/useActuatorArming';
+import type { Stopped } from '@/lib/arming';
+import { partName, partTable } from '@/lib/partName';
+import { notSentLine } from '@/lib/notSentText';
+import { carKey, choiceFor, identifiedAt, readChoices, variantRefusal, variantState, withChoice, VARIANT_CHOICE_KEY, type VariantChoices } from '@/lib/variantChoice';
+import type { ProcedureEnd } from '@/lib/procedureEnd';
+import { procedureReason } from '@/lib/procedureEnd';
+import { loadVariantRules, ruleFor, type VariantRules } from '@tsunagi/monitoring-engine';
+import { useNow } from '@/hooks/useNow';
 import { reloadForUpdate, useAppUpdate, useSignIn, useUpdateRunning } from '@/hooks/useAppUpdate';
 import { ADOPT_AFTER_DISCONNECTED_MS, shouldAdoptBuild } from '@/lib/adoptBuild';
 import { REPASS_AFTER_DISCONNECTED_MS, lapseAction, markRepass, repassAllowed } from '@/lib/signInLapse';
@@ -335,7 +343,72 @@ export default function Home() {
     // Which outputs are energised. Held here, not in the ACTUATOR view, because
     // the release has to survive that view unmounting — a tab change must not be
     // the thing that forgets a solenoid is on.
-    const arming = useActuatorArming({ send: link.runRead });
+    const arming = useActuatorArming({ send: link.runRead, lastGasp: link.lastGasp });
+    const armingRef = useRef(arming);
+    useEffect(() => {
+        armingRef.current = arming;
+    });
+
+    // Something on at the module in session is watched over the line: a module without a keep-alive of
+    // its own is beaten with its IDENT while it is, so a pulled cable is noticed (IJ04).
+    const setWatch = link.setWatch;
+    useEffect(() => setWatch(arming.anyArmed), [setWatch, arming.anyArmed]);
+
+    // The page going away (a reload, the key off, a closed tab) writes the stop of whatever is on to the
+    // wire first and leaves word of it for the page that opens next (IJ13). In the capture phase, so it
+    // runs before anything else that listens for the page going.
+    useEffect(() => {
+        const onHide = () => armingRef.current.leave();
+        window.addEventListener('pagehide', onHide, { capture: true });
+        return () => window.removeEventListener('pagehide', onHide, { capture: true });
+    }, []);
+    // What the page before this one left on when it went (read once, after hydration).
+    const [leftRunning, setLeftRunning] = useState<LeftRunning[]>([]);
+    useEffect(() => {
+        const left = takeLeftRunning();
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- read once from the device after hydration
+        if (left.length) setLeftRunning(left);
+    }, []);
+
+    // The line came back after it was lost: what is on is stopped first, and every stop that went
+    // unanswered while it was gone is sent again (IJ04). Said on the notice line.
+    const lineLost = link.lineLost;
+    const wasLost = useRef(false);
+    useEffect(() => {
+        if (lineLost) {
+            wasLost.current = true;
+            return;
+        }
+        if (!wasLost.current) return;
+        wasLost.current = false;
+        void (async () => {
+            await armingRef.current.stopAll('lineBack');
+            await armingRef.current.resendUnconfirmed();
+        })();
+    }, [lineLost]);
+
+    // The last thing said about what was driven: a stop, a time-out, a switch, the line back. It stays in
+    // the reserved notice line until the next start (U4: 「止まった」 is left behind).
+    const [stopNotice, setStopNotice] = useState<Stopped[] | null>(null);
+    const lastStop = arming.last;
+    const [shownStop, setShownStop] = useState<Stopped | null>(null);
+    // A job sent once (not left on) is said the same way: what went, and that it was answered (MM02 F25).
+    const [sentOnce, setSentOnce] = useState<{ moduleId: string; jobId: string; args: readonly string[] | null } | null>(null);
+    const noteSentOnce = useCallback((moduleId: string, jobId: string, args: readonly string[] | null) => {
+        setStopNotice(null);
+        setSentOnce({ moduleId, jobId, args });
+    }, []);
+    if (lastStop !== shownStop) {
+        setShownStop(lastStop);
+        if (lastStop) {
+            setStopNotice([lastStop]);
+            setSentOnce(null);
+        }
+    }
+    if (arming.anyArmed && (stopNotice || sentOnce)) {
+        setStopNotice(null);
+        setSentOnce(null);
+    }
 
     /**
      * Make leaving deliberate while a write is in flight OR an output is on.
@@ -355,12 +428,14 @@ export default function Home() {
      * closed — leaving the output on with nothing able to reach the ECU. So the
      * release is spelled out at each door.
      */
+    const stopAll = arming.stopAll;
     const releaseThen = useCallback(
-        async (then: () => void | Promise<void>) => {
-            await arming.stopAll();
+        async (then: () => void | Promise<void>, how: 'switch' | 'stop' = 'switch'): Promise<Stopped[]> => {
+            const stopped = await stopAll(how);
             await then();
+            return stopped;
         },
-        [arming],
+        [stopAll],
     );
 
     // <html lang> is DERIVED from the resolved language, here, and nowhere else.
@@ -417,17 +492,22 @@ export default function Home() {
     const selectJob = useCallback((job: CatalogJob) => setSelection({ ecuId, job }), [ecuId]);
 
     // The three doors out of "this ECU, right now". Each one releases first.
-    const disconnect = useCallback(() => void releaseThen(link.disconnect), [releaseThen, link.disconnect]);
+    const disconnect = useCallback(() => void releaseThen(link.disconnect, 'stop'), [releaseThen, link.disconnect]);
     const changeEcu = useCallback((id: string) => void releaseThen(() => setEcuId(id)), [releaseThen]);
     const changeTab = useCallback(
-        (next: Tab) =>
-            void releaseThen(() => {
+        (next: Tab) => {
+            const go = () => {
                 // A tab of the other mode switches the mode with it (the assistant's monitoring_display).
                 lastTab.current[TAB_MODE[next]] = next;
                 setMode(TAB_MODE[next]);
                 setTab(next);
                 setScreenNotice(null);
-            }),
+            };
+            // ACTUATOR is where what is on is shown and stopped: going there keeps it on. Any other tab
+            // stops it first, and says so (IJ05).
+            if (next === 'actuator') return go();
+            void releaseThen(go);
+        },
         [releaseThen],
     );
 
@@ -447,30 +527,35 @@ export default function Home() {
      * recording or a PROBE run is going. Null when done; otherwise why not.
      */
     const switchModule = useCallback(
-        async (id: string): Promise<string | null> => {
+        async (id: string): Promise<{ reason: string | null; stopped: Stopped[] }> => {
+            const no = (reason: string) => ({ reason, stopped: [] as Stopped[] });
             const entry = ecuIndex?.modules.find((m) => m.id === id);
-            if (!entry) return `There is no module ${id}. monitoring_catalog and monitoring_scan name them.`;
+            if (!entry) return no(`There is no module ${id}. monitoring_catalog and monitoring_scan name them.`);
+            // A module the car's IDENT ruled out at its address is not put on the screen (SC10 F01).
+            const known = identifiedAt(entry.address, link.fitment, link.scan);
+            if (known && known.moduleId !== id) return no(variantRefusal({ state: 'ruledOut', address: entry.address, hex: `0x${entry.address.toString(16).toUpperCase().padStart(2, '0')}`, other: known.moduleId ? (moduleName(ecuIndex, known.moduleId) ?? known.moduleId) : (known.sgbd ?? '?') }, entry.name_en || id)!);
             // The screen shows the module, not the last scan's list (operator, 2026-11-13: after a scan
             // the switch said smg2 and the screen stayed on ALL MODULES).
             if (id === ecuId) {
                 setAllModules(false);
-                return null;
+                return { reason: null, stopped: [] };
             }
-            if (link.state === 'busy' || link.state === 'connecting') return 'A read is in flight. Ask again in a moment.';
-            if (link.state === 'logging') return 'A recording or a PROBE run is going. Stop it first (read back, then monitoring_stop_log).';
+            if (link.state === 'busy' || link.state === 'connecting') return no('A read is in flight. Ask again in a moment.');
+            if (link.state === 'logging') return no('A recording or a PROBE run is going. Stop it first (read back, then monitoring_stop_log).');
             const was = link.state === 'connected' ? link.mode : null;
             const next = moduleProtocol(id, entry.address, await loadTelegrams(id));
-            await releaseThen(async () => {
+            // What is on is stopped before the switch, and said (IJ05).
+            const stopped = await releaseThen(async () => {
                 if (was) await link.disconnect();
                 setAllModules(false);
                 setEcuId(id);
             });
-            if (!was) return null;
+            if (!was) return { reason: null, stopped };
             if (was === 'practice') {
                 await link.connect('practice', false, next);
-                return null;
+                return { reason: null, stopped };
             }
-            return link.reconnectPermitted(next);
+            return { reason: await link.reconnectPermitted(next), stopped };
         },
         [ecuIndex, ecuId, link, releaseThen],
     );
@@ -619,6 +704,8 @@ export default function Home() {
         [selectJob, changeTab],
     );
     const procedure = selectedJob ? procedureForJob(selectedJob, workflows) : null;
+    // How the last procedure ended, for the assistant (monitoring_status `lastProcedure`, IJ F10, SC08 F08).
+    const [lastProcedure, setLastProcedure] = useState<ProcedureEnd | null>(null);
 
     // The one-time acknowledgement, read from storage as an external store so
     // the prerender is dialog-free and nothing flashes at a reader who agreed
@@ -686,7 +773,63 @@ export default function Home() {
     // until switched on on this device). The facade is what the tools may reach — the screen's own
     // controls, never a run.
     const buildId = useBuildId();
-    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, probeSessions, mode, tab, changeTab, showPane: setPane, selectJob, arming, startProcedure, workflows, switchModule, startScan, updateWaiting, allModules: scopeAll, syncInvestigations, defaultDevice: t.assistant_defaultDevice });
+    // The group rules (which addresses the IDENT decides), and the owner's answers for the others.
+    const [variantRules, setVariantRules] = useState<VariantRules | null>(null);
+    useEffect(() => {
+        void loadVariantRules().then(setVariantRules);
+    }, []);
+    const [variantChoices, setVariantChoices] = useState<VariantChoices>({});
+    useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- read once from the device after hydration
+        setVariantChoices(readChoices(typeof localStorage === 'undefined' ? null : localStorage));
+    }, []);
+    const car = carKey(link.scan?.vin?.vinShort ?? null);
+    const variantOf = useCallback(
+        (id: string) => {
+            const entry = ecuIndex?.modules.find((m) => m.id === id);
+            if (!entry) return { state: 'ok' as const };
+            const candidates = (ecuIndex?.modules ?? []).filter((m) => m.address === entry.address).map((m) => ({ id: m.id, name: m.name_en || m.name || m.id }));
+            return variantState({
+                moduleId: id,
+                address: entry.address,
+                candidates,
+                hasRule: !!variantRules && !!ruleFor(variantRules, entry.address),
+                identified: identifiedAt(entry.address, link.fitment, link.scan),
+                chosen: choiceFor(variantChoices, car, entry.address),
+                nameOf: (m) => moduleName(ecuIndex, m) ?? m,
+            });
+        },
+        [ecuIndex, variantRules, link.fitment, link.scan, variantChoices, car],
+    );
+    const confirmVariant = useCallback(
+        (address: number, moduleId: string) => {
+            setVariantChoices((all) => {
+                const next = withChoice(all, car, address, moduleId);
+                try {
+                    localStorage.setItem(VARIANT_CHOICE_KEY, JSON.stringify(next));
+                } catch {
+                    /* kept for this page only */
+                }
+                return next;
+            });
+        },
+        [car],
+    );
+    // A set the assistant chose, put on its ACTUATOR row.
+    const [actuatorPick, setActuatorPick] = useState<{ moduleId: string; jobId: string; args: readonly string[] | null; at: number } | null>(null);
+    const pickSet = useCallback((moduleId: string, jobId: string, args: readonly string[] | null) => setActuatorPick({ moduleId, jobId, args, at: Date.now() }), []);
+    const variantUnconfirmed = useCallback(
+        (id: string) => variantRefusal(variantOf(id), moduleName(ecuIndex, id) ?? id),
+        [variantOf, ecuIndex],
+    );
+
+    // Modules the car's IDENT (or the owner) ruled out at their address: not offered on the select (SC10 F01).
+    const ruledOutModules = useMemo(
+        () => new Set((ecuIndex?.modules ?? []).filter((m) => m.id !== ecuId && variantOf(m.id).state === 'ruledOut').map((m) => m.id)),
+        [ecuIndex, ecuId, variantOf],
+    );
+
+    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, probeSessions, mode, tab, changeTab, showPane: setPane, selectJob, arming, startProcedure, workflows, switchModule, startScan, updateWaiting, allModules: scopeAll, syncInvestigations, defaultDevice: t.assistant_defaultDevice, noteSentOnce, pickSet, variantUnconfirmed, leftRunning, lastProcedure });
     // The end-to-end scenarios' door to the same tools (lib/e2e): a test build only.
     useE2EDoor(facade);
     const assistant = useAssistantBridge({
@@ -737,6 +880,9 @@ export default function Home() {
         catalogError,
         openProcedure: procedure ? () => setWizardOpen(true) : undefined,
         confirmRun: () => {
+            // Which module answers at this address is the IDENT's, or the owner's to say on ACTUATOR, first.
+            const v = variantOf(ecuId);
+            if (v.state !== 'ok') return setScreenNotice(v.state === 'ruledOut' ? t.variant_ruledOut(v.hex, v.other) : t.variant_ask(v.hex));
             if (selectedJob && runVerdict?.allowed) setServiceGate({ job: selectedJob, verdict: runVerdict });
         },
         probe: probe.progress ? { progress: probe.progress, stop: probe.stop } : undefined,
@@ -746,7 +892,47 @@ export default function Home() {
                 ? { runnable: probeSessions.runnable, run: () => void probe.start(probeSessions.current ?? undefined) }
                 : undefined,
     });
-    const shownNotice = screenNotice ? { text: screenNotice, tone: 'warn' as const } : notice;
+    // The notice line, one sentence, in this order: what the screen owes for a press; the line lost; the
+    // car refusing at the wire (measured: km/h, volts — IJ02, IJ03); what is on and its seconds left;
+    // what was just stopped and how; what a page before this one left on; then the hub's own.
+    const ticking = useNow(arming.anyArmed ? 500 : null);
+    const partJa = (moduleId: string | undefined, jobId: string, args?: readonly string[]) =>
+        partName(moduleId ?? ecuId, catalog?.jobs.find((j) => j.id === jobId) ?? { id: jobId }, args, workflows)[lang === 'en' ? 'en' : 'ja'];
+    const onLine = (() => {
+        const on = [...arming.armed.values()][0];
+        if (!on) return null;
+        const left = on.timeoutS ? Math.min(on.timeoutS, Math.max(0, Math.ceil((on.at + on.timeoutS * 1000 - ticking) / 1000))) : null;
+        return t.actuation_running(partJa(on.moduleId, on.jobId, on.args), left);
+    })();
+    const stopLine = stopNotice?.length
+        ? (() => {
+              const s = stopNotice[0];
+              const name = partJa(s.entry.moduleId, s.entry.jobId, s.entry.args);
+              const said =
+                  s.how === 'timeout' ? t.actuation_timedOut(name, s.entry.timeoutS ?? 10)
+                  : s.how === 'switch' ? t.actuation_switched(name)
+                  : s.how === 'lineBack' ? t.actuation_lineBack(name)
+                  : t.actuation_stopped(name);
+              return s.confirmed || s.how === 'lineBack' ? said : `${said}${t.actuation_unanswered}`;
+          })()
+        : null;
+    const sentLine = sentOnce ? t.actuation_sentOnce(partJa(sentOnce.moduleId, sentOnce.jobId, sentOnce.args ?? undefined)) : null;
+    const leftLine = leftRunning.length ? t.actuation_leftRunning(partJa(leftRunning[0].moduleId ?? undefined, leftRunning[0].jobId, leftRunning[0].args ?? undefined), leftRunning[0].timeoutS ?? 10) : null;
+    const shownNotice = screenNotice
+        ? { text: screenNotice, tone: 'warn' as const }
+        : link.lineLost
+          ? { text: t.link_lost, tone: 'error' as const }
+          : link.notSent
+            ? { text: notSentLine(link.notSent, t), tone: 'error' as const }
+            : onLine
+              ? { text: onLine, tone: 'info' as const }
+              : stopLine
+                ? { text: stopLine, tone: 'info' as const }
+                : sentLine
+                  ? { text: sentLine, tone: 'info' as const }
+                : leftLine
+                  ? { text: leftLine, tone: 'warn' as const }
+                  : notice;
 
     const panes: Record<Tab, React.ReactNode> = {
         diagnosis: scopeAll ? (
@@ -797,6 +983,11 @@ export default function Home() {
                 jobText={jobText}
                 mode={link.mode}
                 arming={arming}
+                parts={partTable(ecuId, workflows)}
+                pick={actuatorPick}
+                variant={variantOf(ecuId)}
+                onConfirmVariant={confirmVariant}
+                onSentOnce={noteSentOnce}
                 onRun={link.runRead}
             />
         ) : (
@@ -844,7 +1035,7 @@ export default function Home() {
         // left to answer. It answers the only one remaining: what IS this
         // module. Same component SERVICE falls back to, because it is the same
         // question and the numbers are about the module, not the tab.
-        actuator: <ActuatorViz profile={catalog} arming={arming} />,
+        actuator: <ActuatorViz profile={catalog} arming={arming} workflows={workflows} lastRun={link.lastRun} />,
         memory: sessionsEnabled ? <SessionsViz count={sessions.local?.length ?? 0} /> : null,
         startup: probeEnabled ? <StartupViz s={probeSessions} /> : null,
         probe: probeEnabled ? <BoardViz s={probeSessions} live={probe.live()} /> : null,
@@ -970,6 +1161,7 @@ export default function Home() {
                                     onChangeEcu={chooseModule}
                                     allowAll={tab === 'diagnosis'}
                                     all={allModules}
+                                    hidden={ruledOutModules}
                                 />
                             }
                             notice={shownNotice}
@@ -1222,6 +1414,17 @@ export default function Home() {
                     gate={procedureGate}
                     send={link.runRead}
                     assistant={wizardAssistant ?? undefined}
+                    why={() => ({ error: link.lastError(), notSent: link.lastNotSent() })}
+                    onEnded={(o) =>
+                        setLastProcedure({
+                            program: procedure.testprg,
+                            name: procedure.name.en,
+                            nameJa: procedure.name.ja,
+                            ended: o.ended,
+                            reason: procedureReason(o.ended, o.error, o.refusedStatus),
+                            at: new Date().toISOString(),
+                        })
+                    }
                     onClose={() => {
                         setWizardOpen(false);
                         setWizardAssistant(null);

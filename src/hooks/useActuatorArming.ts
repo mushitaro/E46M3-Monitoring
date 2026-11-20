@@ -8,6 +8,8 @@ import {
     pendingStops,
     type ArmedJob,
     type ArmedMap,
+    type StopHow,
+    type Stopped,
 } from '@/lib/arming';
 import type { ActuationPermit, SendRequirement } from '@tsunagi/monitoring-engine';
 
@@ -39,6 +41,23 @@ import type { ActuationPermit, SendRequirement } from '@tsunagi/monitoring-engin
 export interface ArmingLink {
     /** Send a job's telegram. The same call the run path uses. */
     send: (jobId: string, hex: string, requires?: SendRequirement, permit?: ActuationPermit) => Promise<unknown>;
+    /** The stops, written straight to the transport as the page goes away (link session `lastGasp`). */
+    lastGasp?: (stopHexes: readonly string[]) => number;
+}
+
+/** Where a page that went away with something on leaves word of it, for the page that opens next. */
+export const LEFT_RUNNING_KEY = 'monitoring.actuator.leftRunning';
+
+/** What a page that went away with something on left behind (`leave`). */
+export interface LeftRunning {
+    moduleId: string | null;
+    jobId: string;
+    args: string[] | null;
+    timeoutS: number | null;
+    at: number;
+    leftAt: number;
+    /** The stop was handed to the transport as the page went. */
+    stopWritten: boolean;
 }
 
 export interface Arming {
@@ -58,19 +77,35 @@ export interface Arming {
      * a physical thing that is on; the release goes out and the row disarms
      * whether the ECU answered, refused or timed out. The truthful state after a
      * failed stop is "we sent it and do not know" — never "still armed", which
-     * would leave the operator pressing a button they have already pressed.
+     * would leave the operator pressing a button they have already pressed. A
+     * stop nobody answered is kept and sent again when the line comes back
+     * (`resendUnconfirmed`).
      */
-    stop: (jobId: string) => Promise<void>;
-    /** Every stop, oldest first, each one awaited. Safe to call when empty. */
-    stopAll: () => Promise<void>;
+    stop: (jobId: string, how?: StopHow) => Promise<Stopped | null>;
+    /** Every stop, oldest first, each one awaited. Safe to call when empty. What it stopped. */
+    stopAll: (how?: StopHow) => Promise<Stopped[]>;
+    /** The last stop, as the screen's notice line and the assistant say it. */
+    last: Stopped | null;
+    /** The stops sent with no answer (the line was gone): sent again once the line is back. */
+    resendUnconfirmed: () => Promise<Stopped[]>;
+    /** The page is going away: write every stop to the wire now, and leave word of it for the next page. */
+    leave: () => void;
 }
 
 export function useActuatorArming(link: ArmingLink): Arming {
     const [armed, setArmed] = useState<ArmedMap>(NO_ARMED);
+    const [last, setLast] = useState<Stopped | null>(null);
     // `stopAll` runs during teardown, after the last render that could have
     // closed over the state. The ref is what it reads, so a release cannot be
     // skipped because a callback was made one render too early.
     const armedRef = useRef<ArmedMap>(NO_ARMED);
+    // Stops nobody answered (the line was gone), oldest first.
+    const unconfirmed = useRef<ArmedJob[]>([]);
+    // The link's calls, read when a stop goes rather than when a callback was made.
+    const linkRef = useRef(link);
+    useEffect(() => {
+        linkRef.current = link;
+    });
 
     // The time-outs (policy: always stoppable). One per armed job; cleared when it is stopped.
     const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
@@ -81,20 +116,34 @@ export function useActuatorArming(link: ArmingLink): Arming {
     }, []);
 
     // Reached through a ref: the time-out fires after the render that armed it.
-    const stopRef = useRef<(jobId: string) => Promise<void>>(async () => {});
+    const stopRef = useRef<(jobId: string, how?: StopHow) => Promise<Stopped | null>>(async () => null);
 
     const arm = useCallback(
         (entry: ArmedJob) => {
             write(armIn(armedRef.current, entry));
             if (entry.timeoutS && entry.timeoutS > 0) {
-                timers.current.set(entry.jobId, setTimeout(() => void stopRef.current(entry.jobId), entry.timeoutS * 1000));
+                timers.current.set(entry.jobId, setTimeout(() => void stopRef.current(entry.jobId, 'timeout'), entry.timeoutS * 1000));
             }
         },
         [write],
     );
 
+    const sendStop = useCallback(async (entry: ArmedJob, how: StopHow): Promise<Stopped> => {
+        // `none`: a STOP is never held back by the speed preflight. A failed speed read must not
+        // be the reason an output stays energised. On a car it carries the permit its start was given.
+        // A failure is swallowed on purpose: the link's own log records it, and rethrowing here would
+        // abort `stopAll` partway and leave later outputs energised because an earlier one failed.
+        const answer = await linkRef.current.send(entry.stopJobId, entry.stopHex, 'none', entry.stopPermit).catch(() => null);
+        const confirmed = answer !== null && answer !== undefined;
+        unconfirmed.current = unconfirmed.current.filter((e) => e.jobId !== entry.jobId);
+        if (!confirmed) unconfirmed.current.push(entry);
+        const done: Stopped = { entry, how, at: Date.now(), confirmed };
+        setLast(done);
+        return done;
+    }, []);
+
     const stopOne = useCallback(
-        async (entry: ArmedJob) => {
+        async (entry: ArmedJob, how: StopHow): Promise<Stopped> => {
             // Disarm FIRST. If the send throws, the row must not be left armed —
             // and if the operator presses again while this one is in flight, the
             // second press should find nothing rather than send a second stop.
@@ -102,22 +151,16 @@ export function useActuatorArming(link: ArmingLink): Arming {
             const timer = timers.current.get(entry.jobId);
             if (timer) clearTimeout(timer);
             timers.current.delete(entry.jobId);
-            // `none`: a STOP is never held back by the speed preflight. A failed speed read must not
-            // be the reason an output stays energised. On a car it carries the permit its start was given.
-            await link.send(entry.stopJobId, entry.stopHex, 'none', entry.stopPermit).catch(() => {
-                // Swallowed on purpose. The caller's own log already records the
-                // failure; rethrowing here would abort `stopAll` partway and
-                // leave later outputs energised because an earlier one failed.
-            });
+            return sendStop(entry, how);
         },
-        [link, write],
+        [write, sendStop],
     );
 
     const stop = useCallback(
-        async (jobId: string) => {
+        async (jobId: string, how: StopHow = 'stop') => {
             const entry = armedRef.current.get(jobId);
-            if (!entry) return;
-            await stopOne(entry);
+            if (!entry) return null;
+            return stopOne(entry, how);
         },
         [stopOne],
     );
@@ -126,11 +169,53 @@ export function useActuatorArming(link: ArmingLink): Arming {
         stopRef.current = stop;
     }, [stop]);
 
-    const stopAll = useCallback(async () => {
-        for (const entry of pendingStops(armedRef.current)) {
-            await stopOne(entry);
-        }
-    }, [stopOne]);
+    const stopAll = useCallback(
+        async (how: StopHow = 'stop') => {
+            const out: Stopped[] = [];
+            for (const entry of pendingStops(armedRef.current)) out.push(await stopOne(entry, how));
+            return out;
+        },
+        [stopOne],
+    );
 
-    return { armed, anyArmed: armed.size > 0, arm, stop, stopAll };
+    const resendUnconfirmed = useCallback(async () => {
+        const out: Stopped[] = [];
+        for (const entry of [...unconfirmed.current]) out.push(await sendStop(entry, 'lineBack'));
+        return out;
+    }, [sendStop]);
+
+    const leave = useCallback(() => {
+        const on = pendingStops(armedRef.current);
+        if (on.length === 0) return;
+        const written = linkRef.current.lastGasp?.(on.map((e) => e.stopHex)) ?? 0;
+        const left: LeftRunning[] = on.map((e) => ({
+            moduleId: e.moduleId ?? null,
+            jobId: e.jobId,
+            args: e.args ? [...e.args] : null,
+            timeoutS: e.timeoutS ?? null,
+            at: e.at,
+            leftAt: Date.now(),
+            stopWritten: written > 0,
+        }));
+        try {
+            localStorage.setItem(LEFT_RUNNING_KEY, JSON.stringify(left));
+        } catch {
+            /* storage refused: the stop itself has gone out */
+        }
+    }, []);
+
+    return { armed, anyArmed: armed.size > 0, arm, stop, stopAll, last, resendUnconfirmed, leave };
+}
+
+/** What the page before this one left running, read once and forgotten (the screen and the assistant keep it for the session). */
+export function takeLeftRunning(): LeftRunning[] {
+    try {
+        const raw = localStorage.getItem(LEFT_RUNNING_KEY);
+        if (!raw) return [];
+        localStorage.removeItem(LEFT_RUNNING_KEY);
+        const parsed = JSON.parse(raw) as LeftRunning[];
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
 }

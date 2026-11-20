@@ -114,7 +114,7 @@ export function assistantPick(
             reason: values
                 ? `${job.id}(${values.join(', ')}) is not one of the sets compared with EdiabasLib. Choose one of these.`
                 : `${job.id} takes values (${job.args.map((a) => a.name).join(', ')}). Read back the set meant, wait for the OK, and pass it as values.`,
-            sets: sets.slice(0, 120).map((c) => [...c.start.args]),
+            sets: sets.map((c) => [...c.start.args]),
         };
     }
     return { ok: true, runPhase, choice };

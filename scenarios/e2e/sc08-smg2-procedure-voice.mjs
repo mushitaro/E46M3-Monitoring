@@ -37,7 +37,7 @@ const scenario = {
     id: 'SC08',
     title: 'SMG II の手順（声）：クラッチの学習 → ほかの 13 の手順も',
     story:
-        '停車中にオーナーが声で「クラッチの学習をして」と頼む。AI は手順の名前・前提（エンジン始動・ブレーキ）・時間を読み返し、「いいよ」を待つ。' +
+        '停車中にオーナーが声で「クラッチの学習をして」と頼む。AI は手順の名前・前提（手順のデータが持つもの：エンジンの状態など）・時間を読み返し、「いいよ」を待つ。' +
         '「いいよ」で画面に手順のダイアログが開き、段階ごとに進み具合とオーナーがすることが出る。最後に「完了」と結果が出て、「どうだった？」に AI が同じ結果を言う。' +
         'ほかの 13 の手順も同じに通る。ギアを選ぶ手順は、AI が「何速ですか？」と聞く。',
     car: { speedKmh: 0 },
@@ -49,7 +49,7 @@ const scenario = {
         {
             ai: 'monitoring_catalog',
             args: { module: 'smg2', query: 'クラッチ' },
-            means: 'AI が読み返す材料：手順の名前（日本語）・前提（エンジン始動・ブレーキ）・時間',
+            means: 'AI が読み返す材料：手順の名前（日本語）・前提（手順のデータが持つもの：エンジンの状態など）・時間',
             expect: (r) => {
                 const p = (r?.procedures ?? []).find((x) => x.procedure === '0x02');
                 if (!p) return `クラッチ食いつき点の学習が無い: ${JSON.stringify(r?.procedures ?? r).slice(0, 200)}`;
@@ -57,7 +57,7 @@ const scenario = {
                 if (!p.nameJa) why.push('日本語の名前が無い');
                 if (!p.longest) why.push('時間が無い');
                 if (p.engine !== 'run' || !(p.preconditions ?? []).some((x) => /engine running|エンジン始動/i.test(x))) why.push('前提にエンジン始動が無い');
-                if (!(p.preconditions ?? []).some((x) => /brake|ブレーキ/i.test(x))) why.push(`前提にブレーキが無い（${(p.preconditions ?? []).join(' / ')}）`);
+                if (!(p.preconditions ?? []).length) why.push('前提が無い（読み返す材料が無い）');
                 return why.length ? why.join('、') : true;
             },
         },

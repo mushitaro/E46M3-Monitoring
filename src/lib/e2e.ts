@@ -52,6 +52,27 @@ export function useE2EDoor(facade: TabFacade): void {
     });
     useEffect(() => {
         if (!E2E) return;
+        // The practice car outlives a reload, as a car does: what it heard before the page went (the
+        // stop written as it went included) is still there when the next page asks (IJ13). Saved after
+        // the page's own pagehide work (that listens in the capture phase), restored once here.
+        const WIRE_KEY = 'monitoring.e2e.practiceWire';
+        try {
+            const saved = sessionStorage.getItem(WIRE_KEY);
+            if (saved) {
+                sessionStorage.removeItem(WIRE_KEY);
+                practiceCar.wire.unshift(...(JSON.parse(saved) as PracticeCar['wire']));
+            }
+        } catch {
+            /* nothing kept */
+        }
+        const keepWire = () => {
+            try {
+                sessionStorage.setItem(WIRE_KEY, JSON.stringify(practiceCar.wire.slice(-2000)));
+            } catch {
+                /* too much to keep */
+            }
+        };
+        window.addEventListener('pagehide', keepWire);
         window.__monitoringE2E = {
             tool: async (name, args = {}) => {
                 const handler = (bridgeHandlers(latest.current) as Record<string, (a: Record<string, unknown>) => Promise<unknown>>)[name];
@@ -75,6 +96,7 @@ export function useE2EDoor(facade: TabFacade): void {
             },
         };
         return () => {
+            window.removeEventListener('pagehide', keepWire);
             delete window.__monitoringE2E;
         };
     }, []);

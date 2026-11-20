@@ -47,6 +47,7 @@ export function GateDialog({
     verdict,
     phase,
     argValues,
+    part,
     caution,
     onRun,
     onCancel,
@@ -59,6 +60,8 @@ export function GateDialog({
     verdict: Extract<RunVerdict, { allowed: true }>;
     phase: Phase;
     argValues: Readonly<Record<string, string>>;
+    /** The part it drives, in the owner's words (油圧ポンプ), for a job that takes values. */
+    part?: string;
     /** The one written sentence this job carries, if it has one. */
     caution?: string;
     onRun: () => void;
@@ -123,24 +126,34 @@ export function GateDialog({
                 <span className="font-mono text-[11px] text-slate-500">{job.id}</span>
             </div>
 
-            {/* --- what is about to go out ------------------------------- */}
-            <MicroLabel className="mt-4">{t.gate_plan}</MicroLabel>
-            <Well className="mt-1">
-                {lines.map((l) => (
-                    <div key={l} className="font-mono text-[11px] break-words text-blue-400">
-                        {l}
-                    </div>
-                ))}
-                <div className="mt-1 font-mono text-[11px] text-slate-500">{where}</div>
-                <div className="mt-1 font-mono text-[11px] break-words text-slate-500">
-                    {verdict.telegram.hex}
+            {/* --- what moves: read first (D3-3) ------------------------- */}
+            <MicroLabel className="mt-4">{t.gate_what}</MicroLabel>
+            <p className="mt-1 text-sm text-slate-100">{part ? `${part} · ${job.ja}` : job.ja}</p>
+
+            {/* --- preconditions ---------------------------------------- */}
+            <MicroLabel className="mt-4">{t.gate_needs}</MicroLabel>
+            {job.preconditions.length === 0 ? (
+                <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                    {t.gate_preconditions_none}
+                </p>
+            ) : (
+                <div className="mt-1 flex flex-col gap-1.5">
+                    {job.preconditions.map((p) => (
+                        <Check
+                            key={p}
+                            label={t[`precond_${p}` as 'precond_voltage_ok']}
+                            checked={ticked.has(`pre:${p}`)}
+                            onToggle={() => toggle(`pre:${p}`)}
+                        />
+                    ))}
                 </div>
-            </Well>
-            {/* How much the frame is to be trusted, in words, every time. A grade
-                shown only when it is bad teaches nobody what the good one means. */}
-            <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-                {emphasise(t.gate_telegram[verdict.telegram.confidence])}
+            )}
+
+            {/* --- how long, and what pressing does --------------------- */}
+            <p className="mt-4 text-xs leading-relaxed text-slate-300">
+                {phase === 'start' && style === 'hold' && verdict.actuation ? t.gate_stopsAfter(verdict.actuation.timeoutS) : t.gate_once}
             </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-slate-500">{t.gate_onPress(phase === 'start')}</p>
 
             {/* --- the sentence this job carries ------------------------- */}
             {caution && (
@@ -169,24 +182,24 @@ export function GateDialog({
                 />
             )}
 
-            {/* --- preconditions ---------------------------------------- */}
-            <MicroLabel className="mt-4">{t.gate_preconditions}</MicroLabel>
-            {job.preconditions.length === 0 ? (
-                <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-                    {t.gate_preconditions_none}
-                </p>
-            ) : (
-                <div className="mt-1 flex flex-col gap-1.5">
-                    {job.preconditions.map((p) => (
-                        <Check
-                            key={p}
-                            label={t[`precond_${p}` as 'precond_voltage_ok']}
-                            checked={ticked.has(`pre:${p}`)}
-                            onToggle={() => toggle(`pre:${p}`)}
-                        />
-                    ))}
+            {/* --- what is about to go out ------------------------------- */}
+            <MicroLabel className="mt-4">{t.gate_plan}</MicroLabel>
+            <Well className="mt-1">
+                {lines.map((l) => (
+                    <div key={l} className="font-mono text-[11px] break-words text-blue-400">
+                        {l}
+                    </div>
+                ))}
+                <div className="mt-1 font-mono text-[11px] text-slate-500">{where}</div>
+                <div className="mt-1 font-mono text-[11px] break-words text-slate-500">
+                    {verdict.telegram.hex}
                 </div>
-            )}
+            </Well>
+            {/* How much the frame is to be trusted, in words, every time. A grade
+                shown only when it is bad teaches nobody what the good one means. */}
+            <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                {emphasise(t.gate_telegram[verdict.telegram.confidence])}
+            </p>
 
             <p className="mt-4 text-[11px] leading-relaxed text-slate-500">{t.gate_postNote}</p>
         </DialogFrame>

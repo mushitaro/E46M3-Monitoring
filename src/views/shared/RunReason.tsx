@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { LABEL } from '@/components/ui';
 import { useLang } from '@/lib/i18n';
 import type { RunBlockKey, RunVerdict } from '@tsunagi/monitoring-engine';
@@ -14,11 +15,28 @@ import type { RunBlockKey, RunVerdict } from '@tsunagi/monitoring-engine';
  * the reason and the sentence is said once: in the list's ⓘ (`ReasonGlossary`), and in full in the
  * job's own detail where there is one. `title` keeps it for a mouse as well.
  */
-export function ReasonTag({ reason }: { reason: RunBlockKey }) {
+export function ReasonTag({ reason, label }: { reason: RunBlockKey; /** The word, where the row says it its own way. */ label?: string }) {
     const { t } = useLang();
+    // Touching the word says the sentence (SC06 F25: a head unit has no mouse, so `title` alone said
+    // nothing). The bubble floats over the rows below: nothing in the list moves when it opens (U7).
+    const [open, setOpen] = useState(false);
     return (
-        <span title={t.runBlock[reason]} className={`shrink-0 ${LABEL} text-slate-600`}>
-            {t.runBlockShort[reason]}
+        <span className="relative shrink-0">
+            <button
+                type="button"
+                title={t.runBlock[reason]}
+                aria-expanded={open}
+                onClick={() => setOpen((v) => !v)}
+                onBlur={() => setOpen(false)}
+                className={`${LABEL} cursor-help text-slate-500 underline decoration-dotted underline-offset-2`}
+            >
+                {label ?? t.runBlockShort[reason]}
+            </button>
+            {open && (
+                <span role="tooltip" className="absolute right-0 top-full z-30 mt-1 block w-64 rounded bg-slate-800 px-2 py-1.5 text-left text-[11px] normal-case leading-relaxed tracking-normal text-slate-200 shadow-lg">
+                    {t.runBlock[reason]}
+                </span>
+            )}
         </span>
     );
 }

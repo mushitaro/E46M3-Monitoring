@@ -4,12 +4,13 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { AlertTriangle, PlayCircle, Square } from 'lucide-react';
 import { DialogFrame } from '@/components/DialogFrame';
 import { DialogButton, Field, LABEL, MicroLabel, Provenance, Well, emphasise } from '@/components/ui';
-import { useProcedureRun } from '@/hooks/useProcedureRun';
+import { useProcedureRun, type ProcedureOutcome } from '@/hooks/useProcedureRun';
 import type { JobRunResult } from '@/hooks/useDs2Link';
 import type { CatalogJob } from '@tsunagi/monitoring-engine';
 import { useLang } from '@/lib/i18n';
 import { planProcedure, type ProcedureBlockKey } from '@/lib/procedureRun';
-import type { ActuationPermit, Ledger, Motion, SendRequirement } from '@tsunagi/monitoring-engine';
+import type { ActuationPermit, Ledger, Motion, NotSent, SendRequirement } from '@tsunagi/monitoring-engine';
+import { notSentLine } from '@/lib/notSentText';
 import type { Smg2Procedure, Smg2Workflows } from '@/lib/smg2Workflows';
 import type { TelegramTable } from '@tsunagi/monitoring-engine';
 import {
@@ -67,6 +68,8 @@ export function WizardDialog({
     gate,
     send,
     assistant,
+    why,
+    onEnded,
     onClose,
 }: {
     procedure: Smg2Procedure;
@@ -83,13 +86,19 @@ export function WizardDialog({
      * as a press here. Everything else is as on the screen, ABORT included.
      */
     assistant?: { ownerSaid: string; gear?: number };
+    /** Why the last send came back empty (the link's own sentence and shape, read straight after the await). */
+    why?: () => { error: string | null; notSent: NotSent | null };
+    /** Told how the run ended, so the page and the assistant can say it (monitoring_status `lastProcedure`). */
+    onEnded?: (outcome: ProcedureOutcome) => void;
     onClose: () => void;
 }) {
     const { lang, t } = useLang();
     const pick = (b: { ja: string; en: string }) => (lang === 'en' ? b.en : b.ja);
 
     const [gear, setGear] = useState<number>(assistant?.gear ?? 0);
-    const run = useProcedureRun(send);
+    const run = useProcedureRun(send, why);
+    // How the run ended, for the result step: a module's refusal is said as one (IJ06).
+    const [outcome, setOutcome] = useState<ProcedureOutcome | null>(null);
 
     // Every precondition the SGBD lists, plus one acknowledgement of the safety
     // statement. The keys are indices into the procedure's own array rather than
@@ -125,8 +134,13 @@ export function WizardDialog({
     const startRun = useCallback(() => {
         if (!plan.ok) return;
         dispatch({ type: 'started' });
-        void run.start(plan.plan).then(() => dispatch({ type: 'finished', ok: run.finishedWell }));
-    }, [plan, run]);
+        setOutcome(null);
+        void run.start(plan.plan).then((o) => {
+            setOutcome(o);
+            onEnded?.(o);
+            dispatch({ type: 'finished', ok: o.ended === 'ok' });
+        });
+    }, [plan, run, onEnded]);
 
     // The assistant's start: once, when the plan allows it (a refusal stays on the dialog, with its reason).
     const assistantStarted = useRef(false);
@@ -252,6 +266,8 @@ export function WizardDialog({
             {state.step === 'run' && (
                 <>
                     <p className="text-[11px] leading-relaxed text-slate-500">{emphasise(t.wiz_run_note)}</p>
+                    {/* What the owner does while it runs: keep the preconditions, stay, ABORT if needed. */}
+                    <p className="mt-2 text-xs leading-relaxed text-slate-200">{t.wiz_owner}</p>
                     <div className="mt-4 flex flex-wrap items-baseline gap-x-6 gap-y-2">
                         <Field
                             label={t.wiz_elapsed}
@@ -301,9 +317,17 @@ export function WizardDialog({
                         }`}
                     >
                         {state.result?.aborted ? t.wiz_result_aborted
+                            : outcome?.ended === 'refused' ? t.wiz_result_refused(`0x${(outcome.refusedStatus ?? 0).toString(16).toUpperCase().padStart(2, '0')}`)
+                            : outcome?.ended === 'failed' ? t.wiz_result_failed
                             : run.finishedWell ? t.wiz_result_ok
                             : t.wiz_result_bad}
                     </p>
+                    {/* Why, and what to do: the car measured before sending (the engine not as the procedure
+                        asks, moving, battery) in the owner's words; otherwise the link's sentence. */}
+                    {outcome?.ended === 'failed' && outcome.notSent && <p className="mt-1 text-xs text-amber-400">{notSentLine(outcome.notSent, t)}</p>}
+                    {outcome?.ended === 'failed' && !outcome.notSent && outcome.error && (
+                        <p className="mt-1 break-words font-mono text-[10px] text-slate-500">{outcome.error}</p>
+                    )}
                     <p className="mt-1 text-[11px] text-slate-500">{t.wiz_stopSent}</p>
 
                     {statusText && (

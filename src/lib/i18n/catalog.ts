@@ -135,6 +135,12 @@ export interface Localised {
     wiz_abortOnly: string;
     wiz_result_ok: string;
     wiz_result_bad: string;
+    /** The module refused a step, with its status. */
+    wiz_result_refused: (status: string) => string;
+    /** It ended without finishing, for a reason the link gave. */
+    wiz_result_failed: string;
+    /** What the owner does while it runs. */
+    wiz_owner: string;
     wiz_result_aborted: string;
     wiz_stopSent: string;
     wiz_offsetsInferred: string;
@@ -145,6 +151,36 @@ export interface Localised {
     viz_response: string;
     viz_responseNone: string;
     actuator_none: string;
+    /** The seconds left on an output that is on, on its row. */
+    actuator_left: (s: number) => string;
+    /** The notice line while something is on, after it stopped, and when a page before this one left it on. */
+    actuation_running: (part: string, left: number | null) => string;
+    actuation_stopped: (part: string) => string;
+    actuation_timedOut: (part: string, s: number) => string;
+    actuation_switched: (part: string) => string;
+    actuation_lineBack: (part: string) => string;
+    actuation_unanswered: string;
+    actuation_sentOnce: (part: string) => string;
+    actuation_leftRunning: (part: string, s: number) => string;
+    /** The module stopped answering its heartbeat. */
+    link_lost: string;
+    /** The car refusing at the wire, with what was measured (lib/notSentText). */
+    notSent_moving: (kmh: string) => string;
+    notSent_voltage: (v: string, min: string) => string;
+    notSent_voltageUnread: (min: string) => string;
+    notSent_engineOff: (rpm: string) => string;
+    notSent_engineOn: (rpm: string) => string;
+    notSent_link: string;
+    notSent_permission: string;
+    /** Which module answers at a shared address (lib/variantChoice). */
+    variant_ask: (hex: string) => string;
+    variant_ruledOut: (hex: string, other: string) => string;
+    /** The confirmation, in the order it is read: what moves, what it needs, how long, what pressing does. */
+    gate_what: string;
+    gate_needs: string;
+    gate_stopsAfter: (s: number) => string;
+    gate_once: string;
+    gate_onPress: (start: boolean) => string;
     /** The credits dialog. Reachable always; never inside the disclaimer. */
     credits_title: string;
     credits_lede: string;

@@ -148,5 +148,14 @@ export function useDs2Link(
         scanAll: session.scanAll,
         clearLog: session.clearLog,
         clearError: session.clearError,
+        /** The last refusal just before sending, as a shape with what was measured (link/notSent). */
+        notSent: snapshot.notSent,
+        lastNotSent: session.lastNotSent,
+        /** The module in session stopped answering its heartbeat: the cable or the line is gone. */
+        lineLost: snapshot.lineLost,
+        /** Something is on at the module in session: beat it even without a keep-alive of its own. */
+        setWatch: session.setWatch,
+        /** The stops of what is on, written to the transport as the page goes away. */
+        lastGasp: session.lastGasp,
     };
 }

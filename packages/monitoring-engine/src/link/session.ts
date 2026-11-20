@@ -240,6 +240,16 @@ export interface LinkSnapshot {
     scanProgress: { done: number; total: number } | null;
     vehicleState: VehicleState | null;
     motion: Motion;
+    /**
+     * The last error's shape when it was the link's own refusal just before sending (`lastNotSent`), so
+     * a screen can say it in the owner's words with the values measured then. Null with the error.
+     */
+    notSent: NotSent | null;
+    /**
+     * The module in session stopped answering its heartbeat (LINE_LOST_BEATS in a row): the cable or
+     * the K-line is gone. Cleared, with its error, by the first beat that answers again.
+     */
+    lineLost: boolean;
 }
 
 /** Who is told what, as it happens. Each may change at any time (`setHandlers`). */
@@ -273,7 +283,15 @@ const INITIAL: LinkSnapshot = {
     scanProgress: null,
     vehicleState: null,
     motion: 'unknown',
+    notSent: null,
+    lineLost: false,
 };
+
+/** Heartbeats (or operations) in a row without an answer before the line is taken as lost (beats 2 s apart). */
+export const LINE_LOST_BEATS = 2;
+
+/** The sentence a lost line leaves in `error` (the screen says it in the owner's words from `lineLost`). */
+export const LINE_LOST_MESSAGE = 'The line is lost: the module stopped answering its heartbeat (cable pulled or K-line down). Retrying.';
 
 export class LinkSession {
     private snap: LinkSnapshot = INITIAL;
@@ -336,6 +354,9 @@ export class LinkSession {
     /** The last identity read, for the failure report. */
     private identNow: { hex: string; length: number } | null = null;
     private motionTimer: ReturnType<typeof setTimeout> | null = null;
+    /** Heartbeats in a row that went unanswered, and whether one is in flight. */
+    private missedBeats = 0;
+    private beating = false;
 
     constructor(options: { target: ModuleProtocol } & LinkHandlers) {
         this.target = options.target;
@@ -403,7 +424,7 @@ export class LinkSession {
         const message = e instanceof Error ? e.message : String(e);
         this.lastErrorNow = message;
         this.lastNotSentNow = notSentOf(e);
-        this.update({ error: message, errorKind: isDs2Error(e) ? e.kind : 'unclassified' });
+        this.update({ error: message, errorKind: isDs2Error(e) ? e.kind : 'unclassified', notSent: this.lastNotSentNow });
         this.append('error', message);
     }
 
@@ -411,7 +432,7 @@ export class LinkSession {
     readonly clearError = (): void => {
         this.lastErrorNow = null;
         this.lastNotSentNow = null;
-        this.update({ error: null, errorKind: null });
+        this.update({ error: null, errorKind: null, notSent: null });
     };
 
     /**
@@ -759,7 +780,8 @@ export class LinkSession {
             this.transport = selected.transport;
             this.transportKindNow = selected.kind;
             this.modeNow = nextMode;
-            this.update({ mode: nextMode, state: 'connected' });
+            this.missedBeats = 0;
+            this.update({ mode: nextMode, state: 'connected', lineLost: false });
             this.append(
                 'info',
                 nextMode === 'practice'
@@ -810,7 +832,8 @@ export class LinkSession {
         // link is gone would greet the next connection with the wrong answer if
         // anything ever read it before connect() writes it.
         this.modeNow = 'vehicle';
-        this.update({ state: 'disconnected' });
+        this.missedBeats = 0;
+        this.update({ state: 'disconnected', lineLost: false });
         if (link) {
             try {
                 await link.disconnect();
@@ -829,14 +852,22 @@ export class LinkSession {
         this.update({ state: 'busy' });
         this.busy = true;
         try {
+            // A heartbeat in flight holds the gate for one exchange (longer on a dead line): an
+            // operation — above all a STOP — waits it out rather than failing on GATE_HELD.
+            for (let waited = 0; link.isBusy && waited < 3000; waited += 20) await new Promise((r) => setTimeout(r, 20));
             const result = await fn(link);
             this.update({ state: 'connected' });
+            // The line answered this operation.
+            this.lineAnswered();
             return result;
         } catch (e) {
             this.update({ state: 'connected' });
             this.append('warn', `${what} failed`);
             this.failWith(e);
             this.notifyFailure(what, e);
+            // An operation the line did not answer counts as a missed beat: the beats wait while it runs,
+            // and a stop on a dead line can hold the link for seconds (IJ04). One that answered resets it.
+            if (isDs2Error(e) && (e.code === 'READ_TIMEOUT' || e.kind === 'electrical')) this.lineMissed();
             return null;
         } finally {
             this.busy = false;
@@ -1731,12 +1762,85 @@ export class LinkSession {
      * 2026-11-09 ended "link-lost" after about three minutes on a link that was still up.
      */
     readonly heartbeat = (): void => {
-        if (this.busy || this.polling) return;
+        if (this.busy || this.polling || this.beating) return;
         const link = this.link;
         const at = this.sessionAddress;
         const target = this.target;
-        if (!link || at === null || target.address !== at || !target.keepAlive) return;
-        void link.to(at).keepAlive();
+        if (!link || at === null || target.address !== at) return;
+        // Not to an address its IDENT said is another module (SC10 F01: SMG II's 0x9E reached a GS20).
+        const fitted = this.fitmentNow.get(at);
+        if (fitted && (fitted.moduleId || fitted.sgbd) && fitted.moduleId !== target.moduleId) return;
+        // The module's own keep-alive where it has one. A module without (SMG II, DSC) is beaten only
+        // while something is on there (`watch`), with its own IDENT — the read its SGBD sends and the
+        // app sends on a moving car too — because that is when a pulled cable has to be noticed.
+        // While the line is lost the module is asked with its IDENT too, so its return is noticed.
+        const frame = target.keepAlive ?? (this.watching || this.snap.lineLost ? target.ident : null);
+        if (!frame || link.isBusy) return;
+        // Any answer, a refusal included, is the line up; silence is a miss; a held gate or a frame the
+        // send guard keeps back is neither (`null`).
+        this.beating = true;
+        void link
+            .to(at)
+            .exchange(frame.control, frame.payload)
+            .then(
+                () => true,
+                (e: unknown) => (isDs2Error(e) && (e.code === 'GATE_HELD' || e.code === 'NOT_SENT') ? null : false),
+            )
+            .then((answered) => {
+                if (this.link !== link || answered === null) return;
+                if (answered) this.lineAnswered();
+                else if (!this.busy && !this.polling) this.lineMissed();
+            })
+            .finally(() => {
+                this.beating = false;
+            });
+    };
+
+    /** A beat (or an operation while something is on) went unanswered: enough in a row is the line lost. */
+    private lineMissed(): void {
+        this.missedBeats++;
+        if (this.missedBeats < LINE_LOST_BEATS || this.snap.lineLost) return;
+        this.append('error', LINE_LOST_MESSAGE);
+        this.lastErrorNow = LINE_LOST_MESSAGE;
+        this.lastNotSentNow = null;
+        this.update({ lineLost: true, error: LINE_LOST_MESSAGE, errorKind: null, notSent: null });
+    }
+
+    /** The module answered: the line is up (and back, if it was lost). */
+    private lineAnswered(): void {
+        this.missedBeats = 0;
+        if (!this.snap.lineLost) return;
+        this.append('info', 'The module answers its heartbeat again: the line is back.');
+        if (this.lastErrorNow === LINE_LOST_MESSAGE) this.clearError();
+        this.update({ lineLost: false });
+    }
+
+    /** Something is on at the module in session (the page's arming): beat it even without a keep-alive. */
+    private watching = false;
+    readonly setWatch = (on: boolean): void => {
+        this.watching = on;
+    };
+
+    /**
+     * The stops of whatever is on, written straight to the open transport, as the page goes away
+     * (pagehide): no gate, no measurement, no answer awaited — there is no later in which to await one.
+     * Only frames the caller already holds as the release of an output it started (lib/arming), and
+     * only to the module in session: a stop is never held back (the owner's rule: always stoppable).
+     * Returns how many were handed to the transport.
+     */
+    readonly lastGasp = (stopHexes: readonly string[]): number => {
+        const transport = this.transport;
+        const at = this.sessionAddress;
+        if (!transport || at === null) return 0;
+        let n = 0;
+        for (const hex of stopHexes) {
+            const bytes = telegramBytes(hex);
+            if (!bytes || bytes[0] !== at) continue;
+            this.append('tx', `Stop at page leave: ${hex}`);
+            void transport.write(bytes).catch(() => {});
+            n++;
+        }
+        return n;
     };
 
     /**

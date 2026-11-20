@@ -7,6 +7,7 @@ import type { FreshFaults, TabFacade } from '@/lib/bridge/handlers';
 import { jobRiskOf, loadEcuCatalog, text as resolveText, type DecodedFault, type EcuIndex, type EcuProfile, type JobClass } from '@tsunagi/monitoring-engine';
 import { normCode } from '@/lib/faultCode';
 import { CHROME } from '@/lib/i18n/chrome';
+import { LINE_LOST_MESSAGE } from '@tsunagi/monitoring-engine';
 import { en } from '@/lib/i18n/en';
 import { ja } from '@/lib/i18n/ja';
 import { TUNER_WORKS } from '@/lib/links';
@@ -37,7 +38,14 @@ import type { Datalog } from '@/views/datalog/useDatalog';
 import type { Sessions } from '@/views/sessions/useSessions';
 import { appNow } from '@tsunagi/monitoring-engine';
 import { mayActuate } from '@tsunagi/monitoring-engine';
-import { assistantMayStart, startActuation } from '@/lib/actuation';
+import { assistantMayStart, startActuation, tableRefusal } from '@/lib/actuation';
+import { MIN_RUN_VOLTAGE, actuationTerms, operationFor } from '@tsunagi/monitoring-engine';
+import type { Stopped } from '@/lib/arming';
+import type { LeftRunning } from '@/hooks/useActuatorArming';
+import { partName, partTable } from '@/lib/partName';
+import { notSentSentence } from '@/lib/notSentText';
+import { isOn } from '@/lib/jobSurface';
+import type { ProcedureEnd } from '@/lib/procedureEnd';
 import { procedureAsJob } from '@/views/service/ServiceView';
 import type { Smg2Workflows } from '@/lib/smg2Workflows';
 import { isProcedureStart, procedureRows, runWith } from '@/lib/catalogRoutes';
@@ -161,7 +169,7 @@ export function useMonitoringFacade(input: {
     /** SMG II's test programs (smg2-workflows.json), the procedures monitoring_procedure starts. */
     workflows: Smg2Workflows | null;
     /** Another module on the screen, the link opened again for it if it was open (page.tsx). */
-    switchModule: (id: string) => Promise<string | null>;
+    switchModule: (id: string) => Promise<{ reason: string | null; stopped: Stopped[] }>;
     /** Every module's fault read, shown on DIAGNOSIS under ALL MODULES (page.tsx). How many addresses, or why not. */
     startScan: () => Promise<{ addresses: number } | string>;
     /** A newer build is downloaded; it is taken once the link has been down a minute (lib/adoptBuild). */
@@ -172,6 +180,16 @@ export function useMonitoringFacade(input: {
     syncInvestigations: () => void;
     /** The name a device answers as when the owner gave it none. */
     defaultDevice: Record<DeviceKind, string>;
+    /** A job sent once and not left on: the screen says it went (page.tsx). */
+    noteSentOnce: (moduleId: string, jobId: string, args: readonly string[] | null) => void;
+    /** Put a job's set of values on its ACTUATOR row, as the assistant chose it (page.tsx). */
+    pickSet: (moduleId: string, jobId: string, args: readonly string[] | null) => void;
+    /** Why a module's jobs may not be started until the owner says which module answers at its address, or null. */
+    variantUnconfirmed: (moduleId: string) => string | null;
+    /** What the page before this one left on when it went away (useActuatorArming `leave`). */
+    leftRunning: readonly LeftRunning[];
+    /** How the last procedure ended (views/service/WizardDialog), or null. */
+    lastProcedure: ProcedureEnd | null;
 }): TabFacade {
     const { link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, tab } = input;
     const moduleName = (id: string) => ecuIndex?.modules.find((m) => m.id === id)?.name_en ?? id;
@@ -326,6 +344,73 @@ export function useMonitoringFacade(input: {
         };
     };
 
+
+    /** A job the table keeps for a person on the screen, put on SERVICE for them to press (IJ F19). */
+    const stageOnScreen = async (module: string, job: CatalogJob): Promise<boolean> => {
+        if (module !== ecuId) return false;
+        input.selectJob(job);
+        input.changeTab('service');
+        return true;
+    };
+
+    /** What the assistant reads back before a job starts: the part in the owner's words, how long, and what it needs (SC07, F34). */
+    const readBackOf = (module: string, job: CatalogJob, args?: readonly string[]) => {
+        const terms = actuationTerms(job, decisionFor(module, job, catalog?.group, args));
+        const hold = operationFor(job).kind === 'hold' && !!operationFor(job).stopJob;
+        const part = partName(module, job, args, input.workflows);
+        const seconds = hold ? terms.timeoutS : null;
+        return {
+            ...(args ? { part: part.part, partName: part.en, partNameJa: part.ja } : {}),
+            stopsByItselfAfterS: seconds,
+            needs: { parked: true, minV: MIN_RUN_VOLTAGE, ...(terms.engine ? { engine: terms.engine === 'off' ? 'stopped' : 'running' } : {}) },
+            say:
+                (args ? `${part.ja}を` : `${job.ja}を`) +
+                (seconds ? `${seconds} 秒動かします。` : '一度動かします。') +
+                `停車中、電圧 ${MIN_RUN_VOLTAGE} V 以上が前提です` +
+                (terms.engine === 'off' ? '（エンジン停止）' : terms.engine === 'run' ? '（エンジン始動）' : '') +
+                '。いいですか？',
+        };
+    };
+
+    /**
+     * The sets a job takes, for the assistant: every part listed by name (the first value), and the sets
+     * themselves — all of a part named by `query` or by the values asked for, else the plain ones of
+     * each part (AKTIV first), so no part is ever cut off the end of a long list (IJ F07, SC07 F33).
+     */
+    const setsAnswer = (module: string, job: CatalogJob, sets: readonly string[][], query?: string, values?: readonly string[]) => {
+        const byPart = new Map<string, string[][]>();
+        for (const s of sets) byPart.set(s[0] ?? '', [...(byPart.get(s[0] ?? '') ?? []), [...s]]);
+        const words = (query ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+        const parts = [...byPart].map(([part, list]) => {
+            const n = partName(module, job, [part], input.workflows);
+            return { part, name: n.en, nameJa: n.ja, sets: list.length };
+        });
+        const matches = (p: (typeof parts)[number]) => words.some((w) => `${p.part} ${p.name} ${p.nameJa}`.toLowerCase().includes(w));
+        const named = words.length ? parts.filter(matches) : values?.[0] && byPart.has(values[0]) ? parts.filter((p) => p.part === values[0]) : [];
+        const plainFirst = (list: string[][]) => [...list].sort((a, b) => Number(b[1] === 'AKTIV') - Number(a[1] === 'AKTIV'));
+        const shown = named.length ? named.flatMap((p) => byPart.get(p.part) ?? []) : [...byPart.values()].flatMap((list) => plainFirst(list).slice(0, 4));
+        return {
+            parts,
+            sets: shown,
+            ...(named.length ? { setsOf: named.map((p) => p.part) } : { setsNote: `The plain sets of each part. Ask with query (the part, in any language the list carries) for all of one part's ${sets.length > shown.length ? 'sets' : 'sets'}.` }),
+        };
+    };
+
+    /** What is on now, by the part it drives: 「油圧ポンプ (HYDROPUMPE, STEUERN_STELLGLIED)」. */
+    const armedNow = () =>
+        [...(input.arming?.armed?.values() ?? [])].map((e) => {
+            const p = partName(e.moduleId ?? ecuId, catalog?.jobs.find((j) => j.id === e.jobId) ?? { id: e.jobId }, e.args, input.workflows);
+            const left = e.timeoutS ? Math.max(0, Math.ceil((e.at + e.timeoutS * 1000 - Date.now()) / 1000)) : null;
+            return { job: e.jobId, part: p.part, partName: p.en, partNameJa: p.ja, stopsInS: left };
+        });
+    const onNow = () => armedNow().map((a) => (a.part ? `${a.partNameJa} (${a.partName === a.part ? a.part : `${a.partName}, ${a.part}`}, ${a.job})` : `${a.partNameJa} (${a.job})`)).join(', ');
+
+    /** A stop, as the assistant reads it. */
+    const stoppedOf = (s: Stopped) => {
+        const p = partName(s.entry.moduleId ?? ecuId, catalog?.jobs.find((j) => j.id === s.entry.jobId) ?? { id: s.entry.jobId }, s.entry.args, input.workflows);
+        return { job: s.entry.jobId, part: p.part, partNameJa: p.ja, how: s.how, answered: s.confirmed, at: new Date(s.at).toISOString() };
+    };
+
     return {
         now: () => appNow(),
         newId: () => crypto.randomUUID(),
@@ -356,7 +441,28 @@ export function useMonitoringFacade(input: {
             screen: tab,
             // What DIAGNOSIS shows: the module, or ALL MODULES (the scan's list). monitoring_module puts the module back.
             showing: tab === 'diagnosis' && input.allModules ? 'all-modules' : 'module',
-            error: link.error,
+            error: link.lineLost ? LINE_LOST_MESSAGE : link.error,
+            // The module stopped answering its heartbeat: the cable or the line is gone (IJ04).
+            lineLost: link.lineLost,
+            // What is on now, by part, with the seconds until it stops by itself (U3, U4).
+            on: armedNow(),
+            // The last stop and how it came (STOP, its own time-out, a switch, the line back).
+            lastStop: input.arming?.last ? stoppedOf(input.arming.last) : null,
+            // A page before this one went away with something on (IJ13): its stop was written as it went,
+            // and the ECU's own time-out ends it regardless.
+            ...(input.leftRunning?.length
+                ? {
+                      previousPage: input.leftRunning.map((l) => ({
+                          job: l.jobId,
+                          part: l.args?.[0] ?? null,
+                          partNameJa: partName(l.moduleId ?? ecuId, { id: l.jobId }, l.args, input.workflows).ja,
+                          stopWrittenAsThePageWent: l.stopWritten,
+                          leftAt: new Date(l.leftAt).toISOString(),
+                          note: `The page closed while it was on. Its stop was sent as the page went; the module's own time-out (${l.timeoutS ?? 10} s) ends it regardless: it timed out by itself if the stop did not arrive.`,
+                      })),
+                  }
+                : {}),
+            lastProcedure: input.lastProcedure ?? null,
             scan: link.scanProgress
                 ? { running: true, ...link.scanProgress }
                 : link.scan
@@ -411,6 +517,7 @@ export function useMonitoringFacade(input: {
             const profile = module === ecuId && catalog ? catalog : await loadEcuCatalog(module).catch(() => null);
             if (!profile) return { module, found: false, reason: `No catalogue for ${module}.` };
             const table = await loadTelegrams(module);
+            const partsOf = partTable(module, input.workflows);
             const words = (query ?? '').toLowerCase().split(/\s+/).filter(Boolean);
             const classes = kind ? KINDS[kind] : null;
             const jobs = profile.jobs
@@ -418,18 +525,21 @@ export function useMonitoringFacade(input: {
                 .filter((j) => {
                     if (words.length === 0) return true;
                     const desc = j.desc ? resolveText(profile, j.desc, 'en').text : '';
-                    const hay = `${j.id} ${j.ja} ${j.en} ${desc} ${j.system}`.toLowerCase();
+                    // The parts a job drives, by name, so 「油圧ポンプ」 finds the job that drives it (F32).
+                    const parts = (j.args[0]?.options ?? []).map((o) => { const n = partsOf.get(o.value); return n ? `${o.value} ${n.ja} ${n.en}` : o.value; }).join(' ');
+                    const hay = `${j.id} ${j.ja} ${j.en} ${desc} ${j.system} ${parts}`.toLowerCase();
                     return words.some((w) => hay.includes(w));
                 })
                 .slice(0, limit)
                 .map((j) => {
-                    // PRACTICE answers as ACTUATOR's row does there (the practice car is the place to practise):
-                    // the car's rule "practise first" is not said of the practice car itself (SC02 step 4, F11).
-                    const v =
-                        link.mode === 'practice'
-                            ? mayActuate(j, bestTelegram(table, j.id), ledger, { moduleId: module, mode: 'practice', motion: link.motion, group: profile.group })
-                            : mayRun(j, bestTelegram(table, j.id), ledger, { moduleId: module, motion: link.motion });
+                    // A job that drives something is asked as the screen asks it: PRACTICE runs what it
+                    // rehearses (F11: a clear read "practise first" while PRACTICE was on).
+                    const drives = j.class !== 'read';
+                    const v = drives
+                        ? mayActuate(j as CatalogJob, bestTelegram(table, j.id), ledger, { moduleId: module, mode: link.mode, motion: link.motion, group: profile.group })
+                        : mayRun(j, bestTelegram(table, j.id), ledger, { moduleId: module, motion: link.motion });
                     const rec = ledger.records[`${module}:${j.id}`];
+                    const named = (j.args[0]?.options ?? []).filter((o) => partsOf.has(o.value)).map((o) => ({ part: o.value, nameJa: partsOf.get(o.value)!.ja }));
                     return {
                         job: j.id,
                         name: j.en,
@@ -445,7 +555,9 @@ export function useMonitoringFacade(input: {
                         ...(/^FS_LOESCHEN/.test(j.id) ? { clears: CLEAR_CONSEQUENCE } : {}),
                         // A job that takes values has its own door (car, 2026-11-19: a bare "takes values" read as "cannot be run").
                         ...(runWith(module, j) ? { runWith: runWith(module, j) } : {}),
-                        ledger: rec ? { status: rec.status, observations: rec.observations ?? 0 } : null,
+                        ledger: rec ? { status: rec.status, observations: rec.observations ?? 0, practiced: rec.practiced ?? 0 } : null,
+                        ...(named.length ? { parts: named } : {}),
+                        ...(drives && module === ecuId ? { readBack: readBackOf(module, j as CatalogJob) } : {}),
                     };
                 });
             // SMG II's procedures are not SGBD jobs (one job, TESTPRG_STARTEN, with a program number):
@@ -473,8 +585,21 @@ export function useMonitoringFacade(input: {
         ledger: (moduleId) => {
             const rows = Object.values(ledger.records)
                 .filter((r) => !moduleId || r.id.startsWith(`${moduleId}:`))
-                .map((r) => ({ id: r.id, status: r.status, observations: r.observations ?? 0, lastObservedAt: r.lastObservedAt ?? null, movingOk: r.status === 'moving-ok', reason: r.reason ?? null }));
-            return { records: rows, note: 'Reads are cleared for a moving car by the owner, on the screen.' };
+                .map((r) => ({
+                    id: r.id,
+                    status: r.status,
+                    observations: r.observations ?? 0,
+                    lastObservedAt: r.lastObservedAt ?? null,
+                    movingOk: r.status === 'moving-ok',
+                    // Practised in PRACTICE (policy: once there before it runs on a car), per part it drives.
+                    practiced: r.practiced ?? 0,
+                    practicedAt: r.practicedAt ?? null,
+                    reason: r.reason ?? null,
+                }));
+            return {
+                records: rows,
+                note: 'Reads are cleared for a moving car by the owner, on the screen. practiced: how often a job that drives something ran in PRACTICE (per part for a job that takes values); one that was never practised runs on a car only after it has.',
+            };
         },
 
         sessions: async (limit) => {
@@ -536,7 +661,7 @@ export function useMonitoringFacade(input: {
             };
         },
 
-        actuate: async ({ module, job: jobId, phase, ownerSaid, values }) => {
+        actuate: async ({ module, job: jobId, phase, ownerSaid, values, query }) => {
             if (module !== ecuId) {
                 return { started: false, reason: `The screen is on ${moduleName(ecuId)}. Put ${moduleName(module)} on it first (monitoring_module).` };
             }
@@ -545,17 +670,33 @@ export function useMonitoringFacade(input: {
             // A test program is a procedure: stopped first and last, followed to its end by its dialog.
             if (isProcedureStart(module, job.id))
                 return { started: false, reason: `${job.id} is started as a procedure: monitoring_procedure with its program number (monitoring_catalog lists the procedures).` };
+            // The owner's table first, before any value (IJ F08): a write is refused as a write, an item
+            // kept for a person on the screen is put there for them.
+            const table = tableRefusal(module, job, catalog?.group);
+            if (table) {
+                const staged = table.screen ? await stageOnScreen(module, job) : false;
+                return { started: false, reason: table.reason, ...(staged ? { staged: true } : {}) };
+            }
+            // An address several modules may answer at (0x56: ASC MK20 on an early car, DSC on a late one)
+            // gets nothing but the common frames until the owner has said which, once, on the screen.
+            const unconfirmed = input.variantUnconfirmed(module);
+            if (unconfirmed) return { started: false, reason: unconfirmed };
             // The phase and the set of values (lib/agreedChoices: the screen and the coverage count ask
             // the same; a job that stays on until its stop always starts with it armed).
             const choices = job.args.length > 0 && catalog ? await loadChoices(module, catalog.address, job, catalog.jobs as CatalogJob[]) : [];
             const pick = assistantPick(job, choices, phase, values, (args) => decisionFor(module, job, catalog?.group, args).who === 'ai');
-            if (!pick.ok) return { started: false, reason: pick.reason, ...(pick.sets ? { sets: pick.sets } : {}) };
+            if (!pick.ok) return { started: false, reason: pick.reason, ...(pick.sets ? setsAnswer(module, job, pick.sets, query, values) : {}), readBack: readBackOf(module, job) };
             const { runPhase, choice } = pick;
-            const may = assistantMayStart(module, job, catalog?.group, link.motion, ownerSaid, choice?.start.args);
-            if (!may.ok) return { started: false, reason: may.reason };
+            const args = choice?.start.args;
+            const may = assistantMayStart(module, job, catalog?.group, link.motion, ownerSaid, args);
+            if (!may.ok) {
+                const staged = may.screen ? await stageOnScreen(module, job) : false;
+                return { started: false, reason: may.reason, ...(staged ? { staged: true } : {}), readBack: readBackOf(module, job, args) };
+            }
+            if (link.lineLost) return { started: false, reason: 'The line is lost (the module stopped answering): nothing starts until it is back.' };
             if (link.state !== 'connected') return { started: false, reason: `The link is ${link.state}; a job starts from connected and idle.` };
-            // One thing driven at a time (the owner's rule, 2026-11-15).
-            if (input.arming.anyArmed) return { started: false, reason: `${[...input.arming.armed.keys()].join(', ')} is on. Stop it first (monitoring_stop_outputs).` };
+            // One thing driven at a time (the owner's rule, 2026-11-15), said by the part that is on.
+            if (input.arming.anyArmed) return { started: false, reason: `${onNow()} is on. Stop it first (monitoring_stop_outputs).`, on: armedNow() };
             const telegrams = await loadTelegrams(module);
             // The very gate ACTUATOR's row asks, with the same inputs.
             const v = mayActuate(job, choice ? telegramOfAgreed(choice.start) : bestTelegram(telegrams, job.id), ledger, {
@@ -563,33 +704,57 @@ export function useMonitoringFacade(input: {
                 mode: link.mode,
                 motion: link.motion,
                 group: catalog?.group,
-                ...(choice ? { args: choice.start.args, agreed: choice.start } : {}),
+                ...(choice ? { args, agreed: choice.start } : {}),
             });
-            if (!v.allowed) return { started: false, reason: en.runBlock[v.reason] };
+            if (!v.allowed) return { started: false, reason: en.runBlock[v.reason], refused: v.reason, readBack: readBackOf(module, job, args) };
+            // Everything the app decides has passed: the job's row is put on the screen with its set, so
+            // the owner sees it measured and started there — or, if the car refuses at the wire, why.
+            input.pickSet(module, job.id, args ?? null);
             input.selectJob(job);
-            input.changeTab('actuator');
+            if (isOn('actuator')(job)) input.changeTab('actuator');
             const r = await startActuation({
                 moduleId: module,
                 job,
                 phase: runPhase,
                 verdict: v,
                 telegrams,
-                args: choice?.start.args,
+                args,
                 stop: choice?.stop,
                 send: link.runRead,
                 arm: input.arming.arm,
                 now: Date.now(),
             });
+            const part = partName(module, job, args, input.workflows);
+            if (r.sent && !r.armed) input.noteSentOnce(module, job.id, args ?? null);
+            if (!r.sent) {
+                // The link's own reason, measured just now (moving with its speed, the battery with its
+                // volts), read straight after the await — not the render's `link.error`, which is older.
+                const ns = link.lastNotSent();
+                return {
+                    started: false,
+                    job: job.id,
+                    part: part.part,
+                    partNameJa: part.ja,
+                    reason: ns ? notSentSentence(ns) : (link.lastError() ?? 'Not sent: the link refused or the module did not answer.'),
+                    ...(ns ? { why: ns.reason, measured: ns.measured } : {}),
+                };
+            }
             return {
-                started: r.sent,
+                started: true,
                 job: job.id,
-                ...(choice ? { values: choice.start.args } : {}),
+                ...(args ? { values: args } : {}),
                 name: job.en,
+                part: part.part,
+                partName: part.en,
+                partNameJa: part.ja,
                 mode: link.mode,
                 on: r.armed,
                 stopsByItselfAfterS: r.timeoutS,
                 ownerSaid,
-                reason: r.sent ? null : (link.error ?? 'Not sent: the link refused or the module did not answer.'),
+                reason: null,
+                ...(r.armed
+                    ? { say: `${part.ja}を動かしました。${r.timeoutS} 秒で止まります。` }
+                    : { say: `${part.ja}に一度送りました。モジュールが答え、自分で終えます。`, note: 'Sent once: the job ends by itself in the module (its SGBD gives no stop), so nothing stays on and there is no STOP.' }),
             };
         },
 
@@ -601,10 +766,15 @@ export function useMonitoringFacade(input: {
             const startJob = catalog?.jobs.find((j) => j.id === 'TESTPRG_STARTEN');
             if (!job || !startJob) return { started: false, reason: `${procedure} is not one of SMG II's procedures (monitoring_catalog lists them).` };
             const program = job.id.slice(PROCEDURE_PREFIX.length);
+            const unconfirmed = input.variantUnconfirmed(ecuId);
+            if (unconfirmed) return { started: false, reason: unconfirmed };
             const may = assistantMayStart(ecuId, startJob, catalog?.group, link.motion, ownerSaid, [program]);
             if (!may.ok) return { started: false, reason: may.reason };
+            // A procedure that engages a gear the owner picks does not start on a default (SC08 F07).
+            if (p?.auswahl && gear === undefined)
+                return { started: false, reason: `${p.name.en} engages the gear the owner chooses: ask which (「何速ですか？」: 0 neutral, 1–6, 7 reverse) and pass it as gear.`, takesGear: true };
             if (link.state !== 'connected') return { started: false, reason: `The link is ${link.state}; a procedure starts from connected and idle.` };
-            if (input.arming.anyArmed) return { started: false, reason: `${[...input.arming.armed.keys()].join(', ')} is on. Stop it first (monitoring_stop_outputs).` };
+            if (input.arming.anyArmed) return { started: false, reason: `${onNow()} is on. Stop it first (monitoring_stop_outputs).`, on: armedNow() };
             const g = gear === undefined ? undefined : Number(gear);
             if (g !== undefined && !Number.isInteger(g)) return { started: false, reason: `${gear} is not a gear its dialog offers.` };
             input.startProcedure(job, ownerSaid, g);
@@ -614,14 +784,17 @@ export function useMonitoringFacade(input: {
                 name: job.en,
                 mode: link.mode,
                 ownerSaid,
-                note: 'Its dialog is on the screen and runs it through the gate; it may still refuse there (not practised, not measured parked, battery, engine), and the dialog says why. It ends by itself, or with ABORT or monitoring_stop_outputs.',
+                note: 'Its dialog is on the screen and runs it through the gate; it may still refuse there (not practised, not measured parked, battery, engine), or the module may refuse a step, and the dialog says why. It ends by itself, or with ABORT or monitoring_stop_outputs. monitoring_status lastProcedure says how it ended.',
             };
         },
 
         stopOutputs: async () => {
-            const on = [...input.arming.armed.keys()];
-            await input.arming.stopAll();
-            return { stopped: on };
+            const done = await input.arming.stopAll('stop');
+            return {
+                stopped: done.map((d) => d.entry.jobId),
+                parts: done.map(stoppedOf),
+                ...(done.some((d) => !d.confirmed) ? { note: 'A stop went with no answer (the line): it is sent again when the line is back, and the ECU ends it by its own time-out regardless.' } : {}),
+            };
         },
 
         startLog: () => {
@@ -760,9 +933,13 @@ export function useMonitoringFacade(input: {
         },
 
         switchModule: async (id) => {
-            const reason = await input.switchModule(id);
+            const { reason, stopped } = await input.switchModule(id);
             if (!reason) show('diagnosis', 'list');
-            return reason ? { switched: false, reason } : { switched: true, module: { id, name: moduleName(id) }, note: 'The screen shows it; an open link was opened again for it.' };
+            // What was on is stopped before the switch, and said (IJ05).
+            const off = stopped.length ? { stopped: stopped.map(stoppedOf), stoppedNote: `${stopped.map((x) => stoppedOf(x).partNameJa).join('、')} was on: it was stopped before the switch.` } : {};
+            return reason
+                ? { switched: false, reason, ...off }
+                : { switched: true, module: { id, name: moduleName(id) }, note: 'The screen shows it; an open link was opened again for it.', ...off };
         },
 
         probe: async (record) => {

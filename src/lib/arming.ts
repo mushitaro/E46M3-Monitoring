@@ -39,8 +39,24 @@ export interface ArmedJob {
     at: number;
     /** The release's permit on a car (runGate.stopPermit): the stop of a run the gate allowed. */
     stopPermit?: ActuationPermit;
-    /** Stopped by itself after this many seconds (policy: always stoppable — the SGBD's limit, else 10 s). */
+    /** Stopped by itself after this many seconds (policy: always stoppable — the ECU's own time-out, else 10 s). */
     timeoutS?: number;
+    /** The module it was started on, and the values chosen (the part it drives is the first). */
+    moduleId?: string;
+    args?: readonly string[];
+}
+
+/** How an output came to be stopped: a STOP (screen or assistant), its own time-out, a switch of module or tab, the line coming back, the page going away. */
+export type StopHow = 'stop' | 'timeout' | 'switch' | 'lineBack' | 'leave';
+
+/** One stop, as the screen and the assistant say it afterwards. */
+export interface Stopped {
+    entry: ArmedJob;
+    how: StopHow;
+    /** When the stop was sent. */
+    at: number;
+    /** The module answered the stop (false: sent with no answer — the line, or a refusal). */
+    confirmed: boolean;
 }
 
 export type ArmedMap = ReadonlyMap<string, ArmedJob>;

@@ -85,7 +85,7 @@ const scenario = {
         { say: 'いいよ' },
         {
             check: {
-                desc: '「いいよ」のあと、画面に動作中（作動中・STOP）。止めると止まる',
+                desc: '「いいよ」のあと、画面に動作中（作動中・STOP）が出て止めると止まる。一度送るだけのジョブは「一度送りました。応答 OK」が出る',
                 run: async (page, st) => {
                     const set = st.cvmSets?.[0];
                     if (!set) return '値の組が無いので始められない';
@@ -99,6 +99,8 @@ const scenario = {
                     const stop = page.locator('[data-test="tj-stop"]:visible:not([disabled]), button:visible:not([disabled]):text-is("STOP")');
                     const armed = (await stop.count()) > 0;
                     const running = /作動中(?!のものはありません)/.test(text);
+                    // A job its SGBD sends once (the ECU ends it itself) has no stop: the screen says it was sent and answered.
+                    if (r.on === false && /一度送りました/.test(text)) return true;
                     if (!running || !armed) {
                         await tool(page, 'monitoring_stop_outputs');
                         return `AI は始めた（on: ${r.on}）が、画面に動作中が見えない（画面 ${screen}・「${running ? '作動中' : '作動中のものはありません'}」・押せる STOP ${armed ? 'あり' : 'なし'}）`;

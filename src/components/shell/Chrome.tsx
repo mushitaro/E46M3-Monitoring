@@ -159,6 +159,7 @@ export function ModuleRow({
     allowAll = false,
     all = false,
     practiceEngine,
+    hidden,
 }: {
     index: EcuIndex | null;
     ecuId: string;
@@ -175,6 +176,8 @@ export function ModuleRow({
     all?: boolean;
     /** PRACTICE's simulated engine, running or stopped: what a job asking for the engine off or on is practised against. */
     practiceEngine?: { running: boolean; onChange: (v: boolean) => void };
+    /** Modules this car ruled out at their address (its IDENT, or the owner): not offered. */
+    hidden?: ReadonlySet<string>;
 }) {
     const { t } = useLang();
     return (
@@ -184,7 +187,7 @@ export function ModuleRow({
                     <Cpu className="size-3" />
                     <span className="sr-only min-[1280px]:not-sr-only">{t.module}</span>
                 </span>
-                <EcuSelect index={index} value={all && allowAll ? ALL_MODULES : ecuId} module={ecuId} connected={connected} allowAll={allowAll} onChange={onChangeEcu} />
+                <EcuSelect index={index} value={all && allowAll ? ALL_MODULES : ecuId} module={ecuId} connected={connected} allowAll={allowAll} onChange={onChangeEcu} hidden={hidden} />
             </div>
             <div className="ml-auto flex shrink-0 items-center gap-3 [@media(max-width:899px)_and_(orientation:landscape)]:h-8">
                 {!connected ? (
@@ -307,7 +310,9 @@ function EcuSelect({
     connected,
     allowAll,
     onChange,
+    hidden,
 }: {
+    hidden?: ReadonlySet<string>;
     index: EcuIndex | null;
     /** What the select shows: a module id, or ALL_MODULES. */
     value: string;
@@ -362,7 +367,7 @@ function EcuSelect({
                     </option>
                 )}
                 {(index?.groups ?? []).map((g) => {
-                    const rows = (index?.modules ?? []).filter((e) => e.group === g.key);
+                    const rows = (index?.modules ?? []).filter((e) => e.group === g.key && !hidden?.has(e.id));
                     if (rows.length === 0) return null;
                     return (
                         <optgroup key={g.key} label={g.en} className="bg-slate-900">

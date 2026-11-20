@@ -47,6 +47,8 @@ const KIND_LABEL: Record<PartKind, (t: T) => string> = {
 
 const num = (v: number | null | undefined) => (v === null || v === undefined ? '—' : String(Math.round(v * 100) / 100));
 const day = (ms: number) => new Date(ms).toLocaleDateString();
+/** When a run started, to the minute: the compare line says when the earlier run was (SC04 step 2, F19). */
+const when = (ms: number) => new Date(ms).toLocaleString([], { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 /**
  * PROBE — the board (operator, 2026-11-02): the parts the assistant placed for the session on the
@@ -290,7 +292,10 @@ function PartBody({ part: p, s, data }: { part: Part; s: ProbeSessions; data: Bo
             return (
                 <div className="space-y-2">
                     <p className="font-mono text-[11px] text-slate-500">
-                        {t.compare_runs(runLabel({ record: c.a.record, n: c.a.n, planV: c.a.planV, startedAt: c.a.startedAt }), runLabel({ record: c.b.record, n: c.b.n, planV: c.b.planV, startedAt: c.b.startedAt }))}
+                        {t.compare_runs(
+                            `${when(c.a.startedAt)} ${runLabel({ record: s.current ?? c.a.record, n: c.a.n, planV: c.a.planV, startedAt: c.a.startedAt })}`,
+                            `${when(c.b.startedAt)} ${runLabel({ record: s.current ?? c.b.record, n: c.b.n, planV: c.b.planV, startedAt: c.b.startedAt })}`,
+                        )}
                         {' · '}
                         {t.compare_common(c.channels.length + c.judges.length)}
                     </p>

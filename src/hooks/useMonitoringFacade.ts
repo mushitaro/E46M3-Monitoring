@@ -8,6 +8,7 @@ import { jobRiskOf, loadEcuCatalog, text as resolveText, type DecodedFault, type
 import { normCode } from '@/lib/faultCode';
 import { CHROME } from '@/lib/i18n/chrome';
 import { en } from '@/lib/i18n/en';
+import { ja } from '@/lib/i18n/ja';
 import { TUNER_WORKS } from '@/lib/links';
 import type { Ledger } from '@tsunagi/monitoring-engine';
 import { hasIdent, mayTryFaultRead, type ModuleProtocol } from '@tsunagi/monitoring-engine';
@@ -15,7 +16,9 @@ import { addEntries, listAllEntries } from '@/lib/notebook/store';
 import { getBoard, putBoard } from '@/lib/probe/boardStore';
 import { listRuns } from '@/lib/probe/runStore';
 import { probeKept } from '@/lib/probeKept';
-import { scanCounts, type ScanRun } from '@tsunagi/monitoring-engine';
+import { MSS54_PRESENT_SOURCE, mss54Present, mss54Sporadic, presentFromKinds, readCutShort, scanCounts, scanSummary, type ScanRun, type SgbdFault } from '@tsunagi/monitoring-engine';
+import { codeText, faultName, freezeFrameConditions } from '@/lib/faultText';
+import { isUnnamedLocation, kindsJa } from '@/lib/faultKinds';
 import type { RunBlockKey } from '@tsunagi/monitoring-engine';
 import { mayRun, mayRunProtocolRead, telegramBytes } from '@tsunagi/monitoring-engine';
 import { isCommonIdent } from '@tsunagi/monitoring-engine';
@@ -40,6 +43,12 @@ import type { Smg2Workflows } from '@/lib/smg2Workflows';
 import { isProcedureStart, procedureRows, runWith } from '@/lib/catalogRoutes';
 import type { Arming } from '@/hooks/useActuatorArming';
 
+
+/** What a fault-memory clear takes with it: said in the catalogue's answer for the read-back (SC02 step 4). */
+const CLEAR_CONSEQUENCE = {
+    en: "Clears this module's stored fault codes and, with them, the freeze frames (the conditions recorded with each fault). They cannot be brought back; save first (monitoring_save). Parked only.",
+    ja: 'このモジュールの故障コードと、一緒に記録されたフリーズフレーム（記録したときの条件）が消えます。戻せません。先に保存してください。停車中だけ。',
+};
 
 /** What the assistant is told with codes read from a module's own layout (engine faultLayouts). */
 const UNVERIFIED_LAYOUT = "Codes read where this module's own SGBD reads them (checked against EDIABAS in simulation); not yet confirmed on a car. The bytes are the answer.";
@@ -66,19 +75,63 @@ const KINDS: Record<string, readonly JobClass[]> = {
     live: ['read'],
 };
 
-/** MSS54 entries as the assistant reads them: the code, its text from the SGBD's own table, how often. */
+/**
+ * MSS54 entries as the assistant reads them: the code, its name from the SGBD's own table (English, the
+ * Japanese the screen shows, and the German original), whether it is there now, how often, and the
+ * conditions its freeze frames recorded, with units — what the screen's ALL MODULES row opens to (U3).
+ */
 function describeEntries(entries: readonly ErrorMemoryEntry[], profile: EcuProfile | null) {
     const byCode = new Map((profile?.faultText ?? []).map((f) => [normCode(f.code), f]));
     return entries.map((f) => {
         const code = formatErrorCode(f.errorCode);
         const known = byCode.get(normCode(code));
+        const ja = faultName(profile, code, 'ja');
+        const present = mss54Present(f.errorType);
         return {
             code,
             type: formatErrorCode(f.errorType),
             text: known && profile ? resolveText(profile, known.text, 'en').text : null,
+            textJa: ja?.text ?? null,
+            original: ja?.original ?? null,
             inTable: !!known,
+            present,
+            state: present ? 'present now' : 'stored, not present now',
+            stateJa: present ? '今出ている' : '記録のみ（今は出ていない）',
+            sporadic: mss54Sporadic(f.errorType),
+            presentSource: MSS54_PRESENT_SOURCE,
             frequency: f.frequencyCounter,
             freezeFrames: f.environmentSets.length,
+            conditions: f.environmentSets.map((s) =>
+                (freezeFrameConditions(profile, code, [s.condition1, s.condition2, s.condition3, s.condition4], 'en') ?? [])
+                    .flatMap((c) => (c ? [{ name: c.name, value: c.value, unit: c.unit ?? null }] : [])),
+            ),
+        };
+    });
+}
+
+/**
+ * Entries a module's own SGBD read (FS_LESEN), as the assistant reads them: the location number and the
+ * code as its catalogue spells it, the SGBD's own German, the Japanese the screen shows, whether it is
+ * there now in the SGBD's own words, and those words in Japanese.
+ */
+function describeSgbdFaults(faults: readonly SgbdFault[], profile: EcuProfile | null) {
+    return faults.map((f) => {
+        const ja = faultName(profile, f.code, 'ja');
+        const en = faultName(profile, f.code, 'en');
+        const unnamed = !ja && isUnnamedLocation(f.text);
+        const present = presentFromKinds(f.kinds);
+        return {
+            location: f.code,
+            code: codeText(profile, f.code),
+            text: unnamed ? null : f.text,
+            textJa: ja?.text ?? (unnamed ? 'この場所の名前は SGBD に無い' : null),
+            textEn: en?.text ?? null,
+            ...(unnamed ? { unnamed: 'Its SGBD has no name for this location.' } : {}),
+            present,
+            ...(present === null ? {} : { stateJa: present ? '今出ている' : '記録のみ（今は出ていない）' }),
+            kinds: f.kinds,
+            kindsJa: kindsJa(f.kinds),
+            values: f.values,
         };
     });
 }
@@ -153,7 +206,12 @@ export function useMonitoringFacade(input: {
                 const byCode = new Map((catalog?.faultText ?? []).map((f) => [normCode(f.code), f]));
                 const codes = kwp.map((d) => {
                     const known = byCode.get(normCode(d.code));
-                    return { code: d.code, status: `0x${d.status.toString(16).padStart(2, '0')}`, text: known && catalog ? resolveText(catalog, known.text, 'en').text : null };
+                    return {
+                        code: d.code,
+                        status: `0x${d.status.toString(16).padStart(2, '0')}`,
+                        text: known && catalog ? resolveText(catalog, known.text, 'en').text : null,
+                        textJa: faultName(catalog, d.code, 'ja')?.text ?? null,
+                    };
                 });
                 return { module: ecuId, read: true, decoded: false, estimated: true, note: 'Codes read as ISO 14230 lays out a $58 answer; not yet confirmed on a MK60. The bytes are the answer.', codes, raw };
             }
@@ -166,8 +224,8 @@ export function useMonitoringFacade(input: {
                     sgbdRead: {
                         sgbd: ecuId,
                         complete: job.status === 'OKAY' && job.stopped === null,
-                        faults: job.faults.map((f) => ({ location: f.code, text: f.text, kinds: f.kinds, values: f.values })),
-                        note: "Read by the module's own SGBD fault-read job, run in the app against the car; texts are the SGBD's own German.",
+                        faults: describeSgbdFaults(job.faults, catalog),
+                        note: "Read by the module's own SGBD fault-read job, run in the app against the car. text is the SGBD's own German; textJa is the screen's Japanese from the module's own fault-text table.",
                     },
                     raw,
                 };
@@ -187,7 +245,13 @@ export function useMonitoringFacade(input: {
         const byCode = new Map((profile?.faultText ?? []).map((f) => [normCode(f.code), f]));
         return faults.map((f) => {
             const known = byCode.get(normCode(f.code));
-            return { code: f.code, text: known && profile ? resolveText(profile, known.text, 'en').text : null, count: f.count, present: f.present };
+            return {
+                code: f.code,
+                text: known && profile ? resolveText(profile, known.text, 'en').text : null,
+                textJa: faultName(profile, f.code, 'ja')?.text ?? null,
+                count: f.count,
+                present: f.present,
+            };
         });
     };
 
@@ -204,24 +268,34 @@ export function useMonitoringFacade(input: {
         const kwpCodes = (dtcs: NonNullable<ScanRun['results'][number]['kwpDtcs']>) =>
             dtcs.map((d) => {
                 const known = kwpText.get(normCode(d.code));
-                return { code: d.code, status: `0x${d.status.toString(16).padStart(2, '0')}`, text: known && kwpCatalog ? resolveText(kwpCatalog, known.text, 'en').text : null };
+                return {
+                    code: d.code,
+                    status: `0x${d.status.toString(16).padStart(2, '0')}`,
+                    text: known && kwpCatalog ? resolveText(kwpCatalog, known.text, 'en').text : null,
+                    textJa: faultName(kwpCatalog, d.code, 'ja')?.text ?? null,
+                };
             });
         // The catalogue of each module whose codes were read from its own layout, for their text.
         const profiles = new Map<string, EcuProfile | null>();
         for (const x of r.results) {
-            const id = x.faults ? (x.variant?.moduleId ?? (x.modules.length === 1 ? x.modules[0] : null)) : null;
-            if (id) profiles.set(x.address, await loadEcuCatalog(id).catch(() => null));
+            const id = x.sgbdFaults?.module ?? (x.faults ? (x.variant?.moduleId ?? (x.modules.length === 1 ? x.modules[0] : null)) : null);
+            if (id) profiles.set(x.address, id === 'mss54' ? mss54 : await loadEcuCatalog(id).catch(() => null));
         }
+        const summary = scanSummary(r.results);
         return {
             end: r.end,
             at: new Date(r.endedAt).toISOString(),
             practice: link.mode === 'practice',
             counts: scanCounts(r.results),
+            // What the screen's ALL MODULES line says: answered modules and the faults their reads hold.
+            summary: { modules: summary.modules, faults: summary.faults, ...(summary.cutShort ? { readPartWay: summary.cutShort } : {}) },
             modules: r.results.map((x) => ({
                 address: x.address,
                 modules: x.modules.map((id) => ({ id, name: moduleName(id) })),
                 outcome: x.outcome,
                 ...(x.reason ? { reason: en.runBlock[x.reason as RunBlockKey] ?? x.reason } : {}),
+                // Read part of the way: what was read is kept, and the list may be short (IJ16).
+                ...(readCutShort(x) ? { complete: false, readPartWay: 'The read stopped part of the way: what was read is here, and the list may be short. The screen says 途中までしか読めませんでした.' } : {}),
                 // Which module its IDENT chose (`?`: none), never the IDENT answer itself: an identity
                 // read stays with the owner (lib/investigation/redact), so only the fault reads go as bytes.
                 ...(x.variant ? { variant: { sgbd: x.variant.sgbd ?? '?', carried: x.variant.moduleId !== null, ...(x.variant.basis ? { basis: x.variant.basis } : {}) } } : {}),
@@ -233,8 +307,8 @@ export function useMonitoringFacade(input: {
                               sgbd: x.sgbdFaults.module,
                               complete: x.sgbdFaults.stopped === null && x.sgbdFaults.status === 'OKAY',
                               ...(x.sgbdFaults.stopped ? { stopped: x.sgbdFaults.stopped.reason } : {}),
-                              faults: x.sgbdFaults.faults.map((f) => ({ location: f.code, text: f.text, kinds: f.kinds, values: f.values })),
-                              note: "Read by the module's own SGBD fault-read code run in the app (the reading INPA gives); texts are the SGBD's own German. Not yet compared with INPA on this car.",
+                              faults: describeSgbdFaults(x.sgbdFaults.faults, profiles.get(x.address) ?? null),
+                              note: "Read by the module's own SGBD fault-read code run in the app (the reading INPA gives). text is the SGBD's own German; textJa is what the screen shows, from the module's own fault-text table. Not yet compared with INPA on this car.",
                           },
                       }
                     : {}),
@@ -286,7 +360,17 @@ export function useMonitoringFacade(input: {
             scan: link.scanProgress
                 ? { running: true, ...link.scanProgress }
                 : link.scan
-                  ? { running: false, end: link.scan.end, at: new Date(link.scan.endedAt).toISOString(), counts: scanCounts(link.scan.results) }
+                  ? (() => {
+                        const sum = scanSummary(link.scan.results);
+                        return {
+                            running: false,
+                            end: link.scan.end,
+                            at: new Date(link.scan.endedAt).toISOString(),
+                            counts: scanCounts(link.scan.results),
+                            // The screen's line, word for word in numbers: 「n モジュール、故障 m 件」.
+                            summary: { modules: sum.modules, faults: sum.faults, line: `${sum.modules} モジュール、故障 ${sum.faults} 件` },
+                        };
+                    })()
                   : null,
             // Said so the assistant can tell the driver: UPDATE is in the header, and it is taken by itself once the link is down a minute.
             newBuildWaiting: input.updateWaiting,
@@ -339,7 +423,12 @@ export function useMonitoringFacade(input: {
                 })
                 .slice(0, limit)
                 .map((j) => {
-                    const v = mayRun(j, bestTelegram(table, j.id), ledger, { moduleId: module, motion: link.motion });
+                    // PRACTICE answers as ACTUATOR's row does there (the practice car is the place to practise):
+                    // the car's rule "practise first" is not said of the practice car itself (SC02 step 4, F11).
+                    const v =
+                        link.mode === 'practice'
+                            ? mayActuate(j, bestTelegram(table, j.id), ledger, { moduleId: module, mode: 'practice', motion: link.motion, group: profile.group })
+                            : mayRun(j, bestTelegram(table, j.id), ledger, { moduleId: module, motion: link.motion });
                     const rec = ledger.records[`${module}:${j.id}`];
                     return {
                         job: j.id,
@@ -350,6 +439,10 @@ export function useMonitoringFacade(input: {
                         preconditions: j.preconditions,
                         mayRunNow: v.allowed,
                         reason: v.allowed ? null : en.runBlock[v.reason],
+                        // The screen's own sentence for the same refusal, so the two say one thing (U2, MM01).
+                        reasonJa: v.allowed ? null : ja.runBlock[v.reason],
+                        // What a clear takes with it, for the read-back before it (SC02 step 4).
+                        ...(/^FS_LOESCHEN/.test(j.id) ? { clears: CLEAR_CONSEQUENCE } : {}),
                         // A job that takes values has its own door (car, 2026-11-19: a bare "takes values" read as "cannot be run").
                         ...(runWith(module, j) ? { runWith: runWith(module, j) } : {}),
                         ledger: rec ? { status: rec.status, observations: rec.observations ?? 0 } : null,
@@ -696,6 +789,13 @@ export function useMonitoringFacade(input: {
         mode: () => input.mode,
         session: () => input.probeSessions.opened(),
         openSession: (id) => input.probeSessions.open(id),
+        openSaved: async (id) => {
+            const s = (await listLocal().catch(() => [])).find((x) => x.id === id);
+            if (!s) return null;
+            sessions.view(s.id);
+            input.changeTab('memory');
+            return { opened: s.id, label: s.label, screen: 'memory' as const };
+        },
         newSession: () => input.probeSessions.newSession(),
         board: (record) => getBoard(record),
         putBoard: (b) => putBoard(b),
@@ -703,6 +803,19 @@ export function useMonitoringFacade(input: {
         sync: async () => {
             if (!canSync()) return { sent: 0, reason: 'This build does not send: it is not the WORKS build, or its notice is not confirmed.' };
             const before = new Map((await listLocal().catch(() => [])).map((s) => [s.id, s.syncedAt]));
+            // No network (IJ18): nothing goes now, and the answer says so — the send is kept and made
+            // once by itself when the network is back (useSessions), with the sent mark after it.
+            if (!sessions.online) {
+                await sessions.sync();
+                const waiting = (await listLocal().catch(() => [])).filter(needsSync).length;
+                return {
+                    sent: 0,
+                    waiting,
+                    reason: 'offline',
+                    willSendWhenOnline: true,
+                    note: 'This device has no network now. The sessions waiting are kept on it and sent by themselves, once, when the network is back; MEMORY marks each sent then.',
+                };
+            }
             await sessions.sync();
             const after = await listLocal().catch(() => []);
             const sent = after.filter((s) => s.syncedAt !== null && s.syncedAt !== before.get(s.id)).length;

@@ -216,6 +216,20 @@ export const PRACTICE_FITTED: readonly number[] = [
 /** "No fault stored": a count byte of zero, the shape most DS2 bodies answer with. */
 export const CLEAN = [0x00];
 
+/**
+ * "No fault stored" where a module's own FS_LESEN reads more than the count byte, so a clean module
+ * reads as clean and not as an answer cut short. Found by running each SGBD's own job on the answer
+ * (lib/sgbd/faultRead): ZKE5 (and ZKE5_S12) read two bytes from `04 00`; ASCMK20 and DSC_E46, which
+ * share 0x56, read a seven-byte record from `04 01`. All zeros: no entry, in their own reading.
+ */
+export const CLEAN_BY_ADDRESS: Readonly<Record<number, readonly number[]>> = {
+    0x00: [0x00, 0x00],
+    0x56: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+};
+
+/** What a module answers to its fault read when nothing is stored (the practice car's `moduleFaults` absent). */
+export const cleanAnswer = (address: number): readonly number[] => CLEAN_BY_ADDRESS[address] ?? CLEAN;
+
 function defaults(): PracticeCar {
     return {
         speedKmh: 0,

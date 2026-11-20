@@ -142,6 +142,10 @@ export function useSessions(input: {
     const [gate, setGate] = useState<{ state: GateState; label: string | null } | null>(null);
     const [busy, setBusy] = useState<string | null>(null);
     const [notice, setNotice] = useState<SessionsNotice | null>(null);
+    // A send asked for with no network (IJ18): kept, and made once by itself when the network is back.
+    const [sendWhenOnline, setSendWhenOnline] = useState(false);
+    // The saved session MEMORY shows open: the screen's VIEW, or the assistant's monitoring_session open.
+    const [viewing, setViewing] = useState<string | null>(null);
 
     // The session this connection is saved as, once it has been.
     const [current, setCurrent] = useState<{ id: string; createdAt: number; label: string } | null>(null);
@@ -300,6 +304,13 @@ export function useSessions(input: {
      */
     const sync = useCallback(async () => {
         if (!cloudEnabled) return;
+        // No network: nothing can go now. Said, and kept: it goes once by itself when the network is back.
+        if (!online) {
+            setSendWhenOnline(true);
+            setNotice({ text: t.sessions_sendWhenOnline, tone: 'info' });
+            return;
+        }
+        setSendWhenOnline(false);
         setBusy('sync');
         try {
             if (unsaved && !(await saveNow())) return;
@@ -335,7 +346,13 @@ export function useSessions(input: {
             await refreshCloud();
             setBusy(null);
         }
-    }, [cloudEnabled, unsaved, saveNow, refreshLocal, refreshCloud, gate, t]);
+    }, [cloudEnabled, online, unsaved, saveNow, refreshLocal, refreshCloud, gate, t]);
+
+    // The network is back and a send was asked for while it was away: it goes now, once.
+    useEffect(() => {
+        if (!online || !sendWhenOnline) return;
+        void Promise.resolve().then(sync);
+    }, [online, sendWhenOnline, sync]);
 
     /**
      * An account copy back onto this device. It does not overwrite a device copy that has changes
@@ -441,6 +458,15 @@ export function useSessions(input: {
             failures: failures.notes.length,
         },
         pending,
+        /** Whether the device has a network route now (navigator.onLine: false is reliable). */
+        online,
+        /** A send was asked for with no network, and goes by itself once it is back. */
+        sendWhenOnline,
+        /** The episode SAVE would keep now (the one in progress, else the newest not kept). */
+        episodeNow,
+        /** The saved session MEMORY shows open, and opening one (null: the list). */
+        viewing,
+        view: setViewing,
         saveLook,
         syncLook,
         save,

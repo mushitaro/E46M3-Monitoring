@@ -571,6 +571,48 @@ async function readKwp(t: ScanTarget, faults: readonly KwpFrame[], base: { addre
     return { ...base, outcome: 'answered', exchanges, ...(shaped ? { kwpDtcs: dtcs } : {}), ...(read ? { sgbdFaults: { ...read, module: moduleId } } : {}), ...(reason ? { reason } : {}) };
 }
 
+/**
+ * Whether a module's answer was read only part of the way: its own job stopped before its end (an
+ * answer shorter than it reads), or a later frame of the read was refused or went unanswered. What
+ * was read up to there is kept and counted; the list may be short, and is said to be.
+ */
+export function readCutShort(r: ScanResult): boolean {
+    if (r.outcome !== 'answered') return false;
+    if (r.sgbdFaults && r.sgbdFaults.stopped !== null) return true;
+    return /^answered \d+ of \d+ frames/.test(r.reason ?? '');
+}
+
+/**
+ * How many faults one result holds, as far as it was read: the MSS54's decoded entries, the entries
+ * its own SGBD read (to its end, or as far as it got), or the codes its own layout reads. Null where
+ * nothing was read into the answer (not answered, or bytes no reading reached).
+ */
+export function scanFaultCount(r: ScanResult): number | null {
+    if (r.outcome !== 'answered') return null;
+    if (Array.isArray(r.decoded)) return r.decoded.length;
+    const s = r.sgbdFaults;
+    if (s && (s.stopped !== null || s.status === 'OKAY')) return s.faults.length;
+    if (r.faults) return r.faults.length;
+    return null;
+}
+
+/**
+ * What a scan comes to, in the words the screen and the assistant both use: how many modules
+ * answered, and how many faults their reads hold. One count, so the two cannot say different things.
+ */
+export function scanSummary(results: readonly ScanResult[]): { modules: number; faults: number; cutShort: number } {
+    let modules = 0;
+    let faults = 0;
+    let cutShort = 0;
+    for (const r of results) {
+        if (r.outcome !== 'answered') continue;
+        modules++;
+        faults += scanFaultCount(r) ?? 0;
+        if (readCutShort(r)) cutShort++;
+    }
+    return { modules, faults, cutShort };
+}
+
 /** A line per outcome, for the answer and the log: `answered 21 · silent 14 · refused 2`. */
 export function scanCounts(results: readonly ScanResult[]): Record<ScanOutcome, number> {
     const out: Record<ScanOutcome, number> = { answered: 0, identified: 0, silent: 0, rejected: 0, refused: 0, skipped: 0 };

@@ -1,17 +1,19 @@
 'use client';
 
-import { memo, useMemo } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { ScanLine } from 'lucide-react';
 import { formatErrorCode, type ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
 import { DataList, DataRow, LABEL, Section, humanName } from '@/components/ui';
-import { normCode } from '@/lib/faultCode';
+import { codeText, faultName } from '@/lib/faultText';
+import { isUnnamedLocation, kindsJa } from '@/lib/faultKinds';
 import { useLang } from '@/lib/i18n';
-import { text as resolveText, type EcuIndex, type EcuProfile } from '@tsunagi/monitoring-engine';
+import { loadEcuCatalog, mss54Present, presentFromKinds, readCutShort, scanSummary, type EcuIndex, type EcuProfile } from '@tsunagi/monitoring-engine';
 import type { ScanResult, ScanRun } from '@tsunagi/monitoring-engine';
 import type { SgbdFault } from '@tsunagi/monitoring-engine';
 import type { RunBlockKey } from '@tsunagi/monitoring-engine';
 import { Awaiting } from '@/views/shared/Awaiting';
 import { CountReadout } from '@/views/shared/CountReadout';
+import { FreezeFrame } from '@/views/shared/FreezeFrame';
 
 /** What DIAGNOSIS shows with ALL MODULES chosen: the last scan, and how far one in progress has got. */
 export interface ScanShown {
@@ -20,9 +22,11 @@ export interface ScanShown {
     index: EcuIndex | null;
     /** The MSS54's own catalogue, for the text of the one module that is decoded. */
     mss54: EcuProfile | null;
-    /** The address whose row is open. */
+    /** The address OPEN under the hub puts on the screen: the row opened last. */
     selected: string | null;
     onSelect: (address: string | null) => void;
+    /** What to do first, said where the list will be while nothing is connected (SC01 step 1). */
+    idleHint?: string;
 }
 
 /**
@@ -31,6 +35,7 @@ export interface ScanShown {
  * Faults first, then what answered, then what was refused, then silence: the order of what the
  * owner has to do something about. A module with no decoder that answered is "undecoded", not
  * "no faults" — its bytes may hold one, and a green word over them would be a reading of fiction.
+ * A read that stopped part of the way says so, with what it had read by then (IJ16).
  */
 export function standing(
     r: ScanResult,
@@ -41,6 +46,10 @@ export function standing(
     const none = { entries: null, sgbd: null };
     switch (r.outcome) {
         case 'answered': {
+            if (readCutShort(r)) {
+                const n = entries?.length ?? sgbd?.length ?? r.faults?.length ?? 0;
+                return { word: t.scan_outcome.partial(n), tone: n > 0 ? 'text-red-400' : 'text-amber-400', rank: n > 0 ? 0 : 2, entries, sgbd };
+            }
             const n = entries?.length ?? sgbd?.length;
             if (n !== undefined) {
                 return n > 0
@@ -69,61 +78,120 @@ export function standing(
 }
 
 /**
- * The entries a module's own SGBD read out of its answer — only when its job ran to its end and
- * said OKAY. A reading that stopped part-way is not a list: the row stays "undecoded", with its bytes.
+ * The entries a module's own SGBD read out of its answer: all of them when its job ran to its end and
+ * said OKAY, and those it had read when it stopped part of the way (the row says the list may be
+ * short). A job that ended with another verdict is not a list: the row stays "undecoded", with its bytes.
  */
 export function sgbdFaultsOf(r: ScanResult): SgbdFault[] | null {
     const s = r.sgbdFaults;
-    return s && s.stopped === null && s.status === 'OKAY' ? s.faults : null;
+    if (!s) return null;
+    if (s.stopped !== null) return s.faults;
+    return s.status === 'OKAY' ? s.faults : null;
+}
+
+/**
+ * Which module a row is (F03, IJ15): the one its IDENT chose, or the one SGBD at the address. Where
+ * several stay possible, a `?` with the candidates — never the candidates listed as if all were fitted.
+ */
+function rowName(r: ScanResult, nameOf: (id: string) => string, t: ReturnType<typeof useLang>['t']): string {
+    const chosen = r.variant?.moduleId;
+    if (chosen && r.modules.includes(chosen) && r.variant?.basis !== 'm3-fitment') return nameOf(chosen);
+    if (r.modules.length === 1) return nameOf(r.modules[0]);
+    // 0x56: the early cars' ASC MK20 and the late cars' DSC share it, and no group file chooses (CLAUDE.md).
+    const byYear = r.modules.includes('ascmk20') && r.modules.includes('dsc_e46');
+    return t.scan_undecided(r.modules.map(nameOf), byYear);
+}
+
+/** The catalogue of each module whose entries a row names, loaded as the rows need them. */
+function useProfiles(run: ScanRun | null, mss54: EcuProfile | null): ReadonlyMap<string, EcuProfile> {
+    const [loaded, setLoaded] = useState<ReadonlyMap<string, EcuProfile>>(new Map());
+    const ids = useMemo(() => {
+        const out = new Set<string>();
+        for (const r of run?.results ?? []) {
+            const id = r.sgbdFaults?.module ?? (r.faults ? (r.variant?.moduleId ?? (r.modules.length === 1 ? r.modules[0] : null)) : null);
+            if (id) out.add(id);
+        }
+        return [...out].sort().join(',');
+    }, [run]);
+    useEffect(() => {
+        if (!ids) return;
+        let live = true;
+        void Promise.all(ids.split(',').map((id) => loadEcuCatalog(id).then((p) => [id, p] as const, () => null))).then((xs) => {
+            if (live) setLoaded(new Map(xs.filter((x): x is readonly [string, EcuProfile] => x !== null)));
+        });
+        return () => {
+            live = false;
+        };
+    }, [ids]);
+    return useMemo(() => {
+        const m = new Map(loaded);
+        if (mss54) m.set('mss54', mss54);
+        return m;
+    }, [loaded, mss54]);
 }
 
 const hhmm = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 /**
  * DIAGNOSIS with ALL MODULES: one row per address the scan asked, the address in the code column
- * and the module's name where a name goes. Pressing a row opens what it said — the MSS54's codes
- * with their text, another module's bytes as they came back, or why it was not asked — and OPEN
- * under the hub puts that module on the screen.
+ * and the module's name where a name goes. Pressing a row opens what it said — the codes with their
+ * names, whether each is there now, and the conditions recorded with it; another module's bytes as
+ * they came back where nothing reads them; or why it was not asked — and OPEN under the hub puts the
+ * module of the row opened last on the screen. Rows open and close on their own, so two modules'
+ * faults can be read side by side (SC02 step 2).
  */
-export const ScanList = memo(function ScanList({ run, progress, index, mss54, selected, onSelect }: ScanShown) {
+export const ScanList = memo(function ScanList({ run, progress, index, mss54, selected, onSelect, idleHint }: ScanShown) {
     const { lang, t } = useLang();
     const nameOf = (id: string) => {
         const m = index?.modules.find((x) => x.id === id);
         return m ? (lang === 'ja' ? m.name : m.name_en) || m.name_en : id;
     };
-    const faultText = useMemo(() => new Map((mss54?.faultText ?? []).map((f) => [normCode(f.code), f])), [mss54]);
+    const profiles = useProfiles(run, mss54);
+    const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
     const rows = useMemo(() => {
         if (!run) return [];
         return run.results
             .map((r) => ({ r, s: standing(r, t) }))
             .sort((a, b) => a.s.rank - b.s.rank || a.r.address.localeCompare(b.r.address));
     }, [run, t]);
+    const summary = run ? scanSummary(run.results) : null;
+    const toggle = (address: string) => {
+        const next = new Set(open);
+        if (next.has(address)) {
+            next.delete(address);
+            if (selected === address) onSelect(null);
+        } else {
+            next.add(address);
+            onSelect(address);
+        }
+        setOpen(next);
+    };
 
     return (
         <Section
             title={t.scan_title}
             count={run?.results.length}
-            note={run ? t.scan_note(hhmm(run.endedAt)) : undefined}
+            note={run && summary ? `${t.scan_summary(summary.modules, summary.faults)} · ${t.scan_note(hhmm(run.endedAt))}` : undefined}
             info={t.scan_info}
         >
             {!run ? (
-                <p className="py-2 font-mono text-xs uppercase text-slate-600">
-                    {progress ? t.scan_progress(progress.done, progress.total) : t.awaiting_scan}
+                <p className="py-2 font-mono text-xs text-slate-600">
+                    {progress ? t.scan_progress(progress.done, progress.total) : (idleHint ?? t.awaiting_scan)}
                 </p>
             ) : (
                 <DataList>
                     {rows.map(({ r, s }) => {
-                        const open = selected === r.address;
+                        const isOpen = open.has(r.address);
                         return (
                             <DataRow
                                 key={r.address}
                                 code={r.address}
                                 codeTone={s.rank === 0 ? 'danger' : 'neutral'}
-                                name={humanName(r.modules.map(nameOf).join(' / '))}
-                                selected={open}
-                                onSelect={() => onSelect(open ? null : r.address)}
+                                name={humanName(rowName(r, nameOf, t))}
+                                selected={isOpen}
+                                onSelect={() => toggle(r.address)}
                                 trailing={<span className={`shrink-0 ${LABEL} ${s.tone}`}>{s.word}</span>}
-                                detail={open ? <Opened r={r} entries={s.entries} sgbd={s.sgbd} faultText={faultText} mss54={mss54} lang={lang} /> : undefined}
+                                detail={isOpen ? <Opened r={r} entries={s.entries} sgbd={s.sgbd} profiles={profiles} lang={lang} /> : undefined}
                             />
                         );
                     })}
@@ -138,41 +206,80 @@ function Opened({
     r,
     entries,
     sgbd,
-    faultText,
-    mss54,
+    profiles,
     lang,
 }: {
     r: ScanResult;
     entries: ErrorMemoryEntry[] | null;
     sgbd: SgbdFault[] | null;
-    faultText: Map<string, NonNullable<EcuProfile['faultText']>[number]>;
-    mss54: EcuProfile | null;
+    profiles: ReadonlyMap<string, EcuProfile>;
     lang: 'ja' | 'en';
 }) {
     const { t } = useLang();
-    const reason = r.reason && r.outcome !== 'silent' ? (t.runBlock[r.reason as RunBlockKey] ?? r.reason) : null;
+    const mss54 = profiles.get('mss54') ?? null;
+    const sgbdProfile = (r.sgbdFaults && profiles.get(r.sgbdFaults.module)) || null;
+    const layoutProfile = r.faults ? (profiles.get(r.variant?.moduleId ?? r.modules[0]) ?? null) : null;
+    const reason = reasonText(r, t, lang);
+    const cutShort = readCutShort(r);
     return (
         <>
             {entries?.map((f) => {
                 const code = formatErrorCode(f.errorCode);
-                const known = faultText.get(normCode(code));
+                const name = faultName(mss54, code, lang);
                 return (
-                    // The row's own columns: the code under the address, the text under the name.
-                    <p key={`${f.number}-${f.errorCode}`} className="flex items-baseline gap-x-3 text-[11px]">
-                        <span className="w-10 shrink-0 text-right font-mono tabular-nums text-red-400">{code}</span>
-                        <span className="min-w-0 truncate text-slate-300">{known && mss54 ? resolveText(mss54, known.text, lang).text : '—'}</span>
-                        <span className="shrink-0 font-mono text-slate-600">×{f.frequencyCounter}</span>
+                    <div key={`${f.number}-${f.errorCode}`} className="space-y-0.5">
+                        {/* The row's own columns: the code under the address, the name under the name. */}
+                        <p className="flex items-baseline gap-x-3 text-[11px]">
+                            <span className="w-10 shrink-0 text-right font-mono tabular-nums text-red-400">{code}</span>
+                            <span className="min-w-0 flex-1 truncate text-slate-300">{name?.text || t.fault_unnamed}</span>
+                            <span className="shrink-0 text-slate-400">{mss54Present(f.errorType) ? t.fault_present_now : t.fault_stored}</span>
+                            <span className="shrink-0 font-mono text-slate-600">×{f.frequencyCounter}</span>
+                        </p>
+                        <div className="space-y-0.5 pl-[52px]">
+                            {name?.original && name.original !== name.text && <p className="font-mono text-[10px] text-slate-500">{name.original}</p>}
+                            {f.environmentSets.map((s, i) => (
+                                <FreezeFrame
+                                    key={i}
+                                    index={i}
+                                    code={code}
+                                    bytes={[s.condition1, s.condition2, s.condition3, s.condition4]}
+                                    counter={s.counter}
+                                    profile={mss54}
+                                    lang={lang}
+                                />
+                            ))}
+                        </div>
+                    </div>
+                );
+            })}
+            {sgbd?.map((f, i) => {
+                // The location's number in the module's own table, its name from that table in the reader's
+                // language, and the SGBD's own German beside it (with what kind of fault it says it is).
+                const name = faultName(sgbdProfile, f.code, lang);
+                const present = presentFromKinds(f.kinds);
+                return (
+                    <div key={`${i}-${f.code}`} className="space-y-0.5">
+                        <p className="flex items-baseline gap-x-3 text-[11px]">
+                            <span className="w-10 shrink-0 text-right font-mono tabular-nums text-red-400">{codeText(sgbdProfile, f.code)}</span>
+                            <span className="min-w-0 flex-1 truncate text-slate-300">{name?.text || (isUnnamedLocation(f.text) ? t.fault_unnamed : f.text)}</span>
+                            {present !== null && <span className="shrink-0 text-slate-400">{present ? t.fault_present_now : t.fault_stored}</span>}
+                        </p>
+                        {f.kinds.length > 0 && lang === 'ja' && <p className="truncate pl-[52px] text-[10px] text-slate-400">{kindsJa(f.kinds).join(' · ')}</p>}
+                        <p className="truncate pl-[52px] font-mono text-[10px] text-slate-500">{[f.text, ...f.kinds].filter(Boolean).join(' · ')}</p>
+                    </div>
+                );
+            })}
+            {r.faults?.map((f, i) => {
+                const name = faultName(layoutProfile, f.code, lang);
+                return (
+                    <p key={`l-${i}-${f.code}`} className="flex items-baseline gap-x-3 text-[11px]">
+                        <span className="w-10 shrink-0 text-right font-mono tabular-nums text-red-400">{f.code}</span>
+                        <span className="min-w-0 flex-1 truncate text-slate-300">{name?.text || t.fault_unnamed}</span>
+                        {f.present !== null && <span className="shrink-0 text-slate-400">{f.present ? t.fault_present_now : t.fault_stored}</span>}
                     </p>
                 );
             })}
-            {sgbd?.map((f, i) => (
-                // The location's number in the module's own table, and its SGBD's text (German, as the SGBD holds it).
-                <p key={`${i}-${f.code}`} className="flex items-baseline gap-x-3 text-[11px]">
-                    <span className="w-10 shrink-0 text-right font-mono tabular-nums text-red-400">{f.code ?? '—'}</span>
-                    <span className="min-w-0 truncate text-slate-300">{f.text ?? '—'}</span>
-                    <span className="min-w-0 shrink truncate text-slate-500">{f.kinds.join(' · ')}</span>
-                </p>
-            ))}
+            {cutShort && <p className="pl-[52px] text-[11px] text-amber-400">{t.scan_partial}</p>}
             {r.sgbdFaults && <p className="pl-[52px] text-[11px] text-slate-500">{t.scan_sgbdRead(r.sgbdFaults.module, sgbd !== null)}</p>}
             {!entries &&
                 r.exchanges
@@ -184,9 +291,24 @@ function Opened({
                     ))}
             {r.variant && r.variant.basis !== 'm3-fitment' && <p className="pl-[52px] font-mono text-[11px] text-slate-400">{t.scan_variant(r.variant.sgbd, r.variant.moduleId !== null)}</p>}
             {reason && <p className="pl-[52px] text-[11px] text-slate-500">{reason}</p>}
-            {r.modules.length > 1 && <p className="pl-[52px] text-[11px] text-slate-500">{t.scan_shared}</p>}
+            {r.modules.length > 1 && !(r.variant?.moduleId && r.variant.basis !== 'm3-fitment') && <p className="pl-[52px] text-[11px] text-slate-500">{t.scan_shared}</p>}
         </>
     );
+}
+
+/**
+ * Why a row went as it did, in the reader's language: the gate's own sentence where it held the read
+ * back (runBlock), the scan's reasons the catalogue words, and nothing else — the engine's English
+ * is not put in front of a Japanese reader (IJ15, U5). The variant line and the shared line above
+ * already say what the untranslated reasons would.
+ */
+function reasonText(r: ScanResult, t: ReturnType<typeof useLang>['t'], lang: 'ja' | 'en'): string | null {
+    if (!r.reason || r.outcome === 'silent') return null;
+    const key = t.runBlock[r.reason as RunBlockKey];
+    if (key) return key;
+    const known = t.scan_reason(r.reason);
+    if (known !== undefined) return known;
+    return lang === 'en' ? r.reason : null;
 }
 
 /**
@@ -197,9 +319,6 @@ export function ScanViz({ run, progress }: Pick<ScanShown, 'run' | 'progress'>) 
     const { t } = useLang();
     if (progress) return <CountReadout value={progress.done} suffix={`/${progress.total}`} tone="text-slate-400" caption={t.scan_title} />;
     if (!run) return <Awaiting icon={ScanLine} label={t.awaiting_scan} />;
-    const answered = run.results.filter((r) => r.outcome === 'answered').length;
-    const faulted = run.results.some(
-        (r) => (Array.isArray(r.decoded) && (r.decoded as unknown[]).length > 0) || (sgbdFaultsOf(r)?.length ?? 0) > 0,
-    );
-    return <CountReadout value={answered} suffix={`/${run.results.length}`} tone={faulted ? 'text-red-400' : 'text-slate-200'} caption={t.viz_scanAnswered} />;
+    const { modules, faults } = scanSummary(run.results);
+    return <CountReadout value={modules} suffix={`/${run.results.length}`} tone={faults > 0 ? 'text-red-400' : 'text-slate-200'} caption={t.viz_scanAnswered} />;
 }

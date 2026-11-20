@@ -208,7 +208,7 @@ export interface Localised {
     /** Behind the ⓘ: how the scan asks, what it can decode, what silence means. */
     scan_info: string;
     /** The one or two words a row ends with. */
-    scan_outcome: { faults: (n: number) => string; clean: string; undecoded: string; faultsUnverified: (n: number) => string; cleanUnverified: string; identified: string; silent: string; rejected: string; refused: string; skipped: string };
+    scan_outcome: { faults: (n: number) => string; partial: (n: number) => string; clean: string; undecoded: string; faultsUnverified: (n: number) => string; cleanUnverified: string; identified: string; silent: string; rejected: string; refused: string; skipped: string };
     /**
      * Which module an address's IDENT chose (lib/variants), under its opened row: the SGBD, or `?`;
      * and when nothing but the IDENT went, why.
@@ -216,6 +216,16 @@ export interface Localised {
     scan_variant: (sgbd: string | null, carried: boolean) => string;
     /** A shared address: which of its SGBDs is fitted is chosen on the select. */
     scan_shared: string;
+    /** The scan in one line: how many modules answered, how many faults their reads hold (SC01 step 3). */
+    scan_summary: (modules: number, faults: number) => string;
+    /** A row whose module is not decided: its candidates, never joined as if all were fitted (IJ15, F03). */
+    scan_undecided: (names: string[], byYear: boolean) => string;
+    /** Under a read that stopped part of the way (IJ16). */
+    scan_partial: string;
+    /** The scan engine's reasons, in the reader's words; undefined: none to say (the row says it already). */
+    scan_reason: (reason: string) => string | null | undefined;
+    /** What the list says while nothing is connected: what to do first (SC01 step 1). */
+    start_hint: string;
     /** Under a module read by its own SGBD's FS_LESEN: whose code read it, and whether it read to the end. */
     scan_sgbdRead: (sgbd: string, done: boolean) => string;
     /** The hub's notice while it runs. */
@@ -286,6 +296,8 @@ export interface Localised {
     sessions_unkept_info: string;
     sessions_emptyUnkept: string;
     sessions_expiresIn: (days: number) => string;
+    /** The time of the episode in progress is not certain yet (the device clock not put right). */
+    sessions_timeUnsure: string;
     sessions_undated: (days: number | null) => string;
     sessions_inAccount: string;
     sessions_errors: string;
@@ -299,6 +311,8 @@ export interface Localised {
     sessions_sent: (n: number) => string;
     sessions_nothingToSend: string;
     sessions_sendFailed: string;
+    /** Asked to send with no network: kept, and sent once by itself when the network is back. */
+    sessions_sendWhenOnline: string;
     sessions_sendExpired: string;
     sessions_tooLarge: (label: string) => string;
     sessions_restored: string;
@@ -321,6 +335,8 @@ export interface Localised {
     reauth_confirm: string;
     /** RELOAD (header and M menu). Asked only when something would be lost: a link, a read, a run. */
     reload_confirm: string;
+    /** UPDATE pressed while a recording or a PROBE run goes: it is not cut (SC11). */
+    reload_stopRecordingFirst: string;
     reload_title: string;
     reload_running: string;
     /** The header's sign-in notice (lib/signInLapse), WORKS only. Short enough to stand in the header
@@ -383,6 +399,8 @@ export interface Localised {
     /** The code is present now / stored from before, as the module's own record says. */
     fault_present_now: string;
     fault_stored: string;
+    /** A code its module's own table does not name. */
+    fault_unnamed: string;
     door_wifi: string;
     door_datetime: string;
     board_up: string;
@@ -491,6 +509,10 @@ export interface Localised {
     op_blocked: string;
     clearFaults_title: string;
     clearFaults_consequence: string;
+    /** The clear's confirmation, naming the module it clears and what goes with it (F10). */
+    clearFaults_named: (module: string, lastSpeedKmh: number | null) => string;
+    /** Beside a CLEAR FAULTS that cannot be pressed: the car is measured moving. */
+    clearFaults_moving: string;
     clearFaults_confirm: string;
     /** Why each plan step exists. Safety copy — see jobOps.ts WhyKey. */
     op_why: Record<WhyKey, string>;

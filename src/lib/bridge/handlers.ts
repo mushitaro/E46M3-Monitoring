@@ -128,6 +128,11 @@ export interface TabFacade {
     session(): string | null;
     /** Open a session on STARTUP and the board. */
     openSession(record: string): void;
+    /**
+     * A session saved on MEMORY (monitoring_sessions' `saved`), opened on MEMORY's viewer; null when no
+     * saved session has that id (it may be a PROBE record).
+     */
+    openSaved(id: string): Promise<{ opened: string; label: string; screen: 'memory' } | null>;
     /** NEW SESSION: an empty session opened on the screen; its id. */
     newSession(): string;
     /** A session's PROBE board, and keeping it (lib/probe/board). */
@@ -597,6 +602,9 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
         monitoring_session: async (args) => {
             const action = text(args.action, 'action');
             if (action === 'open') {
+                // A session saved on MEMORY (SC12 step 1: "open the earlier record"), else a PROBE record.
+                const saved = await f.openSaved(text(args.record, 'record'));
+                if (saved) return saved;
                 const r = pickRecord(await f.entries(), text(args.record, 'record'));
                 f.openSession(r.id);
                 f.display('startup');

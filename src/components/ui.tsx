@@ -664,6 +664,13 @@ export function DataRow({
  * `JobPlan::Stat`, `page::MixCell` and `page::Readout` were three copies of this
  * with three different label sizes and two different stack directions.
  */
+/**
+ * Between a value and its unit: a space a reader and a copy both see, which does not break the line.
+ * A margin alone drew the gap and left none in the text, so `1280` and `1/min` read as `12801/min`
+ * wherever the text was taken rather than looked at (a screen reader, a copy, a test).
+ */
+const UNIT_GAP = '\u00a0';
+
 export function Field({
     label,
     value,
@@ -706,7 +713,7 @@ export function Field({
                 <span className={`w-14 shrink-0 ${labelCls}`}>{label}</span>
                 <span className={`min-w-0 flex-1 truncate font-mono text-[11px] tabular-nums ${tone}`}>
                     {value}
-                    {unit && <span className="ml-1 text-slate-500">{unit}</span>}
+                    {unit && <span className="text-slate-500">{UNIT_GAP}{unit}</span>}
                 </span>
             </div>
         );
@@ -717,7 +724,7 @@ export function Field({
                 <span className={labelCls}>{label}</span>
                 <span className={`mt-1.5 font-mono text-[11px] font-bold tabular-nums ${tone}`}>
                     {value}
-                    {unit && <span className="ml-1 font-normal text-slate-500">{unit}</span>}
+                    {unit && <span className="font-normal text-slate-500">{UNIT_GAP}{unit}</span>}
                 </span>
             </div>
         );
@@ -727,7 +734,7 @@ export function Field({
             <span className={labelCls}>{label}</span>
             <span className={`font-mono text-xs tabular-nums ${tone}`}>
                 {value}
-                {unit && <span className="ml-1 text-slate-500">{unit}</span>}
+                {unit && <span className="text-slate-500">{UNIT_GAP}{unit}</span>}
             </span>
         </span>
     );

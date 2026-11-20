@@ -70,6 +70,7 @@ function tab(over: Partial<TabFacade> = {}) {
         openSession: (id) => {
             open = id;
         },
+        openSaved: async () => null,
         newSession: () => {
             open = `id-${String(++seq).padStart(6, '0')}`;
             return open;

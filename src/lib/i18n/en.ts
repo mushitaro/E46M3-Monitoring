@@ -233,6 +233,7 @@ export const en: Localised = {
         "One address after another, each is sent its own SGBD's fault read. For the engine (0x12) and the gearbox (0x32) the common IDENT is asked first, and its answer chooses the variant the way EDIABAS's group file does: the fault read goes only when it chose an SGBD this app carries. On a car whose engine answered as the MSS54 (an M3), the other addresses are read as the M3's equipment, each sent its own IDENT first. On any other car an address whose variant is not known stays '?' and is sent nothing but its IDENT. Where several SGBDs use one address, only the frames all of them carry are sent. The engine (MSS54) is decoded by its own decoder; most other modules' answers are read by their own SGBD's fault-read code, the same reading INPA gives, and the location texts are the SGBD's own (German). An answer that cannot be read that way is shown as the bytes that came back. No answer means the equipment is not fitted, is asleep, or is not on this line.",
     scan_outcome: {
         faults: (n) => `${n} fault${n === 1 ? '' : 's'}`,
+        partial: (n) => (n > 0 ? `${n} fault${n === 1 ? '' : 's'}, read part way` : 'Read part way'),
         clean: 'No faults',
         undecoded: 'Undecoded',
         faultsUnverified: (n) => `${n} fault${n === 1 ? '' : 's'} (unconfirmed on a car)`,
@@ -244,6 +245,11 @@ export const en: Localised = {
         skipped: 'Not reached',
     },
     scan_shared: 'Which one is fitted is chosen on MODULE, then opened.',
+    scan_summary: (m, f) => `${m} module${m === 1 ? '' : 's'}, ${f} fault${f === 1 ? '' : 's'}`,
+    scan_undecided: (names, byYear) => `? (${names.join(' or ')}${byYear ? '; it depends on the model year, which its IDENT does not tell' : '; its IDENT does not tell which'})`,
+    scan_partial: 'Read only part of the way: what was read is shown, and the list may be short.',
+    scan_reason: (r) => (/^answered \d+ of \d+ frames/.test(r) ? null : undefined),
+    start_hint: 'Not connected. To practise, tick PRACTICE and press CONNECT; on a car, plug in the cable and press CONNECT.',
     scan_sgbdRead: (sgbd, done) => (done ? `Read by ${sgbd.toUpperCase()}'s own fault-read code; texts as the SGBD holds them.` : `${sgbd.toUpperCase()}'s own fault-read code did not read this answer to its end; the bytes are the answer.`),
     scan_variant: (sgbd, carried) =>
         sgbd === null
@@ -412,6 +418,9 @@ export const en: Localised = {
     clearFaults_title: 'Clear fault memory',
     clearFaults_consequence:
         'The fault codes and their freeze frames — the recorded operating conditions at the moment each fault occurred — are erased from the ECU. This cannot be undone. Faults will re-log if their cause is still present, but the freeze frames will not come back. Read and record them first.',
+    clearFaults_named: (m, v) =>
+        `${m}'s fault codes, and the freeze frames that go with them (the conditions recorded when each was stored), are erased from the ECU. Other modules' faults stay. This cannot be undone, and erased freeze frames do not come back: save first. Not sent while moving: the press measures the speed again and clears only at 0 km/h${v !== null && v > 0 ? ` (last measured ${v} km/h)` : ''}.`,
+    clearFaults_moving: 'Not while moving. Press it once stopped.',
     clearFaults_confirm: 'Clear',
     op_blocked_practice: 'The PRACTICE ECU does not implement this job',
     op_why: {
@@ -682,6 +691,7 @@ export const en: Localised = {
     sessions_unkept_info:
         'Every read is recorded on this device as it happens and listed in episodes, such as from connecting to disconnecting. Only what SAVE keeps is sent by SYNC. An episode not kept leaves this device after 7 days. JOIN joins one to the episode before it.',
     sessions_emptyUnkept: 'No episodes waiting to be kept.',
+    sessions_timeUnsure: 'time not yet certain (recorded before the device clock was set)',
     sessions_undated: (days) => (days === null ? 'Date uncertain (not deleted yet)' : `Date uncertain · ${Math.max(0, days)} days left`),
     sessions_expiresIn: (days) => (days <= 0 ? 'Going soon' : `${days} days left`),
     sessions_inAccount: 'In your account',
@@ -696,6 +706,7 @@ export const en: Localised = {
     sessions_saveFailed: "Could not save on this device. Check the browser's site storage.",
     sessions_sent: (n) => `Sent ${n} session${n === 1 ? '' : 's'} to your account.`,
     sessions_nothingToSend: 'Every session has been sent already.',
+    sessions_sendWhenOnline: 'No network. It will send by itself, once, when the network is back.',
     sessions_sendFailed: 'Could not send. It is saved on this device — SYNC again where there is signal.',
     sessions_sendExpired: 'Could not send: your sign-in has expired. It is saved on this device.',
     sessions_tooLarge: (label) => `${label} is too large to send (1.9 MB per session). It is saved on this device.`,
@@ -729,6 +740,7 @@ export const en: Localised = {
     reauth_consequence:
         'Signing in again reloads this page. Reads and recordings you have not saved will be lost — SAVE them first.',
     reauth_confirm: 'Continue without saving',
+    reload_stopRecordingFirst: 'A recording is going. Stop the recording first, then press UPDATE (it is still recording).',
     reload_confirm:
         'Reloading drops the link to the car, and any fault read or datalog you have not saved or exported is lost. Any output still on is switched off first. Reload?',
     reload_title: 'Reload the app — into the newest build, if one has been downloaded',
@@ -792,6 +804,7 @@ export const en: Localised = {
     faults_layout_unverified: 'Codes read where this module’s own SGBD reads them (checked against EDIABAS in simulation) — not yet confirmed on a car. The bytes above are the answer.',
     fault_present_now: 'present now',
     fault_stored: 'stored',
+    fault_unnamed: 'its SGBD has no name for this location',
     faults_kwp_estimated: 'Codes read as ISO 14230 lays out the answer — not yet confirmed on a MK60. The bytes above are the answer.',
     door_wifi: 'Head unit Wi-Fi settings',
     door_datetime: 'Head unit date and time settings',

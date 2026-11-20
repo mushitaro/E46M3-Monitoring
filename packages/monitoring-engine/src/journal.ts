@@ -23,6 +23,7 @@
  */
 import type { ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
 import { PLAUSIBLE_FROM } from './clock.ts';
+import type { SavedScan } from './faultState.ts';
 import { sessionLabel, type FailureNote, type SavedSession } from './sync/session.ts';
 
 /** Nothing recorded for this long ends an episode. */
@@ -51,6 +52,8 @@ export type JournalEvent = (
     | { t: number; kind: 'faults'; faults: ErrorMemoryEntry[] }
     /** A module with no decoder: the frames its own SGBD sends and the bytes that came back. */
     | { t: number; kind: 'rawFaults'; reads: Array<{ request: string; response: string; source: string }> }
+    /** Every module's fault read (DIAGNOSIS's ALL MODULES, monitoring_scan): the codes, not the bytes. */
+    | { t: number; kind: 'scan'; scan: SavedScan }
     | { t: number; kind: 'datalog'; datalog: Datalog }
     | { t: number; kind: 'adaptation'; blocks: unknown }
     | { t: number; kind: 'run'; job: string; result: unknown }
@@ -66,7 +69,7 @@ export type JournalEvent = (
 export const undated = (e: JournalEvent): boolean => e.loose === true || e.t < PLAUSIBLE_FROM;
 
 /** The kinds that are something read or done, rather than the link coming and going. */
-const CONTENT: ReadonlySet<JournalEvent['kind']> = new Set(['ident', 'faults', 'rawFaults', 'datalog', 'adaptation', 'run', 'failure']);
+const CONTENT: ReadonlySet<JournalEvent['kind']> = new Set(['ident', 'faults', 'rawFaults', 'scan', 'datalog', 'adaptation', 'run', 'failure']);
 
 export interface Episode {
     /** Its first event's time, which also names it: stable while it grows, and unique on one device. */
@@ -109,7 +112,7 @@ function toEpisode(events: JournalEvent[]): Episode {
     const connect = events.find((e): e is Extract<JournalEvent, { kind: 'connect' }> => e.kind === 'connect');
     const counts = { faultReads: 0, samples: 0, adaptations: 0, runs: 0, failures: 0 };
     for (const e of events) {
-        if (e.kind === 'faults' || e.kind === 'rawFaults') counts.faultReads++;
+        if (e.kind === 'faults' || e.kind === 'rawFaults' || e.kind === 'scan') counts.faultReads++;
         else if (e.kind === 'datalog') counts.samples += e.datalog.samples;
         else if (e.kind === 'adaptation') counts.adaptations++;
         else if (e.kind === 'run') counts.runs++;
@@ -187,6 +190,7 @@ export function toSession(
 ): SavedSession & {
     datalogs: Datalog[];
     rawFaults: Array<{ request: string; response: string; source: string }> | null;
+    scan: SavedScan | null;
     adaptations: unknown[];
     runs: Array<{ job: string; result: unknown }>;
 } {
@@ -206,10 +210,13 @@ export function toSession(
         mock: ep.mock,
         ident: last('ident')?.ident ?? null,
         faults: last('faults')?.faults ?? null,
+        ...(last('faults') ? { faultsAt: last('faults')!.t } : {}),
         datalog: datalogs.length > 0 ? datalogs[datalogs.length - 1] : null,
         failures: ep.events.filter((e): e is Extract<JournalEvent, { kind: 'failure' }> => e.kind === 'failure').map((e) => e.note),
         datalogs,
         rawFaults: last('rawFaults')?.reads ?? null,
+        // Every module's faults, as the last scan of the episode read them (SC02: kept before a clear).
+        scan: last('scan')?.scan ?? null,
         adaptations: ep.events.filter((e): e is Extract<JournalEvent, { kind: 'adaptation' }> => e.kind === 'adaptation').map((e) => e.blocks),
         runs: ep.events.filter((e): e is Extract<JournalEvent, { kind: 'run' }> => e.kind === 'run').map((e) => ({ job: e.job, result: e.result })),
     };

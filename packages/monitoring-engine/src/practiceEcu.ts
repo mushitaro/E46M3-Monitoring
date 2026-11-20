@@ -25,7 +25,7 @@ import {
 import { SimulatedSerialPort, type ExchangeBehavior, type SerialOptions, type SerialPortLike, type SimulatedEcuOptions } from '@tsunagi/ds2-core';
 import { KWP_FORMAT, KWP_TESTER, xorOf } from './kwpOnDs2.ts';
 import type { JobFramesOracle } from './sgbd/agreedFrame.ts';
-import { CLEAN, clusterVinAnswer, driveNow, ds2IdentData, practiceCar, practiceSpeed, type PracticeInjection } from './practiceCar.ts';
+import { cleanAnswer, clusterVinAnswer, driveNow, ds2IdentData, practiceCar, practiceSpeed, type PracticeInjection } from './practiceCar.ts';
 
 const START = Date.now();
 
@@ -192,7 +192,7 @@ function practiceModule(address: number): SimulatedEcuOptions {
         respond: (request) => {
             if (request.controlOrStatus === 0x00) return { payload: new Uint8Array(ds2IdentData(practiceCar.idents[address] ?? { hw: '00', diag: '00' })) };
             if (request.controlOrStatus === Ds2Control.READ_ERROR_MEMORY) {
-                return { payload: new Uint8Array(practiceCar.moduleFaults[address] ?? CLEAN) };
+                return { payload: new Uint8Array(practiceCar.moduleFaults[address] ?? cleanAnswer(address)) };
             }
             // The instrument cluster's VIN read (AIF block 2), answered as the SGBD reads it; refused without one.
             if (address === 0x80 && request.controlOrStatus === 0x02 && request.payload.length === 1 && request.payload[0] === 0x02) {
@@ -441,7 +441,14 @@ export function practiceKwpAnswer(chunk: Uint8Array): Uint8Array[] | null {
     let data: number[];
     if (sid === 0x1a) data = [0x5a, chunk[5], 0x34, 0x51, 0x12, 0x07];
     else if (sid === 0x18) data = [0x58, practiceCar.dscMk60.length, ...practiceCar.dscMk60.flatMap((d) => [d.code >> 8, d.code & 0xff, d.status])];
-    else {
+    else if (sid === 0x14) {
+        // ClearDiagnosticInformation (its own FS_LOESCHEN): the memory empties, as a car's does, and
+        // the answer is EdiabasLib's simulation where it ran this frame, else ISO 14230's `54` and the group.
+        practiceCar.dscMk60 = [];
+        const known = simulated.get(hexOf(chunk));
+        if (known) return [echo, known];
+        data = [0x54, ...chunk.subarray(5, chunk.length - 1)];
+    } else {
         // A frame EdiabasLib was run with: its simulation's answer. Anything else: not supported.
         const known = simulated.get(hexOf(chunk));
         if (known) return [echo, known];

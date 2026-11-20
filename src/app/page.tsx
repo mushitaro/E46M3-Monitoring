@@ -62,6 +62,7 @@ import { ActuatorViz } from '@/views/actuator/ActuatorViz';
 import { AdaptationView, AdaptationViz } from '@/views/adaptation/AdaptationView';
 import { DiagnosisView, DiagnosisViz } from '@/views/diagnosis/DiagnosisView';
 import { ScanList, ScanViz } from '@/views/diagnosis/ScanView';
+import { rememberTab, takeRememberedTab } from '@/lib/returnTab';
 import { loadScanTargets } from '@tsunagi/monitoring-engine';
 import { ALL_MODULES } from '@tsunagi/monitoring-engine';
 import { DatalogView, DatalogViz } from '@/views/datalog/DatalogView';
@@ -538,10 +539,24 @@ export default function Home() {
         if (reloading) return;
         // With the journal, what was read is already on the device as it happened (lib/sync/journalStore)
         // and MEMORY shows it again after the reload: only an open link is lost then.
+        // A recording or a PROBE run is not cut by an update (SC11 step 4): said in the app, not in a
+        // browser dialog a head unit draws badly, and nothing else happens until it is stopped.
+        if (link.state === 'logging' || probe.progress !== null) {
+            setScreenNotice(t.reload_stopRecordingFirst);
+            return;
+        }
         const loses = link.state !== 'disconnected' || (!sessionsEnabled && (link.faults !== null || datalog.samples.length > 0));
         if (loses && !window.confirm(t.reload_confirm)) return;
+        // The new build opens on the tab this one was on (SC11: DATALOG, not DIAGNOSIS).
+        rememberTab(tab);
         void releaseThen(() => reloadForUpdate());
-    }, [reloading, link.state, link.faults, datalog.samples.length, sessionsEnabled, t, releaseThen]);
+    }, [reloading, link.state, probe.progress, link.faults, datalog.samples.length, sessionsEnabled, t, releaseThen, tab]);
+
+    // Back on the tab the page was on before an update reloaded it (once, on the first load after it).
+    useEffect(() => {
+        const back = takeRememberedTab();
+        if (back) changeTab(back);
+    }, [changeTab]);
 
     // The M menu (components/MobileMenu.tsx), below 900 only. `menuDrag` is where the press that
     // opened it landed, while it is still down: the sheet reads it to carry that press on into a
@@ -735,7 +750,15 @@ export default function Home() {
 
     const panes: Record<Tab, React.ReactNode> = {
         diagnosis: scopeAll ? (
-            <ScanList run={link.scan} progress={link.scanProgress} index={ecuIndex} mss54={mss54Catalog} selected={scanOpen} onSelect={setScanOpen} />
+            <ScanList
+                run={link.scan}
+                progress={link.scanProgress}
+                index={ecuIndex}
+                mss54={mss54Catalog}
+                selected={scanOpen}
+                onSelect={setScanOpen}
+                idleHint={link.state === 'disconnected' ? t.start_hint : undefined}
+            />
         ) : (
             <DiagnosisView ident={link.ident} faults={link.faults} rawFaults={link.rawFaults} catalog={catalog} />
         ),
@@ -1017,10 +1040,21 @@ export default function Home() {
                                 offered only once faults have actually been read, so
                                 the evidence it destroys has at least been on screen
                                 once. */}
+                            {/* Not while the car is measured moving (F10): drawn, not pressable, with the word
+                                that says why. The press measures the speed again anyway (session preflight). */}
                             {tab === 'diagnosis' && link.state === 'connected' && link.faults !== null && (
-                                <TextButton onClick={() => setClearOpen(true)} tone="danger" Icon={AlertTriangle}>
-                                    {t.clearFaults}
-                                </TextButton>
+                                <>
+                                    <TextButton
+                                        onClick={() => setClearOpen(true)}
+                                        tone="danger"
+                                        Icon={AlertTriangle}
+                                        disabled={link.motion === 'moving'}
+                                        title={link.motion === 'moving' ? t.clearFaults_moving : undefined}
+                                    >
+                                        {t.clearFaults}
+                                    </TextButton>
+                                    {link.motion === 'moving' && <span className={`${LABEL} text-amber-400`}>{t.runBlockShort.run_block_moving}</span>}
+                                </>
                             )}
                             {/* A held or paired job needs a STOP that is NOT the
                                 hub: the hub is what started it, and re-deriving one
@@ -1221,7 +1255,10 @@ export default function Home() {
             {clearOpen && (
                 <ConfirmDialog
                     title={t.clearFaults_title}
-                    consequence={t.clearFaults_consequence}
+                    consequence={t.clearFaults_named(
+                        moduleName(ecuIndex, ecuId) ?? ecuId.toUpperCase(),
+                        link.vehicleState?.speedKmh ?? null,
+                    )}
                     confirmLabel={t.clearFaults_confirm}
                     onCancel={() => setClearOpen(false)}
                     onConfirm={() => {

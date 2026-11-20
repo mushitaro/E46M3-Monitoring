@@ -108,7 +108,8 @@ const scenario = {
                 run: async (page) => {
                     const rows = await scanRows(page);
                     const listed = Object.entries(rows).filter(([, r]) => r.tag !== '応答なし' && r.tag !== '送らない');
-                    const many = listed.filter(([, r]) => r.name.includes(' / ')).map(([a, r]) => `${a} ${r.name}`);
+                    // A name may itself hold ' / ' in its parentheses (「MSS54 (S54 / E46 M3 エンジン)」): one name, not a list.
+                    const many = listed.filter(([, r]) => r.name.replace(/\([^)]*\)/g, '').includes(' / ')).map(([a, r]) => `${a} ${r.name}`);
                     const english = listed.filter(([, r]) => !/[ぁ-んァ-ヶ一-龠]/.test(r.name) && !/^(DSC MK60|DSC \(E46\)|SMG II.*)$/.test(r.name)).map(([a, r]) => `${a} ${r.name}`);
                     const why = [];
                     if (many.length) why.push(`候補が並んだまま（${many.length} 行）：${many.slice(0, 4).join(' | ')}`);

@@ -25,6 +25,9 @@ export interface E2EDoor {
         get(): PracticeCar;
         set(patch: Partial<PracticeCar>): PracticeCar;
         reset(): void;
+        /** The frames the car heard since `since` (Date.now()), oldest first; and forgetting them. */
+        wire(since?: number): { at: number; to: number; hex: string }[];
+        clearWire(): void;
     };
     /** The page's clock (lib/clock): as if it had not heard the server yet, then as if it just had. */
     clock: {
@@ -59,6 +62,8 @@ export function useE2EDoor(facade: TabFacade): void {
                 get: () => structuredClone(practiceCar),
                 set: (patch) => structuredClone(Object.assign(practiceCar, patch)),
                 reset: resetPracticeCar,
+                wire: (since = 0) => practiceCar.wire.filter((f) => f.at >= since),
+                clearWire: () => void practiceCar.wire.splice(0),
             },
             clock: {
                 forget: resetClock,

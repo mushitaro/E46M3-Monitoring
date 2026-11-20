@@ -116,6 +116,69 @@ export interface PracticeCar {
     clusterVin: string | null;
     /** How many times the cluster has been asked for it: the scan's "once", seen from the car. */
     clusterVinReads: number;
+    /**
+     * Every frame the practice car heard, in order (practiceEcu's port), so a test judges what was sent
+     * on the wire rather than what the app says it sent. Kept to the last 20,000.
+     */
+    wire: PracticeWireFrame[];
+    /** Answers to give instead of the car's own, frame by frame: a refusal, silence, a short or late answer. */
+    inject: PracticeInjection[];
+    /** A drive the car follows: speed, rpm, pedal, gear and the cams over time. Null: parked or `speedKmh`. */
+    drive: PracticeDrive | null;
+}
+
+/** One frame as the practice car heard it. */
+export interface PracticeWireFrame {
+    /** Date.now() when it arrived. */
+    at: number;
+    /** The module it was addressed to (0xB8: the DSC MK60's KWP frames). */
+    to: number;
+    /** The frame, hex bytes with spaces, checksum included. */
+    hex: string;
+}
+
+/**
+ * An answer the practice car gives in place of its own, for frames that match: the module, and if given
+ * the control byte (DS2) or service (KWP) and the first payload bytes. `skip` lets that many matches
+ * through first; `times` (default 1) is how many it then takes.
+ *
+ *   - `negative`: the module refuses (DS2 status 0xA2, KWP 7F <sid> 22);
+ *   - `silent`: the echo, and no answer;
+ *   - `short`: an answer of one byte;
+ *   - `busy`: the module says busy (DS2 0xA1);
+ *   - `slow`: the module's own answer, `delayMs` late.
+ */
+export interface PracticeInjection {
+    to: number;
+    ctrl?: number;
+    /** Hex of the payload's first bytes, spaces allowed. */
+    data?: string;
+    kind: 'negative' | 'silent' | 'short' | 'busy' | 'slow';
+    times?: number;
+    skip?: number;
+    delayMs?: number;
+}
+
+/** A point of a drive. Values between points are interpolated; a missing value keeps the last one. */
+export interface PracticeDrivePoint {
+    /** Seconds from the drive's start. */
+    t: number;
+    gear?: number;
+    kmh?: number;
+    rpm?: number;
+    /** Pedal, %. */
+    pedal?: number;
+    /** Intake and exhaust VANOS, target and actual, °CRK. */
+    inSoll?: number;
+    inIst?: number;
+    exSoll?: number;
+    exIst?: number;
+}
+
+export interface PracticeDrive {
+    points: PracticeDrivePoint[];
+    /** Date.now() at its start; set by the car the first time it is read when absent. */
+    startedAt?: number;
 }
 
 /** The practice car's VIN, last seven: made up, and no car's. */
@@ -172,6 +235,9 @@ function defaults(): PracticeCar {
         idents: { ...M3_IDENTS },
         clusterVin: PRACTICE_VIN_SHORT,
         clusterVinReads: 0,
+        wire: [],
+        inject: [],
+        drive: null,
     };
 }
 
@@ -181,4 +247,33 @@ export const practiceCar: PracticeCar = defaults();
 /** Back to the defaults: the start of every scenario. */
 export function resetPracticeCar(): void {
     Object.assign(practiceCar, defaults());
+}
+
+/** Where a drive is now: every value interpolated between its points. Null when there is no drive. */
+export function driveNow(now = Date.now()): Required<Omit<PracticeDrivePoint, 't'>> | null {
+    const d = practiceCar.drive;
+    if (!d || d.points.length === 0) return null;
+    d.startedAt ??= now;
+    const t = (now - d.startedAt) / 1000;
+    const keys = ['gear', 'kmh', 'rpm', 'pedal', 'inSoll', 'inIst', 'exSoll', 'exIst'] as const;
+    const out = { gear: 0, kmh: 0, rpm: 820, pedal: 0, inSoll: 0, inIst: 0, exSoll: 0, exIst: 0 };
+    for (const k of keys) {
+        const has = d.points.filter((p) => p[k] !== undefined);
+        if (!has.length) continue;
+        const after = has.findIndex((p) => p.t >= t);
+        if (after === -1) out[k] = has[has.length - 1][k]!;
+        else if (after === 0) out[k] = has[0][k]!;
+        else {
+            const a = has[after - 1];
+            const b = has[after];
+            // A gear steps; everything else moves smoothly.
+            out[k] = k === 'gear' ? a[k]! : a[k]! + ((b[k]! - a[k]!) * (t - a.t)) / (b.t - a.t || 1);
+        }
+    }
+    return out;
+}
+
+/** The speed the car reports now: its drive's, or `speedKmh`. */
+export function practiceSpeed(): number {
+    return driveNow()?.kmh ?? practiceCar.speedKmh;
 }

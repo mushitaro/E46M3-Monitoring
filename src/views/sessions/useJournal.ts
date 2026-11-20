@@ -95,7 +95,13 @@ export function useJournal(input: {
         lastRun: unknown;
     };
     ecuId: string;
-    datalog: { samples: readonly unknown[]; capture: () => SavedSession['datalog'] };
+    datalog: {
+        samples: readonly unknown[];
+        /** The part of the recording not yet journaled, and when it began. */
+        capturePart: () => { at: number; capture: NonNullable<SavedSession['datalog']> } | null;
+        /** Told of each ten-minute part as it closes, while the recording goes on. */
+        onPart: (listener: (p: { at: number; capture: NonNullable<SavedSession['datalog']> }) => void) => () => void;
+    };
     failures: readonly FailureNote[];
 }) {
     const { enabled, paused, link, ecuId, datalog, failures } = input;
@@ -165,6 +171,10 @@ export function useJournal(input: {
         });
     }, [enabled, refresh]);
 
+    // Each ten-minute part of a recording, as it closes: an episode of its own (lib/journal).
+    const { onPart } = datalog;
+    useEffect(() => onPart((p) => append({ t: p.at, kind: 'datalog', datalog: p.capture })), [onPart, append]);
+
     // The link coming and going, and a recording ending.
     const prevState = useRef(link.state);
     useEffect(() => {
@@ -173,9 +183,10 @@ export function useJournal(input: {
         if (was === link.state) return;
         const t = appNow();
         if (was === 'connecting' && link.state === 'connected') append({ t, kind: 'connect', ecu: ecuId, mock: link.mode === 'practice' });
+        // The recording's last part (the whole of it, under ten minutes), timed from when the part began.
         if (was === 'logging' && link.state !== 'logging' && datalog.samples.length > 0) {
-            const captured = datalog.capture();
-            if (captured) append({ t, kind: 'datalog', datalog: captured });
+            const part = datalog.capturePart();
+            if (part) append({ t: part.at, kind: 'datalog', datalog: part.capture });
         }
         if (was !== 'disconnected' && was !== 'connecting' && link.state === 'disconnected') append({ t: t + 1, kind: 'disconnect', lost: link.error !== null });
     }, [link.state, link.mode, link.error, ecuId, datalog, append]);

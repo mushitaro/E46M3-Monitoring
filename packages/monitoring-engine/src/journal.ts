@@ -11,7 +11,9 @@
  *
  *   - at a CONNECT: a new link is new work;
  *   - after a DISCONNECT, deliberate or lost: what comes next is on another link;
- *   - after ten minutes with nothing recorded: the owner walked away.
+ *   - after ten minutes with nothing recorded: the owner walked away;
+ *   - at each ten-minute part of a recording after its first (DATALOG cuts a run every ten
+ *     minutes): a drive recorded for an hour is six episodes the owner can keep or leave.
  *
  * Two neighbouring episodes can be joined (`joins`): the break before the later one is ignored.
  *
@@ -94,13 +96,16 @@ export function episodes(events: readonly JournalEvent[], joins: ReadonlySet<num
         .map(toEpisode);
 }
 
+/** A recording's ten-minute part after its first: the start of an episode of its own. */
+const laterPart = (e: JournalEvent): boolean => e.kind === 'datalog' && (e.datalog.part ?? 1) > 1;
+
 /** Every stretch of the stream, with or without anything read in it. */
 function groups(events: readonly JournalEvent[], joins: ReadonlySet<number>): JournalEvent[][] {
     const sorted = [...events].sort((a, b) => a.t - b.t);
     const out: JournalEvent[][] = [];
     let prev: JournalEvent | null = null;
     for (const e of sorted) {
-        const breaks = prev === null || e.kind === 'connect' || prev.kind === 'disconnect' || e.t - prev.t > IDLE_MS;
+        const breaks = prev === null || e.kind === 'connect' || prev.kind === 'disconnect' || e.t - prev.t > IDLE_MS || laterPart(e);
         if (breaks && !(prev !== null && joins.has(e.t))) out.push([e]);
         else out[out.length - 1].push(e);
         prev = e;

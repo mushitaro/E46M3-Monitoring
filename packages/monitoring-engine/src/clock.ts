@@ -45,10 +45,29 @@ export function onAnchor(listener: (step: number) => void): () => void {
     };
 }
 
+/** Time the e2e door has moved the page's clock on by (`advanceClock`): nothing, outside a test build. */
+let skew = 0;
+
 const mono = (): number =>
-    typeof performance !== 'undefined' && typeof performance.now === 'function' && Number.isFinite(performance.timeOrigin)
+    (typeof performance !== 'undefined' && typeof performance.now === 'function' && Number.isFinite(performance.timeOrigin)
         ? performance.timeOrigin + performance.now()
-        : Date.now();
+        : Date.now()) + skew;
+
+/**
+ * A clock for lengths of time: monotonic, never stepped by the server's time (`learnServerTime`), so
+ * a recording's seconds stay the seconds that passed when the head unit's clock is put right under it.
+ */
+export function monoNow(): number {
+    return mono();
+}
+
+/**
+ * For tests (and the e2e door): as if `ms` had passed. Both clocks move on together, as they do when
+ * time passes; a recording's ten-minute cut (journal `PART_MS`) can be seen without waiting for it.
+ */
+export function advanceClock(ms: number): void {
+    if (Number.isFinite(ms) && ms > 0) skew += ms;
+}
 
 /** Now, in ms since the epoch: monotonic within the page, on the server's time once learnt. */
 export function appNow(): number {

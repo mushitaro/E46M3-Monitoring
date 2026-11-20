@@ -50,6 +50,26 @@ export interface Localised {
     faults_read: string;
     faultRef_search: string;
     channels_selected: (n: number, blocks: number) => string;
+    datalog_elapsed: string;
+    datalog_gearNote: string;
+    datalog_otherEmpty: string;
+    datalog_segments: string;
+    datalog_segmentWhy: Record<'start' | 'channels' | 'part', string>;
+    datalog_part: (k: number) => string;
+    datalog_segmentLine: (channels: number, blocks: number, hz: number | null) => string;
+    datalog_plan: string;
+    datalog_planCaught: (n: number) => string;
+    datalog_planWaiting: string;
+    datalog_planRecording: string;
+    datalog_planProbe: string;
+    datalog_compare: string;
+    datalog_compareRun: (k: number) => string;
+    datalog_window: (s: number) => string;
+    datalog_cursorLine: (at: string, gear: number | null) => string;
+    datalog_markLabel: (why: string) => string;
+    datalog_cursorLabel: string;
+    datalog_hubLine: (elapsed: string, rpm: string, kmh: string, samples: number) => string;
+    sessions_segments: (lines: string) => string;
     rate: string;
     samples: string;
     notSupported_title: string;
@@ -276,6 +296,19 @@ export interface Localised {
     probe_title: string;
     /** The hub's notice while a plan runs: version, one-shot steps settled of all, samples kept. */
     probe_line: (v: number, settled: number, total: number, samples: number) => string;
+    probe_reading: (module: string) => string;
+    board_readings: string;
+    adjust_title: string;
+    adjust_pre: (list: string) => string;
+    adjust_ok: string;
+    adjust_notHere: string;
+    adjust_runnable: string;
+    adjust_otherWrite: (module: string, address: string, job: string) => string;
+    adjust_otherModule: (module: string, address: string) => string;
+    adjust_sendsNothing: string;
+    adjust_notAgreed: string;
+    sure: Record<'high' | 'mid' | 'low', string>;
+    probe_refused: (n: number) => string;
     /** The line dropped and PROBE begins the plan again (lib useProbe RESUME_AFTER_MS). */
     probe_resuming: (v: number, resumes: number) => string;
     /** MEMORY and SESSION SYNC — the preview's saved sessions and SYNC (lib/features.ts `sessionSync`). */

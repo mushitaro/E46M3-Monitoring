@@ -84,6 +84,8 @@ export interface ViewHubState {
         /** This module's live-block layout is ported. Only the MSS54's is. */
         decoded: boolean;
         sampleCount: number;
+        /** While recording: the mark, how long, and the engine speed and road speed now, read at a glance. */
+        recordingLine?: string;
         /** One round trip per BLOCK, not per channel — the view words it. */
         costNotice: string;
         start: () => void;
@@ -128,7 +130,7 @@ export function viewHubFor(s: ViewHubState): HubConfig | null {
             Icon: s.icons.stop,
             tone: 'armed',
             onClick: s.datalog.stop,
-            notice: `${s.datalog.sampleCount} ${s.t.samples}`,
+            notice: s.datalog.recordingLine ?? `${s.datalog.sampleCount} ${s.t.samples}`,
         };
     }
 

@@ -8,7 +8,7 @@ import { DataList, DataRow, Field, Pane, Pill, Section, TextButton, Well, humanN
 import { normCode } from '@/lib/faultCode';
 import { useLang } from '@/lib/i18n';
 import { text as resolveText, type EcuProfile } from '@tsunagi/monitoring-engine';
-import { KEEP_MS, expiresAt, type Episode } from '@tsunagi/monitoring-engine';
+import { KEEP_MS, expiresAt, type Episode, type JournalEvent } from '@tsunagi/monitoring-engine';
 import { mss54Present, needsSync, parseCsv, savedScanFaults, sessionFaultCount, sessionLabel, summarise, type SavedSession } from '@tsunagi/monitoring-engine';
 import { SAVE_TONE, SYNC_TONE } from '@/lib/sync/status';
 import { CountReadout } from '@/views/shared/CountReadout';
@@ -142,6 +142,8 @@ export const SessionsView = memo(function SessionsView({
                                     </span>
                                 }
                                 detail={
+                                    <>
+                                    <SegmentsLine datalog={lastDatalog(ep)} />
                                     <p className="font-mono text-[11px] text-slate-500">
                                         {t.sessions_counts(lastFaultCount(ep), ep.counts.samples, ep.counts.failures)} ·{' '}
                                         {/* From the later of the episode's end and the minute clock: the clock may still read the
@@ -150,6 +152,7 @@ export const SessionsView = memo(function SessionsView({
                                             ? t.sessions_undated(undatedDays(s.undatedExpiry(ep), s.now))
                                             : t.sessions_expiresIn(Math.ceil((expiresAt(ep) - Math.max(s.now, ep.end)) / 86_400_000))}
                                     </p>
+                                    </>
                                 }
                             />
                         ))}
@@ -191,9 +194,12 @@ export const SessionsView = memo(function SessionsView({
                                         </span>
                                     }
                                     detail={
-                                        <p className="font-mono text-[11px] text-slate-500">
-                                            {t.sessions_counts(sum.faultCount, sum.sampleCount, sum.failureCount)}
-                                        </p>
+                                        <>
+                                            <SegmentsLine datalog={x.datalog} />
+                                            <p className="font-mono text-[11px] text-slate-500">
+                                                {t.sessions_counts(sum.faultCount, sum.sampleCount, sum.failureCount)}
+                                            </p>
+                                        </>
                                     }
                                 />
                             );
@@ -206,6 +212,27 @@ export const SessionsView = memo(function SessionsView({
         </Pane>
     );
 });
+
+/** The last recording an episode holds (lib/journal: an episode's datalog is its last). */
+function lastDatalog(ep: { events: readonly JournalEvent[] }): SavedSession['datalog'] {
+    for (let i = ep.events.length - 1; i >= 0; i--) {
+        const e = ep.events[i];
+        if (e.kind === 'datalog') return e.datalog;
+    }
+    return null;
+}
+
+/** A recording's segments, one line: each stretch's channels, blocks and rate, where its channels changed. */
+function SegmentsLine({ datalog }: { datalog: SavedSession['datalog'] }) {
+    const { t } = useLang();
+    const segs = datalog?.segments ?? [];
+    if (segs.length === 0) return null;
+    return (
+        <p className="truncate font-mono text-[11px] text-slate-500">
+            {t.sessions_segments(segs.map((x) => t.datalog_segmentLine(x.channels, x.blocks, x.rateHz)).join(' / '))}
+        </p>
+    );
+}
 
 /**
  * Days left for an undated episode: from when it was found, counted on the minute clock — which can

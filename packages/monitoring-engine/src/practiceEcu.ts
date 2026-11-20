@@ -25,7 +25,7 @@ import {
 import { SimulatedSerialPort, type ExchangeBehavior, type SerialOptions, type SerialPortLike, type SimulatedEcuOptions } from '@tsunagi/ds2-core';
 import { KWP_FORMAT, KWP_TESTER, xorOf } from './kwpOnDs2.ts';
 import type { JobFramesOracle } from './sgbd/agreedFrame.ts';
-import { cleanAnswer, clusterVinAnswer, driveNow, ds2IdentData, practiceCar, practiceSpeed, type PracticeInjection } from './practiceCar.ts';
+import { cleanAnswer, clusterVinAnswer, driveNow, ds2IdentData, practiceCar, practiceSpeed, smg2PhydBytes, type PracticeInjection } from './practiceCar.ts';
 
 const START = Date.now();
 
@@ -212,7 +212,14 @@ function practiceModule(address: number): SimulatedEcuOptions {
             // SMG II's STATUS_IO_LESEN (selection 3) came back as the DME's block 3, and a
             // selection the DME has no block for (SMG II's 5) was refused.
             if (request.controlOrStatus === Ds2Control.READ_IO_STATUS || request.controlOrStatus === 0x40) {
-                return { payload: new Uint8Array(PRACTICE_MODULE_BLOCK) };
+                const out = new Uint8Array(PRACTICE_MODULE_BLOCK);
+                // SMG II's STATUS_IO_LESEN, as the scenario set it (practiceCar `smg2Status`).
+                const st = practiceCar.smg2Status;
+                if (address === 0x32 && request.controlOrStatus === Ds2Control.READ_IO_STATUS && request.payload[0] === 0x03 && st) {
+                    if (typeof st.phydBar === 'number') out.set(smg2PhydBytes(st.phydBar), 50);
+                    for (const [k, v] of Object.entries(st.bytes ?? {})) if (Number(k) < out.length) out[Number(k)] = v & 0xff;
+                }
+                return { payload: out };
             }
             return dme.respond!(request);
         },

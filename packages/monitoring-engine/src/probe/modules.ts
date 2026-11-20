@@ -7,7 +7,7 @@
  * reads). A module missing from the index stays out of the map, and the executor refuses its steps
  * as `unknown module` rather than guessing an address.
  */
-import { jobIndex, loadEcuCatalog, type EcuIndex } from '../ecuCatalog.ts';
+import { jobIndex, loadEcuCatalog, text, type EcuIndex } from '../ecuCatalog.ts';
 import { moduleProtocol } from '../moduleProtocol.ts';
 import { loadSgbdResults } from '../sgbd/results.ts';
 import { bestTelegram, loadTelegrams } from '../telegrams.ts';
@@ -31,6 +31,10 @@ export async function loadProbeModules(steps: readonly ProbeStep[], index: EcuIn
                     return job ? { job, telegram: bestTelegram(table, jobId) } : null;
                 },
                 results,
+                faultText: (code) => {
+                    const known = profile?.faultText?.find((f) => f.code.trim().toLowerCase() === code.trim().toLowerCase());
+                    return known && profile ? text(profile, known.text, 'en').text || null : null;
+                },
             });
         }),
     );

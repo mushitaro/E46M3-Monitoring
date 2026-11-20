@@ -58,7 +58,17 @@ export interface SavedSession {
      * and how each read went, no bytes. Absent or null: no scan in the session.
      */
     scan?: SavedScan | null;
-    datalog: { channels: string[]; samples: number; csv: string } | null;
+    /**
+     * `part`: which ten-minute part of one recording this is (a recording is cut every ten minutes,
+     * journal.ts). `segments`: where its channels changed while it ran, and the rate each stretch got.
+     */
+    datalog: {
+        channels: string[];
+        samples: number;
+        csv: string;
+        part?: number;
+        segments?: Array<{ from: number; channels: number; blocks: number; rateHz: number | null; why: 'start' | 'channels' | 'part' }>;
+    } | null;
     failures: FailureNote[];
 }
 

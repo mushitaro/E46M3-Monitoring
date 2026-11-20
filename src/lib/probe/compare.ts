@@ -13,7 +13,7 @@
  *
  * Pure: the bridge's compare and the desk read the same numbers.
  */
-import type { ProbeRun } from '@tsunagi/monitoring-engine';
+import type { ProbeFault, ProbeRun } from '@tsunagi/monitoring-engine';
 import { diffForms, judgeKey, measures, type Form, type ItemDiff } from './items';
 
 export interface RunRef {
@@ -48,7 +48,8 @@ export interface Comparison {
     b: RunRef;
     channels: ChannelChange[];
     adaptations: Array<{ key: string; a: number | null; b: number | null; delta: number | null }>;
-    faults: Array<{ module: string; what: string; a: string | null; b: string | null; same: boolean }>;
+    /** Each fault read's answers in both runs, and the faults the module's own code (or layout) read from them. */
+    faults: Array<{ module: string; what: string; a: string | null; b: string | null; same: boolean; aFaults?: ProbeFault[]; bFaults?: ProbeFault[] }>;
     /**
      * Each judgement in each run: pass, fail, or null when there were no samples to judge. With the
      * runs' forms known, only the judgements both measured — the same channel, statistic and
@@ -115,6 +116,13 @@ export function channelStats(r: Pick<ProbeRun, 'samples'>): Map<string, ChannelS
 
 const round = (v: number) => Math.round(v * 1000) / 1000;
 
+/** The faults each module's last fault read in a run was read as (the executor reads them; probe/executor `faults`). */
+function lastFaults(r: ProbeRun): Map<string, ProbeFault[]> {
+    const out = new Map<string, ProbeFault[]>();
+    for (const x of r.exchanges) if (x.outcome === 'ok' && x.faults) out.set(`${x.module}\u0000${x.what}`, x.faults);
+    return out;
+}
+
 /** The last answer each module gave to each one-shot read in a run. */
 function lastAnswers(r: ProbeRun): Map<string, string | null> {
     const out = new Map<string, string | null>();
@@ -161,11 +169,13 @@ export function compareRuns(a: Run, b: Run, opts: { channels?: readonly string[]
 
     const fa = lastAnswers(a);
     const fb = lastAnswers(b);
+    const da = lastFaults(a);
+    const db = lastFaults(b);
     const faults = [...new Set([...fa.keys(), ...fb.keys()])].sort().map((k) => {
         const [module, what] = k.split('\u0000');
         const x = fa.get(k) ?? null;
         const y = fb.get(k) ?? null;
-        return { module, what, a: x, b: y, same: x === y };
+        return { module, what, a: x, b: y, same: x === y, ...(da.has(k) ? { aFaults: da.get(k) } : {}), ...(db.has(k) ? { bFaults: db.get(k) } : {}) };
     });
 
     const items = formA && formB ? diffForms(formA, formB) : null;

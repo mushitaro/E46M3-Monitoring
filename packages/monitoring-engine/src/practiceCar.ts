@@ -99,6 +99,13 @@ export interface PracticeCar {
      */
     dscMk60: { code: number; status: number }[] | null;
     /**
+     * SMG II's STATUS_IO_LESEN answer (0x32, `0B 03`), otherwise 128 zero bytes: the hydraulic
+     * pressure SMG II reports (`phydBar`, bytes 50-51 as its own SGBD reads them, about 0.12 bar a step,
+     * an unsigned word; see `smg2PhydBytes`), and any other byte by offset. Null: every byte zero,
+     * which the SGBD's own code reads as 65524 bar (−12 as an unsigned word).
+     */
+    smg2Status: { phydBar?: number; bytes?: Record<number, number> } | null;
+    /**
      * A DME that is an MS43 (a non-M3 E46; the IDENT is `idents[0x12]`): its fault memory, answered in the
      * MS43's own layout (fault-layouts.json `ms430ds0`: the count in the quick test, then 10-byte records —
      * code, type bits with 0x40 "present now", frequency). Null: the DME answers as the M3's MSS54.
@@ -245,6 +252,9 @@ function defaults(): PracticeCar {
         // The owner's car (2026-11-10): a MK60 with one code stored. Its layout is ISO 14230's, which is
         // what the app reads it as; the real one has not answered yet.
         dscMk60: [{ code: 0x5d90, status: 0x24 }],
+        // A pressure a working SMG II holds (its accumulator: roughly 40-80 bar), stated as practice's,
+        // so a reading of it is not the zero answer's 65524 bar.
+        smg2Status: { phydBar: 60 },
         ms43Faults: null,
         idents: { ...M3_IDENTS },
         clusterVin: PRACTICE_VIN_SHORT,
@@ -253,6 +263,17 @@ function defaults(): PracticeCar {
         inject: [],
         drive: null,
     };
+}
+
+/**
+ * Two bytes (50-51 of STATUS_IO_LESEN's answer) SMG II's own SGBD reads as about `bar`. Its code turns
+ * the big-endian word into bar at 0.12 bar a step, 0 bar at about 100 and truncating (found by running
+ * that code on chosen words; sgbd/results.test.ts pins it within a bar). A practice value, not a model
+ * of the sensor.
+ */
+export function smg2PhydBytes(bar: number): [number, number] {
+    const raw = Math.max(0, Math.min(0xffff, Math.ceil((bar + 13) / 0.12)));
+    return [raw >> 8, raw & 0xff];
 }
 
 /** The one car PRACTICE answers as. Mutated in place, so a responder built before a change sees it. */

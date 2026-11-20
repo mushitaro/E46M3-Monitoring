@@ -1,4 +1,4 @@
-import { always, bodyText, startDrive, tool, until } from './_owner.mjs';
+import { always, bodyText, startDrive, tool } from './_owner.mjs';
 
 /**
  * SC13（docs/VIRTUAL-CAR-TESTS.md M1）：走りながらログを見て、分析し、取り方と走り方を変える。
@@ -110,8 +110,8 @@ const scenario = {
     title: '走りながらログを見て、分析し、取り方と走り方を変える（3 速 4,000 回転のトルク抜け）',
     story:
         '3 速で踏んだとき 4,000 回転あたりでトルクが抜ける気がする。停車中に声でログの準備を頼み、記録して走る。一般道のあと 3 速で全開にすると、' +
-        '3,900〜4,300 回転で排気カムの実測が目標より 6° 遅れる。踏み終わってすぐ「今の何？」、取り方を 5 項目に絞り、SMG の油圧を足そうとし、' +
-        '次に取る条件を計画に書き、2 回目を踏み、1 回目と比べ、停車して止めて保存する。最後に停車中に SMG の油圧を読む。',
+        '3,900〜4,300 回転で排気カムの実測が目標より 6° 遅れる。踏み終わってすぐ「今の何？」、取り方を 5 項目に絞り、走りながら SMG の油圧を足し、' +
+        '次に取る条件を計画に書き、2 回目を踏み、1 回目と比べ、停車して止めて保存する。最後に停車中に、記録の中の SMG の油圧の範囲を聞く。',
     car: { dmeFaults: [], speedKmh: 0 },
     steps: always([
         // ---- 1. 停車中：ログの準備 ----------------------------------------------------------------
@@ -463,27 +463,37 @@ const scenario = {
         { shot: 's07-five' },
 
         // ---- 8. SMG の油圧も足して（走行中） -----------------------------------------------------
+        // 運営者の表（2026-11-15）：状態の値の読み取りは走行中も可。走行中に足せる。
         { say: 'SMG の油圧も足して' },
         {
             ai: 'monitoring_log_channels',
             args: { channels: [...FIVE, PHYD] },
-            means: '走行中：断るなら、理由は「走行中は SMG の値は読めない（停車したら取る）」であって、記録中だからではない（U2）',
+            means: '走行中に足す：記録は止まらず、答えに見込みの毎秒何回（AI が「毎秒 n″ 回になります」と言える数字）',
             expect: (r) => {
-                if (r?.changed) return true;
-                return /moving|走行|parked|stationary/i.test(r?.reason ?? '') ? true : `断る理由が違う: ${r?.reason}`;
+                if (r?.changed !== true) return `足せない: ${r?.reason ?? JSON.stringify(r).slice(0, 160)}`;
+                return typeof r.cost?.rateHz === 'number' ? true : `見込みのレートが無い: ${JSON.stringify(r.cost)}`;
             },
         },
+        { wait: 3000 },
         {
             check: {
-                desc: '画面：SMG の油圧の欄は空欄で、理由（走行中は空になる）が書いてある。ほかの 5 本は止まらない',
-                run: async (page) => {
+                desc: '画面に 6 本目のグラフ（SMG の油圧、bar）が出て、実効レートが下がる。ほかの 5 本は止まらない',
+                run: async (page, st) => {
                     const text = await bodyText(page);
-                    const part = text.slice(text.indexOf('チャンネル'), text.indexOf('記録するチャンネルを選ぶ'));
-                    const a = (await tool(page, 'monitoring_datalog', { max: 0 }))?.samples ?? 0;
+                    const viz = text.slice(text.indexOf('VISUALIZATION & CONTROLS'));
+                    const lines = await page.evaluate(() => [...document.querySelectorAll('svg polyline')].filter((p) => p.getBoundingClientRect().width > 0).length);
+                    const rate = await screenRate(page);
+                    const a = await tool(page, 'monitoring_datalog', { max: 0, seconds: 2 });
+                    const pressure = (a?.stats ?? []).find((x) => x.channel === PHYD);
                     await page.waitForTimeout(1000);
-                    const b = (await tool(page, 'monitoring_datalog', { max: 0 }))?.samples ?? 0;
-                    if (b <= a) return 'ほかの値が止まった';
-                    return part.includes('油圧') && /走行中/.test(part) ? true : '選んだ項目に SMG の油圧の欄と理由が無い';
+                    const b = await tool(page, 'monitoring_datalog', { max: 0 });
+                    const why = [];
+                    if (!/油圧/.test(viz) || !/bar/.test(viz)) why.push('グラフに SMG の油圧（bar）が無い');
+                    if (lines < 6) why.push(`グラフは ${lines} 本`);
+                    if (!(pressure?.n > 0)) why.push('走行中に SMG の油圧の値が入らない');
+                    if (!(rate && st.rate5 && rate < st.rate5)) why.push(`実効レート 5 項目 ${st.rate5} Hz → 6 項目 ${rate} Hz`);
+                    if (!(b?.running && b.samples > (a?.samples ?? 0))) why.push('ほかの値が止まった');
+                    return why.length ? why.join('、') : true;
                 },
             },
         },
@@ -605,32 +615,26 @@ const scenario = {
         },
         { shot: 's12-sessions' },
 
-        // ---- 13. 停車中に SMG の油圧 ------------------------------------------------------------
-        { say: 'さっきの SMG の油圧を読んで' },
-        { car: { drive: null, speedKmh: 0 }, means: '停車している' },
+        // ---- 13. 停車中に「SMG の油圧はどうだった？」 ---------------------------------------------
+        { say: 'SMG の油圧はどうだった？' },
         {
             check: {
-                desc: '停車中：SMG の油圧を選んで読み、値が単位（bar）つきで画面に出る。AI の答えにも値と単位',
+                desc: 'AI が記録の中の SMG の油圧の範囲（最小〜最大、bar）を言える。画面のグラフ（DATALOG）にも SMG の油圧が出ている',
                 run: async (page) => {
-                    const c = await tool(page, 'monitoring_log_channels', { channels: ['35:n', PHYD] });
-                    if (!c?.changed) return JSON.stringify(c).slice(0, 200);
-                    const go = await tool(page, 'monitoring_start_log');
-                    if (!go?.started) return JSON.stringify(go).slice(0, 200);
+                    const r = await tool(page, 'monitoring_datalog', { channels: [PHYD], max: 60 });
+                    const h = (r?.stats ?? []).find((x) => x.channel === PHYD);
+                    if (!(h?.n > 0)) return `記録に SMG の油圧が無い: ${JSON.stringify(h)}`;
+                    if (h.unit !== 'bar') return `単位 ${h.unit}`;
+                    if (!(h.min >= 0 && h.max <= 300 && h.min <= h.max)) return `範囲が油圧として読めない: ${h.min}〜${h.max} bar`;
                     await page.locator('[role=tab]:has-text("DATALOG")').first().click();
-                    const st = await until(page, async () => {
-                        const r = await tool(page, 'monitoring_datalog', { max: 2 });
-                        const h = (r?.stats ?? []).find((x) => x.channel === PHYD);
-                        return h?.n > 0 ? h : null;
-                    }, 15000, 500);
-                    if (!st) return 'SMG の油圧が入らない';
-                    if (st.unit !== 'bar') return `単位 ${st.unit}`;
+                    await page.waitForTimeout(600);
                     const text = await bodyText(page);
-                    return /油圧/.test(text) && /bar/.test(text) ? true : '画面に油圧の値と bar が無い';
+                    const viz = text.slice(text.indexOf('VISUALIZATION & CONTROLS'));
+                    return /油圧/.test(viz) ? true : '画面のグラフに SMG の油圧が無い';
                 },
             },
         },
         { shot: 's13-smg-parked' },
-        { ai: 'monitoring_stop_log', args: { confirmed: true }, means: '止める（復唱のあと）', expect: () => true },
     ]),
 };
 

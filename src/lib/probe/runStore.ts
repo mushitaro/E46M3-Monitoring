@@ -30,7 +30,7 @@ export interface ProbeLive {
     planV: number;
     samples: ProbeSample[];
     /** The executor's run as it is being written: its steps (and why one is waiting) and exchanges. */
-    run?: Pick<ProbeRun, 'steps' | 'exchanges'>;
+    run?: Pick<ProbeRun, 'steps' | 'exchanges' | 'captures'>;
 }
 
 /** The runs of one record, in order. */

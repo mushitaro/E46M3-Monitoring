@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { bridgeHandlers, type TabFacade } from './bridge/handlers';
-import { appNow, learnServerTime, resetClock } from '@tsunagi/monitoring-engine';
+import { advanceClock, appNow, learnServerTime, resetClock } from '@tsunagi/monitoring-engine';
 import { practiceCar, resetPracticeCar, type PracticeCar } from '@tsunagi/monitoring-engine';
 
 /**
@@ -35,6 +35,8 @@ export interface E2EDoor {
         /** Hear the server say it is `iso`; returns the step taken. */
         hear(iso: string): number;
         now(): number;
+        /** As if `ms` had passed: the page's clocks move on (a recording's ten-minute cut, without the wait). */
+        advance(ms: number): number;
     };
 }
 
@@ -93,6 +95,10 @@ export function useE2EDoor(facade: TabFacade): void {
                     return learnServerTime(new Date(iso).toUTCString(), now, now);
                 },
                 now: appNow,
+                advance: (ms) => {
+                    advanceClock(ms);
+                    return appNow();
+                },
             },
         };
         return () => {

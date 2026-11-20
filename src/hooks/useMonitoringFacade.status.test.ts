@@ -19,7 +19,7 @@ function status(over: { tab: string; allModules: boolean }) {
         catalog: null,
         target: noProtocol('mss54', 0x12),
         ledger: EMPTY_LEDGER,
-        datalog: { current: () => [], snapshot: () => ({ samples: [] }) },
+        datalog: { current: () => [], isRunning: () => false, snapshot: () => ({ samples: [], segments: [] }) },
         sessions: {},
         probe: { progress: null, available: null },
         probeSessions: {},

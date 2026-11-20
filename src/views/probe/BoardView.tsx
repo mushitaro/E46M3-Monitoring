@@ -49,6 +49,11 @@ const num = (v: number | null | undefined) => (v === null || v === undefined ? '
 const day = (ms: number) => new Date(ms).toLocaleDateString();
 /** When a run started, to the minute: the compare line says when the earlier run was (SC04 step 2, F19). */
 const when = (ms: number) => new Date(ms).toLocaleString([], { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+/** M/D HH:MM — a run's start, read at a glance. */
+const clock = (ms: number) => {
+    const d = new Date(ms);
+    return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
 
 /**
  * PROBE — the board (operator, 2026-11-02): the parts the assistant placed for the session on the
@@ -65,7 +70,7 @@ export function BoardView({ s, data }: { s: ProbeSessions; data: BoardData }) {
             <Pane>
                 {live ? (
                     <Section title={KIND_LABEL.values(t)} note={`${t.run_tag} ${live.n} · v${live.planV} · LIVE`}>
-                        <ValueCards source={live} />
+                        <ValueCards source={live} only={plannedChannels(s, live)} />
                     </Section>
                 ) : (
                     <Empty>{t.board_listEmpty}</Empty>
@@ -161,7 +166,8 @@ export function compareOf(s: ProbeSessions, p: Part): Comparison | null {
 function PartBody({ part: p, s, data }: { part: Part; s: ProbeSessions; data: BoardData }) {
     const { lang, t } = useLang();
     const runLabel = (r: { record: string; n: number; planV: number; startedAt: number }) =>
-        `${r.record === s.current ? '' : `${day(r.startedAt)} `}${t.run_tag} ${r.n} · v${r.planV}`;
+        // When it was taken, always: 「前回と比べて」 is answered with the day and time of the run before.
+        `${r.record === s.current ? '' : `${day(r.startedAt)} `}${clock(r.startedAt)} ${t.run_tag} ${r.n} · v${r.planV}`;
 
     switch (p.kind) {
         case 'message':
@@ -249,6 +255,7 @@ function PartBody({ part: p, s, data }: { part: Part; s: ProbeSessions; data: Bo
                             <DataRow key={st.n} code={String(st.n)} name={humanName(st.do)} ident={st.kind} />
                         ))}
                     </DataList>
+                    <Readings s={s} />
                 </div>
             );
         }
@@ -372,6 +379,44 @@ function PartBody({ part: p, s, data }: { part: Part; s: ProbeSessions; data: Bo
         case 'graph':
             return <GraphPart part={p} s={s} live={data.live} />;
     }
+}
+
+/**
+ * The channels a run in progress shows by itself: the ones its plan names (its samples, its captures'
+ * conditions, its judgements), not every value of the blocks read for them. `3:*` and `smg2:JOB:*`
+ * name a whole read. With no plan to go by, everything recorded.
+ */
+function plannedChannels(s: ProbeSessions, live: Pick<ProbeLive, 'samples'>): string[] {
+    const recorded = [...channelStats(live)].map(([k]) => k);
+    const plan = s.current ? currentPlan(s.entries.filter((e) => e.sessionId === s.current)).plan : null;
+    if (!plan) return recorded;
+    const named = new Set<string>();
+    for (const st of plan.body.steps) {
+        if (st.kind === 'sample') st.channels.forEach((c) => named.add(c));
+        if (st.kind === 'capture') st.condition.forEach((c) => named.add(c.channel));
+    }
+    for (const j of plan.body.judge ?? []) named.add(j.channel);
+    const wanted = (k: string) => named.has(k) || [...named].some((c) => c.endsWith(':*') && k.startsWith(c.slice(0, -1)));
+    const out = recorded.filter(wanted);
+    return out.length > 0 ? out : recorded;
+}
+
+/** The record's readings (the assistant's and the desk's), each with how sure it is: 確か・可能性・未確認. */
+function Readings({ s }: { s: ProbeSessions }) {
+    const { t } = useLang();
+    const reads = s.entries.filter((e) => e.sessionId === s.current && e.body.kind === 'read');
+    if (reads.length === 0) return null;
+    return (
+        <Section title={t.board_readings} count={reads.length}>
+            <DataList>
+                {reads.map((e) =>
+                    e.body.kind === 'read' ? (
+                        <DataRow key={e.id} leading={<Pill tone={e.body.sure === 'high' ? 'ok' : 'neutral'}>{t.sure[e.body.sure]}</Pill>} name={humanName(e.body.text)} />
+                    ) : null,
+                )}
+            </DataList>
+        </Section>
+    );
 }
 
 /** The run a values or graph part draws: the one in progress when it is this session's and the part names no other. */
@@ -577,7 +622,8 @@ export function BoardViz({ s, live }: { s: ProbeSessions; live?: ProbeLive | nul
     // cards (operator, 2026-11-12: VISU went black while recording). Nothing to draw is said, not black.
     const recording = live && live.sessionId === s.current && live.samples.length > 0 ? live : null;
     if (recording) {
-        const channels = [...channelStats(recording)].map(([k]) => k);
+        // The plan's values only: a block is read whole, but what it was read for is what is shown (D2-4).
+        const channels = plannedChannels(s, recording);
         const first = channels[0];
         const auto = { id: 'auto', kind: 'graph', open: true, at: 0, channels: [first] } as Part;
         // The graph keeps half the pane; a glance takes in six values, not a whole block's worth.

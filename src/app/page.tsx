@@ -61,7 +61,7 @@ import { mayActuate, mayRun, practiceCar, type RunVerdict } from '@tsunagi/monit
 import { loadSmg2Workflows, type Smg2Workflows } from '@/lib/smg2Workflows';
 import { MODE_HOME, TAB_MODE, TAB_ORDER, type Mode, type Tab } from '@/lib/tabs';
 import { addEntries } from '@/lib/notebook/store';
-import type { NotebookEntry } from '@/lib/notebook/rules';
+import { currentPlan, type NotebookEntry } from '@/lib/notebook/rules';
 import { bestTelegram, loadTelegrams, type TelegramTable } from '@tsunagi/monitoring-engine';
 import { moduleProtocol, noProtocol } from '@tsunagi/monitoring-engine';
 import { recordRead } from '@/lib/sync/readRecords';
@@ -885,7 +885,7 @@ export default function Home() {
             if (v.state !== 'ok') return setScreenNotice(v.state === 'ruledOut' ? t.variant_ruledOut(v.hex, v.other) : t.variant_ask(v.hex));
             if (selectedJob && runVerdict?.allowed) setServiceGate({ job: selectedJob, verdict: runVerdict });
         },
-        probe: probe.progress ? { progress: probe.progress, stop: probe.stop } : undefined,
+        probe: probe.progress ? { progress: probe.progress, stop: probe.stop, moduleName: (id) => moduleName(ecuIndex, id) ?? id } : undefined,
         scan: scopeAll ? { run: () => void startScan(), progress: link.scanProgress } : undefined,
         probeRun:
             tab === 'probe' && probeSessions.current
@@ -934,6 +934,14 @@ export default function Home() {
                   ? { text: leftLine, tone: 'warn' as const }
                   : notice;
 
+    // The open CO-WORK record's plan, shown beside a recording on DATALOG (its captures watched there too).
+    const { entries: probeEntries, current: probeCurrent } = probeSessions;
+    const datalogPlan = useMemo(() => {
+        if (!probeCurrent) return null;
+        const plan = currentPlan(probeEntries.filter((e) => e.sessionId === probeCurrent)).plan;
+        return plan ? { at: plan.at, steps: plan.body.steps } : null;
+    }, [probeEntries, probeCurrent]);
+
     const panes: Record<Tab, React.ReactNode> = {
         diagnosis: scopeAll ? (
             <ScanList
@@ -948,7 +956,7 @@ export default function Home() {
         ) : (
             <DiagnosisView ident={link.ident} faults={link.faults} rawFaults={link.rawFaults} catalog={catalog} />
         ),
-        datalog: <DatalogView datalog={datalog} />,
+        datalog: <DatalogView datalog={datalog} plan={datalogPlan} />,
         adaptation: (
             <AdaptationView
                 blocks={link.adaptations}

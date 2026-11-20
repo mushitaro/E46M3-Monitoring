@@ -26,7 +26,9 @@ import { isCommonIdent } from '@tsunagi/monitoring-engine';
 import { canSync } from '@/lib/sync/cloud';
 import { needsSync, sessionLabel, summarise } from '@tsunagi/monitoring-engine';
 import { expiresAt } from '@tsunagi/monitoring-engine';
-import { channelsForJob, datalogSummary, findChannels, selectionCost, unknownChannels } from '@/lib/datalogQuery';
+import { channelsForJob, datalogSummary, describeChannels, findChannels, momentOf, selectionCost, unknownChannels } from '@/lib/datalogQuery';
+import { segmentStats } from '@/lib/datalogRun';
+import { planBlockReads } from '@tsunagi/ds2-mss54';
 import type { ChannelId } from '@tsunagi/ds2-mss54';
 import { listLocal } from '@/lib/sync/sessionStore';
 import type { Mode, Tab } from '@/lib/tabs';
@@ -36,7 +38,7 @@ import { assistantPick, loadChoices } from '@/lib/agreedChoices';
 import { LAUNCHER_QUERY, deviceLabel, isHeadUnit, type DeviceKind } from '@/hooks/useAssistantBridge';
 import type { Datalog } from '@/views/datalog/useDatalog';
 import type { Sessions } from '@/views/sessions/useSessions';
-import { appNow } from '@tsunagi/monitoring-engine';
+import { appNow, isModuleChannel, monoNow } from '@tsunagi/monitoring-engine';
 import { mayActuate } from '@tsunagi/monitoring-engine';
 import { assistantMayStart, startActuation, tableRefusal } from '@/lib/actuation';
 import { MIN_RUN_VOLTAGE, actuationTerms, operationFor } from '@tsunagi/monitoring-engine';
@@ -82,6 +84,10 @@ const KINDS: Record<string, readonly JobClass[]> = {
     calibration: ['calibration'],
     live: ['read'],
 };
+
+/** Said with every recording and moment the assistant reads: where its gear comes from. */
+const GEAR_NOTE =
+    "83:gang is the DME's own calculated gear (block 83), read beside the channels once a second; a moment's gear is the last read at most 1.5 s before it (`readS` says how long), null when none was.";
 
 /**
  * MSS54 entries as the assistant reads them: the code, its name from the SGBD's own table (English, the
@@ -411,6 +417,30 @@ export function useMonitoringFacade(input: {
         return { job: s.entry.jobId, part: p.part, partNameJa: p.ja, how: s.how, answered: s.confirmed, at: new Date(s.at).toISOString() };
     };
 
+    /**
+     * How fast a selection would record: one DME round trip per block and per other module's read,
+     * timed on this page — from the recording so far, or, before one, a DME block read now. Stated
+     * with its basis: an estimate, the screen's 実効レート is the measurement.
+     */
+    const expectedRate = async (ids: readonly ChannelId[]): Promise<{ rateHz: number | null; rateBasis: string }> => {
+        const own = ids.filter((c) => !isModuleChannel(c));
+        const jobs = new Set(ids.filter((c) => isModuleChannel(c)).map((c) => c.split(':').slice(0, 2).join(':'))).size;
+        const blocks = planBlockReads(own).blocks;
+        const perSample = blocks.length + jobs + (jobs > 0 && !blocks.some((b) => b.selection === 19) ? 1 : 0);
+        let rt = datalog.roundTripS();
+        let basis = 'estimated from the DME round trip of the recording on this page';
+        if (rt === null && link.state === 'connected') {
+            const t0 = monoNow();
+            const ok = (await link.readVehicleState().catch(() => 'unknown')) !== 'unknown';
+            if (ok) {
+                rt = (monoNow() - t0) / 1000;
+                basis = 'estimated from one DME block read just now; a longer block takes longer';
+            }
+        }
+        if (rt === null || perSample === 0) return { rateHz: null, rateBasis: 'not known until the recording runs: the screen shows the measured rate (実効レート)' };
+        return { rateHz: Math.round((1 / (perSample * rt)) * 10) / 10, rateBasis: basis };
+    };
+
     return {
         now: () => appNow(),
         newId: () => crypto.randomUUID(),
@@ -433,8 +463,8 @@ export function useMonitoringFacade(input: {
             // Which module each address said it is on this link: the SGBD its group chose, or '?'.
             // An M3 is a car whose 0x12 said MSS54DS0; on any other, '?' addresses get their IDENT only.
             variants: Object.fromEntries([...link.fitment.values()].map((f) => [`0x${f.address.toString(16).toUpperCase().padStart(2, '0')}`, f.sgbd ?? (f.answer === null ? 'silent' : '?')])),
-            recording: link.state === 'logging' && !running,
-            datalog: { selected: datalog.current(), samples: datalog.snapshot().samples.length },
+            recording: (link.state === 'logging' || datalog.isRunning()) && !running,
+            datalog: { selected: datalog.current(), samples: datalog.snapshot().samples.length, segments: datalog.snapshot().segments.length },
             probe: running
                 ? { running: true, ...probe.progress }
                 : { running: false, planReady: probe.available ? { v: probe.available.v, purpose: probe.available.purpose } : null },
@@ -575,6 +605,7 @@ export function useMonitoringFacade(input: {
         entries: () => listAllEntries(),
         add: async (es) => {
             await addEntries(es);
+            input.probeSessions.note(es);
             await probe.refresh();
             // A delegated record goes to the account as it is written, so the desk reads it soon.
             input.syncInvestigations();
@@ -798,10 +829,10 @@ export function useMonitoringFacade(input: {
         },
 
         startLog: () => {
-            if (link.state !== 'connected') return `The link is ${link.state}; a recording starts from connected and idle.`;
+            if (link.state !== 'connected' || datalog.isRunning()) return `The link is ${datalog.isRunning() ? 'logging' : link.state}; a recording starts from connected and idle.`;
             if (target.decoder !== 'mss54') return en.datalog_noDecoder;
             if (datalog.current().length === 0) return 'No DATALOG channel is selected: choose them first (monitoring_log_channels).';
-            datalog.start();
+            void datalog.start();
             // The owner asked for the values and the trace while a recording runs, not the fault list.
             show('datalog', 'visu');
             return null;
@@ -809,40 +840,100 @@ export function useMonitoringFacade(input: {
 
         datalog: (opts) => {
             const snap = datalog.snapshot();
+            const recording = datalog.isRunning() && !running;
             return {
                 selected: datalog.current(),
                 cost: selectionCost(datalog.current()),
-                running: link.state === 'logging' && !running,
+                running: recording,
                 recorded: snap.recorded,
-                ...datalogSummary(snap.recorded, snap.samples, opts, datalog.moduleInfo),
-                ...(snap.samples.length === 0 ? { note: 'Nothing recorded yet on this page: choose channels (monitoring_log_channels), then monitoring_start_log.' } : {}),
+                // The run in segments: where its channels changed while it recorded, and the ten-minute
+                // cuts (lib/datalogRun). Every segment's samples are in the summary below; nothing earlier is lost.
+                segments: segmentStats(snap.segments, snap.samples).map((x) => ({ fromS: Math.round(x.from * 10) / 10, why: x.why, part: x.part, channels: x.channels, blocks: x.blocks, samples: x.samples, rateHz: x.rateHz })),
+                ...datalogSummary(snap.recorded, snap.samples, { ...opts, gear: true }, datalog.moduleInfo),
+                gearNote: GEAR_NOTE,
+                ...(snap.samples.length === 0 ? { note: recording ? 'Recording has begun; the first samples are on their way.' : 'Nothing recorded yet on this page: choose channels (monitoring_log_channels), then monitoring_start_log.' } : {}),
             };
         },
 
-        logChannels: ({ query, channels }) => {
+        datalogMoment: ({ secondsAgo, windowS, channels, after }) => {
+            const snap = datalog.snapshot();
+            if (snap.samples.length === 0 || snap.startedAt === null) return null;
+            const lastAt = snap.startedAt + snap.samples[snap.samples.length - 1].time * 1000;
+            // A PROBE run that ended after this recording is the newer record of the drive.
+            if (after !== null && after > lastAt) return null;
+            const centre = (appNow() - secondsAgo * 1000 - snap.startedAt) / 1000;
+            const m = momentOf(snap.samples, centre, windowS, channels ?? null);
+            if (!m) {
+                return {
+                    recorded: false,
+                    source: 'datalog',
+                    reason: centre < 0 ? 'That moment is before the recording began.' : 'No samples of the recording in that window.',
+                };
+            }
+            // The screen's cursor stands where the answer was taken, and DATALOG comes up to show it.
+            datalog.setCursor(m.cursor.t);
+            show('datalog', 'visu');
+            return {
+                recorded: true,
+                source: 'datalog',
+                running: datalog.isRunning(),
+                window: m.window,
+                cursor: m.cursor,
+                samples: m.samples,
+                segments: segmentStats(snap.segments, snap.samples)
+                    .filter((x, i, all) => x.from <= m.window.to && (all[i + 1]?.from ?? Infinity) >= m.window.from)
+                    .map((x) => ({ fromS: Math.round(x.from * 10) / 10, why: x.why, channels: x.channels.length, blocks: x.blocks, rateHz: x.rateHz })),
+                captures: [],
+                driverWords: [],
+                gearNote: GEAR_NOTE,
+            };
+        },
+
+        logChannels: async ({ query, channels }) => {
+            const recording = datalog.isRunning() && !running;
             if (channels) {
-                if (link.state === 'logging') return { selected: datalog.current(), changed: false, reason: 'A recording is going; channels change once it is stopped.' };
+                if (running) return { selected: datalog.current(), changed: false, reason: 'A PROBE run holds the link; its plan chooses what it reads.' };
                 // Another module's read values (smg2:JOB:RESULT) are channels where DATALOG offers them.
                 const unknown = unknownChannels(channels).filter((c) => !datalog.moduleInfo(c));
                 if (unknown.length) {
                     return { changed: false, reason: `Not a live channel of the MSS54: ${unknown.join(', ')}.`, suggestions: unknown.flatMap((u) => { const byJob = channelsForJob(u); return byJob.length ? byJob : findChannels(u.split(':').pop() ?? u, 5); }) };
                 }
                 if (channels.length === 0) return { changed: false, reason: 'Choose at least one channel.' };
-                datalog.select(channels as ChannelId[]);
+                const ids = channels as ChannelId[];
+                // While recording, the run goes on: a segment of the same recording from the next sample.
+                if (recording) {
+                    const ok = await datalog.retune(ids);
+                    if (!ok) return { selected: datalog.current(), changed: false, reason: 'The recording would not take these channels: the DME must keep at least one block to read.' };
+                } else {
+                    datalog.select(ids);
+                }
+                show('datalog', recording ? 'visu' : 'list');
                 const others = channels.filter((c) => datalog.moduleInfo(c));
+                const cost = { ...selectionCost(channels.filter((c) => !datalog.moduleInfo(c)) as ChannelId[]), ...(await expectedRate(ids)) };
                 return {
                     changed: true,
                     selected: channels,
-                    cost: selectionCost(channels.filter((c) => !datalog.moduleInfo(c)) as ChannelId[]),
-                    ...(others.length ? { otherModules: { channels: others, note: 'Read once per sample by the module’s own SGBD code, parked unless the owner cleared that read for a moving car; empty while it may not go.' } } : {}),
-                    then: 'monitoring_start_log records them.',
+                    channels: describeChannels(ids, datalog.moduleInfo),
+                    cost,
+                    ...(others.length ? { otherModules: { channels: others, note: 'Read once per sample by the module’s own SGBD code. Status reads go while the car moves too (the owner’s table); a read that goes only parked is empty while the car moves.' } } : {}),
+                    ...(recording
+                        ? { recording: true, segment: 'The recording goes on: from its next sample it reads these, a segment of the same run (marked on the graph, kept in the record).' }
+                        : { then: 'monitoring_start_log records them.' }),
                 };
             }
             const words = (query ?? '').toLowerCase().split(/\s+/).filter(Boolean);
             const others = words.length
                 ? datalog.moduleInfos.filter((i) => words.every((w) => `${i.channel} ${i.name} ${i.ja} ${i.module}`.toLowerCase().includes(w))).slice(0, 20)
                 : [];
-            return { selected: datalog.current(), found: query ? [...findChannels(query), ...others] : [] };
+            const found = query ? [...findChannels(query), ...others] : [];
+            const foundIds = found.map((c) => c.channel as ChannelId);
+            return {
+                selected: datalog.current(),
+                found,
+                // What choosing every channel found would cost, before choosing: the round trips and the rate.
+                ...(foundIds.length ? { estimate: { ...selectionCost(foundIds.filter((c) => !datalog.moduleInfo(c))), ...(await expectedRate(foundIds)) } } : {}),
+                cost: { ...selectionCost(datalog.current().filter((c) => !datalog.moduleInfo(c))), ...(await expectedRate(datalog.current())) },
+            };
         },
 
         stopLog: () => {

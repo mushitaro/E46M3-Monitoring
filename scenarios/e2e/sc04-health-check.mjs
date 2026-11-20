@@ -3,7 +3,7 @@ import { all, ask, connect, faultsByAddress, noVin, screenText, waitScan } from 
 /**
  * SC04 健康診断（予兆保全）。docs/VIRTUAL-CAR-TESTS.md M1。
  * 停車中、故障の無い車。前回（1 回目）と今回（2 回目）を同じ計画で取り、判定と比較を見る。
- * 合格の文言は「外れは 1 つ、SMG の油圧が前回より低いです」。練習の車で SMG の油圧を回ごとに変えられるかも、ここで確かめる。
+ * 合格の文言は「外れは 1 つ、SMG の油圧が前回より低いです」。練習の車の SMG の油圧（practiceCar.smg2Status）を、前回 60 bar・今回 30 bar にする。
  */
 const WORDS = '健康診断して';
 const PHYD = 'smg2:STATUS_IO_LESEN:STAT_PHYD_WERT';
@@ -56,6 +56,7 @@ const scenario = {
                 },
             },
         },
+        { car: { smg2Status: { phydBar: 60 } }, means: '前回：SMG の油圧は 60 bar（練習の車の SMG II の値）' },
         {
             check: {
                 desc: '手順 1：前回の回（1 回目）を取る',
@@ -80,6 +81,7 @@ const scenario = {
                 },
             },
         },
+        { car: { smg2Status: { phydBar: 30 } }, means: '今回：SMG の油圧が 30 bar に下がっている' },
         {
             check: {
                 desc: '手順 1：今回の回（2 回目）を取る',

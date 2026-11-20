@@ -101,6 +101,12 @@ export interface TabFacade {
     startLog(): string | null;
     /** DATALOG: what is selected and recording now, and the run summed up (lib/datalogQuery). */
     datalog(opts: { channels?: string[]; seconds?: number; max?: number }): unknown;
+    /**
+     * A moment of the DATALOG recording (`secondsAgo` before now, `windowS` wide), with the screen's
+     * cursor put there; null when there is no recording, or a PROBE run that ended after `after`
+     * (`appNow()`) is the newer record.
+     */
+    datalogMoment(q: { secondsAgo: number; windowS: number; channels?: string[]; after: number | null }): unknown | null;
     /** DATALOG's channels: find them by words, or choose them (refused while recording). */
     logChannels(q: { query?: string; channels?: string[] }): unknown;
     /** What was stopped, or null when nothing was running. */
@@ -310,8 +316,13 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
             const secondsAgo = clamp(args.seconds_ago, 0, 3600, 8);
             const windowS = clamp(args.window_s, 2, 180, 20);
             const live = f.live();
+            // A recording on DATALOG answers too: the newer of it and the last PROBE run, unless PROBE is running.
+            if (!live) {
+                const fromLog = f.datalogMoment({ secondsAgo, windowS, channels: channelList(args.channels) ?? undefined, after: f.lastRun()?.endedAt ?? null });
+                if (fromLog) return fromLog;
+            }
             const run = live ?? f.lastRun();
-            if (!run) return { recorded: false, reason: 'Nothing has been recorded by PROBE on this tab yet.' };
+            if (!run) return { recorded: false, reason: 'Nothing has been recorded on this tab yet: neither a DATALOG recording nor a PROBE run.' };
             const n = run.n;
             const record = run.sessionId;
             const centre = (f.now() - secondsAgo * 1000 - run.startedAt) / 1000;
@@ -538,7 +549,8 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
         monitoring_start_log: async () => {
             const refused = f.startLog();
             if (refused) throw new Error(refused);
-            return { started: true, ...(f.datalog({ max: 0 }) as Record<string, unknown>) };
+            // Started: the recording is on from here, whatever the link's state says a render later.
+            return { started: true, ...(f.datalog({ max: 0 }) as Record<string, unknown>), running: true };
         },
 
         monitoring_datalog: async (args) =>

@@ -38,10 +38,26 @@ const onModule = async (page, module) => {
     return `${module} did not connect`;
 };
 
+/**
+ * 0x56 is ASC MK20 on an early car and DSC on a late one, with no group rule to tell them apart: the owner
+ * says which once, on ACTUATOR, before anything that drives goes there (IJ21). The practice car is late.
+ */
+const answerVariant = async (page, module) => {
+    if (module !== 'dsc_e46') return;
+    await page.locator('[role=tab]:has-text("ACTUATOR")').first().click();
+    await page.waitForTimeout(500);
+    const pick = page.locator('button:visible').filter({ hasText: /^DSC \(E46\)/ }).first();
+    if (await pick.count()) {
+        await pick.click();
+        await page.waitForTimeout(400);
+    }
+};
+
 /** The assistant starts it after the owner's OK: once, or on and then stopped. */
 const byAssistant = async (page, { module, job, values }) => {
     const off = await onModule(page, module);
     if (off) return off;
+    await answerVariant(page, module);
     let args = { module, job, phase: 'pulse', owner_said: 'いいよ' };
     if (values) {
         const sets = await tool(page, 'monitoring_actuate', args);
@@ -59,6 +75,7 @@ const byAssistant = async (page, { module, job, values }) => {
 const byScreen = async (page, { module, job, values, actuator }) => {
     const off = await onModule(page, module);
     if (off) return off;
+    await answerVariant(page, module);
     // A test job is a row on ACTUATOR; the rest are placed on SERVICE and started from the hub.
     if (actuator) {
         await page.locator('[role=tab]:has-text("ACTUATOR")').first().click();

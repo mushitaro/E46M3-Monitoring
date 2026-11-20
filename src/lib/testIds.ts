@@ -41,6 +41,14 @@ export const TEST_ID = {
     actuatorRun: 'tj-run',
     actuatorStart: 'tj-start',
     actuatorStop: 'tj-stop',
+
+    // --- DATALOG -------------------------------------------------------------
+    /** A segment of the recording in the list: where its channels changed, or a ten-minute cut. */
+    datalogSegmentRow: 'segment-row',
+    /** The same, marked on every graph. */
+    datalogSegmentMark: 'segment-mark',
+    /** The moment the assistant analysed, on the graphs. */
+    datalogCursor: 'datalog-cursor',
 } as const;
 
 export type TestIdKey = keyof typeof TEST_ID;

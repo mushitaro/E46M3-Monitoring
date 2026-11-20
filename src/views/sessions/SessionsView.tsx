@@ -8,8 +8,8 @@ import { DataList, DataRow, Field, Pane, Pill, Section, TextButton, Well, humanN
 import { normCode } from '@/lib/faultCode';
 import { useLang } from '@/lib/i18n';
 import { text as resolveText, type EcuProfile } from '@tsunagi/monitoring-engine';
-import { KEEP_MS, expiresAt, type Episode } from '@tsunagi/monitoring-engine';
-import { needsSync, parseCsv, sessionLabel, summarise, type SavedSession } from '@tsunagi/monitoring-engine';
+import { KEEP_MS, expiresAt, type Episode, type JournalEvent } from '@tsunagi/monitoring-engine';
+import { mss54Present, needsSync, parseCsv, savedScanFaults, sessionFaultCount, sessionLabel, summarise, type SavedSession } from '@tsunagi/monitoring-engine';
 import { SAVE_TONE, SYNC_TONE } from '@/lib/sync/status';
 import { CountReadout } from '@/views/shared/CountReadout';
 import { StatusButton } from './StatusButton';
@@ -52,7 +52,9 @@ export const SessionsView = memo(function SessionsView({
     ecuId: string;
 }) {
     const { t } = useLang();
-    const [viewing, setViewing] = useState<string | null>(null);
+    // Which saved session is open: the sessions' own, so the assistant can open one too (SC12 step 1).
+    const viewing = s.viewing;
+    const setViewing = s.view;
     const [confirm, setConfirm] = useState<Confirm | null>(null);
     const viewed = viewing ? (s.local ?? []).find((x) => x.id === viewing) : undefined;
     const busy = s.busy !== null;
@@ -140,6 +142,8 @@ export const SessionsView = memo(function SessionsView({
                                     </span>
                                 }
                                 detail={
+                                    <>
+                                    <SegmentsLine datalog={lastDatalog(ep)} />
                                     <p className="font-mono text-[11px] text-slate-500">
                                         {t.sessions_counts(lastFaultCount(ep), ep.counts.samples, ep.counts.failures)} ·{' '}
                                         {/* From the later of the episode's end and the minute clock: the clock may still read the
@@ -148,6 +152,7 @@ export const SessionsView = memo(function SessionsView({
                                             ? t.sessions_undated(undatedDays(s.undatedExpiry(ep), s.now))
                                             : t.sessions_expiresIn(Math.ceil((expiresAt(ep) - Math.max(s.now, ep.end)) / 86_400_000))}
                                     </p>
+                                    </>
                                 }
                             />
                         ))}
@@ -189,9 +194,12 @@ export const SessionsView = memo(function SessionsView({
                                         </span>
                                     }
                                     detail={
-                                        <p className="font-mono text-[11px] text-slate-500">
-                                            {t.sessions_counts(sum.faultCount, sum.sampleCount, sum.failureCount)}
-                                        </p>
+                                        <>
+                                            <SegmentsLine datalog={x.datalog} />
+                                            <p className="font-mono text-[11px] text-slate-500">
+                                                {t.sessions_counts(sum.faultCount, sum.sampleCount, sum.failureCount)}
+                                            </p>
+                                        </>
                                     }
                                 />
                             );
@@ -205,6 +213,27 @@ export const SessionsView = memo(function SessionsView({
     );
 });
 
+/** The last recording an episode holds (lib/journal: an episode's datalog is its last). */
+function lastDatalog(ep: { events: readonly JournalEvent[] }): SavedSession['datalog'] {
+    for (let i = ep.events.length - 1; i >= 0; i--) {
+        const e = ep.events[i];
+        if (e.kind === 'datalog') return e.datalog;
+    }
+    return null;
+}
+
+/** A recording's segments, one line: each stretch's channels, blocks and rate, where its channels changed. */
+function SegmentsLine({ datalog }: { datalog: SavedSession['datalog'] }) {
+    const { t } = useLang();
+    const segs = datalog?.segments ?? [];
+    if (segs.length === 0) return null;
+    return (
+        <p className="truncate font-mono text-[11px] text-slate-500">
+            {t.sessions_segments(segs.map((x) => t.datalog_segmentLine(x.channels, x.blocks, x.rateHz)).join(' / '))}
+        </p>
+    );
+}
+
 /**
  * Days left for an undated episode: from when it was found, counted on the minute clock — which can
  * still read 0 in the minute after the page opened, so never more than the full week.
@@ -215,17 +244,25 @@ function undatedDays(expiry: number | null, now: number): number | null {
 }
 
 /** The newest fault read in an episode, counted as a saved session counts it; null when none was read. */
+/** The faults an episode would be kept with: every module's from its last scan, as SAVE counts them (sessionFaultCount). */
 function lastFaultCount(ep: Episode): number | null {
-    for (let i = ep.events.length - 1; i >= 0; i--) {
-        const e = ep.events[i];
-        if (e.kind === 'faults') return e.faults.length;
-    }
-    return null;
+    const last = <K extends 'faults' | 'scan'>(kind: K) => [...ep.events].reverse().find((e): e is Extract<Episode['events'][number], { kind: K }> => e.kind === kind);
+    const faults = last('faults');
+    return sessionFaultCount({ faults: faults?.faults ?? null, faultsAt: faults?.t, scan: last('scan')?.scan ?? null });
 }
 
 function CurrentCounts({ s }: { s: Sessions }) {
     const { t } = useLang();
-    return <span className="font-mono">{t.sessions_counts(s.current.faults, s.current.samples, s.current.failures)}</span>;
+    const ep = s.episodeNow;
+    // When it was recorded: the time, or that the time is not yet certain (a head unit's clock that woke
+    // in 2006 has not been put right yet; lib/clock) — never the device's wrong date (SC11 step 1).
+    const when = ep ? (ep.undated ? t.sessions_timeUnsure : new Date(ep.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })) : null;
+    return (
+        <span className="font-mono">
+            {t.sessions_counts(ep ? lastFaultCount(ep) : s.current.faults, s.current.samples, s.current.failures)}
+            {when && ` · ${when}`}
+        </span>
+    );
 }
 
 /**
@@ -271,6 +308,34 @@ function SessionViewer({
                 </Section>
             )}
 
+            {/* Every module's faults as the session's scan read them (SC02: kept before a clear). */}
+            {session.scan && (
+                <Section title={t.scan_title} count={savedScanFaults(session.scan)}>
+                    <DataList>
+                        {session.scan.modules
+                            .filter((m) => (m.faults?.length ?? 0) > 0 || m.cutShort)
+                            .map((m) => (
+                                <DataRow
+                                    key={m.address}
+                                    code={m.address}
+                                    codeTone="danger"
+                                    name={humanName('')}
+                                    ident={m.module ?? '?'}
+                                    trailing={<span className="shrink-0 font-mono text-[10px] text-slate-500">{t.scan_outcome.faults(m.faults?.length ?? 0)}</span>}
+                                    detail={
+                                        <p className="font-mono text-[11px] text-slate-400">
+                                            {(m.faults ?? [])
+                                                .map((f) => `${f.code}${f.present === null ? '' : ` ${f.present ? t.fault_present_now : t.fault_stored}`}`)
+                                                .join(' · ')}
+                                            {m.cutShort ? ` · ${t.scan_partial}` : ''}
+                                        </p>
+                                    }
+                                />
+                            ))}
+                    </DataList>
+                </Section>
+            )}
+
             <Section title={t.viewer_faults} count={session.faults?.length}>
                 {session.faults === null ? (
                     <p className="py-2 text-xs text-slate-500">{t.viewer_noFaultsRead}</p>
@@ -290,7 +355,7 @@ function SessionViewer({
                                     name={meaning?.text ?? humanName('')}
                                     trailing={
                                         <span className="shrink-0 font-mono text-[10px] text-slate-600">
-                                            {formatErrorCode(f.errorType)}
+                                            {mss54Present(f.errorType) ? t.fault_present_now : t.fault_stored} {formatErrorCode(f.errorType)}
                                         </span>
                                     }
                                     detail={

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { bridgeHandlers, type TabFacade } from './bridge/handlers';
-import { appNow, learnServerTime, resetClock } from '@tsunagi/monitoring-engine';
+import { advanceClock, appNow, learnServerTime, resetClock } from '@tsunagi/monitoring-engine';
 import { practiceCar, resetPracticeCar, type PracticeCar } from '@tsunagi/monitoring-engine';
 
 /**
@@ -25,6 +25,9 @@ export interface E2EDoor {
         get(): PracticeCar;
         set(patch: Partial<PracticeCar>): PracticeCar;
         reset(): void;
+        /** The frames the car heard since `since` (Date.now()), oldest first; and forgetting them. */
+        wire(since?: number): { at: number; to: number; hex: string }[];
+        clearWire(): void;
     };
     /** The page's clock (lib/clock): as if it had not heard the server yet, then as if it just had. */
     clock: {
@@ -32,6 +35,8 @@ export interface E2EDoor {
         /** Hear the server say it is `iso`; returns the step taken. */
         hear(iso: string): number;
         now(): number;
+        /** As if `ms` had passed: the page's clocks move on (a recording's ten-minute cut, without the wait). */
+        advance(ms: number): number;
     };
 }
 
@@ -49,6 +54,27 @@ export function useE2EDoor(facade: TabFacade): void {
     });
     useEffect(() => {
         if (!E2E) return;
+        // The practice car outlives a reload, as a car does: what it heard before the page went (the
+        // stop written as it went included) is still there when the next page asks (IJ13). Saved after
+        // the page's own pagehide work (that listens in the capture phase), restored once here.
+        const WIRE_KEY = 'monitoring.e2e.practiceWire';
+        try {
+            const saved = sessionStorage.getItem(WIRE_KEY);
+            if (saved) {
+                sessionStorage.removeItem(WIRE_KEY);
+                practiceCar.wire.unshift(...(JSON.parse(saved) as PracticeCar['wire']));
+            }
+        } catch {
+            /* nothing kept */
+        }
+        const keepWire = () => {
+            try {
+                sessionStorage.setItem(WIRE_KEY, JSON.stringify(practiceCar.wire.slice(-2000)));
+            } catch {
+                /* too much to keep */
+            }
+        };
+        window.addEventListener('pagehide', keepWire);
         window.__monitoringE2E = {
             tool: async (name, args = {}) => {
                 const handler = (bridgeHandlers(latest.current) as Record<string, (a: Record<string, unknown>) => Promise<unknown>>)[name];
@@ -59,6 +85,8 @@ export function useE2EDoor(facade: TabFacade): void {
                 get: () => structuredClone(practiceCar),
                 set: (patch) => structuredClone(Object.assign(practiceCar, patch)),
                 reset: resetPracticeCar,
+                wire: (since = 0) => practiceCar.wire.filter((f) => f.at >= since),
+                clearWire: () => void practiceCar.wire.splice(0),
             },
             clock: {
                 forget: resetClock,
@@ -67,9 +95,14 @@ export function useE2EDoor(facade: TabFacade): void {
                     return learnServerTime(new Date(iso).toUTCString(), now, now);
                 },
                 now: appNow,
+                advance: (ms) => {
+                    advanceClock(ms);
+                    return appNow();
+                },
             },
         };
         return () => {
+            window.removeEventListener('pagehide', keepWire);
             delete window.__monitoringE2E;
         };
     }, []);

@@ -233,7 +233,7 @@ export const MONITORING_TOOLS = {
     monitoring_session: {
         scope: 'control',
         description:
-            "PROBE sessions on STARTUP — the screen's NEW SESSION and NEXT. new: open an empty session on the screen; monitoring_investigate then starts it with the owner's words. next: carry a session that has taken data (record, default the one on the screen) into a new one — its mandate (the owner's words, modules, mode and focus, standing for as long as before) and its current form (the plan, same version) — linked to it, so the new session's runs are compared with the series before. The form a run took data under never changes: an item added or removed is a new plan version (monitoring_plan), counted from the next run. open: put a session on STARTUP and the board. Each puts PROBE's STARTUP on the screen. new and next need confirmed: true (the owner asked).",
+            "PROBE sessions on STARTUP — the screen's NEW SESSION and NEXT. new: open an empty session on the screen; monitoring_investigate then starts it with the owner's words. next: carry a session that has taken data (record, default the one on the screen) into a new one — its mandate (the owner's words, modules, mode and focus, standing for as long as before) and its current form (the plan, same version) — linked to it, so the new session's runs are compared with the series before. The form a run took data under never changes: an item added or removed is a new plan version (monitoring_plan), counted from the next run. open: put a session on STARTUP and the board — or, given the id of a session saved on MEMORY (monitoring_sessions' saved), open that saved record on MEMORY. Each of new and next puts PROBE's STARTUP on the screen. new and next need confirmed: true (the owner asked).",
         inputSchema: obj(
             {
                 action: str('new, next or open', { enum: ['new', 'next', 'open'] }),
@@ -287,6 +287,7 @@ export const MONITORING_TOOLS = {
                     maxItems: 16,
                     description: "For a job that takes values: one whole set, in the job's order, from the sets the answer lists (HYDROPUMPE, AKTIV, 0).",
                 },
+                query: str("Without values: the part meant, in any language the list carries (油圧ポンプ, pump, HYDROPUMPE). The answer then lists every set of that part; without it, every part by name with its plain sets."),
             },
             ['module', 'job', 'owner_said'],
         ),

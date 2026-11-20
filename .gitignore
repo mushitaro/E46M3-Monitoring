@@ -87,3 +87,6 @@ desk-work/
 
 # The run coverage list (npm run coverage:runs): BMW SGBD job names in bulk, kept with the private data
 /run-coverage/
+
+# Agent worktrees (Claude Code), never part of the repository.
+.claude/worktrees/

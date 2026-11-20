@@ -22,6 +22,10 @@ export interface ProbeProgress {
     resumes: number;
     /** Waiting to begin it again. */
     resuming: boolean;
+    /** Steps the run could not do (refused, rejected, failed): not done, and said apart. */
+    refused?: number;
+    /** The module whose frame went last (a fault read, a job, the DME's values): what is being read now. */
+    reading?: string | null;
 }
 
 /**
@@ -109,7 +113,9 @@ export function useProbe(input: {
             const first = n;
             holdingRef.current = true;
             stopRef.current = false;
-            const total = body.steps.filter((s) => s.kind === 'faults' || s.kind === 'read' || s.kind === 'adapt').length;
+            // Every step of the plan counts: a step is done when it has done what it says (a read read,
+            // a value sampled, a capture caught), never when it was refused.
+            const total = body.steps.length;
             const waited = async (ms: number) => {
                 for (let left = ms; left > 0; left -= 250) {
                     if (stopRef.current) return false;
@@ -123,8 +129,16 @@ export function useProbe(input: {
                         const live: ProbeLive = { sessionId: r.sessionId, n, startedAt: appNow(), planV: body.v, samples: [] };
                         liveRef.current = live;
                         const settled = new Set<number>();
+                        const refused = new Set<number>();
                         let samples = 0;
-                        const show = () => setProgress({ v: body.v, settled: settled.size, total, samples, resumes, resuming: false });
+                        let reading: string | null = null;
+                        const doneCount = () =>
+                            body.steps.filter((s) => {
+                                if (s.kind === 'sample' || s.kind === 'ram') return samples > 0;
+                                if (s.kind === 'capture') return (live.run?.captures ?? []).some((c) => c.step === s.n);
+                                return settled.has(s.n);
+                            }).length;
+                        const show = () => setProgress({ v: body.v, settled: doneCount(), total, samples, resumes, resuming: false, refused: refused.size, reading });
                         show();
                         const run = await linkRef.current.startProbe(
                             { id, v: body.v, steps: body.steps, judge: body.judge },
@@ -144,8 +158,14 @@ export function useProbe(input: {
                                     startTransition(show);
                                 },
                                 onStep: (k, state) => {
-                                    if (state !== 'pending') settled.add(k);
+                                    if (state === 'done') settled.add(k);
+                                    else if (state !== 'pending') refused.add(k);
                                     show();
+                                },
+                                onExchange: (x) => {
+                                    if (x.outcome === 'refused' || x.module === reading) return;
+                                    reading = x.module;
+                                    startTransition(show);
                                 },
                             },
                         );
@@ -157,7 +177,7 @@ export function useProbe(input: {
                         await putRun(stored).catch(() => {});
                         probeChanged();
                         if (run.end !== 'link-lost' || stopRef.current || resumes >= RESUME_AFTER_MS.length) break;
-                        setProgress({ v: body.v, settled: settled.size, total, samples, resumes, resuming: true });
+                        setProgress({ v: body.v, settled: settled.size, total, samples, resumes, resuming: true, refused: refused.size, reading: null });
                         if (!(await waited(RESUME_AFTER_MS[resumes]))) break;
                         // A cable that closed is opened again — only the one this device already allowed
                         // (the screen chose it; useDs2Link `reconnectPermitted`).

@@ -89,6 +89,12 @@ export function mayActuate(
         return { allowed: false, reason: 'run_block_noTelegram' };
     }
 
+    // A car measured moving: what drives something waits for it to stop, in PRACTICE as on a car
+    // (runGate.mayDrive), and said before the values. Unknown is measured at the wire, as on a car.
+    const decision = decisionFor(ctx.moduleId, job, ctx.group, ctx.args);
+    const drives = !isReadNature(decision.nature);
+    if (drives && ctx.motion === 'moving') return { allowed: false, reason: 'run_block_moving' };
+
     // A job that takes values goes only as the frame its own code builds for the chosen values, where
     // EdiabasLib builds the same (sgbd/agreedFrame.ts): PRACTICE rehearses exactly what a car would get.
     if (job.args.length > 0 && !isAgreedFor(ctx.agreed, ctx.moduleId, job.id, ctx.args, telegram.hex)) return { allowed: false, reason: 'run_block_needsArgs' };
@@ -102,8 +108,6 @@ export function mayActuate(
     // engine preflight and the time-out run here before they run on a car (policy: practice first).
     // As on a car (runGate.mayDrive): what is not a read by its nature drives something, and goes after
     // the screen's confirmation with its permit, whatever its control byte (a clear's 0x05 included).
-    const decision = decisionFor(ctx.moduleId, job, ctx.group, ctx.args);
-    const drives = !isReadNature(decision.nature);
     return { allowed: true, telegram, control: bytes[2], requires: 'parked', ...(drives ? { actuation: actuationTerms(job, decision) } : {}) };
 }
 

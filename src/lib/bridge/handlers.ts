@@ -93,7 +93,7 @@ export interface TabFacade {
      * Start a job the owner's table opens to the assistant (policy `who: 'ai'`), after the owner's OK:
      * the same gate, permit, measurement and arming as ACTUATOR's RUN. Says why not otherwise.
      */
-    actuate(q: { module: string; job: string; phase: 'start' | 'pulse'; ownerSaid: string; values?: string[] }): Promise<unknown>;
+    actuate(q: { module: string; job: string; phase: 'start' | 'pulse'; ownerSaid: string; values?: string[]; query?: string }): Promise<unknown>;
     procedure(q: { procedure: string; gear?: string; ownerSaid: string }): Promise<unknown>;
     /** Stop every output that is on. Not gated: anyone, any time. */
     stopOutputs(): Promise<unknown>;
@@ -101,6 +101,12 @@ export interface TabFacade {
     startLog(): string | null;
     /** DATALOG: what is selected and recording now, and the run summed up (lib/datalogQuery). */
     datalog(opts: { channels?: string[]; seconds?: number; max?: number }): unknown;
+    /**
+     * A moment of the DATALOG recording (`secondsAgo` before now, `windowS` wide), with the screen's
+     * cursor put there; null when there is no recording, or a PROBE run that ended after `after`
+     * (`appNow()`) is the newer record.
+     */
+    datalogMoment(q: { secondsAgo: number; windowS: number; channels?: string[]; after: number | null }): unknown | null;
     /** DATALOG's channels: find them by words, or choose them (refused while recording). */
     logChannels(q: { query?: string; channels?: string[] }): unknown;
     /** What was stopped, or null when nothing was running. */
@@ -128,6 +134,11 @@ export interface TabFacade {
     session(): string | null;
     /** Open a session on STARTUP and the board. */
     openSession(record: string): void;
+    /**
+     * A session saved on MEMORY (monitoring_sessions' `saved`), opened on MEMORY's viewer; null when no
+     * saved session has that id (it may be a PROBE record).
+     */
+    openSaved(id: string): Promise<{ opened: string; label: string; screen: 'memory' } | null>;
     /** NEW SESSION: an empty session opened on the screen; its id. */
     newSession(): string;
     /** A session's PROBE board, and keeping it (lib/probe/board). */
@@ -147,6 +158,8 @@ const NEXT_WHY: Record<NextRefusal, string> = {
 };
 /** Samples a moment returns at most; thinned evenly beyond this. */
 const MOMENT_SAMPLES = 120;
+/** How long monitoring_stop_log's answer waits for the render that puts the recording's last part in the journal. */
+const STOP_SETTLE_MS = 300;
 
 const text = (v: unknown, name: string): string => {
     if (typeof v !== 'string' || !v.trim()) throw new Error(`${name} is required`);
@@ -305,8 +318,13 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
             const secondsAgo = clamp(args.seconds_ago, 0, 3600, 8);
             const windowS = clamp(args.window_s, 2, 180, 20);
             const live = f.live();
+            // A recording on DATALOG answers too: the newer of it and the last PROBE run, unless PROBE is running.
+            if (!live) {
+                const fromLog = f.datalogMoment({ secondsAgo, windowS, channels: channelList(args.channels) ?? undefined, after: f.lastRun()?.endedAt ?? null });
+                if (fromLog) return fromLog;
+            }
             const run = live ?? f.lastRun();
-            if (!run) return { recorded: false, reason: 'Nothing has been recorded by PROBE on this tab yet.' };
+            if (!run) return { recorded: false, reason: 'Nothing has been recorded on this tab yet: neither a DATALOG recording nor a PROBE run.' };
             const n = run.n;
             const record = run.sessionId;
             const centre = (f.now() - secondsAgo * 1000 - run.startedAt) / 1000;
@@ -518,6 +536,7 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
                 phase: args.phase === 'start' ? 'start' : 'pulse',
                 ownerSaid: typeof args.owner_said === 'string' ? args.owner_said : '',
                 values: Array.isArray(args.values) ? args.values.map((v) => String(v)) : undefined,
+                query: typeof args.query === 'string' && args.query.trim() ? args.query : undefined,
             }),
 
         monitoring_procedure: async (args) =>
@@ -532,7 +551,8 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
         monitoring_start_log: async () => {
             const refused = f.startLog();
             if (refused) throw new Error(refused);
-            return { started: true, ...(f.datalog({ max: 0 }) as Record<string, unknown>) };
+            // Started: the recording is on from here, whatever the link's state says a render later.
+            return { started: true, ...(f.datalog({ max: 0 }) as Record<string, unknown>), running: true };
         },
 
         monitoring_datalog: async (args) =>
@@ -553,6 +573,10 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
                 throw new Error('Read the request back to the driver, and call again with confirmed: true only after a clear yes.');
             }
             const stopped = f.stopLog();
+            // The recording's last part reaches MEMORY's journal on the render after the stop. An
+            // assistant that asks to save straight after (「止めて、保存して」) must find it there, so the
+            // answer waits for that render rather than racing it (SC12, SC13 step 12).
+            if (stopped === 'recording') await new Promise((r) => setTimeout(r, STOP_SETTLE_MS));
             return stopped ? { stopped } : { stopped: null, reason: 'Nothing was recording.' };
         },
 
@@ -597,6 +621,9 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
         monitoring_session: async (args) => {
             const action = text(args.action, 'action');
             if (action === 'open') {
+                // A session saved on MEMORY (SC12 step 1: "open the earlier record"), else a PROBE record.
+                const saved = await f.openSaved(text(args.record, 'record'));
+                if (saved) return saved;
                 const r = pickRecord(await f.entries(), text(args.record, 'record'));
                 f.openSession(r.id);
                 f.display('startup');

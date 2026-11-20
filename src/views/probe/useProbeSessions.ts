@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { currentPlan, runnablePlan, type NotebookEntry } from '@/lib/notebook/rules';
+import { currentPlan, mergeEntries, runnablePlan, type NotebookEntry } from '@/lib/notebook/rules';
 import { listAllEntries } from '@/lib/notebook/store';
 import { emptyBoard, move, toggle, type Board } from '@/lib/probe/board';
 import { getBoard, probeChanges, putBoard } from '@/lib/probe/boardStore';
@@ -47,6 +47,12 @@ export function useProbeSessions(input: { enabled: boolean; write: (entries: Not
             live = false;
         };
     }, [enabled, version]);
+
+    /** Entries just written, on the screen at once rather than after the store is read again. */
+    const note = useCallback((es: readonly NotebookEntry[]) => {
+        setData((d) => ({ ...d, entries: mergeEntries(d.entries, es) }));
+        setNow(appNow());
+    }, []);
 
     const setOpen = useCallback((id: string) => {
         const next = { id, at: appNow() };
@@ -138,6 +144,7 @@ export function useProbeSessions(input: { enabled: boolean; write: (entries: Not
         /** The session the screen or the assistant opened, as of now (not the last render). */
         opened: () => openRef.current?.id ?? null,
         open: setOpen,
+        note,
         newSession,
         next,
         nextBlocked,

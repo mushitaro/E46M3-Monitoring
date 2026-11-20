@@ -18,10 +18,14 @@ import {
 import type { ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
 import type { RawFaultRead } from '@/hooks/useDs2Link';
 import { normCode } from '@/lib/faultCode';
-import { useLang, type Lang } from '@/lib/i18n';
+import { useLang } from '@/lib/i18n';
 import { text as resolveText, type EcuProfile } from '@tsunagi/monitoring-engine';
 import { Awaiting } from '@/views/shared/Awaiting';
 import { CountReadout } from '@/views/shared/CountReadout';
+import { FreezeFrame } from '@/views/shared/FreezeFrame';
+import { codeText, faultName } from '@/lib/faultText';
+import { isUnnamedLocation, kindsJa } from '@/lib/faultKinds';
+import { mss54Present, presentFromKinds } from '@tsunagi/monitoring-engine';
 
 /**
  * What the link read, and nothing else about the link.
@@ -62,10 +66,6 @@ export const DiagnosisView = memo(function DiagnosisView({
     // up only by reading German. FORTTEXTE is the SGBD's real mapping.
     const faultByCode = useMemo(
         () => new Map((catalog?.faultText ?? []).map((f) => [normCode(f.code), f])),
-        [catalog],
-    );
-    const envByCode = useMemo(
-        () => new Map((catalog?.envFields ?? []).map((e) => [normCode(e.code), e])),
         [catalog],
     );
 
@@ -123,15 +123,25 @@ export const DiagnosisView = memo(function DiagnosisView({
                             <DataList>
                                 {rawFaults.flatMap((r) =>
                                     (r.jobFaults?.faults ?? []).map((d, i) => {
-                                        const code = d.code === null ? null : `0x${d.code.toString(16).toUpperCase().padStart(2, '0')}`;
-                                        const known = code ? faultByCode.get(normCode(code)) : undefined;
-                                        const meaning = known && catalog ? resolveText(catalog, known.text, lang) : null;
+                                        const meaning = faultName(catalog, d.code, lang);
+                                        const present = presentFromKinds(d.kinds);
                                         return (
                                             <DataRow
                                                 key={`${r.request}-${d.code ?? i}`}
-                                                code={code ?? '—'}
+                                                code={codeText(catalog, d.code)}
                                                 codeTone="danger"
-                                                name={meaning?.text ?? humanName(d.text ?? '')}
+                                                name={meaning?.text ?? humanName(isUnnamedLocation(d.text) ? t.fault_unnamed : (d.text ?? ''))}
+                                                trailing={
+                                                    present === null ? undefined : (
+                                                        <span className="shrink-0 font-mono text-[10px] text-slate-600">{present ? t.fault_present_now : t.fault_stored}</span>
+                                                    )
+                                                }
+                                                detail={
+                                                    <>
+                                                        {d.kinds.length > 0 && lang === 'ja' && <p className="text-[10px] text-slate-400">{kindsJa(d.kinds).join(' · ')}</p>}
+                                                        <p className="font-mono text-[10px] text-slate-500">{[d.text, ...d.kinds].filter(Boolean).join(' · ')}</p>
+                                                    </>
+                                                }
                                             />
                                         );
                                     }),
@@ -215,7 +225,7 @@ export const DiagnosisView = memo(function DiagnosisView({
                                 name={meaning?.text ?? humanName('')}
                                 trailing={
                                     <span className="shrink-0 font-mono text-[10px] text-slate-600">
-                                        {formatErrorCode(f.errorType)}
+                                        {mss54Present(f.errorType) ? t.fault_present_now : t.fault_stored} {formatErrorCode(f.errorType)}
                                     </span>
                                 }
                                 detail={
@@ -232,10 +242,9 @@ export const DiagnosisView = memo(function DiagnosisView({
                                             <FreezeFrame
                                                 key={i}
                                                 index={i}
+                                                code={code}
                                                 bytes={[s.condition1, s.condition2, s.condition3, s.condition4]}
                                                 counter={s.counter}
-                                                codes={known?.env}
-                                                envByCode={envByCode}
                                                 profile={catalog}
                                                 lang={lang}
                                             />
@@ -298,65 +307,5 @@ export function DiagnosisViz({ faults }: Pick<FaultRead, 'faults'>) {
             tone={n === 0 ? 'text-emerald-400' : 'text-red-400'}
             caption={n === 0 ? t.viz_clean : t.viz_faults}
         />
-    );
-}
-
-/**
- * A freeze frame, decoded.
- *
- * This used to print `20 40 60 80` — four raw bytes with no names and no units,
- * because the decode table was not in the dump. `FUMWELTTEXTE` carries the field
- * name, the unit and the arithmetic, and `FORTTEXTE.UW_1..UW_4` says WHICH four
- * fields this particular fault stored. Both arrived with the Phase 0 re-dump.
- *
- * Where the fault does not name its fields, the raw bytes are still shown. A
- * missing table means "we cannot name these", not "there was nothing here".
- */
-function FreezeFrame({
-    index,
-    bytes,
-    counter,
-    codes,
-    envByCode,
-    profile,
-    lang,
-}: {
-    index: number;
-    bytes: number[];
-    counter: number;
-    codes?: string[];
-    envByCode: Map<string, NonNullable<EcuProfile['envFields']>[number]>;
-    profile: EcuProfile | null;
-    lang: Lang;
-}) {
-    const hex = bytes.map((b) => b.toString(16).padStart(2, '0')).join(' ');
-    const decoded =
-        codes && profile
-            ? bytes.map((b, i) => {
-                  const e = codes[i] ? envByCode.get(normCode(codes[i])) : undefined;
-                  if (!e) return null;
-                  const value = b * (e.scale ?? 1) + (e.add ?? 0);
-                  return { name: resolveText(profile, e.text, lang).text, value, unit: e.unit };
-              })
-            : null;
-
-    return (
-        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-            <span className="font-mono text-[10px] text-slate-600">
-                #{index + 1} {hex} ×{counter}
-            </span>
-            {decoded?.map(
-                (d, i) =>
-                    d && (
-                        <Field
-                            key={i}
-                            label={d.name}
-                            labelKind="data"
-                            value={Number.isInteger(d.value) ? d.value : d.value.toFixed(1)}
-                            unit={d.unit}
-                        />
-                    ),
-            )}
-        </div>
     );
 }

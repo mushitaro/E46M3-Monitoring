@@ -38,10 +38,29 @@ const onModule = async (page, module) => {
     return `${module} did not connect`;
 };
 
+/**
+ * An address several of the app's modules share with no group rule to tell them apart (0x56: ASC MK20 on
+ * an early car and DSC on a late one; 0x00 the GM5s; 0x5B the IHKAs): the owner says which once, on
+ * ACTUATOR, before anything that drives goes there (IJ21). The owner knows the car: this module, by its
+ * own name as the button shows it.
+ */
+const answerVariant = async (page, module) => {
+    await page.locator('[role=tab]:has-text("ACTUATOR")').first().click();
+    await page.waitForTimeout(500);
+    if (!/この車はどれですか|この車はどちらですか/.test(await page.evaluate(() => document.body.innerText))) return;
+    const name = await page.evaluate(async (id) => (await (await fetch('/ecu-data/index.json')).json()).modules.find((m) => m.id === id)?.name ?? null, module);
+    const pick = name ? page.getByRole('button', { name, exact: true }) : null;
+    if (pick && (await pick.count())) {
+        await pick.first().click();
+        await page.waitForTimeout(400);
+    }
+};
+
 /** The assistant starts it after the owner's OK: once, or on and then stopped. */
 const byAssistant = async (page, { module, job, values }) => {
     const off = await onModule(page, module);
     if (off) return off;
+    await answerVariant(page, module);
     let args = { module, job, phase: 'pulse', owner_said: 'いいよ' };
     if (values) {
         const sets = await tool(page, 'monitoring_actuate', args);
@@ -59,6 +78,7 @@ const byAssistant = async (page, { module, job, values }) => {
 const byScreen = async (page, { module, job, values, actuator }) => {
     const off = await onModule(page, module);
     if (off) return off;
+    await answerVariant(page, module);
     // A test job is a row on ACTUATOR; the rest are placed on SERVICE and started from the hub.
     if (actuator) {
         await page.locator('[role=tab]:has-text("ACTUATOR")').first().click();
@@ -73,7 +93,10 @@ const byScreen = async (page, { module, job, values, actuator }) => {
             for (let i = 0; i < 20 && (await select.count()) === 0; i++) await page.waitForTimeout(250);
             const options = await select.locator('option').allTextContents();
             if (options.length < 2) return `${job}: no set to choose`;
-            await select.selectOption({ index: 1 });
+            // The first set a person can pick: not the label line, not a part's heading (a disabled line of its own).
+            const at = await select.evaluate((s) => [...s.options].findIndex((o) => !o.disabled && o.value !== ''));
+            if (at < 1) return `${job}: no set to choose — ${options.join(' / ').slice(0, 200)}`;
+            await select.selectOption({ index: at });
         }
         const button = row.locator('[data-test="tj-run"], [data-test="tj-start"]').first();
         if (await button.isDisabled()) return `${job}: RUN is disabled — ${(await row.innerText()).slice(0, 200)}`;
@@ -112,6 +135,9 @@ const scenario = {
             { check: { desc: `${n.nature}：AI が「いいよ」のあとに始める（${n.module}.${n.job}${n.note ? `、${n.note}` : ''}）`, run: (page) => byAssistant(page, n) } },
             { check: { desc: `${n.nature}：画面の人が確認のあとに動かす（${n.module}.${n.job}）`, run: (page) => byScreen(page, n) } },
         ]),
+        // The bleeding asks, in its own SGBD, for the engine stopped (the link measures it before sending, and the
+        // dialog says so when it is running): the owner stops it first, as SC08 does.
+        { car: { engineRunning: false }, means: 'オーナーがエンジンを止める（エア抜きの前提）' },
         {
             check: {
                 desc: 'p_smg：AI が SMG II の手順を始め、画面の手順のダイアログが最後まで走らせる（monitoring_procedure）',

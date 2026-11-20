@@ -26,7 +26,7 @@
  *     same cycle, and waits otherwise. Nothing here tells anyone to drive.
  */
 
-import { Ds2Address, buildDs2Frame, buildReadMemoryPayload, isDs2Error, toHex, type Ds2Link } from '@tsunagi/ds2-core';
+import { Ds2Address, buildDs2Frame, buildReadMemoryPayload, isDs2Error, toHex, type Ds2Frame, type Ds2Link } from '@tsunagi/ds2-core';
 import {
     MSS54_ADAPTATION_BLOCKS,
     adaptationBlockMinLength,
@@ -34,7 +34,9 @@ import {
     channelId,
     decodeAdaptationBlock,
     decodeLiveBlock,
+    formatErrorCode,
     liveBlockRequest,
+    parseErrorMemoryEntries,
     planBlockReads,
     type ChannelId,
     type LiveValueBlock,
@@ -43,7 +45,8 @@ import type { CatalogJob } from '../ecuCatalog.ts';
 import type { Ledger } from '../ledger.ts';
 import type { ModuleProtocol } from '../moduleProtocol.ts';
 import { isReadOnlyControl, mayRun, mayRunProtocolRead, telegramBytes, type RunBlockKey } from '../runGate.ts';
-import { answerFrame, decodeRead, foldResults, type ReadValue, type SgbdResultsTable } from '../sgbd/results.ts';
+import { answerFrame, decodeFaultRead, decodeRead, foldResults, type ReadValue, type SgbdFaultRead, type SgbdResultsTable } from '../sgbd/results.ts';
+import { parseDtcsByStatus, type KwpFrame } from '../kwpOnDs2.ts';
 import { runSgbdJob } from '../sgbd/vm.ts';
 import type { Telegram } from '../telegrams.ts';
 import { motionOf, vehicleStateFrom, type Motion } from '../vehicleState.ts';
@@ -74,6 +77,16 @@ export interface ProbeModule {
     job(jobId: string): { job: CatalogJob; telegram: Telegram | null } | null;
     /** The module's SGBD code for reading its answers (lib/sgbd/results); null where none ships. */
     results?: SgbdResultsTable | null;
+    /** A fault code's text in the module's own catalogue (English), null where it has none. */
+    faultText?(code: string): string | null;
+}
+
+/** A fault a step read, as the module's own SGBD (or the MSS54's layout, or ISO 14230 for the MK60) reads it. */
+export interface ProbeFault {
+    code: string | number | null;
+    text: string | null;
+    /** What kind of fault, as the SGBD says (present, stored, …), where it says. */
+    kinds?: string[];
 }
 
 export interface ProbePlan {
@@ -100,6 +113,11 @@ export interface ProbeDeps {
     onExchange?(e: ProbeExchange): void;
     /** A one-shot step settled: what the hub's PROBE line counts. */
     onStep?(n: number, state: StepState): void;
+    /**
+     * One KWP-on-DS2 exchange (the DSC MK60, lib/kwpOnDs2), as the scan and the module's own screen
+     * send it; absent where the link cannot, and its fault steps are refused.
+     */
+    kwpExchange?(moduleId: string, address: number, f: KwpFrame): Promise<{ data: Uint8Array; bytes?: Uint8Array }>;
     maxSamples?: number;
     maxSeconds?: number;
 }
@@ -121,6 +139,8 @@ export interface ProbeExchange {
     motion: Motion;
     /** The answer as the module's own SGBD job reads it, where its code ships (lib/sgbd/results). */
     values?: ReadValue[];
+    /** A fault step's faults, read from the step's answers (on its last exchange); absent where nothing could read them. */
+    faults?: ProbeFault[];
 }
 
 export type StepState = 'pending' | 'done' | 'refused' | 'rejected' | 'failed';
@@ -136,6 +156,10 @@ export interface ProbeRun {
     captures: Array<{ step: number; at: number; from: number; to: number }>;
     steps: Array<{
         n: number;
+        /** What the step is (the plan's), so a run's steps can be read without the plan beside it. */
+        kind?: ProbeStep['kind'];
+        do?: string;
+        module?: string;
         state: StepState;
         sent: number;
         reason?: string;
@@ -257,7 +281,7 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
         samples: [],
         exchanges: [],
         captures: [],
-        steps: plan.steps.map((s) => ({ n: s.n, state: isOneShot(s) ? 'pending' : 'done', sent: 0 })),
+        steps: plan.steps.map((s) => ({ n: s.n, kind: s.kind, do: s.do, ...('module' in s && s.module ? { module: s.module } : {}), state: isOneShot(s) ? 'pending' : 'done', sent: 0 })),
         judges: [],
         adaptations: {},
     };
@@ -650,9 +674,11 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
             if (reason) st.reason = reason;
             deps.onStep?.(s.n, state);
         };
-        // A KWP-on-DS2 module (DSC MK60) is read on its own screen and in the scan; PROBE's frames are DS2's.
+        // A KWP-on-DS2 module (DSC MK60): its fault read goes as the scan sends it (its own frames,
+        // read by its own FS_LESEN code where that reads to the end, else as ISO 14230 lays a $58 out).
         if (mod?.protocol.kwp) {
-            settle('refused', 'KWP2000-shaped frames: read on the module screen or in the scan, not in PROBE yet');
+            if (s.kind === 'faults' && mod.protocol.kwp.faults.length > 0 && deps.kwpExchange) return kwpFaults(s, mod, motion);
+            settle('refused', s.kind === 'faults' ? 'KWP2000-shaped frames: this link cannot send them here' : 'KWP2000-shaped frames: a job read of this module is not in PROBE yet');
             record({ step: s.n, module: s.module, what: s.kind === 'read' ? s.job : 'FS_LESEN', request: null, response: null, outcome: 'refused', reason: st.reason, motion });
             return;
         }
@@ -702,6 +728,7 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
         delete st.waiting;
 
         const to = deps.link.to(mod.protocol.address);
+        const answers: Array<{ request: string; frame: Ds2Frame }> = [];
         for (const f of frames) {
             try {
                 const frame = await to.exchangeWithRetry(f.control, f.payload);
@@ -715,7 +742,10 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
                         decoded = null;
                     }
                 }
-                record({ step: s.n, module: s.module, what, request: f.hex, response, outcome: 'ok', motion, ...(decoded ? { values: decoded.values } : {}) });
+                answers.push({ request: f.hex, frame });
+                // A fault read's faults, once every frame has answered: on its last exchange.
+                const faults = s.kind === 'faults' && answers.length === frames.length ? faultsOf(mod, answers) : null;
+                record({ step: s.n, module: s.module, what, request: f.hex, response, outcome: 'ok', motion, ...(decoded ? { values: decoded.values } : {}), ...(faults ? { faults } : {}) });
                 if (motion === 'parked') deps.onObserved?.({ id: `${s.module}:${what}`, telegram: f.hex, response, at: deps.now() });
             } catch (e) {
                 if (gateHeld(e)) return;
@@ -745,6 +775,86 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
             record({ step: s.n, module: s.module, what, request: null, response: null, outcome: 'refused', reason, motion });
         }
     }
+
+    /** The DSC MK60's fault memory: its own FS_LESEN frames, KWP-shaped on the DS2 line, as the scan reads it. */
+    async function kwpFaults(s: Extract<ProbeStep, { kind: 'faults' }>, mod: ProbeModule, motion: Motion) {
+        const st = stepOf(s.n);
+        const settle = (state: StepState, reason?: string) => {
+            st.state = state;
+            if (reason) st.reason = reason;
+            deps.onStep?.(s.n, state);
+        };
+        const gate = mayRunProtocolRead(`${s.module}:FS_LESEN`, 'fault-read', deps.ledger(), motion);
+        if (!gate.allowed) {
+            if (gate.reason === 'run_block_moving') {
+                st.waiting = heldFor(motion);
+                return;
+            }
+            settle('refused', gate.reason);
+            record({ step: s.n, module: s.module, what: 'FS_LESEN', request: null, response: null, outcome: 'refused', reason: gate.reason, motion });
+            return;
+        }
+        if (gate.requires === 'parked' && motion !== 'parked') {
+            st.waiting = heldFor(motion);
+            return;
+        }
+        delete st.waiting;
+        const frames = mod.protocol.kwp?.faults ?? [];
+        const answers: { request: string; answer: Uint8Array }[] = [];
+        const dtcs: ProbeFault[] = [];
+        let shaped = true;
+        for (const [i, f] of frames.entries()) {
+            try {
+                const answer = await deps.kwpExchange!(s.module, mod.protocol.address, f);
+                if (answer.bytes) answers.push({ request: f.hex, answer: answer.bytes });
+                const read = parseDtcsByStatus(answer.data);
+                if (read) dtcs.push(...read.map((d) => ({ code: d.code, text: mod.faultText?.(String(d.code)) ?? null, kinds: [`status 0x${d.status.toString(16).padStart(2, '0')}`] })));
+                else shaped = false;
+                let faults: ProbeFault[] | null = null;
+                if (i === frames.length - 1) {
+                    const own = answers.length === frames.length ? sgbdFaults(decodeFaultRead(mod.results ?? null, answers)) : null;
+                    faults = own ?? (shaped ? dtcs : null);
+                }
+                record({ step: s.n, module: s.module, what: 'FS_LESEN', request: f.hex, response: toHex(answer.data), outcome: 'ok', motion, ...(faults ? { faults } : {}) });
+            } catch (e) {
+                if (gateHeld(e)) return;
+                const message = e instanceof Error ? e.message : String(e);
+                const rejected = isDs2Error(e) && e.code === 'NEGATIVE_RESPONSE';
+                record({ step: s.n, module: s.module, what: 'FS_LESEN', request: f.hex, response: null, outcome: rejected ? 'rejected' : 'failed', reason: message, motion });
+                if (rejected) return settle('rejected', message);
+                const n = (failures.get(s.n) ?? 0) + 1;
+                failures.set(s.n, n);
+                if (n >= ONE_SHOT_ATTEMPTS) settle('failed', message);
+                return;
+            }
+        }
+        st.sent++;
+        if (st.sent >= (s.times ?? 1)) settle('done');
+    }
+
+    /** A DS2 fault read's faults: the MSS54's from its layout, any other module's by its own FS_LESEN code. */
+    function faultsOf(mod: ProbeModule, answers: Array<{ request: string; frame: Ds2Frame }>): ProbeFault[] | null {
+        try {
+            if (mod.protocol.decoder === 'mss54') {
+                const i = mod.protocol.faults.findIndex((f) => f.payload[0] === 0x01);
+                const a = i >= 0 ? answers[i] : undefined;
+                if (!a) return null;
+                return parseErrorMemoryEntries(a.frame, 'errorMemory').map((f) => {
+                    const code = formatErrorCode(f.errorCode);
+                    return { code, text: mod.faultText?.(code) ?? null, kinds: [`type ${formatErrorCode(f.errorType)}`, `count ${f.frequencyCounter}`] };
+                });
+            }
+            return sgbdFaults(decodeFaultRead(mod.results ?? null, answers.map((x) => ({ request: x.request, answer: answerFrame(x.frame.address, x.frame.controlOrStatus, x.frame.payload) }))));
+        } catch {
+            return null;
+        }
+    }
+}
+
+/** A module's own FS_LESEN reading as PROBE keeps it; null where it did not read to its end. */
+function sgbdFaults(read: SgbdFaultRead | null): ProbeFault[] | null {
+    if (!read || read.stopped !== null || read.status !== 'OKAY') return null;
+    return read.faults.map((f) => ({ code: f.code, text: f.text, kinds: f.kinds }));
 }
 
 /** The blocks a plan reads, for a cost line like the datalog's. */

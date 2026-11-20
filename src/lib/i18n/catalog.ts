@@ -50,6 +50,26 @@ export interface Localised {
     faults_read: string;
     faultRef_search: string;
     channels_selected: (n: number, blocks: number) => string;
+    datalog_elapsed: string;
+    datalog_gearNote: string;
+    datalog_otherEmpty: string;
+    datalog_segments: string;
+    datalog_segmentWhy: Record<'start' | 'channels' | 'part', string>;
+    datalog_part: (k: number) => string;
+    datalog_segmentLine: (channels: number, blocks: number, hz: number | null) => string;
+    datalog_plan: string;
+    datalog_planCaught: (n: number) => string;
+    datalog_planWaiting: string;
+    datalog_planRecording: string;
+    datalog_planProbe: string;
+    datalog_compare: string;
+    datalog_compareRun: (k: number) => string;
+    datalog_window: (s: number) => string;
+    datalog_cursorLine: (at: string, gear: number | null) => string;
+    datalog_markLabel: (why: string) => string;
+    datalog_cursorLabel: string;
+    datalog_hubLine: (elapsed: string, rpm: string, kmh: string, samples: number) => string;
+    sessions_segments: (lines: string) => string;
     rate: string;
     samples: string;
     notSupported_title: string;
@@ -135,6 +155,12 @@ export interface Localised {
     wiz_abortOnly: string;
     wiz_result_ok: string;
     wiz_result_bad: string;
+    /** The module refused a step, with its status. */
+    wiz_result_refused: (status: string) => string;
+    /** It ended without finishing, for a reason the link gave. */
+    wiz_result_failed: string;
+    /** What the owner does while it runs. */
+    wiz_owner: string;
     wiz_result_aborted: string;
     wiz_stopSent: string;
     wiz_offsetsInferred: string;
@@ -145,6 +171,42 @@ export interface Localised {
     viz_response: string;
     viz_responseNone: string;
     actuator_none: string;
+    /** The seconds left on an output that is on, on its row. */
+    actuator_left: (s: number) => string;
+    /** The notice line while something is on, after it stopped, and when a page before this one left it on. */
+    actuation_running: (part: string, left: number | null) => string;
+    actuation_stopped: (part: string) => string;
+    actuation_timedOut: (part: string, s: number) => string;
+    actuation_switched: (part: string) => string;
+    actuation_lineBack: (part: string) => string;
+    actuation_unanswered: string;
+    actuation_sentOnce: (part: string) => string;
+    actuation_leftRunning: (part: string, s: number) => string;
+    /** The module stopped answering its heartbeat. */
+    link_lost: string;
+    /** The car refusing at the wire, with what was measured (lib/notSentText). */
+    notSent_moving: (kmh: string) => string;
+    notSent_voltage: (v: string, min: string) => string;
+    notSent_voltageUnread: (min: string) => string;
+    notSent_engineOff: (rpm: string) => string;
+    notSent_engineOn: (rpm: string) => string;
+    notSent_link: string;
+    notSent_permission: string;
+    /** Which module answers at a shared address (lib/variantChoice). */
+    /** A read or a run not sent: which module answers at the address is not known on this car (SC10). */
+    variant_identOnly: (hex: string) => string;
+    /** Not sent: the address's IDENT chose a module whose SGBD this app does not carry. */
+    variant_notCarried: (hex: string, sgbd: string) => string;
+    /** Not sent: the address's IDENT chose another module. */
+    variant_otherHere: (hex: string, sgbd: string) => string;
+    variant_ask: (hex: string, byYear: boolean) => string;
+    variant_ruledOut: (hex: string, other: string) => string;
+    /** The confirmation, in the order it is read: what moves, what it needs, how long, what pressing does. */
+    gate_what: string;
+    gate_needs: string;
+    gate_stopsAfter: (s: number) => string;
+    gate_once: string;
+    gate_onPress: (start: boolean) => string;
     /** The credits dialog. Reachable always; never inside the disclaimer. */
     credits_title: string;
     credits_lede: string;
@@ -174,6 +236,10 @@ export interface Localised {
     /** How few of a module's actuator jobs this app can actually send. */
     actuator_runnable: (n: number, total: number) => string;
     actuator_onlyRunnable: string;
+    /** ACTUATOR with nothing listed: the module's own SGBD has no job that drives a part (MM01, MM04). */
+    actuator_noneInSgbd: string;
+    /** ACTUATOR with nothing listed: every job that drives a part is one the owner's table keeps off. */
+    actuator_noneOwnerOff: (n: number) => string;
     /** The placeholder of a job's value sets: the sets the app and EdiabasLib build alike. */
     actuator_values: string;
     actuator_armed: string;
@@ -208,7 +274,7 @@ export interface Localised {
     /** Behind the ⓘ: how the scan asks, what it can decode, what silence means. */
     scan_info: string;
     /** The one or two words a row ends with. */
-    scan_outcome: { faults: (n: number) => string; clean: string; undecoded: string; faultsUnverified: (n: number) => string; cleanUnverified: string; identified: string; silent: string; rejected: string; refused: string; skipped: string };
+    scan_outcome: { faults: (n: number) => string; partial: (n: number) => string; clean: string; undecoded: string; faultsUnverified: (n: number) => string; cleanUnverified: string; identified: string; silent: string; rejected: string; refused: string; noFaultRead: string; skipped: string };
     /**
      * Which module an address's IDENT chose (lib/variants), under its opened row: the SGBD, or `?`;
      * and when nothing but the IDENT went, why.
@@ -216,6 +282,16 @@ export interface Localised {
     scan_variant: (sgbd: string | null, carried: boolean) => string;
     /** A shared address: which of its SGBDs is fitted is chosen on the select. */
     scan_shared: string;
+    /** The scan in one line: how many modules answered, how many faults their reads hold (SC01 step 3). */
+    scan_summary: (modules: number, faults: number) => string;
+    /** A row whose module is not decided: its candidates, never joined as if all were fitted (IJ15, F03). */
+    scan_undecided: (names: string[], byYear: boolean) => string;
+    /** Under a read that stopped part of the way (IJ16). */
+    scan_partial: string;
+    /** The scan engine's reasons, in the reader's words; undefined: none to say (the row says it already). */
+    scan_reason: (reason: string) => string | null | undefined;
+    /** What the list says while nothing is connected: what to do first (SC01 step 1). */
+    start_hint: string;
     /** Under a module read by its own SGBD's FS_LESEN: whose code read it, and whether it read to the end. */
     scan_sgbdRead: (sgbd: string, done: boolean) => string;
     /** The hub's notice while it runs. */
@@ -230,6 +306,19 @@ export interface Localised {
     probe_title: string;
     /** The hub's notice while a plan runs: version, one-shot steps settled of all, samples kept. */
     probe_line: (v: number, settled: number, total: number, samples: number) => string;
+    probe_reading: (module: string) => string;
+    board_readings: string;
+    adjust_title: string;
+    adjust_pre: (list: string) => string;
+    adjust_ok: string;
+    adjust_notHere: string;
+    adjust_runnable: string;
+    adjust_otherWrite: (module: string, address: string, job: string) => string;
+    adjust_otherModule: (module: string, address: string) => string;
+    adjust_sendsNothing: string;
+    adjust_notAgreed: string;
+    sure: Record<'high' | 'mid' | 'low', string>;
+    probe_refused: (n: number) => string;
     /** The line dropped and PROBE begins the plan again (lib useProbe RESUME_AFTER_MS). */
     probe_resuming: (v: number, resumes: number) => string;
     /** MEMORY and SESSION SYNC — the preview's saved sessions and SYNC (lib/features.ts `sessionSync`). */
@@ -286,6 +375,8 @@ export interface Localised {
     sessions_unkept_info: string;
     sessions_emptyUnkept: string;
     sessions_expiresIn: (days: number) => string;
+    /** The time of the episode in progress is not certain yet (the device clock not put right). */
+    sessions_timeUnsure: string;
     sessions_undated: (days: number | null) => string;
     sessions_inAccount: string;
     sessions_errors: string;
@@ -299,6 +390,10 @@ export interface Localised {
     sessions_sent: (n: number) => string;
     sessions_nothingToSend: string;
     sessions_sendFailed: string;
+    /** A send that stopped, by what the server answered (0: no answer; 404: nothing to send to on this build). */
+    sessions_sendFailedAt: (status: number) => string;
+    /** Asked to send with no network: kept, and sent once by itself when the network is back. */
+    sessions_sendWhenOnline: string;
     sessions_sendExpired: string;
     sessions_tooLarge: (label: string) => string;
     sessions_restored: string;
@@ -321,6 +416,8 @@ export interface Localised {
     reauth_confirm: string;
     /** RELOAD (header and M menu). Asked only when something would be lost: a link, a read, a run. */
     reload_confirm: string;
+    /** UPDATE pressed while a recording or a PROBE run goes: it is not cut (SC11). */
+    reload_stopRecordingFirst: string;
     reload_title: string;
     reload_running: string;
     /** The header's sign-in notice (lib/signInLapse), WORKS only. Short enough to stand in the header
@@ -383,6 +480,8 @@ export interface Localised {
     /** The code is present now / stored from before, as the module's own record says. */
     fault_present_now: string;
     fault_stored: string;
+    /** A code its module's own table does not name. */
+    fault_unnamed: string;
     door_wifi: string;
     door_datetime: string;
     board_up: string;
@@ -491,6 +590,10 @@ export interface Localised {
     op_blocked: string;
     clearFaults_title: string;
     clearFaults_consequence: string;
+    /** The clear's confirmation, naming the module it clears and what goes with it (F10). */
+    clearFaults_named: (module: string, lastSpeedKmh: number | null) => string;
+    /** Beside a CLEAR FAULTS that cannot be pressed: the car is measured moving. */
+    clearFaults_moving: string;
     clearFaults_confirm: string;
     /** Why each plan step exists. Safety copy — see jobOps.ts WhyKey. */
     op_why: Record<WhyKey, string>;

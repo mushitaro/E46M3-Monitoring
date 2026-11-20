@@ -56,7 +56,7 @@ function facade() {
         catalog: null,
         target: noProtocol('kombi46r', 0x80),
         ledger: EMPTY_LEDGER,
-        datalog: { current: () => [], snapshot: () => ({ samples: [] }) },
+        datalog: { current: () => [], isRunning: () => false, snapshot: () => ({ samples: [], segments: [] }) },
         sessions: {},
         probe: { progress: null, available: null },
         probeSessions: {},

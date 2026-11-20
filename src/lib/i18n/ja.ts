@@ -35,7 +35,7 @@ export const ja: Localised = {
 
     channels: 'チャンネル',
     channels_other: 'ほかのモジュールの値',
-    channels_otherNote: '選んだモジュールの読み取りを 1 サンプルに 1 回送り、そのモジュールの SGBD 自身のコードで値にします。停車中だけで、走行中は空になります（台帳で走行中も可にした読み取りを除く）。',
+    channels_otherNote: '選んだモジュールの読み取りを 1 サンプルに 1 回送り、そのモジュールの SGBD 自身のコードで値にします。状態の値の読み取りは、運営者の表に従って走行中も読みます。停車中だけの読み取りは、走行中は空になります。',
     channels_module: 'モジュール',
     channels_pick: '記録するチャンネルを選ぶ',
     datalog_run: '記録',
@@ -51,6 +51,26 @@ export const ja: Localised = {
     faultRef_search: '検索（コード・訳文・独語原文）',
     channels_selected: (n: number, blocks: number) =>
         `${n} 項目 / ${blocks} ブロック = 1サンプルあたり ${blocks} 往復`,
+    datalog_elapsed: '経過',
+    datalog_gearNote: 'ギア（DME の推定ギア段、ブロック 83）は 1 秒に 1 回、別に読みます。',
+    datalog_otherEmpty: 'いまは空です（停車中だけ読む値か、モジュールが答えていません）。',
+    datalog_segments: '区切り',
+    datalog_segmentWhy: { start: '開始', channels: 'チャンネル変更', part: '10 分の区切り' },
+    datalog_part: (k) => `${k} つ目`,
+    datalog_segmentLine: (n, blocks, hz) => `${n} 項目 · ${blocks} ブロック · ${hz === null ? '—' : hz.toFixed(1)} Hz`,
+    datalog_plan: '計画',
+    datalog_planCaught: (n) => `取った（${n} 回）`,
+    datalog_planWaiting: '待っている',
+    datalog_planRecording: '記録中',
+    datalog_planProbe: 'PROBE で読む',
+    datalog_compare: '比べる（横軸は回転）',
+    datalog_compareRun: (k) => `${k} 回目`,
+    datalog_window: (s) => `直近 ${s} 秒`,
+    datalog_cursorLine: (at, gear) => `カーソル ${at}${gear === null ? '' : ` · ${gear} 速`}`,
+    datalog_markLabel: (why) => `区切り（${why}）`,
+    datalog_cursorLabel: 'カーソル（AI が見た時点）',
+    datalog_hubLine: (elapsed, rpm, kmh, samples) => `記録中 ${elapsed} · ${rpm} rpm · ${kmh} km/h · ${samples} サンプル`,
+    sessions_segments: (lines) => `区切り ${lines}`,
     rate: '実効レート',
     samples: 'サンプル',
 
@@ -128,6 +148,9 @@ export const ja: Localised = {
     wiz_abortOnly: '実行中の出口は ABORT だけです。変速機が動いている間にダイアログを閉じることはできません。',
     wiz_result_ok: '正常に終了しました',
     wiz_result_bad: '正常には終了しませんでした',
+    wiz_result_refused: (status) => `SMG II が問い合わせを断りました（${status}）。手順を止めました。`,
+    wiz_result_failed: '途中で止まりました。理由は下のとおりです。',
+    wiz_owner: 'オーナーがすること：前提のとおりにしてください。終わるまで車のそばで待ち、異常があれば ABORT。',
     wiz_result_aborted: '中止しました',
     wiz_stopSent: 'TESTPRG_STOP を送信済み',
     wiz_offsetsInferred:
@@ -145,6 +168,36 @@ export const ja: Localised = {
     viz_response: '返ってくるもの',
     viz_responseNone: 'このジョブの応答内容は SGBD に宣言がありません。',
     actuator_none: '作動中のものはありません',
+    actuator_left: (s) => `残り ${s} 秒`,
+    actuation_running: (part, left) => (left === null ? `${part}を動かしています。` : `${part}を動かしています（残り ${left} 秒で止まります）。`),
+    actuation_stopped: (part) => `${part}を止めました。`,
+    actuation_timedOut: (part, s) => `${part}：時間切れで止まりました（${s} 秒）。`,
+    actuation_switched: (part) => `${part}が動いていたので、止めてから切り替えました。`,
+    actuation_lineBack: (part) => `接続が戻りました。${part}を止めました。`,
+    actuation_sentOnce: (part) => `${part}に一度送りました。応答 OK（モジュールが自分で終えるので、STOP はありません）。`,
+    actuation_unanswered: '（止めを送りましたが、答えがありません。ECU も自分の時間切れで止めます）',
+    actuation_leftRunning: (part, s) => `前回、${part}が動いたまま画面が閉じました。閉じるときに止めました（届かなくても ECU が ${s} 秒の時間切れで止めます）。`,
+    link_lost: '接続が切れました。つなぎ直しています（動いていたものは ECU の時間切れで止まります）。',
+    notSent_moving: (kmh) => `走行中（${kmh} km/h）なので動かしませんでした。止まってから動かせます。`,
+    notSent_voltage: (v, min) => `電圧 ${v} V。${min} V 以上で動かせます（エンジンをかけるか充電器を）。`,
+    notSent_voltageUnread: (min) => `電圧が読めないので動かしませんでした。${min} V 以上で動かせます。`,
+    notSent_engineOff: (rpm) => `エンジンが回っています（${rpm} rpm）。エンジンを止めてから動かせます。`,
+    notSent_engineOn: (rpm) => `エンジンが止まっています（${rpm} rpm）。エンジンをかけてから動かせます。`,
+    notSent_link: '車速と電圧を測れなかったので動かしませんでした。接続を確かめてください。',
+    notSent_permission: '許可した電文と違うので送りませんでした。',
+    variant_identOnly: (hex) => `この車では ${hex} にいるモジュールが分かりません（?）。名乗り（IDENT）のほかは何も送りません。`,
+    variant_notCarried: (hex, sgbd) => `この車の ${hex} は ${sgbd} です。このアプリはまだその SGBD を載せていないので、名乗り（IDENT）のほかは送りません。`,
+    variant_otherHere: (hex, sgbd) => `この車の ${hex} は ${sgbd} です。このモジュールの電文は送りません。`,
+    variant_ask: (hex, byYear) =>
+        byYear
+            ? `${hex} には年式でちがうモジュールがいます。この車はどちらですか？ 決めるまで、ここで部品は動かしません（読むのはこれまでどおり）。`
+            : `${hex} の機種は、名乗り（IDENT）からは決められません。この車はどれですか？ 決めるまで、ここで部品は動かしません（読むのはこれまでどおり）。`,
+    variant_ruledOut: (hex, other) => `この車の ${hex} は ${other} です。このモジュールの部品は動かしません。`,
+    gate_what: '何が動くか',
+    gate_needs: '前提（すべて確認）',
+    gate_stopsAfter: (s) => `${s} 秒で自動的に止まります。STOP でいつでも止められます。`,
+    gate_once: '一度だけ送ります。ECU が自分で終えます。',
+    gate_onPress: (start) => (start ? '押すと、車速・電圧・エンジンの状態を測ってから送ります。' : '押すと、車速・電圧・エンジンの状態を測ってから一度送ります。'),
     credits_title: 'このアプリが載っているもの',
     credits_lede:
         'このツールは、他の人が先にやった仕事の上に載っています。名前と、何をもらったかを書きます。',
@@ -184,8 +237,8 @@ export const ja: Localised = {
     gate_unverified: '実車未確認',
     gate_practiceOnly: '未検証のため実行できません。実車で1件ずつ検証し台帳に記録してから解禁します。',
     args_required: (names: string) => `引数: ${names}`,
-    precond_voltage_ok: '電圧',
-    precond_stationary: '停車',
+    precond_voltage_ok: '電圧 12 V 以上',
+    precond_stationary: '停車している',
     precond_engine_off: 'エンジン停止',
     // English in BOTH languages, like DIAGNOSIS / DATALOG / SERVICE / PRACTICE
     // beside it. The chrome tokens of this panel are one vocabulary; a lone
@@ -199,6 +252,8 @@ export const ja: Localised = {
     info_hide: '説明を閉じる',
     actuator_runnable: (n, total) => `${total} 件中 ${n} 件が実行可能`,
     actuator_onlyRunnable: '実行できるものだけ',
+    actuator_noneInSgbd: 'このモジュールの SGBD には、部品を動かすジョブ（作動テスト）がありません。読む項目は DIAGNOSIS と SERVICE にあります。',
+    actuator_noneOwnerOff: (n) => `このモジュールの部品を動かすジョブ ${n} 件は、どれも運営者の表で出さないもの（書き込み・安全装置の展開など）です。このアプリからは送りません。`,
     actuator_values: '値を選ぶ',
     actuator_armed: '作動中',
     gate_plan: '送信内容',
@@ -232,6 +287,7 @@ export const ja: Localised = {
         'アドレスを一つずつ、そのモジュール自身の SGBD の故障読取を送ります。エンジン（0x12）と変速機（0x32）は、まず共通の IDENT を訊き、その答えから EDIABAS のグループファイルと同じ選び方で変種を選び、このアプリが載せている SGBD に当たったときだけ故障読取を送ります。エンジンが MSS54（M3）と答えた車では、ほかのアドレスは M3 の装備として、それぞれ自分の IDENT を先に送ってから読みます。M3 でない車では、変種の分からないアドレスは「?」のまま、IDENT のほかは送りません。同じアドレスを複数の SGBD が使うときは、全員の表にあるフレームだけを送ります。エンジン（MSS54）は専用の解読器で、ほかの多くのモジュールはそのモジュール自身の SGBD の故障読取のコードで中身を読みます（INPA と同じ読み方。故障の場所の文は SGBD のままのドイツ語）。そう読めない答えは、返ったバイトのままです。応答なしは、その装備が無いか、眠っているか、この線から届かないかです。',
     scan_outcome: {
         faults: (n) => `故障 ${n}`,
+        partial: (n) => (n > 0 ? `故障 ${n}・途中まで` : '途中まで'),
         clean: '故障なし',
         undecoded: '未解読',
         faultsUnverified: (n) => `故障 ${n}（実車未確認）`,
@@ -240,9 +296,29 @@ export const ja: Localised = {
         silent: '応答なし',
         rejected: '拒否',
         refused: '送らない',
+        noFaultRead: '故障読取なし（SGBD に無い）',
         skipped: '未実施',
     },
     scan_shared: 'どれが付いているかは、MODULE で選んで開きます。',
+    scan_summary: (m, f) => `${m} モジュール、故障 ${f} 件`,
+    scan_undecided: (names, byYear) =>
+        `?（${names.length === 2 ? names.join(' か ') : `${names.join('、')} のどれか`}${byYear ? '。年式で決まり、名乗りからは決められません' : '。名乗りからは決められません'}）`,
+    scan_partial: '途中までしか読めませんでした。読めたところまでを出しています（一覧は短いかもしれません）。',
+    scan_reason: (r) =>
+        /no fault-read frame is common/.test(r)
+            ? '候補のどれにも共通の故障読取の電文が無いので、送っていません。'
+            : /carries no short fault-read frame/.test(r)
+              ? 'この SGBD には短い故障読取の電文が無いので、送っていません。'
+              : /not identified as an M3/.test(r)
+                ? 'M3 と分かった車でだけ読みます（KWP の形の電文）。'
+                : /the scan was stopped/.test(r)
+                  ? '読取を止めたので、ここは読んでいません。'
+                  : /DME stopped answering/.test(r)
+                    ? '線が途切れたので、ここから先は読んでいません。'
+                    : /^answered \d+ of \d+ frames/.test(r) || /chose no variant|not known \(\?\)|not a module this scan reads/.test(r)
+                      ? null
+                      : undefined,
+    start_hint: 'まだつながっていません。練習なら PRACTICE を入れて CONNECT、車ならケーブルをつないで CONNECT を押してください。',
     scan_sgbdRead: (sgbd, done) => (done ? `${sgbd.toUpperCase()} 自身の故障読取のコードで読みました。文は SGBD のまま。` : `${sgbd.toUpperCase()} 自身の故障読取のコードでは最後まで読めませんでした。バイトが答えです。`),
     scan_variant: (sgbd, carried) =>
         sgbd === null
@@ -260,6 +336,21 @@ export const ja: Localised = {
     probe_title:
         '任せた調査の計画を、この接続で走らせます。送るのは読取だけで、停車中に限る読取は、送る直前に車速を読んで確かめます。',
     probe_line: (v, settled, total, samples) => `PROBE v${v} · ${settled}/${total} · ${samples} サンプル`,
+    probe_reading: (m) => `読んでいる：${m}`,
+    board_readings: '見立て',
+    adjust_title: '調整（ゼロ点）',
+    adjust_pre: (list) => `前提：${list}`,
+    adjust_ok: '実行可',
+    adjust_notHere: 'ここでは不可',
+    adjust_runnable: 'SERVICE で、確認のあとに実行できます。',
+    adjust_otherWrite: (m, a, j) =>
+        `このジョブは、このモジュール自身のコードの中で ${m}（${a}）にも電文を送ります。その電文は ${m} 自身の SGBD では「${j}」、つまり書き込みです。書き込みはこのアプリから送らない（運営者の表）ので、ここでは実行できません。ディーラーの診断機（INPA など）で行ってください。`,
+    adjust_otherModule: (m, a) =>
+        `このジョブは、このモジュール自身のコードの中で ${m}（${a}）にも電文を送ります。モジュールにはそのモジュール自身の SGBD の電文だけを送るので、ここでは実行できません。ディーラーの診断機（INPA など）で行ってください。`,
+    adjust_sendsNothing: 'BMW のジョブ実行系（EdiabasLib）で動かしても、識別の読み取りのほかに何も送りません。何を送るジョブか確かめられないので、送りません。',
+    adjust_notAgreed: 'このアプリと BMW のジョブ実行系（EdiabasLib）が同じ電文を組むと確かめられていないので、送りません。',
+    sure: { high: '確か', mid: '可能性', low: '未確認' },
+    probe_refused: (n) => `できなかった ${n}`,
     probe_resuming: (v, resumes) => `PROBE v${v} · 回線が切れた · 再開を待つ（${resumes + 1}/3）`,
     error_electrical_steps: [
         'エンジン停止時と稼働時で失敗率を比べてください。稼働時だけ不安定なら、非シールドケーブルへの点火系ノイズ（EMI）であってソフトウェアの問題ではありません。',
@@ -406,6 +497,9 @@ export const ja: Localised = {
     clearFaults_title: '故障メモリを消去します',
     clearFaults_consequence:
         '故障コードと、それに付随するフリーズフレーム（発生時の運転状態の記録）が ECU から消えます。元に戻せません。原因が残っていれば故障は再登録されますが、消えたフリーズフレームは戻りません。先に読み取って記録を残してください。',
+    clearFaults_named: (m, v) =>
+        `${m} の故障コードと、それに付随するフリーズフレーム（発生時の運転状態の記録）が ECU から消えます。ほかのモジュールの故障は消えません。元に戻せません。消えたフリーズフレームは戻らないので、先に保存してください。走行中は送りません：押すと車速を測り直し、0 km/h のときだけ消します${v !== null && v > 0 ? `（最後に測った車速 ${v} km/h）` : ''}。`,
+    clearFaults_moving: '走行中は消せません。止まってから押してください。',
     clearFaults_confirm: '消去する',
     op_blocked_practice: 'PRACTICE の模擬 ECU はこのジョブを実装していません',
     op_why: {
@@ -668,6 +762,7 @@ export const ja: Localised = {
     sessions_unkept_info:
         '読み取りは操作のたびに端末に記録され、接続から切断までなどのまとまりで並びます。SAVE で残したものだけが SYNC で送られます。残さないまとまりは 7 日で端末から消えます。JOIN で一つ前のまとまりとつなげます。',
     sessions_emptyUnkept: '残していないまとまりはありません。',
+    sessions_timeUnsure: '時刻未確定（端末の時計が合う前の記録）',
     sessions_undated: (days) => (days === null ? '日付が確かでない（まだ消しません）' : `日付が確かでない・あと ${Math.max(0, days)} 日`),
     sessions_expiresIn: (days) => (days <= 0 ? 'まもなく消えます' : `あと ${days} 日`),
     sessions_inAccount: 'アカウント',
@@ -682,7 +777,14 @@ export const ja: Localised = {
     sessions_saveFailed: 'この端末に保存できませんでした。ブラウザの保存領域を確認してください。',
     sessions_sent: (n) => `${n} 件をアカウントへ送りました。`,
     sessions_nothingToSend: '送っていないセッションはありません。',
+    sessions_sendWhenOnline: '電波がありません。電波が戻ったら、自動で一度送ります。',
     sessions_sendFailed: '送れませんでした。端末には保存してあります。電波のある所でもう一度 SYNC してください。',
+    sessions_sendFailedAt: (status) =>
+        status === 0
+            ? '送れませんでした（送り先から応答がありません）。端末には保存してあります。電波のある所でもう一度 SYNC してください。'
+            : status === 404
+              ? '送れませんでした。この版には送り先がありません（HTTP 404）。端末には保存してあります。'
+              : `送れませんでした。送り先が受け取りませんでした（HTTP ${status}）。端末には保存してあります。`,
     sessions_sendExpired: 'サインインの期限が切れているため送れませんでした。端末には保存してあります。',
     sessions_tooLarge: (label) => `${label} は大きすぎて送れません（1 件 1.9 MB まで）。端末には保存してあります。`,
     sessions_restored: 'この端末に復元しました。',
@@ -715,6 +817,7 @@ export const ja: Localised = {
     reauth_consequence:
         'サインインし直すと、このページを開き直します。まだ保存していない読み取り結果や記録は消えます。先に SAVE してください。',
     reauth_confirm: '保存せずに進む',
+    reload_stopRecordingFirst: '記録中です。記録を止めてから UPDATE を押してください（記録は続いています）。',
     reload_confirm:
         '再読み込みすると、車との接続が切れ、保存も書き出しもしていない故障メモリの読み取りとデータログは消えます。作動中の出力は先に止めます。再読み込みしますか？',
     reload_title: 'アプリを再読み込み。新しいビルドを取ってあれば、それに入れ替えます',
@@ -778,6 +881,7 @@ export const ja: Localised = {
     faults_layout_unverified: '故障コードは、このモジュール自身の SGBD が読むのと同じ場所から読みました（EDIABAS の模擬で確かめた読み方）。実車ではまだ確かめていません。上のバイトが答えそのものです。',
     fault_present_now: '現在あり',
     fault_stored: '記録のみ',
+    fault_unnamed: 'この場所の名前は SGBD に無い',
     faults_kwp_estimated: '故障コードは ISO 14230 の答えの形として読んだ推定です。MK60 の実車ではまだ確かめていません。上のバイトが答えそのものです。',
     door_wifi: 'ナビの Wi-Fi 設定',
     door_datetime: 'ナビの日付と時刻の設定',

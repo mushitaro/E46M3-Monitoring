@@ -71,8 +71,9 @@ MSS54 の表と解読は `packages/ds2-mss54`。エンジンはこの二つに�
 
 | 役目 | 名前 |
 |---|---|
-| リンク | `LinkSession`（`connect`・`reconnectPermitted`・`disconnect`・`readIdent`・`readFaults`・`readAdaptations`・`runRead`・`clearFaults`・`startLog`・`stopLog`・`startProbe`・`scanAll`・`readVehicleState`・`heartbeat`・`releaseWhileHidden`・`clearLog`・`clearError`・`lastError`・`lastNotSent`・`subscribe`・`getSnapshot`・`setTarget`・`setHandlers`・`dispose`）、`KEEP_ALIVE_INTERVAL_MS`、型 `LinkSnapshot`・`LinkHandlers`・`LinkState`・`LinkMode`・`CommsLogLine`・`LiveSample`・`JobRunResult`・`AdaptationRead`・`RawFaultRead`・`LinkFailure`・`ParkedObservation` |
+| リンク | `LinkSession`（`connect`・`reconnectPermitted`・`disconnect`・`readIdent`・`readFaults`・`readAdaptations`・`runRead`・`clearFaults`・`startLog`・`retuneLog`・`stopLog`・`startProbe`・`scanAll`・`readVehicleState`・`heartbeat`・`releaseWhileHidden`・`clearLog`・`clearError`・`lastError`・`lastNotSent`・`subscribe`・`getSnapshot`・`setTarget`・`setHandlers`・`dispose`）、`KEEP_ALIVE_INTERVAL_MS`、型 `LogRetuned`・`LinkSnapshot`・`LinkHandlers`・`LinkState`・`LinkMode`・`CommsLogLine`・`LiveSample`・`JobRunResult`・`AdaptationRead`・`RawFaultRead`・`LinkFailure`・`ParkedObservation` |
 | 送らなかった理由の形 | `lastNotSent()` が返す `NotSent`（`reason`：`link` 車の状態が測れなかった・`moving` 0 km/h でない・`voltage` 電圧・`engine` エンジンの状態が SGBD の求めと違う・`permission` 許可がその電文でない。`measured` にそのとき測った車速・電圧・回転数）、`NotSentError`・`notSentOf`。門（`mayRun`・`mayActuate`）の断り（練習がまだ・表で出さない等）はリンクに来る前の `{ allowed: false, reason }` で返る |
+| 線が切れた | `LinkSnapshot.lineLost`：モジュールが心拍に `LINE_LOST_BEATS` 回続けて答えない（何かが動いている間は、答えの無い操作も数える）。最初に答えた心拍で戻る。心拍はそのモジュールの keep-alive、無いモジュール（SMG II・DSC）は何かが動いている間（`setWatch`）だけ自分の IDENT。IDENT が別のモジュールと決めたアドレスには打たない。`LinkSnapshot.notSent` は `lastNotSent()` と同じ形を画面に渡す。`lastGasp(stopHexes)` はページが閉じるときに止めの電文を transport に直接書く（待たない・測らない。止めは常に送る） |
 | React（`/react`） | `useLinkSession({ target, onFailure?, onObserved?, onRead? })` → `{ session, snapshot }` |
 | 非公開データ | `configureEcuData`、`readEcuData`、`fetchEcuDataFromPage`、型 `EcuDataLoader`・`EcuDataResponse` |
 | カタログ | `loadEcuIndex`、`loadEcuCatalog`、`label`・`text`・`description`、`jobIndex`、`jobRiskOf`、`verdictFor`、`facetCounts`、`humanName` |
@@ -89,8 +90,8 @@ MSS54 の表と解読は `packages/ds2-mss54`。エンジンはこの二つに�
 | PROBE | `runProbe`、`probeBlocks`、`loadProbeModules`、`judge`、`stepsProblem`・`judgesProblem`・`hypothesesProblem` |
 | 記録の形 | `episodes`、`toSession`、`expired`、`SavedSession`・`FailureNote`・`excerpt`・`isSavedSession`、`ReadRecord`・`readRecordProblem`、`redactText`・`redactHex`・`redactResponse`・`redactDeep`、`logLine`、`datalogCsv` |
 | 点検報告 | `buildIntakeCheck`、`intakeCheckReport`（zod）、`INTAKE_CHECK_SCHEMA`、`decodeIdent`、`sha256Hex`、`intakeFileName`、`clusterVinShort` |
-| 練習の車 | `practiceCar`、`resetPracticeCar`、`PracticePort`、`practiceBus` |
-| 時計 | `appNow`、`learnServerTime`、`isAnchored`、`onAnchor`、`PLAUSIBLE_FROM` |
+| 練習の車 | `practiceCar`、`resetPracticeCar`、`smg2PhydBytes`、`PracticePort`、`practiceBus` |
+| 時計 | `appNow`、`monoNow`、`advanceClock`（テストだけ）、`learnServerTime`、`isAnchored`、`onAnchor`、`PLAUSIBLE_FROM` |
 
 ### 使う側の決まり（GREN BLUE SUITE も同じ）
 

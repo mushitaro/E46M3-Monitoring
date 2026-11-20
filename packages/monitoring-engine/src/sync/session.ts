@@ -18,6 +18,7 @@
  */
 import type { ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
 import type { CommsLogLine } from '../link/types.ts';
+import { savedScanFaults, type SavedScan } from '../faultState.ts';
 import { logLine } from '../logText.ts';
 
 /** How many comms-log lines are kept before (and including) a failure. */
@@ -50,7 +51,24 @@ export interface SavedSession {
     ident: { hex: string; length: number } | null;
     /** Null = not read in this session, which is not the same as zero faults. */
     faults: ErrorMemoryEntry[] | null;
-    datalog: { channels: string[]; samples: number; csv: string } | null;
+    /** When `faults` was read (the journal's time); absent on sessions saved before it was kept. */
+    faultsAt?: number;
+    /**
+     * Every module's fault read, as the last scan of the session read it (lib/faultState): the codes
+     * and how each read went, no bytes. Absent or null: no scan in the session.
+     */
+    scan?: SavedScan | null;
+    /**
+     * `part`: which ten-minute part of one recording this is (a recording is cut every ten minutes,
+     * journal.ts). `segments`: where its channels changed while it ran, and the rate each stretch got.
+     */
+    datalog: {
+        channels: string[];
+        samples: number;
+        csv: string;
+        part?: number;
+        segments?: Array<{ from: number; channels: number; blocks: number; rateHz: number | null; why: 'start' | 'channels' | 'part' }>;
+    } | null;
     failures: FailureNote[];
 }
 
@@ -64,10 +82,24 @@ export function needsSync(s: Pick<SavedSession, 'syncedAt' | 'updatedAt'>): bool
     return s.syncedAt === null || s.syncedAt < s.updatedAt;
 }
 
+/**
+ * How many faults a session holds. With a scan, every module's (SC02: the DSC's two and the engine's
+ * one); the engine's own read, when it came after the scan, stands for the engine's share. Without
+ * one, the module's read. Null: nothing was read.
+ */
+export function sessionFaultCount(s: Pick<SavedSession, 'faults' | 'faultsAt' | 'scan'>): number | null {
+    const scan = s.scan ?? null;
+    if (!scan) return s.faults === null ? null : s.faults.length;
+    const total = savedScanFaults(scan);
+    if (s.faults === null || (s.faultsAt ?? 0) <= scan.at) return total;
+    const dme = scan.modules.find((m) => m.module === 'mss54')?.faults?.length ?? 0;
+    return total - dme + s.faults.length;
+}
+
 /** What the list and the cloud row say about a session without opening it. */
 export function summarise(s: SavedSession) {
     return {
-        faultCount: s.faults === null ? null : s.faults.length,
+        faultCount: sessionFaultCount(s),
         sampleCount: s.datalog?.samples ?? 0,
         failureCount: s.failures.length,
     };

@@ -57,7 +57,7 @@ import {
     type ErrorMemoryEntry,
     type ErrorMemoryQuickTest,
 } from '@tsunagi/ds2-mss54';
-import { appNow } from '../clock.ts';
+import { appNow, monoNow } from '../clock.ts';
 import { kwpExchange, kwpFrameOf, parseDtcsByStatus, type KwpFrame } from '../kwpOnDs2.ts';
 import { finishFrame, initialShm } from '../sgbd/jobFrame.ts';
 import { runSgbdJobLive, type SgbdTables } from '../sgbd/vm.ts';
@@ -178,6 +178,27 @@ const hex2 = (n: number) => `0x${n.toString(16).padStart(2, '0')}`;
 const DME = Ds2Address.DME;
 /** MSS54 live block 19, "operating measurements": `v` and `v_asc` at offsets 0 and 2. */
 const SPEED_BLOCK = 19;
+/** The DME's own calculated gear (block 83, `gang`), read beside a recording that does not carry it. */
+const GEAR_BLOCK = 83;
+const GEAR_CHANNEL = channelId(GEAR_BLOCK, 'gang');
+/** How often that gear is read: once a second is enough to tell a moment's gear, and costs a twentieth of a run. */
+const GEAR_EVERY_S = 1;
+
+/** A recording's channels changed while it ran: from `time` (its seconds) on, these, at `blocks` round trips a sample. */
+export interface LogRetuned {
+    time: number;
+    channels: ChannelId[];
+    blocks: number;
+}
+
+/** The DME blocks a recording reads each sample: its channels', and the speed block when other modules' reads need the car's motion. */
+function logBlocks(channels: readonly ChannelId[], withModules: boolean) {
+    const planned = planBlockReads(channels).blocks;
+    const speedBlock = blockBySelection(SPEED_BLOCK);
+    const blocks = withModules && speedBlock && !planned.some((b) => b.selection === SPEED_BLOCK) ? [...planned, speedBlock] : planned;
+    return { blocks, wanted: new Set<ChannelId>(channels) };
+}
+
 /** Engine speed (`n`) and battery (`ub`): measured before a job that drives something. */
 const ENGINE_BLOCK = 3;
 /** Below this the engine is not taken as running (an idling S54 is ~900 rpm). */
@@ -240,6 +261,16 @@ export interface LinkSnapshot {
     scanProgress: { done: number; total: number } | null;
     vehicleState: VehicleState | null;
     motion: Motion;
+    /**
+     * The last error's shape when it was the link's own refusal just before sending (`lastNotSent`), so
+     * a screen can say it in the owner's words with the values measured then. Null with the error.
+     */
+    notSent: NotSent | null;
+    /**
+     * The module in session stopped answering its heartbeat (LINE_LOST_BEATS in a row): the cable or
+     * the K-line is gone. Cleared, with its error, by the first beat that answers again.
+     */
+    lineLost: boolean;
 }
 
 /** Who is told what, as it happens. Each may change at any time (`setHandlers`). */
@@ -273,7 +304,15 @@ const INITIAL: LinkSnapshot = {
     scanProgress: null,
     vehicleState: null,
     motion: 'unknown',
+    notSent: null,
+    lineLost: false,
 };
+
+/** Heartbeats (or operations) in a row without an answer before the line is taken as lost (beats 2 s apart). */
+export const LINE_LOST_BEATS = 2;
+
+/** The sentence a lost line leaves in `error` (the screen says it in the owner's words from `lineLost`). */
+export const LINE_LOST_MESSAGE = 'The line is lost: the module stopped answering its heartbeat (cable pulled or K-line down). Retrying.';
 
 export class LinkSession {
     private snap: LinkSnapshot = INITIAL;
@@ -313,6 +352,9 @@ export class LinkSession {
     private transport: Ds2ByteTransport | null = null;
     private logLines: CommsLogLine[] = [];
     private polling = false;
+    /** The loop running is a recording's (not PROBE's), and the channels it was asked to change to. */
+    private logging = false;
+    private logTune: { channels: ChannelId[]; reads: ModuleLogRead[]; ledger: (() => Ledger) | null } | null = null;
     private finished = true;
     /** An operation (`run`) is between its frames: the heartbeat keeps out of its gaps. */
     private busy = false;
@@ -336,6 +378,9 @@ export class LinkSession {
     /** The last identity read, for the failure report. */
     private identNow: { hex: string; length: number } | null = null;
     private motionTimer: ReturnType<typeof setTimeout> | null = null;
+    /** Heartbeats in a row that went unanswered, and whether one is in flight. */
+    private missedBeats = 0;
+    private beating = false;
 
     constructor(options: { target: ModuleProtocol } & LinkHandlers) {
         this.target = options.target;
@@ -403,7 +448,7 @@ export class LinkSession {
         const message = e instanceof Error ? e.message : String(e);
         this.lastErrorNow = message;
         this.lastNotSentNow = notSentOf(e);
-        this.update({ error: message, errorKind: isDs2Error(e) ? e.kind : 'unclassified' });
+        this.update({ error: message, errorKind: isDs2Error(e) ? e.kind : 'unclassified', notSent: this.lastNotSentNow });
         this.append('error', message);
     }
 
@@ -411,7 +456,7 @@ export class LinkSession {
     readonly clearError = (): void => {
         this.lastErrorNow = null;
         this.lastNotSentNow = null;
-        this.update({ error: null, errorKind: null });
+        this.update({ error: null, errorKind: null, notSent: null });
     };
 
     /**
@@ -759,7 +804,8 @@ export class LinkSession {
             this.transport = selected.transport;
             this.transportKindNow = selected.kind;
             this.modeNow = nextMode;
-            this.update({ mode: nextMode, state: 'connected' });
+            this.missedBeats = 0;
+            this.update({ mode: nextMode, state: 'connected', lineLost: false });
             this.append(
                 'info',
                 nextMode === 'practice'
@@ -810,7 +856,8 @@ export class LinkSession {
         // link is gone would greet the next connection with the wrong answer if
         // anything ever read it before connect() writes it.
         this.modeNow = 'vehicle';
-        this.update({ state: 'disconnected' });
+        this.missedBeats = 0;
+        this.update({ state: 'disconnected', lineLost: false });
         if (link) {
             try {
                 await link.disconnect();
@@ -829,14 +876,22 @@ export class LinkSession {
         this.update({ state: 'busy' });
         this.busy = true;
         try {
+            // A heartbeat in flight holds the gate for one exchange (longer on a dead line): an
+            // operation — above all a STOP — waits it out rather than failing on GATE_HELD.
+            for (let waited = 0; link.isBusy && waited < 3000; waited += 20) await new Promise((r) => setTimeout(r, 20));
             const result = await fn(link);
             this.update({ state: 'connected' });
+            // The line answered this operation.
+            this.lineAnswered();
             return result;
         } catch (e) {
             this.update({ state: 'connected' });
             this.append('warn', `${what} failed`);
             this.failWith(e);
             this.notifyFailure(what, e);
+            // An operation the line did not answer counts as a missed beat: the beats wait while it runs,
+            // and a stop on a dead line can hold the link for seconds (IJ04). One that answered resets it.
+            if (isDs2Error(e) && (e.code === 'READ_TIMEOUT' || e.kind === 'electrical')) this.lineMissed();
             return null;
         } finally {
             this.busy = false;
@@ -1308,6 +1363,12 @@ export class LinkSession {
      * round-trip time — and one sample costs one exchange PER BLOCK, which is
      * why the caller is shown the block count rather than being asked for a
      * cadence it cannot honour.
+     *
+     * The channels can change while it runs (`retuneLog`): the run goes on, the next sample is
+     * taken with the new blocks, and `onRetune` says when — a segment of the one recording, not a
+     * second recording. The DME's own calculated gear (`83:gang`) is read beside it once a second
+     * when it is not among the channels, so a moment of the run can be told by its gear; that read
+     * is its own exchange, not one of the sample's blocks.
      */
     readonly startLog = (
         channels: readonly ChannelId[],
@@ -1315,10 +1376,11 @@ export class LinkSession {
         onEnd: (failure: string | null) => void,
         /**
          * Other modules' read values the run records too (sgbd/logChannels), and the ledger
-         * their gate reads. Each goes once per sample as the gate lets it — parked unless the
-         * owner cleared it for a moving car — measured on the DME's speed read in that sample.
+         * their gate reads. Each goes once per sample as the gate lets it (the owner's table:
+         * status reads go on a moving car too) — measured on the DME's speed read in that sample.
          */
         modules?: { reads: readonly ModuleLogRead[]; ledger: () => Ledger },
+        options?: { onRetune?(at: LogRetuned): void },
     ): void => {
         const link = this.link;
         if (!link || this.polling) return;
@@ -1331,19 +1393,20 @@ export class LinkSession {
             this.failWith(e);
             return;
         }
-        const moduleReads = [...(modules?.reads ?? [])];
-        const planned = planBlockReads(channels).blocks;
-        // A module read goes on the speed measured in the same sample: block 19 is read with it.
-        const speedBlock = blockBySelection(SPEED_BLOCK);
-        const blocks = moduleReads.length > 0 && speedBlock && !planned.some((b) => b.selection === SPEED_BLOCK) ? [...planned, speedBlock] : planned;
-        if (blocks.length === 0) return;
-        const wanted = new Set<ChannelId>(channels);
+        let ledgerOf = modules?.ledger ?? null;
+        let moduleReads = [...(modules?.reads ?? [])];
+        let tuned = logBlocks(channels, moduleReads.length > 0);
+        if (tuned.blocks.length === 0) return;
+        const gearBlock = blockBySelection(GEAR_BLOCK);
 
         this.polling = true;
+        this.logTune = null;
+        this.logging = true;
         this.finished = false;
         this.update({ state: 'logging' });
-        const t0 = performance.now();
-        this.append('info', `Recording ${channels.length} channel(s) across ${blocks.length} block(s)${moduleReads.length ? ` and ${moduleReads.length} module read(s)` : ''}.`);
+        const t0 = monoNow();
+        const elapsed = () => (monoNow() - t0) / 1000;
+        this.append('info', `Recording ${channels.length} channel(s) across ${tuned.blocks.length} block(s)${moduleReads.length ? ` and ${moduleReads.length} module read(s)` : ''}.`);
 
         // Arm the low latency timer for the duration of the run.
         //
@@ -1360,51 +1423,75 @@ export class LinkSession {
         const latency = this.transport ? latencyTimerOf(this.transport) : null;
         void latency?.('log');
 
+        /** One live block, the heartbeat's hold on the gate waited out; null when every try lost it. */
+        const readBlock = async (selection: number): Promise<Ds2Frame | null> => {
+            const req = liveBlockRequest(selection);
+            // The heartbeat can hold the gate when a poll comes
+            // round. That is contention, not a link fault, and
+            // it must not end a run — exchangeWithRetry takes
+            // the gate once around its whole retry loop, so the
+            // only losing window is acquisition. Wait a tick and
+            // ask again rather than tearing the run down.
+            let frame: Ds2Frame | null = null;
+            for (let attempt = 0; attempt < 3 && frame === null; attempt++) {
+                try {
+                    frame = await to.exchangeWithRetry(req.control, req.payload, {
+                        attempts: 2,
+                    });
+                } catch (e) {
+                    if (!isDs2Error(e) || e.code !== 'GATE_HELD') throw e;
+                    await new Promise((r) => setTimeout(r, 20));
+                }
+            }
+            if (frame) {
+                this.noteRead(to, this.target.moduleId, `LIVE_${selection}`, req.control, req.payload, { frame });
+                link.assertPositive(frame, `Live block ${selection}`);
+            }
+            return frame;
+        };
+        /** Each other module's read goes on `link.to` directly, under the link's send guard: only to a module that is the one at its address. */
+        const clearReads = async (reads: ModuleLogRead[]) => {
+            for (const read of [...reads]) {
+                try {
+                    await this.clearFor(read.address, read.module);
+                } catch (e) {
+                    reads.splice(reads.indexOf(read), 1);
+                    this.append('info', `${read.module} ${read.job.id}: not recorded (${e instanceof Error ? e.message : String(e)}).`);
+                }
+            }
+        };
+
         void (async () => {
             let failure: string | null = null;
+            let gearAt = -Infinity;
             try {
                 // The blocks are the MSS54's: only to a DME that has said it is one.
                 await this.clearFor(to.address, this.target.moduleId);
-                // Each other module's read goes on `link.to` directly, under the link's send guard: only
-                // to a module that is the one at its address, identified first where its address has a rule.
-                for (const read of [...moduleReads]) {
-                    try {
-                        await this.clearFor(read.address, read.module);
-                    } catch (e) {
-                        moduleReads.splice(moduleReads.indexOf(read), 1);
-                        this.append('info', `${read.module} ${read.job.id}: not recorded (${e instanceof Error ? e.message : String(e)}).`);
-                    }
-                }
+                await clearReads(moduleReads);
                 while (this.polling && this.link) {
+                    // New channels, asked for while the run goes on: from this sample on.
+                    const tune = this.logTune;
+                    if (tune) {
+                        this.logTune = null;
+                        const reads = [...tune.reads];
+                        if (tune.ledger) ledgerOf = tune.ledger;
+                        await clearReads(reads);
+                        moduleReads = reads;
+                        tuned = logBlocks(tune.channels, moduleReads.length > 0);
+                        this.append('info', `Recording now ${tune.channels.length} channel(s) across ${tuned.blocks.length} block(s)${moduleReads.length ? ` and ${moduleReads.length} module read(s)` : ''}; the run goes on.`);
+                        options?.onRetune?.({ time: elapsed(), channels: [...tune.channels], blocks: tuned.blocks.length });
+                    }
+                    const { blocks, wanted } = tuned;
                     const values: Partial<Record<ChannelId, number | null>> = {};
                     let speed: LiveValues | null = null;
                     let incomplete = false;
                     for (const block of blocks) {
-                        const req = liveBlockRequest(block.selection);
-                        // The heartbeat can hold the gate when a poll comes
-                        // round. That is contention, not a link fault, and
-                        // it must not end a run — exchangeWithRetry takes
-                        // the gate once around its whole retry loop, so the
-                        // only losing window is acquisition. Wait a tick and
-                        // ask again rather than tearing the run down.
-                        let frame: Ds2Frame | null = null;
-                        for (let attempt = 0; attempt < 3 && frame === null; attempt++) {
-                            try {
-                                frame = await to.exchangeWithRetry(req.control, req.payload, {
-                                    attempts: 2,
-                                });
-                            } catch (e) {
-                                if (!isDs2Error(e) || e.code !== 'GATE_HELD') throw e;
-                                await new Promise((r) => setTimeout(r, 20));
-                            }
-                        }
+                        const frame = await readBlock(block.selection);
                         // Every retry lost the gate. Skip the whole sample
                         // rather than emitting one with holes in it — a
                         // partial row is worse than a missing one, because
                         // it looks like a reading.
                         if (frame === null) { incomplete = true; break; }
-                        this.noteRead(to, this.target.moduleId, `LIVE_${block.selection}`, req.control, req.payload, { frame });
-                        link.assertPositive(frame, `Live block ${block.selection}`);
                         // Keyed by (selection, symbol). `block.selection` was
                         // already in hand here; the old line threw it away
                         // and used `v.symbol`, which is how one column ended
@@ -1427,13 +1514,23 @@ export class LinkSession {
                             }
                         }
                     }
+                    // The gear, once a second, when the channels do not carry it: measured by the DME
+                    // in this sample, never carried over from an earlier one.
+                    if (!incomplete && gearBlock && !wanted.has(GEAR_CHANNEL) && elapsed() - gearAt >= GEAR_EVERY_S) {
+                        const frame = await readBlock(GEAR_BLOCK);
+                        if (frame) {
+                            gearAt = elapsed();
+                            const g = decodeLiveBlock(gearBlock, frame).find((v) => v.symbol === 'gang');
+                            if (g) values[GEAR_CHANNEL] = g.value;
+                        }
+                    }
                     // Other modules' reads: on the car as measured in this sample, through the gate.
-                    if (!incomplete && moduleReads.length > 0 && modules) {
+                    if (!incomplete && moduleReads.length > 0 && ledgerOf) {
                         const now = appNow();
                         const motion = speed ? motionOf(vehicleStateFrom(speed, now), now) : 'unknown';
                         for (const read of [...moduleReads]) {
                             for (const r of read.wanted) values[`${read.module}:${read.job.id}:${r}` as ChannelId] = null;
-                            const gate = moduleLogGate(read, modules.ledger(), motion);
+                            const gate = moduleLogGate(read, ledgerOf(), motion);
                             if ('refused' in gate) {
                                 moduleReads.splice(moduleReads.indexOf(read), 1);
                                 this.append('info', `${read.module} ${read.job.id}: not recorded (${gate.refused}).`);
@@ -1463,7 +1560,7 @@ export class LinkSession {
                             Object.assign(values, moduleLogValues(read, bytes, frame));
                         }
                     }
-                    if (!incomplete) onSample({ time: (performance.now() - t0) / 1000, values });
+                    if (!incomplete) onSample({ time: elapsed(), values });
                     await yieldToEventLoop();
                 }
             } catch (e) {
@@ -1474,6 +1571,8 @@ export class LinkSession {
                 // Single exit point — a double-fire is impossible, and a
                 // failed run cannot quietly return the link to idle.
                 this.polling = false;
+                this.logging = false;
+                this.logTune = null;
                 this.update({ state: 'connected' });
                 // Restored HERE and nowhere else, for the reason the comment above gives: a
                 // run that ended by failing must not leave the chip waking four times a
@@ -1487,6 +1586,21 @@ export class LinkSession {
                 }
             }
         })();
+    };
+
+    /**
+     * New channels for the recording that is running: the run goes on, and from its next sample it
+     * reads these (and these other modules' reads) instead. False when no recording is running, or
+     * when the channels would leave the DME nothing to read.
+     */
+    readonly retuneLog = (
+        channels: readonly ChannelId[],
+        modules?: { reads: readonly ModuleLogRead[]; ledger: () => Ledger },
+    ): boolean => {
+        if (!this.polling || !this.logging) return false;
+        if (logBlocks(channels, (modules?.reads.length ?? 0) > 0).blocks.length === 0) return false;
+        this.logTune = { channels: [...channels], reads: [...(modules?.reads ?? [])], ledger: modules?.ledger ?? null };
+        return true;
     };
 
     readonly stopLog = (): void => {
@@ -1686,6 +1800,8 @@ export class LinkSession {
                     }
                 },
                 link,
+                // The DSC MK60's fault read, as the scan and its own screen send it.
+                kwpExchange: (moduleId, address, f) => this.kwpRead(link, address, moduleId, 'FS_LESEN', f),
                 now: () => appNow(),
                 pause: yieldToEventLoop,
                 stopped: () => !this.polling || this.link !== link,
@@ -1731,12 +1847,85 @@ export class LinkSession {
      * 2026-11-09 ended "link-lost" after about three minutes on a link that was still up.
      */
     readonly heartbeat = (): void => {
-        if (this.busy || this.polling) return;
+        if (this.busy || this.polling || this.beating) return;
         const link = this.link;
         const at = this.sessionAddress;
         const target = this.target;
-        if (!link || at === null || target.address !== at || !target.keepAlive) return;
-        void link.to(at).keepAlive();
+        if (!link || at === null || target.address !== at) return;
+        // Not to an address its IDENT said is another module (SC10 F01: SMG II's 0x9E reached a GS20).
+        const fitted = this.fitmentNow.get(at);
+        if (fitted && (fitted.moduleId || fitted.sgbd) && fitted.moduleId !== target.moduleId) return;
+        // The module's own keep-alive where it has one. A module without (SMG II, DSC) is beaten only
+        // while something is on there (`watch`), with its own IDENT — the read its SGBD sends and the
+        // app sends on a moving car too — because that is when a pulled cable has to be noticed.
+        // While the line is lost the module is asked with its IDENT too, so its return is noticed.
+        const frame = target.keepAlive ?? (this.watching || this.snap.lineLost ? target.ident : null);
+        if (!frame || link.isBusy) return;
+        // Any answer, a refusal included, is the line up; silence is a miss; a held gate or a frame the
+        // send guard keeps back is neither (`null`).
+        this.beating = true;
+        void link
+            .to(at)
+            .exchange(frame.control, frame.payload)
+            .then(
+                () => true,
+                (e: unknown) => (isDs2Error(e) && (e.code === 'GATE_HELD' || e.code === 'NOT_SENT') ? null : false),
+            )
+            .then((answered) => {
+                if (this.link !== link || answered === null) return;
+                if (answered) this.lineAnswered();
+                else if (!this.busy && !this.polling) this.lineMissed();
+            })
+            .finally(() => {
+                this.beating = false;
+            });
+    };
+
+    /** A beat (or an operation while something is on) went unanswered: enough in a row is the line lost. */
+    private lineMissed(): void {
+        this.missedBeats++;
+        if (this.missedBeats < LINE_LOST_BEATS || this.snap.lineLost) return;
+        this.append('error', LINE_LOST_MESSAGE);
+        this.lastErrorNow = LINE_LOST_MESSAGE;
+        this.lastNotSentNow = null;
+        this.update({ lineLost: true, error: LINE_LOST_MESSAGE, errorKind: null, notSent: null });
+    }
+
+    /** The module answered: the line is up (and back, if it was lost). */
+    private lineAnswered(): void {
+        this.missedBeats = 0;
+        if (!this.snap.lineLost) return;
+        this.append('info', 'The module answers its heartbeat again: the line is back.');
+        if (this.lastErrorNow === LINE_LOST_MESSAGE) this.clearError();
+        this.update({ lineLost: false });
+    }
+
+    /** Something is on at the module in session (the page's arming): beat it even without a keep-alive. */
+    private watching = false;
+    readonly setWatch = (on: boolean): void => {
+        this.watching = on;
+    };
+
+    /**
+     * The stops of whatever is on, written straight to the open transport, as the page goes away
+     * (pagehide): no gate, no measurement, no answer awaited — there is no later in which to await one.
+     * Only frames the caller already holds as the release of an output it started (lib/arming), and
+     * only to the module in session: a stop is never held back (the owner's rule: always stoppable).
+     * Returns how many were handed to the transport.
+     */
+    readonly lastGasp = (stopHexes: readonly string[]): number => {
+        const transport = this.transport;
+        const at = this.sessionAddress;
+        if (!transport || at === null) return 0;
+        let n = 0;
+        for (const hex of stopHexes) {
+            const bytes = telegramBytes(hex);
+            if (!bytes || bytes[0] !== at) continue;
+            this.append('tx', `Stop at page leave: ${hex}`);
+            void transport.write(bytes).catch(() => {});
+            n++;
+        }
+        return n;
     };
 
     /**

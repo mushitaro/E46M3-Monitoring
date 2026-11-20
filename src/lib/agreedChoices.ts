@@ -13,7 +13,7 @@
  *
  * Pure, so vitest (node) holds it.
  */
-import type { AgreedFrame, CatalogJob, JobOperation } from '@tsunagi/monitoring-engine';
+import { agreedCases, operationFor, type AgreedFrame, type CatalogJob, type JobOperation } from '@tsunagi/monitoring-engine';
 
 export interface AgreedChoice {
     /** The frame to send to start (or to run once). */
@@ -59,4 +59,63 @@ export function agreedChoices(
         out.push({ start: s, stop, label: s.args.join(' · '), values });
     }
     return out;
+}
+
+/**
+ * The sets a job may run with, its stop's taken from wherever the stop lives: the same job (SMG II's
+ * STEUERN_STELLGLIED, AKTIV then INAKTIV) or another job of the module (a STEUERN_…_EIN and its _AUS).
+ * The screen, the assistant and the coverage count all ask this, so none of them can look for a stop
+ * where another does not (2026-11-20: the screen and the assistant looked in the start's own sets).
+ */
+export function choicesOf(job: CatalogJob, jobs: readonly CatalogJob[], casesOf: (jobId: string) => readonly AgreedFrame[]): AgreedChoice[] {
+    const op = operationFor(job);
+    const hold = op.kind === 'hold' && !!op.stopJob;
+    const stopJob = hold ? jobs.find((j) => j.id === op.stopJob) : undefined;
+    const starts = casesOf(job.id);
+    const stops = hold && stopJob ? (stopJob.id === job.id ? starts : casesOf(stopJob.id)) : [];
+    return agreedChoices(job, op, starts, stops, stopJob?.args.map((a) => a.name));
+}
+
+/** `choicesOf`, with each job's agreed sets loaded for this module. */
+export async function loadChoices(moduleId: string, address: number, job: CatalogJob, jobs: readonly CatalogJob[]): Promise<AgreedChoice[]> {
+    const op = operationFor(job);
+    const ids = [...new Set([job.id, ...(op.kind === 'hold' && op.stopJob ? [op.stopJob] : [])])];
+    const loaded = new Map(await Promise.all(ids.map(async (id) => [id, await agreedCases(moduleId, address, id)] as const)));
+    return choicesOf(job, jobs, (id) => loaded.get(id) ?? []);
+}
+
+export type AssistantPick =
+    | { ok: true; runPhase: 'start' | 'pulse'; choice?: AgreedChoice }
+    | { ok: false; reason: string; sets?: string[][] };
+
+/**
+ * What the assistant's start of a job comes to, before any gate: the phase it runs in and the set of
+ * values, or why not and the sets to choose from. A job that stays on until its stop always starts
+ * with the stop armed and the time-out running, whatever phase was asked (car, 2026-11-19).
+ */
+export function assistantPick(
+    job: CatalogJob,
+    choices: readonly AgreedChoice[],
+    phase: 'start' | 'pulse',
+    values: readonly string[] | undefined,
+    openToAssistant: (args: readonly string[]) => boolean,
+): AssistantPick {
+    const op = operationFor(job);
+    const runPhase = op.kind === 'hold' && op.stopJob ? 'start' : phase;
+    if (job.args.length === 0) return { ok: true, runPhase };
+    const agreed = choices.filter((c) => runPhase === 'start' || !c.stop);
+    if (!agreed.length) return { ok: false, reason: `No set of values for ${job.id} has been compared with EdiabasLib: it is not run.` };
+    const sets = agreed.filter((c) => openToAssistant(c.start.args));
+    if (!sets.length) return { ok: false, reason: `The owner's table keeps every set of ${job.id} for a person on the screen. monitoring_stage puts it there for them to press.` };
+    const choice = values ? sets.find((c) => c.start.args.length === values.length && c.start.args.every((x, i) => x === values[i])) : undefined;
+    if (!choice) {
+        return {
+            ok: false,
+            reason: values
+                ? `${job.id}(${values.join(', ')}) is not one of the sets compared with EdiabasLib. Choose one of these.`
+                : `${job.id} takes values (${job.args.map((a) => a.name).join(', ')}). Read back the set meant, wait for the OK, and pass it as values.`,
+            sets: sets.map((c) => [...c.start.args]),
+        };
+    }
+    return { ok: true, runPhase, choice };
 }

@@ -35,7 +35,7 @@ export const en: Localised = {
 
     channels: 'Channels',
     channels_other: 'Other modules’ values',
-    channels_otherNote: "The chosen module's read goes once per sample and its own SGBD code reads the answer. Parked only — empty while the car moves, unless the ledger clears that read for a moving car.",
+    channels_otherNote: "The chosen module's read goes once per sample and its own SGBD code reads the answer. Status reads go while the car moves too, as the owner's table says; a read that goes only parked is empty while it moves.",
     channels_module: 'Module',
     channels_pick: 'Choose what to record',
     datalog_run: 'Recording',
@@ -51,6 +51,26 @@ export const en: Localised = {
     faultRef_search: 'Search (code, translation, German original)',
     channels_selected: (n: number, blocks: number) =>
         `${n} channel${n === 1 ? '' : 's'} across ${blocks} block${blocks === 1 ? '' : 's'} = ${blocks} round trip${blocks === 1 ? '' : 's'} per sample`,
+    datalog_elapsed: 'Elapsed',
+    datalog_gearNote: 'The gear (the DME\'s calculated gear, block 83) is read beside it once a second.',
+    datalog_otherEmpty: 'Empty for now (a value read only when parked, or the module is not answering).',
+    datalog_segments: 'Segments',
+    datalog_segmentWhy: { start: 'Start', channels: 'Channels changed', part: 'Ten-minute cut' },
+    datalog_part: (k) => `part ${k}`,
+    datalog_segmentLine: (n, blocks, hz) => `${n} ch · ${blocks} block${blocks === 1 ? '' : 's'} · ${hz === null ? '—' : hz.toFixed(1)} Hz`,
+    datalog_plan: 'Plan',
+    datalog_planCaught: (n) => `Caught (${n})`,
+    datalog_planWaiting: 'Waiting',
+    datalog_planRecording: 'Recording',
+    datalog_planProbe: 'Read by PROBE',
+    datalog_compare: 'Compare (x: engine speed)',
+    datalog_compareRun: (k) => `Run ${k}`,
+    datalog_window: (s) => `Last ${s} s`,
+    datalog_cursorLine: (at, gear) => `Cursor ${at}${gear === null ? '' : ` · gear ${gear}`}`,
+    datalog_markLabel: (why) => `Segment (${why})`,
+    datalog_cursorLabel: 'Cursor (the moment the assistant read)',
+    datalog_hubLine: (elapsed, rpm, kmh, samples) => `REC ${elapsed} · ${rpm} rpm · ${kmh} km/h · ${samples} samples`,
+    sessions_segments: (lines) => `Segments ${lines}`,
     rate: 'Measured rate',
     samples: 'Samples',
 
@@ -129,6 +149,9 @@ export const en: Localised = {
     wiz_abortOnly: 'While it runs, ABORT is the only way out. The dialog will not close while the gearbox is working.',
     wiz_result_ok: 'Finished normally',
     wiz_result_bad: 'Did not finish properly',
+    wiz_result_refused: (status) => `SMG II refused the request (${status}). The procedure was stopped.`,
+    wiz_result_failed: 'It stopped before finishing, for the reason below.',
+    wiz_owner: 'What you do: keep the car as the preconditions say, and stay with it until it ends. ABORT if anything is wrong.',
     wiz_result_aborted: 'Aborted',
     wiz_stopSent: 'TESTPRG_STOP sent',
     wiz_offsetsInferred:
@@ -146,6 +169,36 @@ export const en: Localised = {
     viz_response: 'What comes back',
     viz_responseNone: 'The SGBD declares no results for this job.',
     actuator_none: 'Nothing is engaged',
+    actuator_left: (s) => `${s} s left`,
+    actuation_running: (part, left) => (left === null ? `${part} is on.` : `${part} is on (stops by itself in ${left} s).`),
+    actuation_stopped: (part) => `${part}: stopped.`,
+    actuation_timedOut: (part, s) => `${part}: stopped by its time-out (${s} s).`,
+    actuation_switched: (part) => `${part} was on: stopped before switching.`,
+    actuation_lineBack: (part) => `The line is back. ${part}: stopped.`,
+    actuation_sentOnce: (part) => `${part}: sent once, answered OK (the module ends it itself, so there is no STOP).`,
+    actuation_unanswered: ' (the stop was sent with no answer; the ECU ends it by its own time-out too)',
+    actuation_leftRunning: (part, s) => `Last time the page closed with ${part} on. Its stop was sent as it closed (the ECU ends it after ${s} s regardless).`,
+    link_lost: 'The connection is lost. Reconnecting (what was on stops by the ECU\'s own time-out).',
+    notSent_moving: (kmh) => `Not run: the car is moving (${kmh} km/h). It runs once the car has stopped.`,
+    notSent_voltage: (v, min) => `Battery ${v} V. It runs at ${min} V or more (engine running or a charger on).`,
+    notSent_voltageUnread: (min) => `Not run: the battery could not be read. It runs at ${min} V or more.`,
+    notSent_engineOff: (rpm) => `The engine is running (${rpm} rpm). Stop the engine, then run it.`,
+    notSent_engineOn: (rpm) => `The engine is stopped (${rpm} rpm). Start the engine, then run it.`,
+    notSent_link: 'Not run: the speed and battery could not be measured. Check the connection.',
+    notSent_permission: 'Not sent: not the frame that was allowed.',
+    variant_identOnly: (hex) => `Which module is at ${hex} on this car is not known (?). Nothing but its IDENT is sent.`,
+    variant_notCarried: (hex, sgbd) => `On this car ${hex} is ${sgbd}, whose SGBD this app does not carry yet: only its IDENT is sent.`,
+    variant_otherHere: (hex, sgbd) => `On this car ${hex} is ${sgbd}: this module's frames are not sent there.`,
+    variant_ask: (hex, byYear) =>
+        byYear
+            ? `${hex} is one of two modules, by the car's year. Which is this car's? Nothing is driven here until you say (reads go on as before).`
+            : `${hex}'s IDENT does not tell which model this is. Which is this car's? Nothing is driven here until you say (reads go on as before).`,
+    variant_ruledOut: (hex, other) => `On this car ${hex} is ${other}: this module's parts are not driven.`,
+    gate_what: 'What moves',
+    gate_needs: 'Preconditions (confirm each)',
+    gate_stopsAfter: (s) => `Stops by itself after ${s} s. STOP ends it at any time.`,
+    gate_once: 'Sent once; the ECU ends it itself.',
+    gate_onPress: (start) => (start ? 'Pressing measures speed, battery and engine, then sends.' : 'Pressing measures speed, battery and engine, then sends it once.'),
     credits_title: 'What this is built on',
     credits_lede:
         'This tool stands on work other people did first. Their names, and what each of them gave it.',
@@ -186,7 +239,7 @@ export const en: Localised = {
     gate_practiceOnly:
         'Blocked: not verified on a vehicle. Each job is unlocked individually once a car has confirmed it and the ledger records the evidence.',
     args_required: (names: string) => `Args: ${names}`,
-    precond_voltage_ok: 'Voltage',
+    precond_voltage_ok: 'Battery 12 V or more',
     precond_stationary: 'Stationary',
     precond_engine_off: 'Engine off',
     module: 'Module',
@@ -198,6 +251,8 @@ export const en: Localised = {
     info_hide: 'Hide the explanation',
     actuator_runnable: (n, total) => `${n} of ${total} can be sent`,
     actuator_onlyRunnable: 'Only what can run',
+    actuator_noneInSgbd: "This module's own SGBD has no job that drives a part (actuator test). What it reads is on DIAGNOSIS and SERVICE.",
+    actuator_noneOwnerOff: (n) => `This module's ${n} job${n === 1 ? '' : 's'} that drive a part are all ones the owner's table keeps off (writes, deploying a safety device and the like). This app does not send them.`,
     actuator_values: 'Choose values',
     actuator_armed: 'Engaged',
     gate_plan: 'What will be sent',
@@ -233,6 +288,7 @@ export const en: Localised = {
         "One address after another, each is sent its own SGBD's fault read. For the engine (0x12) and the gearbox (0x32) the common IDENT is asked first, and its answer chooses the variant the way EDIABAS's group file does: the fault read goes only when it chose an SGBD this app carries. On a car whose engine answered as the MSS54 (an M3), the other addresses are read as the M3's equipment, each sent its own IDENT first. On any other car an address whose variant is not known stays '?' and is sent nothing but its IDENT. Where several SGBDs use one address, only the frames all of them carry are sent. The engine (MSS54) is decoded by its own decoder; most other modules' answers are read by their own SGBD's fault-read code, the same reading INPA gives, and the location texts are the SGBD's own (German). An answer that cannot be read that way is shown as the bytes that came back. No answer means the equipment is not fitted, is asleep, or is not on this line.",
     scan_outcome: {
         faults: (n) => `${n} fault${n === 1 ? '' : 's'}`,
+        partial: (n) => (n > 0 ? `${n} fault${n === 1 ? '' : 's'}, read part way` : 'Read part way'),
         clean: 'No faults',
         undecoded: 'Undecoded',
         faultsUnverified: (n) => `${n} fault${n === 1 ? '' : 's'} (unconfirmed on a car)`,
@@ -241,9 +297,15 @@ export const en: Localised = {
         silent: 'No answer',
         rejected: 'Refused',
         refused: 'Not sent',
+        noFaultRead: 'No fault read in its SGBD',
         skipped: 'Not reached',
     },
     scan_shared: 'Which one is fitted is chosen on MODULE, then opened.',
+    scan_summary: (m, f) => `${m} module${m === 1 ? '' : 's'}, ${f} fault${f === 1 ? '' : 's'}`,
+    scan_undecided: (names, byYear) => `? (${names.join(' or ')}${byYear ? '; it depends on the model year, which its IDENT does not tell' : '; its IDENT does not tell which'})`,
+    scan_partial: 'Read only part of the way: what was read is shown, and the list may be short.',
+    scan_reason: (r) => (/^answered \d+ of \d+ frames/.test(r) ? null : undefined),
+    start_hint: 'Not connected. To practise, tick PRACTICE and press CONNECT; on a car, plug in the cable and press CONNECT.',
     scan_sgbdRead: (sgbd, done) => (done ? `Read by ${sgbd.toUpperCase()}'s own fault-read code; texts as the SGBD holds them.` : `${sgbd.toUpperCase()}'s own fault-read code did not read this answer to its end; the bytes are the answer.`),
     scan_variant: (sgbd, carried) =>
         sgbd === null
@@ -261,6 +323,21 @@ export const en: Localised = {
     probe_title:
         'Runs the plan of the investigation you handed over, on this link. It sends reads only, and a read that may go only parked goes after the speed has been read.',
     probe_line: (v, settled, total, samples) => `PROBE v${v} · ${settled}/${total} · ${samples} samples`,
+    probe_reading: (m) => `reading: ${m}`,
+    board_readings: 'Readings',
+    adjust_title: 'Adjustments (zero points)',
+    adjust_pre: (list) => `Before: ${list}`,
+    adjust_ok: 'Runnable',
+    adjust_notHere: 'Not here',
+    adjust_runnable: 'Runs from SERVICE, after its confirmation.',
+    adjust_otherWrite: (m, a, j) =>
+        `This job's own code also sends to ${m} (${a}), a frame ${m}'s own SGBD calls "${j}": a write. Writes are not sent from this app (the owner's table), so it cannot run here. Use a dealer tool (INPA or similar).`,
+    adjust_otherModule: (m, a) =>
+        `This job's own code also sends to ${m} (${a}). A module is sent only its own SGBD's frames, so it cannot run here. Use a dealer tool (INPA or similar).`,
+    adjust_sendsNothing: "BMW's job runner (EdiabasLib) sends nothing for it past the identification: what it sends is not known, so nothing is sent.",
+    adjust_notAgreed: "This app and BMW's job runner (EdiabasLib) are not known to build the same frames for it, so nothing is sent.",
+    sure: { high: 'Sure', mid: 'Possible', low: 'Unconfirmed' },
+    probe_refused: (n) => `${n} not done`,
     probe_resuming: (v, resumes) => `PROBE v${v} · line dropped · resuming (${resumes + 1}/3)`,
     error_electrical_steps: [
         'Compare failure rates with the engine off vs running. If it only misbehaves while running, it is ignition/motor EMI on an unshielded cable — not the software.',
@@ -412,6 +489,9 @@ export const en: Localised = {
     clearFaults_title: 'Clear fault memory',
     clearFaults_consequence:
         'The fault codes and their freeze frames — the recorded operating conditions at the moment each fault occurred — are erased from the ECU. This cannot be undone. Faults will re-log if their cause is still present, but the freeze frames will not come back. Read and record them first.',
+    clearFaults_named: (m, v) =>
+        `${m}'s fault codes, and the freeze frames that go with them (the conditions recorded when each was stored), are erased from the ECU. Other modules' faults stay. This cannot be undone, and erased freeze frames do not come back: save first. Not sent while moving: the press measures the speed again and clears only at 0 km/h${v !== null && v > 0 ? ` (last measured ${v} km/h)` : ''}.`,
+    clearFaults_moving: 'Not while moving. Press it once stopped.',
     clearFaults_confirm: 'Clear',
     op_blocked_practice: 'The PRACTICE ECU does not implement this job',
     op_why: {
@@ -682,6 +762,7 @@ export const en: Localised = {
     sessions_unkept_info:
         'Every read is recorded on this device as it happens and listed in episodes, such as from connecting to disconnecting. Only what SAVE keeps is sent by SYNC. An episode not kept leaves this device after 7 days. JOIN joins one to the episode before it.',
     sessions_emptyUnkept: 'No episodes waiting to be kept.',
+    sessions_timeUnsure: 'time not yet certain (recorded before the device clock was set)',
     sessions_undated: (days) => (days === null ? 'Date uncertain (not deleted yet)' : `Date uncertain · ${Math.max(0, days)} days left`),
     sessions_expiresIn: (days) => (days <= 0 ? 'Going soon' : `${days} days left`),
     sessions_inAccount: 'In your account',
@@ -696,7 +777,14 @@ export const en: Localised = {
     sessions_saveFailed: "Could not save on this device. Check the browser's site storage.",
     sessions_sent: (n) => `Sent ${n} session${n === 1 ? '' : 's'} to your account.`,
     sessions_nothingToSend: 'Every session has been sent already.',
+    sessions_sendWhenOnline: 'No network. It will send by itself, once, when the network is back.',
     sessions_sendFailed: 'Could not send. It is saved on this device — SYNC again where there is signal.',
+    sessions_sendFailedAt: (status) =>
+        status === 0
+            ? 'Could not send: no answer from where it goes. It is saved on this device — SYNC again where there is signal.'
+            : status === 404
+              ? 'Could not send: this build has nowhere to send to (HTTP 404). It is saved on this device.'
+              : `Could not send: it was not taken (HTTP ${status}). It is saved on this device.`,
     sessions_sendExpired: 'Could not send: your sign-in has expired. It is saved on this device.',
     sessions_tooLarge: (label) => `${label} is too large to send (1.9 MB per session). It is saved on this device.`,
     sessions_restored: 'Restored to this device.',
@@ -729,6 +817,7 @@ export const en: Localised = {
     reauth_consequence:
         'Signing in again reloads this page. Reads and recordings you have not saved will be lost — SAVE them first.',
     reauth_confirm: 'Continue without saving',
+    reload_stopRecordingFirst: 'A recording is going. Stop the recording first, then press UPDATE (it is still recording).',
     reload_confirm:
         'Reloading drops the link to the car, and any fault read or datalog you have not saved or exported is lost. Any output still on is switched off first. Reload?',
     reload_title: 'Reload the app — into the newest build, if one has been downloaded',
@@ -792,6 +881,7 @@ export const en: Localised = {
     faults_layout_unverified: 'Codes read where this module’s own SGBD reads them (checked against EDIABAS in simulation) — not yet confirmed on a car. The bytes above are the answer.',
     fault_present_now: 'present now',
     fault_stored: 'stored',
+    fault_unnamed: 'its SGBD has no name for this location',
     faults_kwp_estimated: 'Codes read as ISO 14230 lays out the answer — not yet confirmed on a MK60. The bytes above are the answer.',
     door_wifi: 'Head unit Wi-Fi settings',
     door_datetime: 'Head unit date and time settings',

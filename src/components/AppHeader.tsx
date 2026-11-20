@@ -148,6 +148,14 @@ export function AppHeader({
                 </h1>
 
                 {buildLabel && <Pill tone="caution">{buildLabel}</Pill>}
+                {/* PRACTICE in words, at every width, while the practice car is what is connected (SC01
+                    step 2): the dot's hue alone says it only to someone who knows the hue. Never a
+                    shade of "connected" (StatusLed). */}
+                {mode === 'practice' && state !== 'disconnected' && (
+                    <Pill tone="secondary" title={t.mode_practice}>
+                        {t.practice}
+                    </Pill>
+                )}
                 {assistant && <AiSwitch assistant={assistant} />}
 
                 <span className="hidden shrink-0 whitespace-nowrap font-mono text-[10px] text-slate-500 min-[900px]:inline">

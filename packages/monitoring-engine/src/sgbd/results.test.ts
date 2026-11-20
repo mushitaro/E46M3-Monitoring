@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { EcuProfile } from '../ecuCatalog.ts';
 import { PRACTICE_MODULE_BLOCK } from '../practiceEcu.ts';
+import { smg2PhydBytes } from '../practiceCar.ts';
 import type { TelegramTable } from '../telegrams.ts';
 import { HAVE_SHIPPED_DATA, readShipped } from '../testing/shipped.ts';
 import { readdirSync } from 'node:fs';
@@ -53,6 +54,23 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('SMG II’s reads, by its own SGBD code', ()
         payload[1] = 0xb8;
         const d = decodeRead(table, 'STATUS_IO_LESEN', '32 05 0b 03 3f', answerFrame(0x32, 0xa0, payload))!;
         expect(d.values.find((v) => v.name === 'STAT_MOTORDREHZAHL_WERT')).toEqual({ name: 'STAT_MOTORDREHZAHL_WERT', value: 3000, unit: '1/min' });
+    });
+
+    it('reads the hydraulic pressure as its own code does: bytes 50-51, about 0.12 bar a step, an unsigned word, as EDIABAS would', () => {
+        const at = (bar: number) => {
+            const payload = new Uint8Array(PRACTICE_MODULE_BLOCK);
+            payload.set(smg2PhydBytes(bar), 50);
+            const d = decodeRead(table, 'STATUS_IO_LESEN', '32 05 0b 03 3f', answerFrame(0x32, 0xa0, payload))!;
+            return d.values.find((v) => v.name === 'STAT_PHYD_WERT');
+        };
+        expect(at(60)).toMatchObject({ name: 'STAT_PHYD_WERT', unit: 'bar' });
+        expect(Math.abs((at(60)?.value as number) - 60)).toBeLessThanOrEqual(1);
+        expect(Math.abs((at(30)?.value as number) - 30)).toBeLessThanOrEqual(1);
+        // The zero answer: the SGBD's own result is an unsigned word (ERGW, declared `unsigned int`), so
+        // a pressure below zero wraps — −12 bar is 65524, in EDIABAS too. Not a decode of ours to change:
+        // a car at its working pressure (raw word 400 and more) never reaches it.
+        const zero = decodeRead(table, 'STATUS_IO_LESEN', '32 05 0b 03 3f', answerFrame(0x32, 0xa0, new Uint8Array(PRACTICE_MODULE_BLOCK)))!;
+        expect(zero.values.find((v) => v.name === 'STAT_PHYD_WERT')?.value).toBe(65524);
     });
 
     it('says where it stopped on an answer too short, and keeps what it read', () => {

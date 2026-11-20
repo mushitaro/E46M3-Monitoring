@@ -54,6 +54,7 @@ function tab(over: Partial<TabFacade> = {}) {
         stopOutputs: vi.fn(async () => ({ stopped: [] })),
         startLog: () => null,
         datalog: () => ({ selected: ['3:n'], samples: 0 }),
+        datalogMoment: () => null,
         logChannels: (q) => ({ query: q.query ?? null }),
         stopLog: () => 'recording',
         save: async () => ({ saved: true }),
@@ -70,6 +71,7 @@ function tab(over: Partial<TabFacade> = {}) {
         openSession: (id) => {
             open = id;
         },
+        openSaved: async () => null,
         newSession: () => {
             open = `id-${String(++seq).padStart(6, '0')}`;
             return open;

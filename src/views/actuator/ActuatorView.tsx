@@ -5,9 +5,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { GateDialog } from '@/components/gate/GateDialog';
 import { DataList, DataRow, LABEL, ListControls, Pill, Section, TextButton, humanName } from '@/components/ui';
 import type { Arming } from '@/hooks/useActuatorArming';
-import { agreedCases, mayActuate, telegramOfAgreed, type ActuationMode, type ActuationPermit } from '@tsunagi/monitoring-engine';
+import { decisionFor, mayActuate, telegramOfAgreed, type ActuationMode, type ActuationPermit } from '@tsunagi/monitoring-engine';
 import { startActuation } from '@/lib/actuation';
-import { agreedChoices, type AgreedChoice } from '@/lib/agreedChoices';
+import { loadChoices, type AgreedChoice } from '@/lib/agreedChoices';
 import { operationFor } from '@tsunagi/monitoring-engine';
 import type { Phase } from '@/lib/actuatorArgs';
 import type { CatalogJob, EcuProfile } from '@tsunagi/monitoring-engine';
@@ -21,6 +21,11 @@ import { TEST_ID, tid } from '@/lib/testIds';
 import { bestTelegram, type TelegramTable } from '@tsunagi/monitoring-engine';
 import type { Motion } from '@tsunagi/monitoring-engine';
 import { ReasonGlossary, ReasonTag } from '@/views/shared/RunReason';
+import { useNow } from '@/hooks/useNow';
+import { decidedByYear, type VariantState } from '@/lib/variantChoice';
+
+/** The parts a module's own data names (lib/partName `partTable`), by the value that selects them. */
+type PartTable = ReadonlyMap<string, { ja: string; en: string }>;
 
 /**
  * ACTUATOR — the jobs that make the car do something.
@@ -32,14 +37,17 @@ import { ReasonGlossary, ReasonTag } from '@/views/shared/RunReason';
  * never recovered a frame belonging to that job alone. None of those change by
  * pressing anything, so a disabled control is a thing to try. Each row states its
  * reason instead, in a slot that keeps its height so the list does not reflow as
- * the gate's answer changes.
+ * the gate's answer changes. A job the owner keeps off altogether (a safety
+ * device's deployment, a write) is not listed at all: a row with a button that
+ * can never be pressed is a promise the screen does not keep (MM02 F26).
  *
  * ## A job that takes values offers whole sets of them
  *
  * Its frame is built for the chosen values by its own SGBD code, and only the sets
  * where EdiabasLib builds the same frame are offered (lib/agreedChoices) — for a
  * start that leaves something on, only where its stop is agreed too. The row
- * chooses one set; the gate is asked with that set and its frame.
+ * chooses one set, listed under the part's own name (油圧ポンプ, not HYDROPUMPE
+ * alone); the gate is asked with that set and its frame.
  *
  * ## STOP is not a sub-action
  *
@@ -47,7 +55,8 @@ import { ReasonGlossary, ReasonTag } from '@/views/shared/RunReason';
  * the output is energised — never disabled by the busy lock, never behind the
  * gate dialog, no confirmation. An armed actuator is a physical thing that is
  * on, and every route to turning it off has to stay open. `lib/arming` holds
- * that as `stopIsPressable`, whose signature has nothing to condition on.
+ * that as `stopIsPressable`, whose signature has nothing to condition on. While it
+ * is on, the row says what it drives and the seconds left until it stops by itself.
  */
 export function ActuatorView({
     profile,
@@ -57,6 +66,11 @@ export function ActuatorView({
     jobText,
     mode,
     arming,
+    parts,
+    pick,
+    variant,
+    onConfirmVariant,
+    onSentOnce,
     onRun,
 }: {
     profile: EcuProfile;
@@ -67,6 +81,16 @@ export function ActuatorView({
     jobText: JobTextTable | null;
     mode: ActuationMode;
     arming: Arming;
+    /** The parts this module's own data names. */
+    parts: PartTable;
+    /** A set the assistant chose for a row (its monitoring_actuate), shown on that row. */
+    pick: { moduleId: string; jobId: string; args: readonly string[] | null; at: number } | null;
+    /** Whether the module at this address is known to be this one (lib/variantChoice). */
+    variant: VariantState;
+    /** The owner says which module answers at this address (once per car). */
+    onConfirmVariant: (address: number, moduleId: string) => void;
+    /** A job sent once (not left on): the screen says it went and was answered. */
+    onSentOnce: (moduleId: string, jobId: string, args: readonly string[] | null) => void;
     /** Send a job's frame. The caller owns the busy lock and the log. */
     onRun: (jobId: string, hex: string, requires?: SendRequirement, permit?: ActuationPermit) => Promise<unknown>;
 }) {
@@ -74,11 +98,18 @@ export function ActuatorView({
     const [query, setQuery] = useState('');
     const [onlyRunnable, setOnlyRunnable] = useState(false);
     const [pending, setPending] = useState<{ job: CatalogJob; phase: Phase; verdict: Extract<RunVerdict, { allowed: true }>; choice?: AgreedChoice } | null>(null);
+    // The seconds left on what is on, counted down while something is.
+    const now = useNow(arming.anyArmed ? 500 : null);
 
     // The jobs this tab is about: the ones that can leave an output energised.
     // Same function SERVICE asks, so the two lists partition the catalogue
     // instead of being two filters that happen to agree — `lib/jobSurface`.
-    const jobs = useMemo(() => profile.jobs.filter(isOn('actuator')), [profile.jobs]);
+    // Not those the owner keeps off altogether: they are never offered, so they are not listed.
+    const drivers = useMemo(() => profile.jobs.filter(isOn('actuator')), [profile.jobs]);
+    const jobs = useMemo(
+        () => drivers.filter((j) => decisionFor(profile.id, j, profile.group).how !== 'off'),
+        [drivers, profile.id, profile.group],
+    );
 
     // The sets of values each job that takes them may run with, and the one chosen on its row (by
     // module and job, so another module's choice never stands for this one's).
@@ -89,8 +120,7 @@ export function ActuatorView({
         const withValues = jobs.filter((j) => j.args.length > 0);
         void Promise.all(
             withValues.map(async (j) => {
-                const cases = await agreedCases(profile.id, profile.address, j.id);
-                return [j.id, agreedChoices(j, operationFor(j), cases, cases)] as const;
+                return [j.id, await loadChoices(profile.id, profile.address, j, profile.jobs)] as const;
             }),
         ).then((rows) => {
             if (live) setChoices(new Map(rows.filter(([, c]) => c.length > 0)));
@@ -98,7 +128,18 @@ export function ActuatorView({
         return () => {
             live = false;
         };
-    }, [jobs, profile.id, profile.address]);
+    }, [jobs, profile.id, profile.address, profile.jobs]);
+
+    // The assistant's set, shown on its row: the screen says what it was asked to run (and, if the car
+    // refused it at the wire, why — on that row). Keyed by when it was asked, so each ask shows once.
+    const [pickedAt, setPickedAt] = useState(0);
+    if (pick && pick.at !== pickedAt && pick.moduleId === profile.id && choices.size > 0) {
+        setPickedAt(pick.at);
+        const list = choices.get(pick.jobId);
+        const i = pick.args && list ? list.findIndex((c) => c.start.args.length === pick.args!.length && c.start.args.every((x, k) => x === pick.args![k])) : -1;
+        if (i >= 0) setChosen((m) => new Map(m).set(`${profile.id}:${pick.jobId}`, i));
+    }
+
     const choiceOf = (jobId: string): AgreedChoice | undefined => {
         const i = chosen.get(`${profile.id}:${jobId}`);
         return i === undefined ? undefined : choices.get(jobId)?.[i];
@@ -153,6 +194,8 @@ export function ActuatorView({
         // prop type is the allowed shape, so this is not a courtesy check that
         // could be skipped. A refused verdict cannot be handed on.
         if (!v?.allowed) return;
+        // Which module answers at this address is not settled: nothing that drives goes until it is.
+        if (variant.state !== 'ok') return;
         // One thing driven at a time (the owner's rule, 2026-11-15): stop the one that is on first.
         if (arming.anyArmed && !arming.armed.has(job.id)) return;
         setPending({ job, phase, verdict: v, choice: job.args.length > 0 ? choiceOf(job.id) : undefined });
@@ -165,7 +208,7 @@ export function ActuatorView({
         if (p.phase === 'stop') return;
         // The same path the assistant's monitoring_actuate takes (lib/actuation): the permit for
         // exactly these bytes, the link's measurement, and the stop resolved before anything is armed.
-        await startActuation({
+        const r = await startActuation({
             moduleId: profile.id,
             job: p.job,
             phase: p.phase,
@@ -177,6 +220,15 @@ export function ActuatorView({
             arm: arming.arm,
             now: Date.now(),
         });
+        // Sent once and not left on: said on the notice line, as a stop is.
+        if (r.sent && !r.armed) onSentOnce(profile.id, p.job.id, p.choice?.start.args ?? null);
+    };
+
+    const partOf = (args: readonly string[] | undefined) => {
+        const part = args?.[0];
+        if (!part) return null;
+        const n = parts.get(part);
+        return n ? (lang === 'ja' ? n.ja : n.en) : part;
     };
 
     return (
@@ -186,6 +238,13 @@ export function ActuatorView({
                 note={t.actuator_runnable(runnableCount, jobs.length)}
                 info={<ReasonGlossary lead={t.actuator_info} reasons={jobs.map((j) => verdicts.get(j.id))} />}
             >
+                {variant.state !== 'ok' && <VariantRow variant={variant} onConfirm={onConfirmVariant} />}
+                {/* Nothing to list: why, in a sentence, rather than an empty list (MM01, MM04). */}
+                {jobs.length === 0 && (
+                    <p className="py-2 text-[11px] leading-relaxed text-slate-400">
+                        {drivers.length === 0 ? t.actuator_noneInSgbd : t.actuator_noneOwnerOff(drivers.length)}
+                    </p>
+                )}
                 <ListControls
                     query={query}
                     onQuery={setQuery}
@@ -205,29 +264,39 @@ export function ActuatorView({
                 </ListControls>
 
                 <DataList>
-                    {shown.map((job) => (
-                        <Row
-                            key={job.id}
-                            job={job}
-                            verdict={verdicts.get(job.id) ?? null}
-                            armed={arming.armed.has(job.id)}
-                            otherOn={arming.anyArmed && !arming.armed.has(job.id)}
-                            choices={choices.get(job.id)}
-                            chosen={chosen.get(`${profile.id}:${job.id}`)}
-                            onChoose={(i) =>
-                                setChosen((m) => {
-                                    const n = new Map(m);
-                                    if (i === undefined) n.delete(`${profile.id}:${job.id}`);
-                                    else n.set(`${profile.id}:${job.id}`, i);
-                                    return n;
-                                })
-                            }
-                            lang={lang}
-                            onStart={() => open(job, 'start')}
-                            onRunOnce={() => open(job, 'pulse')}
-                            onStop={() => void arming.stop(job.id)}
-                        />
-                    ))}
+                    {shown.map((job) => {
+                        const entry = arming.armed.get(job.id);
+                        const c = choiceOf(job.id);
+                        const left = entry?.timeoutS ? Math.min(entry.timeoutS, Math.max(0, Math.ceil((entry.at + entry.timeoutS * 1000 - now) / 1000))) : null;
+                        return (
+                            <Row
+                                key={job.id}
+                                job={job}
+                                verdict={verdicts.get(job.id) ?? null}
+                                motion={motion}
+                                variantOk={variant.state === 'ok'}
+                                armed={!!entry}
+                                secondsLeft={left}
+                                part={partOf(entry?.args ?? c?.start.args)}
+                                otherOn={arming.anyArmed && !arming.armed.has(job.id)}
+                                choices={choices.get(job.id)}
+                                parts={parts}
+                                chosen={chosen.get(`${profile.id}:${job.id}`)}
+                                onChoose={(i) =>
+                                    setChosen((m) => {
+                                        const n = new Map(m);
+                                        if (i === undefined) n.delete(`${profile.id}:${job.id}`);
+                                        else n.set(`${profile.id}:${job.id}`, i);
+                                        return n;
+                                    })
+                                }
+                                lang={lang}
+                                onStart={() => open(job, 'start')}
+                                onRunOnce={() => open(job, 'pulse')}
+                                onStop={() => void arming.stop(job.id, 'stop')}
+                            />
+                        );
+                    })}
                 </DataList>
             </Section>
 
@@ -240,6 +309,7 @@ export function ActuatorView({
                     verdict={pending.verdict}
                     phase={pending.phase}
                     argValues={pending.choice?.values ?? {}}
+                    part={partOf(pending.choice?.start.args) ?? undefined}
                     caution={cautionFor(jobText, pending.job.id, lang) ?? undefined}
                     onRun={() => void confirm()}
                     onCancel={() => setPending(null)}
@@ -249,12 +319,42 @@ export function ActuatorView({
     );
 }
 
+/**
+ * Which module answers at this address, asked of the owner once per car: an address two of this app's
+ * modules share with no group rule to tell them apart (0x56: ASC MK20 on an early car, DSC on a late
+ * one) gets nothing that drives until the owner has said (IJ F01). Reads go on as before.
+ */
+function VariantRow({ variant, onConfirm }: { variant: Exclude<VariantState, { state: 'ok' }>; onConfirm: (address: number, moduleId: string) => void }) {
+    const { lang, t } = useLang();
+    return (
+        <div className="mb-2 border-b border-slate-800 pb-2">
+            <p className="text-[11px] leading-relaxed text-amber-400">
+                {variant.state === 'ruledOut' ? t.variant_ruledOut(variant.hex, variant.other) : t.variant_ask(variant.hex, decidedByYear(variant.candidates))}
+            </p>
+            {variant.state === 'ask' && (
+                <div className="mt-1.5 flex flex-wrap gap-4">
+                    {variant.candidates.map((c) => (
+                        <TextButton key={c.id} onClick={() => onConfirm(variant.address, c.id)}>
+                            {lang === 'ja' ? (c.nameJa ?? c.name) : c.name}
+                        </TextButton>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
 function Row({
     job,
     verdict,
+    motion,
+    variantOk,
     armed,
+    secondsLeft,
+    part,
     otherOn,
     choices,
+    parts,
     chosen,
     onChoose,
     lang,
@@ -264,11 +364,18 @@ function Row({
 }: {
     job: CatalogJob;
     verdict: RunVerdict | null;
+    motion: Motion;
+    variantOk: boolean;
     armed: boolean;
+    /** Seconds until it stops by itself, while it is on. */
+    secondsLeft: number | null;
+    /** The part it drives (the chosen set's, in the owner's words), or null. */
+    part: string | null;
     /** Another output is on: one at a time. */
     otherOn: boolean;
     /** For a job that takes values: the agreed sets, and the one chosen. */
     choices?: AgreedChoice[];
+    parts: PartTable;
     chosen?: number;
     onChoose: (i: number | undefined) => void;
     lang: 'ja' | 'en';
@@ -278,7 +385,11 @@ function Row({
 }) {
     const { t } = useLang();
     const style = execStyleOf(operationFor(job));
-    const allowed = verdict?.allowed === true && !otherOn;
+    const allowed = verdict?.allowed === true && !otherOn && variantOk;
+    // A car measured moving is the row's reason before any other that a choice could clear (IJ F09).
+    const drives = job.class !== 'read';
+    const reason = verdict && !verdict.allowed ? (motion === 'moving' && drives && verdict.reason === 'run_block_needsArgs' ? 'run_block_moving' : verdict.reason) : null;
+    const name = lang === 'ja' ? job.ja : job.en;
 
     return (
         <DataRow
@@ -287,30 +398,26 @@ function Row({
                     <Pill tone={job.risk === 'high' ? 'danger' : job.risk === 'medium' ? 'caution' : 'neutral'}>
                         {job.risk === 'high' ? t.risk_high : job.risk === 'medium' ? t.risk_medium : t.risk_low}
                     </Pill>
-                    {/* Reserved, but only on rows that can arm. The badge
-                        appears in place rather than pushing the name sideways —
-                        and a pulse row, which can never wear it, does not pay
-                        for the space. The predecessor put it at the head of the
-                        name for the same reason it is here: in the action cell
-                        it widened that column for every row and truncated the
-                        names to a few characters. */}
+                    {/* Reserved, but only on rows that can arm: the badge and the seconds left
+                        appear in place rather than pushing the name sideways — and a pulse row,
+                        which can never wear them, does not pay for the space. */}
                     {style === 'hold' && (
-                        <span className={armed ? '' : 'invisible'}>
+                        <span className={`flex shrink-0 items-baseline gap-1.5 ${armed ? '' : 'invisible'}`} aria-hidden={!armed}>
                             <Pill tone="caution">{t.actuator_armed}</Pill>
+                            <span className="w-[4.5rem] font-mono text-[11px] tabular-nums text-amber-400">{t.actuator_left(secondsLeft ?? 10)}</span>
                         </span>
                     )}
                 </>
             }
-            name={humanName(lang === 'ja' ? job.ja : job.en)}
+            name={humanName(part ? `${name} · ${part}` : name)}
             ident={job.id}
             trailing={
                 <span className="flex shrink-0 items-center gap-3">
-                    {/* Why it cannot run, in a word, beside the control it disables — the sentence
-                        is in the list's ⓘ and in `title` (views/shared/RunReason). It used to be a
-                        reserved second line under every row, the same sentence eighty-five times. */}
-                    {verdict && !verdict.allowed && <ReasonTag reason={verdict.reason} />}
+                    {/* Why it cannot run, in a word, beside the control it disables; touching the word
+                        says the sentence (views/shared/RunReason). */}
+                    {reason && <ReasonTag reason={reason} />}
                     {choices && (
-                        <ChoiceSelect choices={choices} chosen={chosen} onChoose={onChoose} disabled={armed} label={t.actuator_values} />
+                        <ChoiceSelect choices={choices} parts={parts} lang={lang} chosen={chosen} onChoose={onChoose} disabled={armed} label={t.actuator_values} />
                     )}
                     {style === 'hold' ? (
                         <>
@@ -351,18 +458,23 @@ function Row({
 }
 
 /**
- * The agreed sets of values for one job, grouped by the part they drive (the first value). Whole
+ * The agreed sets of values for one job, under the part they drive (the first value), named in the
+ * owner's words where the module's data names it — a heading line per part, not to be chosen. Whole
  * sets only: a set chosen value by value could be one nobody compared. Locked while the part is on,
  * so the stop that is armed is the stop of what is running.
  */
 function ChoiceSelect({
     choices,
+    parts,
+    lang,
     chosen,
     onChoose,
     disabled,
     label,
 }: {
     choices: AgreedChoice[];
+    parts: PartTable;
+    lang: 'ja' | 'en';
     chosen?: number;
     onChoose: (i: number | undefined) => void;
     disabled: boolean;
@@ -373,6 +485,10 @@ function ChoiceSelect({
         const k = c.start.args[0] ?? '';
         groups.set(k, [...(groups.get(k) ?? []), { i, c }]);
     });
+    const heading = (part: string) => {
+        const n = parts.get(part);
+        return n ? `— ${lang === 'ja' ? n.ja : n.en}（${part}）` : `— ${part}`;
+    };
     return (
         <span className="max-w-[15rem] rounded bg-slate-800 px-1.5 py-0.5">
             <select
@@ -386,15 +502,17 @@ function ChoiceSelect({
                 <option value="" className="bg-slate-900">
                     {label}
                 </option>
-                {[...groups].map(([part, rows]) => (
-                    <optgroup key={part} label={part} className="bg-slate-900">
-                        {rows.map(({ i, c }) => (
-                            <option key={i} value={i} className="bg-slate-900">
-                                {c.label}
-                            </option>
-                        ))}
-                    </optgroup>
-                ))}
+                {[...groups].flatMap(([part, rows]) => [
+                    // A heading, in a line of its own: an optgroup's label is not read by every head unit's picker.
+                    <option key={`h:${part}`} disabled className="bg-slate-900 text-slate-400">
+                        {heading(part)}
+                    </option>,
+                    ...rows.map(({ i, c }) => (
+                        <option key={i} value={i} className="bg-slate-900">
+                            {c.label}
+                        </option>
+                    )),
+                ])}
             </select>
         </span>
     );

@@ -25,16 +25,17 @@ import {
 import { SimulatedSerialPort, type ExchangeBehavior, type SerialOptions, type SerialPortLike, type SimulatedEcuOptions } from '@tsunagi/ds2-core';
 import { KWP_FORMAT, KWP_TESTER, xorOf } from './kwpOnDs2.ts';
 import type { JobFramesOracle } from './sgbd/agreedFrame.ts';
-import { CLEAN, clusterVinAnswer, ds2IdentData, practiceCar } from './practiceCar.ts';
+import { cleanAnswer, clusterVinAnswer, driveNow, ds2IdentData, practiceCar, practiceSpeed, smg2PhydBytes, type PracticeInjection } from './practiceCar.ts';
 
 const START = Date.now();
 
 /** A plausible warming S54: idling when parked, pulling a gear's worth of rpm when the practice car moves. */
 function engine() {
     const t = (Date.now() - START) / 1000;
-    const v = practiceCar.speedKmh;
+    const v = practiceSpeed();
+    const drive = driveNow();
     return {
-        rpm: practiceCar.engineRunning || v > 0 ? Math.round((v > 0 ? 1200 + v * 35 : 820) + 15 * Math.sin(t * 1.3)) : 0,
+        rpm: drive ? Math.round(drive.rpm) : practiceCar.engineRunning || v > 0 ? Math.round((v > 0 ? 1200 + v * 35 : 820) + 15 * Math.sin(t * 1.3)) : 0,
         coolantC: Math.min(92, 22 + 70 * (1 - Math.exp(-t / 90))),
         oilC: Math.min(98, 22 + 76 * (1 - Math.exp(-t / 130))),
         battV: practiceCar.batteryV ?? (practiceCar.engineRunning || v > 0 ? 13.9 + 0.12 * Math.sin(t / 2.5) : 12.5),
@@ -58,7 +59,12 @@ function blockPayload(block: LiveValueBlock): Uint8Array {
     for (const f of block.fields) {
         // Choose a raw value that decodes to something sane for this field.
         let target: number;
-        if (f.symbol === 'n') target = e.rpm;
+        const d = driveNow();
+        const vanos = d && /^(e|a)van\d_(ist|soll)$/.exec(f.symbol);
+        if (vanos) target = vanos[1] === 'e' ? (vanos[2] === 'ist' ? d.inIst : d.inSoll) : vanos[2] === 'ist' ? d.exIst : d.exSoll;
+        else if (d && f.symbol === 'gang') target = d.gear;
+        else if (d && f.unit === '%' && /^(pwg|wdk)/.test(f.symbol)) target = d.pedal;
+        else if (f.symbol === 'n') target = e.rpm;
         else if (f.symbol === 'tmot') target = e.coolantC;
         // The battery: the DME's `ub` (block 3, main relay) and the UUB fields. Other volts are sensors.
         else if (f.unit === 'V') target = f.symbol.startsWith('UUB') || f.symbol === 'ub' ? e.battV : 2.5;
@@ -67,7 +73,7 @@ function blockPayload(block: LiveValueBlock): Uint8Array {
         // The practice car's speed: 0 unless a scenario drives it. The speed preflight reads block 19
         // before every read it lets go, so a simulator that drifted along at 1 km/h would refuse
         // everything PRACTICE exists to run.
-        else if (f.unit === 'km/h') target = practiceCar.speedKmh;
+        else if (f.unit === 'km/h') target = practiceSpeed();
         else if (f.unit === '%') target = 14;
         else if (f.unit === '°KW') target = 12;
         else target = 1;
@@ -186,7 +192,7 @@ function practiceModule(address: number): SimulatedEcuOptions {
         respond: (request) => {
             if (request.controlOrStatus === 0x00) return { payload: new Uint8Array(ds2IdentData(practiceCar.idents[address] ?? { hw: '00', diag: '00' })) };
             if (request.controlOrStatus === Ds2Control.READ_ERROR_MEMORY) {
-                return { payload: new Uint8Array(practiceCar.moduleFaults[address] ?? CLEAN) };
+                return { payload: new Uint8Array(practiceCar.moduleFaults[address] ?? cleanAnswer(address)) };
             }
             // The instrument cluster's VIN read (AIF block 2), answered as the SGBD reads it; refused without one.
             if (address === 0x80 && request.controlOrStatus === 0x02 && request.payload.length === 1 && request.payload[0] === 0x02) {
@@ -206,7 +212,14 @@ function practiceModule(address: number): SimulatedEcuOptions {
             // SMG II's STATUS_IO_LESEN (selection 3) came back as the DME's block 3, and a
             // selection the DME has no block for (SMG II's 5) was refused.
             if (request.controlOrStatus === Ds2Control.READ_IO_STATUS || request.controlOrStatus === 0x40) {
-                return { payload: new Uint8Array(PRACTICE_MODULE_BLOCK) };
+                const out = new Uint8Array(PRACTICE_MODULE_BLOCK);
+                // SMG II's STATUS_IO_LESEN, as the scenario set it (practiceCar `smg2Status`).
+                const st = practiceCar.smg2Status;
+                if (address === 0x32 && request.controlOrStatus === Ds2Control.READ_IO_STATUS && request.payload[0] === 0x03 && st) {
+                    if (typeof st.phydBar === 'number') out.set(smg2PhydBytes(st.phydBar), 50);
+                    for (const [k, v] of Object.entries(st.bytes ?? {})) if (Number(k) < out.length) out[Number(k)] = v & 0xff;
+                }
+                return { payload: out };
             }
             return dme.respond!(request);
         },
@@ -435,7 +448,14 @@ export function practiceKwpAnswer(chunk: Uint8Array): Uint8Array[] | null {
     let data: number[];
     if (sid === 0x1a) data = [0x5a, chunk[5], 0x34, 0x51, 0x12, 0x07];
     else if (sid === 0x18) data = [0x58, practiceCar.dscMk60.length, ...practiceCar.dscMk60.flatMap((d) => [d.code >> 8, d.code & 0xff, d.status])];
-    else {
+    else if (sid === 0x14) {
+        // ClearDiagnosticInformation (its own FS_LOESCHEN): the memory empties, as a car's does, and
+        // the answer is EdiabasLib's simulation where it ran this frame, else ISO 14230's `54` and the group.
+        practiceCar.dscMk60 = [];
+        const known = simulated.get(hexOf(chunk));
+        if (known) return [echo, known];
+        data = [0x54, ...chunk.subarray(5, chunk.length - 1)];
+    } else {
         // A frame EdiabasLib was run with: its simulation's answer. Anything else: not supported.
         const known = simulated.get(hexOf(chunk));
         if (known) return [echo, known];
@@ -479,8 +499,16 @@ export class PracticePort implements SerialPortLike {
         const writer = this.inner.writable!.getWriter();
         this._writable = new WritableStream<Uint8Array>({
             write: async (chunk) => {
-                const kwp = practiceKwpAnswer(chunk);
-                if (kwp) for (const out of kwp) this.controller?.enqueue(out);
+                const kwp = isKwp(chunk);
+                hear(chunk, kwp);
+                const injected = practiceCar.lineDown ? undefined : takeInjection(chunk, kwp);
+                if (injected?.kind === 'slow') await new Promise((r) => setTimeout(r, injected.delayMs ?? 300));
+                else if (injected) {
+                    for (const out of injectedAnswer(injected, chunk, kwp)) this.controller?.enqueue(out);
+                    return;
+                }
+                const answer = practiceKwpAnswer(chunk);
+                if (answer) for (const out of answer) this.controller?.enqueue(out);
                 else await writer.write(chunk);
             },
         });
@@ -501,4 +529,48 @@ export class PracticePort implements SerialPortLike {
     async setSignals(signals: Record<string, boolean | undefined>): Promise<void> {
         await this.inner.setSignals(signals);
     }
+}
+
+const isKwp = (chunk: Uint8Array) => chunk.length >= 6 && chunk[0] === KWP_FORMAT && chunk[3] === chunk.length - 5;
+const hexBytes = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join(' ');
+
+/** Keeps the frame the practice car heard (practiceCar.wire). */
+function hear(chunk: Uint8Array, kwp: boolean): void {
+    const wire = practiceCar.wire;
+    wire.push({ at: Date.now(), to: kwp ? chunk[1] : chunk[0], hex: hexBytes(chunk) });
+    if (wire.length > 20_000) wire.splice(0, wire.length - 20_000);
+}
+
+/** The first injection that matches this frame and is due, counted off; undefined when none. */
+function takeInjection(chunk: Uint8Array, kwp: boolean): PracticeInjection | undefined {
+    const to = kwp ? chunk[1] : chunk[0];
+    const ctrl = kwp ? chunk[4] : chunk[2];
+    const data = hexBytes(kwp ? chunk.subarray(5, chunk.length - 1) : chunk.subarray(3, chunk.length - 1));
+    for (const inj of practiceCar.inject) {
+        if (inj.to !== to || (inj.ctrl !== undefined && inj.ctrl !== ctrl)) continue;
+        if (inj.data && !data.startsWith(inj.data.toLowerCase().replace(/\s+/g, ' ').trim())) continue;
+        if ((inj.skip ?? 0) > 0) {
+            inj.skip = (inj.skip ?? 0) - 1;
+            continue;
+        }
+        if ((inj.times ?? 1) <= 0) continue;
+        inj.times = (inj.times ?? 1) - 1;
+        return inj;
+    }
+    return undefined;
+}
+
+/** What the module puts on the wire instead of its own answer: the echo, then the injected answer. */
+function injectedAnswer(inj: PracticeInjection, chunk: Uint8Array, kwp: boolean): Uint8Array[] {
+    const echo = Uint8Array.from(chunk);
+    if (inj.kind === 'silent') return [echo];
+    if (kwp) {
+        const data = inj.kind === 'short' ? [chunk[4] + 0x40] : [0x7f, chunk[4], inj.kind === 'busy' ? 0x21 : 0x22];
+        const head = [KWP_FORMAT, KWP_TESTER, chunk[1], data.length, ...data];
+        return [echo, Uint8Array.from([...head, xorOf(head)])];
+    }
+    const status = inj.kind === 'negative' ? Ds2Status.REJECTED : inj.kind === 'busy' ? Ds2Status.BUSY : Ds2Status.ACKNOWLEDGE;
+    const payload = inj.kind === 'short' ? [0x00] : [];
+    const frame = [chunk[0], 4 + payload.length, status, ...payload];
+    return [echo, Uint8Array.from([...frame, xorOf(frame)])];
 }

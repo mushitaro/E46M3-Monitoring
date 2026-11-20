@@ -409,6 +409,9 @@ export function mayRun(
 function mayDrive(job: CatalogJob, telegram: Telegram | null, ledger: Ledger, ctx: RunContext, decision: ReturnType<typeof decisionFor>): RunVerdict {
     if (decision.how === 'show') return { allowed: false, reason: 'run_block_policyShow' };
     if (!telegramIsCertain(telegram)) return { allowed: false, reason: 'run_block_noTelegram' };
+    // Every nature that drives something was decided `parked` (2026-11-15). Said before the values: a
+    // car measured moving is the reason it cannot run now, whichever set is chosen (IJ F09).
+    if (ctx.motion === 'moving') return { allowed: false, reason: 'run_block_moving' };
     // Arguments are chosen on the screen and the frame built by the job's own SGBD, and it goes only
     // where EdiabasLib builds the same for those values (ctx.agreed); a scraped frame carries values
     // nobody chose.
@@ -420,16 +423,19 @@ function mayDrive(job: CatalogJob, telegram: Telegram | null, ledger: Ledger, ct
     const runId = `${ctx.moduleId}:${runName(job.id, job.args.length ? ctx.args : undefined)}`;
     if (withdrawn(ledger, id) || withdrawn(ledger, runId)) return { allowed: false, reason: 'run_block_revoked' };
     if (!hasPracticed(ledger, runId)) return { allowed: false, reason: 'run_block_practiceFirst' };
-    // Every nature that drives something was decided `parked` (2026-11-15), and a job whose own SGBD
-    // asks for the car stationary goes parked whatever is decided (OWNER_RULES.sgbdStationaryWins).
-    if (ctx.motion === 'moving') return { allowed: false, reason: 'run_block_moving' };
+    // A job whose own SGBD asks for the car stationary goes parked whatever is decided
+    // (OWNER_RULES.sgbdStationaryWins): measured again at the wire before it is sent.
     return { allowed: true, telegram, control: bytes[2], requires: 'parked', actuation: actuationTerms(job, decision), ...(job.args.length ? { args: [...(ctx.args ?? [])] } : {}) };
 }
 
 /** The terms a job that drives something runs on: its decision, and its own SGBD's engine state, limit and stop. */
 export function actuationTerms(job: CatalogJob, decision: { nature: Nature; who: PolicyWho }): ActuationTerms {
     const engine = job.preconditions.includes('engine_off') ? 'off' : job.preconditions.includes('engine_running') ? 'run' : null;
-    const sgbdTimeout = job.op?.maxHoldSec ?? job.op?.ecuTimeoutSec ?? null;
+    // The ECU's own time-out first (SMG II: "Steuergeraete-Timeout: 10s"): the app stops a hold when the
+    // module itself would drop it unattended, not at the longest it can be held by keeping diagnosis up
+    // (SMG II's "maximal 60 sek."). The read-back, the dialog, the running row and the assistant's answer
+    // all state this one number (the owner's lead, 2026-11-20).
+    const sgbdTimeout = job.op?.ecuTimeoutSec ?? job.op?.maxHoldSec ?? null;
     return {
         nature: decision.nature,
         who: decision.who,

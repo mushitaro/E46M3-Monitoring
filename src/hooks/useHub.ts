@@ -4,8 +4,9 @@ import { CircleDot, Loader2, Play, PlayCircle, PlugZap, Radar, Radio, Square, Za
 import type { HubConfig, NoticeTone } from '@/components/Hub';
 import type { useDs2Link } from '@/hooks/useDs2Link';
 import type { ProbeProgress } from '@/hooks/useProbe';
-import { hasIdent, mayTryFaultRead, type ModuleProtocol } from '@tsunagi/monitoring-engine';
+import { appNow, hasIdent, mayTryFaultRead, type ModuleProtocol } from '@tsunagi/monitoring-engine';
 import { hubConfigFor, hubNoticeFor } from '@/lib/hub';
+import { variantRefusalLine } from '@/lib/notSentText';
 import { jobRiskOf, type CatalogJob } from '@tsunagi/monitoring-engine';
 import { useLang } from '@/lib/i18n';
 import { operationFor } from '@tsunagi/monitoring-engine';
@@ -45,7 +46,7 @@ export function useHub(input: {
     /** A job that drives something: confirmed on the screen first (the owner's rule), then sent with its permit. */
     confirmRun?: () => void;
     /** Present while a PROBE plan runs (hooks/useProbe). */
-    probe?: { progress: ProbeProgress; stop: () => void };
+    probe?: { progress: ProbeProgress; stop: () => void; moduleName?: (id: string) => string };
     /** Present on DIAGNOSIS with ALL MODULES: the scan, and how far one in progress has got. */
     scan?: { run: () => void; progress: { done: number; total: number } | null };
     /** PROBE's board: run the session on the screen (views/probe). */
@@ -83,7 +84,13 @@ export function useHub(input: {
                 ? {
                       line: input.probe.progress.resuming
                           ? t.probe_resuming(input.probe.progress.v, input.probe.progress.resumes)
-                          : t.probe_line(input.probe.progress.v, input.probe.progress.settled, input.probe.progress.total, input.probe.progress.samples),
+                          : [
+                                t.probe_line(input.probe.progress.v, input.probe.progress.settled, input.probe.progress.total, input.probe.progress.samples),
+                                input.probe.progress.refused ? t.probe_refused(input.probe.progress.refused) : null,
+                                input.probe.progress.reading ? t.probe_reading(input.probe.moduleName?.(input.probe.progress.reading) ?? input.probe.progress.reading) : null,
+                            ]
+                                .filter(Boolean)
+                                .join(' · '),
                       stop: input.probe.stop,
                   }
                 : undefined,
@@ -100,6 +107,12 @@ export function useHub(input: {
             datalog: {
                 decoded: input.target.decoder === 'mss54',
                 sampleCount: datalog.samples.length,
+                // The car's speed from the link only while it is fresh (a recording without block 19 does not renew it).
+                recordingLine: recordingLine(
+                    datalog,
+                    link.vehicleState && appNow() - link.vehicleState.at < 5_000 ? link.vehicleState.speedKmh : null,
+                    t.datalog_hubLine,
+                ),
                 costNotice: datalog.costNotice,
                 start: datalog.start,
                 stop: datalog.stop,
@@ -135,10 +148,21 @@ export function useHub(input: {
     // whatever the hub wanted to say about cost or progress. The hub's own
     // notice is never urgent, so it always loses.
     const notice = hubNoticeFor({
-        linkError: link.error ?? undefined,
+        // A refusal for the module at the address said in the reader's words (SC10); any other error as the link gives it.
+        linkError: link.error ? (variantRefusalLine(link.error, t) ?? link.error) : undefined,
         catalogError: input.catalogError ?? undefined,
         viewNotice: hub.notice,
     });
 
     return { hub, notice };
+}
+
+/** The hub's line while a recording runs: 記録中 m:ss · rpm · km/h · samples, from the latest sample. */
+function recordingLine(datalog: Datalog, linkKmh: number | null, line: (elapsed: string, rpm: string, kmh: string, samples: number) => string): string {
+    const last = datalog.samples[datalog.samples.length - 1];
+    const v = datalog.latest as Partial<Record<string, number | null>>;
+    const rpm = v['3:n'] ?? v['35:n'] ?? null;
+    const kmh = v['19:v'] ?? linkKmh;
+    const elapsed = last ? `${Math.floor(last.time / 60)}:${String(Math.floor(last.time % 60)).padStart(2, '0')}` : '0:00';
+    return line(elapsed, typeof rpm === 'number' ? String(Math.round(rpm)) : '—', typeof kmh === 'number' ? String(Math.round(kmh)) : '—', datalog.samples.length);
 }

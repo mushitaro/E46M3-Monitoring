@@ -22,6 +22,7 @@ import { Awaiting } from '@/views/shared/Awaiting';
 import { CountReadout } from '@/views/shared/CountReadout';
 import type { Motion } from '@tsunagi/monitoring-engine';
 import { ReasonGlossary, ReasonTag } from '@/views/shared/RunReason';
+import { Adjustments } from './Adjustments';
 
 /**
  * The ECU's learned values, and the ECU's own way of throwing them away.
@@ -147,6 +148,7 @@ export const AdaptationView = memo(function AdaptationView({
                     </DataList>
                 )}
             </Section>
+            <Adjustments catalog={catalog} ecuId={ecuId} address={telegrams?.address ?? null} ledger={ledger} motion={motion} />
         </Pane>
     );
 });

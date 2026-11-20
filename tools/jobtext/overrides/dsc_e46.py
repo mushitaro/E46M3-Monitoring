@@ -15,7 +15,7 @@ DSC_MK60: dict[str, tuple[str, str]] = {
         'Do this only on level ground, with the wheel held straight and the car completely still.',
     ),
     'ABGLEICH_LWS_AQ_SENSOREN': (
-        '平坦な場所・直進・静止が前提です。ステアリングを切ったまま実行しないでください。',
+        '平坦な場所で、ハンドルをまっすぐ（直進位置）にし、停車してから実行してください。ステアリングを切ったまま実行しないでください。',
         'Level ground, wheels straight, car still. Never with the wheel turned.',
     ),
     'DDS_EOL_PASSIV': (

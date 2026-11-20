@@ -27,8 +27,8 @@ import type { ChannelId } from '@tsunagi/ds2-mss54';
 import { listLocal } from '@/lib/sync/sessionStore';
 import type { Mode, Tab } from '@/lib/tabs';
 import type { ProbeSessions } from '@/views/probe/useProbeSessions';
-import { PROCEDURE_PREFIX, agreedCases, bestTelegram, decisionFor, loadTelegrams, operationFor, telegramOfAgreed } from '@tsunagi/monitoring-engine';
-import { agreedChoices } from '@/lib/agreedChoices';
+import { PROCEDURE_PREFIX, bestTelegram, decisionFor, loadTelegrams, telegramOfAgreed, type CatalogJob } from '@tsunagi/monitoring-engine';
+import { assistantPick, loadChoices } from '@/lib/agreedChoices';
 import { LAUNCHER_QUERY, deviceLabel, isHeadUnit, type DeviceKind } from '@/hooks/useAssistantBridge';
 import type { Datalog } from '@/views/datalog/useDatalog';
 import type { Sessions } from '@/views/sessions/useSessions';
@@ -452,33 +452,12 @@ export function useMonitoringFacade(input: {
             // A test program is a procedure: stopped first and last, followed to its end by its dialog.
             if (isProcedureStart(module, job.id))
                 return { started: false, reason: `${job.id} is started as a procedure: monitoring_procedure with its program number (monitoring_catalog lists the procedures).` };
-            // A job that takes values runs only with a whole set its own code and EdiabasLib build alike
-            // (lib/agreedChoices); without one, the answer is the sets to choose from.
-            // A job that stays on until its stop (SMG II's actuators: AKTIV, then INAKTIV) always starts
-            // with its stop armed and its time-out running, whatever phase was asked: sent once without
-            // them it would be left on (car, 2026-11-19: pulse found none of STEUERN_STELLGLIED's sets).
-            const op = operationFor(job);
-            const runPhase = op.kind === 'hold' && op.stopJob ? 'start' : phase;
-            let choice: ReturnType<typeof agreedChoices>[number] | undefined;
-            if (job.args.length > 0) {
-                const cases = catalog ? await agreedCases(module, catalog.address, job.id) : [];
-                const agreed = agreedChoices(job, op, cases, cases).filter((c) => runPhase === 'start' || !c.stop);
-                if (!agreed.length) return { started: false, reason: `No set of values for ${job.id} has been compared with EdiabasLib: it is not run.` };
-                // Only the sets the owner's table opens to the assistant (SMG II: its lamps, not its valves).
-                const sets = agreed.filter((c) => decisionFor(module, job, catalog?.group, c.start.args).who === 'ai');
-                if (!sets.length)
-                    return { started: false, reason: `The owner's table keeps every set of ${job.id} for a person on the screen. monitoring_stage puts it there for them to press.` };
-                choice = values ? sets.find((c) => c.start.args.length === values.length && c.start.args.every((x, i) => x === values[i])) : undefined;
-                if (!choice) {
-                    return {
-                        started: false,
-                        reason: values
-                            ? `${job.id}(${values.join(', ')}) is not one of the sets compared with EdiabasLib. Choose one of these.`
-                            : `${job.id} takes values (${job.args.map((a) => a.name).join(', ')}). Read back the set meant, wait for the OK, and pass it as values.`,
-                        sets: sets.slice(0, 120).map((c) => c.start.args),
-                    };
-                }
-            }
+            // The phase and the set of values (lib/agreedChoices: the screen and the coverage count ask
+            // the same; a job that stays on until its stop always starts with it armed).
+            const choices = job.args.length > 0 && catalog ? await loadChoices(module, catalog.address, job, catalog.jobs as CatalogJob[]) : [];
+            const pick = assistantPick(job, choices, phase, values, (args) => decisionFor(module, job, catalog?.group, args).who === 'ai');
+            if (!pick.ok) return { started: false, reason: pick.reason, ...(pick.sets ? { sets: pick.sets } : {}) };
+            const { runPhase, choice } = pick;
             const may = assistantMayStart(module, job, catalog?.group, link.motion, ownerSaid, choice?.start.args);
             if (!may.ok) return { started: false, reason: may.reason };
             if (link.state !== 'connected') return { started: false, reason: `The link is ${link.state}; a job starts from connected and idle.` };

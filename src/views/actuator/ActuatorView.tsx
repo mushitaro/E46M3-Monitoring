@@ -5,9 +5,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { GateDialog } from '@/components/gate/GateDialog';
 import { DataList, DataRow, LABEL, ListControls, Pill, Section, TextButton, humanName } from '@/components/ui';
 import type { Arming } from '@/hooks/useActuatorArming';
-import { agreedCases, mayActuate, telegramOfAgreed, type ActuationMode, type ActuationPermit } from '@tsunagi/monitoring-engine';
+import { mayActuate, telegramOfAgreed, type ActuationMode, type ActuationPermit } from '@tsunagi/monitoring-engine';
 import { startActuation } from '@/lib/actuation';
-import { agreedChoices, type AgreedChoice } from '@/lib/agreedChoices';
+import { loadChoices, type AgreedChoice } from '@/lib/agreedChoices';
 import { operationFor } from '@tsunagi/monitoring-engine';
 import type { Phase } from '@/lib/actuatorArgs';
 import type { CatalogJob, EcuProfile } from '@tsunagi/monitoring-engine';
@@ -89,8 +89,7 @@ export function ActuatorView({
         const withValues = jobs.filter((j) => j.args.length > 0);
         void Promise.all(
             withValues.map(async (j) => {
-                const cases = await agreedCases(profile.id, profile.address, j.id);
-                return [j.id, agreedChoices(j, operationFor(j), cases, cases)] as const;
+                return [j.id, await loadChoices(profile.id, profile.address, j, profile.jobs)] as const;
             }),
         ).then((rows) => {
             if (live) setChoices(new Map(rows.filter(([, c]) => c.length > 0)));

@@ -38,7 +38,7 @@ import {
     type SgbdResultsTable,
     type TelegramTable,
 } from '@tsunagi/monitoring-engine';
-import { agreedChoices } from './agreedChoices';
+import { choicesOf } from './agreedChoices';
 
 export interface CoverageItem {
     module: string;
@@ -137,8 +137,8 @@ export function runCoverage(input: CoverageInput): CoverageItem[] {
                 continue;
             }
             const starts = agreedCasesFrom(input.oracle, results, m.id, m.address, job.id);
-            const stops = hold && stopJob ? (stopJob.id === job.id ? starts : agreedCasesFrom(input.oracle, results, m.id, m.address, stopJob.id)) : [];
-            const choices = agreedChoices(job, op, starts, stops, stopJob?.args.map((a) => a.name));
+            // The very sets the screen and the assistant offer (lib/agreedChoices `choicesOf`).
+            const choices = choicesOf(job, profile.jobs as CatalogJob[], (id) => (id === job.id ? starts : agreedCasesFrom(input.oracle, results, m.id, m.address, id)));
             item.sets = choices.length;
             const first = choices[0];
             if (first) {

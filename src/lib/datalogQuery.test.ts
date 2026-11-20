@@ -37,3 +37,18 @@ describe('a recording summed up', () => {
         expect(s.trace[1]).toEqual({ t: 9, '3:n': 890 });
     });
 });
+
+describe('thinning keeps the peaks of every channel', () => {
+    it('keeps the moment a target and its actual are furthest apart, not only the engine speed’s extremes', () => {
+        // A pull: speed rises steadily, the exhaust cam falls 6° behind its target for one sample only.
+        const samples = Array.from({ length: 600 }, (_, i) => ({
+            time: i / 80,
+            values: { '35:n': 3000 + i * 5, '35:avan1_soll': 20, '35:avan1_ist': i === 333 ? 14 : 20 },
+        }));
+        const s = datalogSummary(['35:n', '35:avan1_soll', '35:avan1_ist'] as ChannelId[], samples, { max: 60 });
+        expect(s.trace.length).toBeLessThanOrEqual(60);
+        const worst = Math.max(...s.trace.map((x) => { const r = x as Record<string, number>; return r['35:avan1_soll'] - r['35:avan1_ist']; }));
+        expect(worst).toBe(6);
+        expect(s.trace[s.trace.length - 1].t).toBeCloseTo(599 / 80);
+    });
+});

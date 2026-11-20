@@ -159,13 +159,23 @@ export function useDatalog(link: Link, others: { ledger: Ledger; index: EcuIndex
         [columns],
     );
 
-    // The rate of the segment that is running: a change of channels changes it.
+    // The rate of the segment that is running, over the whole segment: the same measure the assistant's
+    // monitoring_datalog gives (lib/datalogRun segmentStats), so the screen and the voice say one number.
+    // A short window swung with the device's load and the two disagreed (SC13). The segment's first sample
+    // is found by bisection, so this stays cheap on a ten-minute run.
     const rateHz = useMemo(() => {
         const from = segments[segments.length - 1]?.from ?? 0;
-        const s = samples.slice(-24).filter((x) => x.time >= from);
-        if (s.length < 2) return null;
-        const span = s[s.length - 1].time - s[0].time;
-        return span > 0 ? (s.length - 1) / span : null;
+        let lo = 0;
+        let hi = samples.length;
+        while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            if (samples[mid].time < from) lo = mid + 1;
+            else hi = mid;
+        }
+        const n = samples.length - lo;
+        if (n < 2) return null;
+        const span = samples[samples.length - 1].time - samples[lo].time;
+        return span > 0 ? (n - 1) / span : null;
     }, [samples, segments]);
 
     const onSample = useCallback(

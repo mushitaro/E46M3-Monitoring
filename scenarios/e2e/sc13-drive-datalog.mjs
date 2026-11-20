@@ -394,8 +394,9 @@ const scenario = {
             check: {
                 desc: 'AI が言える：今の毎秒 n 回（画面の実効レートと ±15 % で一致）と、遅れていた 0.5 秒に入った点の数',
                 run: async (page, st) => {
+                    // 今の区切りの実効レート（画面と同じ量）。
                     const r = await tool(page, 'monitoring_datalog', { max: 0 });
-                    const hz = r?.seconds > 0 ? r.samples / r.seconds : null;
+                    const hz = r?.segments?.at(-1)?.rateHz ?? null;
                     const shown = await screenRate(page);
                     st.rateAi = hz;
                     if (!hz || !shown) return `レート: 道具 ${hz} / 画面 ${shown}`;

@@ -234,6 +234,6 @@ const html = [
     '</body></html>',
 ].join('\n');
 writeFileSync(join(reportAt, 'report.html'), html);
-writeFileSync(join(reportAt, 'report.json'), JSON.stringify(results.map((r) => ({ id: r.scenario.id, title: r.scenario.title, ok: r.ok, rows: r.rows })), null, 2));
+writeFileSync(join(reportAt, 'report.json'), JSON.stringify(results.map((r) => ({ id: r.scenario.id, title: r.scenario.title, story: r.scenario.story ?? '', ok: r.ok, rows: r.rows, endShot: r.endShot })), null, 2));
 console.log(`\n${results.filter((r) => r.ok).length}/${results.length} scenarios passed. Report: ${join(reportAt, 'report.md')}`);
 process.exit(results.every((r) => r.ok) ? 0 : 1);

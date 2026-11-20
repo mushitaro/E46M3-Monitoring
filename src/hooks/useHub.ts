@@ -6,6 +6,7 @@ import type { useDs2Link } from '@/hooks/useDs2Link';
 import type { ProbeProgress } from '@/hooks/useProbe';
 import { appNow, hasIdent, mayTryFaultRead, type ModuleProtocol } from '@tsunagi/monitoring-engine';
 import { hubConfigFor, hubNoticeFor } from '@/lib/hub';
+import { variantRefusalLine } from '@/lib/notSentText';
 import { jobRiskOf, type CatalogJob } from '@tsunagi/monitoring-engine';
 import { useLang } from '@/lib/i18n';
 import { operationFor } from '@tsunagi/monitoring-engine';
@@ -147,7 +148,8 @@ export function useHub(input: {
     // whatever the hub wanted to say about cost or progress. The hub's own
     // notice is never urgent, so it always loses.
     const notice = hubNoticeFor({
-        linkError: link.error ?? undefined,
+        // A refusal for the module at the address said in the reader's words (SC10); any other error as the link gives it.
+        linkError: link.error ? (variantRefusalLine(link.error, t) ?? link.error) : undefined,
         catalogError: input.catalogError ?? undefined,
         viewNotice: hub.notice,
     });

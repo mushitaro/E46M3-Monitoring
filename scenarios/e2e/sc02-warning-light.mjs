@@ -80,8 +80,8 @@ const scenario = {
         },
         {
             check: {
-                desc: '手順 2：一件ずつ開くと、日本語の名前と、記録したときの条件（距離・温度・電圧）が読める',
-                run: async (page) => {
+                desc: '手順 2：一件ずつ開くと、日本語の名前と、その故障の SGBD が記録した条件（回転・負荷・車速・電圧など）が単位つきで読める',
+                run: async (page, st) => {
                     await page.getByText('故障 1', { exact: true }).first().click();
                     await page.waitForTimeout(500);
                     await page.getByText('故障 2', { exact: true }).first().click();
@@ -90,7 +90,21 @@ const scenario = {
                     const why = [];
                     const shown = Object.entries(JA).filter(([, ja]) => t.includes(ja)).map(([c]) => c);
                     if (shown.length < 3) why.push(`日本語の名前が出ているのは ${shown.join(', ') || 'なし'}${/Sensor-Cluster/.test(t) ? '（DSC はドイツ語のまま）' : ''}`);
-                    if (!/km/.test(t) || !/°C/.test(t) || !/\d\s*V\b/.test(t)) why.push('記録したときの条件（距離 km・温度 °C・電圧 V）が無い');
+                    // The conditions each fault's own SGBD recorded with it, as the answer carries them (the DME's
+                    // freeze frames; a module's own job's values that have a unit). Each must read on the screen
+                    // with its unit. A fault whose SGBD records none (MK60's 0x18 read holds code and status only)
+                    // has none to show.
+                    const mods = st.faults?.faults?.scan?.modules ?? [];
+                    const recorded = [];
+                    for (const m of mods) {
+                        for (const f of m.faults ?? []) for (const set of f.conditions ?? []) for (const c of set) if (c.unit) recorded.push(`${c.value} ${c.unit}`);
+                        for (const f of m.sgbdRead?.faults ?? []) for (const v of f.values ?? []) if (v.unit && typeof v.value === 'number') recorded.push(`${v.value} ${v.unit}`);
+                    }
+                    if (recorded.length === 0) why.push('答えに記録した条件が一つも無い（DME の故障は回転・負荷・車速・電圧を記録する）');
+                    // A value and its unit stand apart by a no-break space (ui.tsx UNIT_GAP).
+                    const flat = t.replace(/[\s\u00a0]+/g, ' ');
+                    const unseen = recorded.filter((x) => !flat.includes(x));
+                    if (unseen.length) why.push(`記録した条件が単位つきで画面に無い：${unseen.slice(0, 6).join('、')}`);
                     return why.length ? why.join('。') : true;
                 },
             },

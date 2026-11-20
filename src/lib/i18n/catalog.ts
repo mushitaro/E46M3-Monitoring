@@ -193,7 +193,13 @@ export interface Localised {
     notSent_link: string;
     notSent_permission: string;
     /** Which module answers at a shared address (lib/variantChoice). */
-    variant_ask: (hex: string) => string;
+    /** A read or a run not sent: which module answers at the address is not known on this car (SC10). */
+    variant_identOnly: (hex: string) => string;
+    /** Not sent: the address's IDENT chose a module whose SGBD this app does not carry. */
+    variant_notCarried: (hex: string, sgbd: string) => string;
+    /** Not sent: the address's IDENT chose another module. */
+    variant_otherHere: (hex: string, sgbd: string) => string;
+    variant_ask: (hex: string, byYear: boolean) => string;
     variant_ruledOut: (hex: string, other: string) => string;
     /** The confirmation, in the order it is read: what moves, what it needs, how long, what pressing does. */
     gate_what: string;
@@ -230,6 +236,10 @@ export interface Localised {
     /** How few of a module's actuator jobs this app can actually send. */
     actuator_runnable: (n: number, total: number) => string;
     actuator_onlyRunnable: string;
+    /** ACTUATOR with nothing listed: the module's own SGBD has no job that drives a part (MM01, MM04). */
+    actuator_noneInSgbd: string;
+    /** ACTUATOR with nothing listed: every job that drives a part is one the owner's table keeps off. */
+    actuator_noneOwnerOff: (n: number) => string;
     /** The placeholder of a job's value sets: the sets the app and EdiabasLib build alike. */
     actuator_values: string;
     actuator_armed: string;
@@ -264,7 +274,7 @@ export interface Localised {
     /** Behind the ⓘ: how the scan asks, what it can decode, what silence means. */
     scan_info: string;
     /** The one or two words a row ends with. */
-    scan_outcome: { faults: (n: number) => string; partial: (n: number) => string; clean: string; undecoded: string; faultsUnverified: (n: number) => string; cleanUnverified: string; identified: string; silent: string; rejected: string; refused: string; skipped: string };
+    scan_outcome: { faults: (n: number) => string; partial: (n: number) => string; clean: string; undecoded: string; faultsUnverified: (n: number) => string; cleanUnverified: string; identified: string; silent: string; rejected: string; refused: string; noFaultRead: string; skipped: string };
     /**
      * Which module an address's IDENT chose (lib/variants), under its opened row: the SGBD, or `?`;
      * and when nothing but the IDENT went, why.
@@ -380,6 +390,8 @@ export interface Localised {
     sessions_sent: (n: number) => string;
     sessions_nothingToSend: string;
     sessions_sendFailed: string;
+    /** A send that stopped, by what the server answered (0: no answer; 404: nothing to send to on this build). */
+    sessions_sendFailedAt: (status: number) => string;
     /** Asked to send with no network: kept, and sent once by itself when the network is back. */
     sessions_sendWhenOnline: string;
     sessions_sendExpired: string;

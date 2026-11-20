@@ -150,6 +150,17 @@ function describeSgbdFaults(faults: readonly SgbdFault[], profile: EcuProfile | 
     });
 }
 
+/** Why a SYNC stopped, for the assistant (views/sessions/useSessions `SyncOutcome`). */
+const SYNC_STOPPED: Record<string, string> = {
+    noSync: 'This build does not send: it is not the WORKS build, or its notice is not confirmed.',
+    offline: 'This device has no network now. The sessions waiting are kept on it and sent by themselves, once, when the network is back.',
+    notSaved: 'What is on the screen could not be saved first, so nothing was sent.',
+    unreachable: 'No answer from where sessions go (the request did not complete). They are kept on this device; SYNC again where there is signal.',
+    expired: 'The sign-in has expired: the owner signs in again on the screen. The sessions are kept on this device.',
+    noDestination: 'This build has nowhere to send to (HTTP 404: no server behind it). The sessions are kept on this device; the WORKS build with the owner signed in sends them.',
+    refused: 'Where sessions go answered and did not take them (see status). They are kept on this device.',
+};
+
 export function useMonitoringFacade(input: {
     link: ReturnType<typeof useDs2Link>;
     ecuId: string;
@@ -1095,10 +1106,18 @@ export function useMonitoringFacade(input: {
                     note: 'This device has no network now. The sessions waiting are kept on it and sent by themselves, once, when the network is back; MEMORY marks each sent then.',
                 };
             }
-            await sessions.sync();
+            const outcome = await sessions.sync();
             const after = await listLocal().catch(() => []);
             const sent = after.filter((s) => s.syncedAt !== null && s.syncedAt !== before.get(s.id)).length;
-            return { sent, waiting: after.filter(needsSync).length };
+            const waiting = after.filter(needsSync).length;
+            // What did not go, and why, in the same terms as the screen's notice line (SC05).
+            const why = SYNC_STOPPED[outcome.stopped ?? ''];
+            return {
+                sent,
+                waiting,
+                ...(why ? { reason: outcome.stopped, ...(outcome.status ? { status: outcome.status } : {}), note: why } : {}),
+                ...(outcome.tooLarge.length ? { tooLarge: outcome.tooLarge, tooLargeNote: 'Too large ever to send as they are; kept on this device.' } : {}),
+            };
         },
     };
 }

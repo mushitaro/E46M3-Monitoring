@@ -153,26 +153,37 @@ const scenario = {
         },
         {
             check: {
-                desc: '手順 5：送った答えが「送った」と言う。送れないなら、なぜかを言う',
+                desc: '手順 5：送った答えが「送った」と言う。送れないなら、答えと画面が同じ理由を言う（テスト用のビルドには送り先が無い）',
                 run: async (page, st) => {
                     const r = await ask(page, st, 'monitoring_sync_upload', { confirmed: true });
                     st.sync = r;
                     if (r.sent >= 1) return true;
-                    return r.reason ? `送れない：「${r.reason}」（テスト用のビルドにはサーバーとサインインが無い）` : `sent: ${r.sent}、waiting: ${r.waiting}、理由が無い（AI が「送りました」と言うか「送れません」と言うか決められない）`;
+                    if (!r.reason || !r.note) return `sent: ${r.sent}、waiting: ${r.waiting}、理由が無い（AI が「送りました」と言うか「送れません」と言うか決められない）`;
+                    // The screen says the same, in the owner's words, on MEMORY's notice line.
+                    await ask(page, st, 'monitoring_display', { show: 'memory', pane: 'list' });
+                    await page.waitForTimeout(800);
+                    const t = await screenText(page);
+                    const said = t.split('\n').find((l) => /送れませんでした|電波がありません/.test(l));
+                    if (!said) return `答えの理由は「${r.reason}」だが、画面に送れなかった理由が無い`;
+                    if (r.reason === 'noDestination' && !/送り先がありません/.test(said)) return `答えは送り先が無い、画面は「${said}」`;
+                    return true;
                 },
             },
         },
         {
             check: {
-                desc: '手順 5：SESSIONS（MEMORY）に記録が出て、送った印がある',
+                desc: '手順 5：SESSIONS（MEMORY）に記録が出る。送った印は実車のみ（サインインした WORKS 版で送れたとき）',
                 run: async (page, st) => {
                     await ask(page, st, 'monitoring_display', { show: 'memory', pane: 'list' });
                     await page.waitForTimeout(800);
                     const t = await screenText(page);
                     if (!st.saved?.label || !t.includes(st.saved.label)) return `記録「${st.saved?.label}」が画面に無い（画面：${t.split('\n').slice(3, 9).join(' / ')}）`;
-                    return /送信済|SYNCED|クラウド/.test(t) ? true : '送った印が無い';
+                    // Sent here (a build with somewhere to send): the mark must show. Not sent: the reason above is the check.
+                    if (st.sync?.sent >= 1) return /送信済|SYNCED|クラウド/.test(t) ? true : '送ったのに送った印が無い';
+                    return true;
                 },
             },
+            means: '送った印は、送り先のある WORKS 版でサインインして送れたときだけ（実車のみ）。テスト用のビルドでは、記録が出ることと送れない理由を見る',
         },
         { shot: 's05-sessions' },
         noVin,

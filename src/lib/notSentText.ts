@@ -59,3 +59,25 @@ export function notSentLine(ns: NotSent, t: NotSentWords): string {
             return t.notSent_permission;
     }
 }
+
+/** The words for a module the car's IDENT did not make this one's (engine variants `mayModuleBeSent`). */
+export interface VariantRefusalWords {
+    variant_identOnly: (hex: string) => string;
+    variant_notCarried: (hex: string, sgbd: string) => string;
+    variant_otherHere: (hex: string, sgbd: string) => string;
+}
+
+/**
+ * The screen's line for a read or a run the link would not send because which module answers at the
+ * address is not this one, or not known (variants `mayModuleBeSent`, whose reason the link's error
+ * carries): only the common IDENT went there (SC10 step 3). Null for any other error.
+ */
+export function variantRefusalLine(message: string, t: VariantRefusalWords): string | null {
+    const at = /not sent — (0x[0-9A-F]{2})(:| is (\S+?),)/.exec(message);
+    if (!at) return null;
+    const [, hex, , sgbd] = at;
+    if (sgbd && /whose SGBD this app does not carry yet/.test(message)) return t.variant_notCarried(hex, sgbd);
+    if (sgbd) return t.variant_otherHere(hex, sgbd);
+    if (/which module answers here is not known \(\?\)|its IDENT answer chose no variant/.test(message)) return t.variant_identOnly(hex);
+    return null;
+}

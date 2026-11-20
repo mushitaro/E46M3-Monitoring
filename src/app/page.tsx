@@ -19,7 +19,7 @@ import { takeLeftRunning, useActuatorArming, type LeftRunning } from '@/hooks/us
 import type { Stopped } from '@/lib/arming';
 import { partName, partTable } from '@/lib/partName';
 import { notSentLine } from '@/lib/notSentText';
-import { carKey, choiceFor, identifiedAt, readChoices, variantRefusal, variantState, withChoice, VARIANT_CHOICE_KEY, type VariantChoices } from '@/lib/variantChoice';
+import { carKey, choiceFor, decidedByYear, identifiedAt, readChoices, variantRefusal, variantState, withChoice, VARIANT_CHOICE_KEY, type VariantChoices } from '@/lib/variantChoice';
 import type { ProcedureEnd } from '@/lib/procedureEnd';
 import { procedureReason } from '@/lib/procedureEnd';
 import { loadVariantRules, ruleFor, type VariantRules } from '@tsunagi/monitoring-engine';
@@ -788,7 +788,7 @@ export default function Home() {
         (id: string) => {
             const entry = ecuIndex?.modules.find((m) => m.id === id);
             if (!entry) return { state: 'ok' as const };
-            const candidates = (ecuIndex?.modules ?? []).filter((m) => m.address === entry.address).map((m) => ({ id: m.id, name: m.name_en || m.name || m.id }));
+            const candidates = (ecuIndex?.modules ?? []).filter((m) => m.address === entry.address).map((m) => ({ id: m.id, name: m.name_en || m.name || m.id, nameJa: m.name || m.name_en || m.id }));
             return variantState({
                 moduleId: id,
                 address: entry.address,
@@ -882,7 +882,7 @@ export default function Home() {
         confirmRun: () => {
             // Which module answers at this address is the IDENT's, or the owner's to say on ACTUATOR, first.
             const v = variantOf(ecuId);
-            if (v.state !== 'ok') return setScreenNotice(v.state === 'ruledOut' ? t.variant_ruledOut(v.hex, v.other) : t.variant_ask(v.hex));
+            if (v.state !== 'ok') return setScreenNotice(v.state === 'ruledOut' ? t.variant_ruledOut(v.hex, v.other) : t.variant_ask(v.hex, decidedByYear(v.candidates)));
             if (selectedJob && runVerdict?.allowed) setServiceGate({ job: selectedJob, verdict: runVerdict });
         },
         probe: probe.progress ? { progress: probe.progress, stop: probe.stop, moduleName: (id) => moduleName(ecuIndex, id) ?? id } : undefined,

@@ -5,7 +5,11 @@ import { always, bodyText, hasJa, onModule, practiceOneOnScreen, scanModules, to
  * RDC・PDC・サンルーフ・シートメモリ（運転席・助手席）・ミラーメモリ（左右）・キセノン（左右）・アダプティブライト・SES・電話・ビデオ・
  * CD チェンジャーが載っていて、うち 4 つ（RDC・サンルーフ・キセノン左・アダプティブライト）に故障。
  */
-const REC = [0x01, 0x05, 0x21, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+// One entry: count 1, the location, the kind byte. At a location each module's own SGBD names (FORTTEXTE):
+// RDC and ALC name 0x05; on the sunroof 0x05 is 「reserviert」 and the left xenon has no 0x05, so they
+// carry 0x01 (Relais) and 0x15 (Zuendgeraet nicht angeschlossen oder defekt).
+const rec = (location) => [0x01, location, 0x21, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+const RECORD_AT = { 0x70: rec(0x05), 0x08: rec(0x01), 0x98: rec(0x15), 0x66: rec(0x05) };
 const FOURTEEN = [
     { addr: 0x70, id: 'rdc', ja: 'タイヤ空気圧 RDC' },
     { addr: 0x60, id: 'pdcact', ja: 'パークディスタンス PDC' },
@@ -34,7 +38,7 @@ const scenario = {
         '故障の 4 つを一つずつ開くと名前と状態が読める。14 個を一つずつ練習で動かし、動かせないものは理由が日本語で出る。最後に「故障を全部消して」。',
     car: {
         fitted: [0x32, 0x56, 0x57, 0x44, 0x00, 0x80, 0xd0, 0x50, 0x5b, 0x68, 0xf0, 0x7f, 0xa4, ...FOURTEEN.map((m) => m.addr)],
-        moduleFaults: Object.fromEntries(FAULTY.map((a) => [a, REC])),
+        moduleFaults: RECORD_AT,
         dmeFaults: [],
         dscMk60: [],
     },
@@ -60,7 +64,7 @@ const scenario = {
         },
         {
             check: {
-                desc: '画面の一覧に 14 個全部が日本語の名前で出て、どれも読めている（応答なし・未解読・送らない が無い）',
+                desc: '画面の一覧に 14 個全部が日本語の名前で出て、どれも読めている（応答なし・未解読・理由の無い「送らない」が無い。SGBD に故障読取が無いものは、その旨が行に出る）',
                 run: async (page) => {
                     const text = await bodyText(page);
                     const lines = text.split('\n');
@@ -94,7 +98,10 @@ const scenario = {
                             bad.push(`${name}：故障が読めない（生のバイトだけ）`);
                             continue;
                         }
-                        if (!f.text || /unbekannt|reserviert/i.test(f.text)) bad.push(`${name}：名前が無い（「${f.text}」）`);
+                        // A location its SGBD gives no name: said honestly as such, never shown as a name (CLAUDE.md, provenance).
+                        if (f.unnamed && f.textJa === 'この場所の名前は SGBD に無い') {
+                            /* honest */
+                        } else if (!f.text || /unbekannt|reserviert/i.test(f.text)) bad.push(`${name}：名前が無い（「${f.text}」）`);
                         else if (!hasJa(f.textJa ?? f.text)) bad.push(`${name}：名前が日本語でない（「${f.text}」）`);
                         if (!(f.kinds ?? []).length && f.present === undefined) bad.push(`${name}：状態が無い`);
                         else if ((f.kinds ?? []).length && !hasJa((f.kindsJa ?? f.kinds).join(''))) bad.push(`${name}：状態が日本語でない（「${f.kinds.join(' / ')}」）`);

@@ -158,6 +158,8 @@ const NEXT_WHY: Record<NextRefusal, string> = {
 };
 /** Samples a moment returns at most; thinned evenly beyond this. */
 const MOMENT_SAMPLES = 120;
+/** How long monitoring_stop_log's answer waits for the render that puts the recording's last part in the journal. */
+const STOP_SETTLE_MS = 300;
 
 const text = (v: unknown, name: string): string => {
     if (typeof v !== 'string' || !v.trim()) throw new Error(`${name} is required`);
@@ -571,6 +573,10 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
                 throw new Error('Read the request back to the driver, and call again with confirmed: true only after a clear yes.');
             }
             const stopped = f.stopLog();
+            // The recording's last part reaches MEMORY's journal on the render after the stop. An
+            // assistant that asks to save straight after (「止めて、保存して」) must find it there, so the
+            // answer waits for that render rather than racing it (SC12, SC13 step 12).
+            if (stopped === 'recording') await new Promise((r) => setTimeout(r, STOP_SETTLE_MS));
             return stopped ? { stopped } : { stopped: null, reason: 'Nothing was recording.' };
         },
 

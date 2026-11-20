@@ -71,6 +71,8 @@ export function standing(
         case 'rejected':
             return { word: t.scan_outcome.rejected, tone: 'text-amber-400', rank: 3, ...none };
         case 'refused':
+            // Its own SGBD has no fault read the app could send: said on the row, not a bare "not sent" (MM01).
+            if (/carries no short fault-read frame/.test(r.reason ?? '')) return { word: t.scan_outcome.noFaultRead, tone: 'text-slate-500', rank: 4, ...none };
             return { word: t.scan_outcome.refused, tone: 'text-slate-500', rank: 4, ...none };
         case 'skipped':
             return { word: t.scan_outcome.skipped, tone: 'text-slate-600', rank: 5, ...none };

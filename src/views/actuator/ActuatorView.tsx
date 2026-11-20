@@ -22,7 +22,7 @@ import { bestTelegram, type TelegramTable } from '@tsunagi/monitoring-engine';
 import type { Motion } from '@tsunagi/monitoring-engine';
 import { ReasonGlossary, ReasonTag } from '@/views/shared/RunReason';
 import { useNow } from '@/hooks/useNow';
-import type { VariantState } from '@/lib/variantChoice';
+import { decidedByYear, type VariantState } from '@/lib/variantChoice';
 
 /** The parts a module's own data names (lib/partName `partTable`), by the value that selects them. */
 type PartTable = ReadonlyMap<string, { ja: string; en: string }>;
@@ -105,9 +105,10 @@ export function ActuatorView({
     // Same function SERVICE asks, so the two lists partition the catalogue
     // instead of being two filters that happen to agree — `lib/jobSurface`.
     // Not those the owner keeps off altogether: they are never offered, so they are not listed.
+    const drivers = useMemo(() => profile.jobs.filter(isOn('actuator')), [profile.jobs]);
     const jobs = useMemo(
-        () => profile.jobs.filter(isOn('actuator')).filter((j) => decisionFor(profile.id, j, profile.group).how !== 'off'),
-        [profile.jobs, profile.id, profile.group],
+        () => drivers.filter((j) => decisionFor(profile.id, j, profile.group).how !== 'off'),
+        [drivers, profile.id, profile.group],
     );
 
     // The sets of values each job that takes them may run with, and the one chosen on its row (by
@@ -238,6 +239,12 @@ export function ActuatorView({
                 info={<ReasonGlossary lead={t.actuator_info} reasons={jobs.map((j) => verdicts.get(j.id))} />}
             >
                 {variant.state !== 'ok' && <VariantRow variant={variant} onConfirm={onConfirmVariant} />}
+                {/* Nothing to list: why, in a sentence, rather than an empty list (MM01, MM04). */}
+                {jobs.length === 0 && (
+                    <p className="py-2 text-[11px] leading-relaxed text-slate-400">
+                        {drivers.length === 0 ? t.actuator_noneInSgbd : t.actuator_noneOwnerOff(drivers.length)}
+                    </p>
+                )}
                 <ListControls
                     query={query}
                     onQuery={setQuery}
@@ -318,17 +325,17 @@ export function ActuatorView({
  * one) gets nothing that drives until the owner has said (IJ F01). Reads go on as before.
  */
 function VariantRow({ variant, onConfirm }: { variant: Exclude<VariantState, { state: 'ok' }>; onConfirm: (address: number, moduleId: string) => void }) {
-    const { t } = useLang();
+    const { lang, t } = useLang();
     return (
         <div className="mb-2 border-b border-slate-800 pb-2">
             <p className="text-[11px] leading-relaxed text-amber-400">
-                {variant.state === 'ruledOut' ? t.variant_ruledOut(variant.hex, variant.other) : t.variant_ask(variant.hex)}
+                {variant.state === 'ruledOut' ? t.variant_ruledOut(variant.hex, variant.other) : t.variant_ask(variant.hex, decidedByYear(variant.candidates))}
             </p>
             {variant.state === 'ask' && (
                 <div className="mt-1.5 flex flex-wrap gap-4">
                     {variant.candidates.map((c) => (
                         <TextButton key={c.id} onClick={() => onConfirm(variant.address, c.id)}>
-                            {c.name}
+                            {lang === 'ja' ? (c.nameJa ?? c.name) : c.name}
                         </TextButton>
                     ))}
                 </div>

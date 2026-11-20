@@ -164,12 +164,16 @@ const scenario = {
                     const b = page.locator('button:visible:has-text("UPDATE")');
                     if ((await b.count()) === 0) return 'UPDATE のボタンが無い';
                     let asked = null;
-                    page.once('dialog', (d) => {
+                    const onDialog = (d) => {
                         asked = d.message();
                         void d.dismiss();
-                    });
+                    };
+                    page.once('dialog', onDialog);
                     await b.first().click();
                     await page.waitForTimeout(800);
+                    // No dialog came (the app says it in its own notice): the listener must not linger and
+                    // dismiss the next step's confirmation.
+                    page.off('dialog', onDialog);
                     const text = `${await bodyText(page)}\n${asked ?? ''}`;
                     const s = await tool(page, 'monitoring_status');
                     if (!s?.recording) return '記録が止まった';

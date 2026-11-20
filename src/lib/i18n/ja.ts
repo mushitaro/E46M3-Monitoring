@@ -185,7 +185,13 @@ export const ja: Localised = {
     notSent_engineOn: (rpm) => `エンジンが止まっています（${rpm} rpm）。エンジンをかけてから動かせます。`,
     notSent_link: '車速と電圧を測れなかったので動かしませんでした。接続を確かめてください。',
     notSent_permission: '許可した電文と違うので送りませんでした。',
-    variant_ask: (hex) => `${hex} には年式でちがうモジュールがいます。この車はどちらですか？ 決めるまで、ここで部品は動かしません（読むのはこれまでどおり）。`,
+    variant_identOnly: (hex) => `この車では ${hex} にいるモジュールが分かりません（?）。名乗り（IDENT）のほかは何も送りません。`,
+    variant_notCarried: (hex, sgbd) => `この車の ${hex} は ${sgbd} です。このアプリはまだその SGBD を載せていないので、名乗り（IDENT）のほかは送りません。`,
+    variant_otherHere: (hex, sgbd) => `この車の ${hex} は ${sgbd} です。このモジュールの電文は送りません。`,
+    variant_ask: (hex, byYear) =>
+        byYear
+            ? `${hex} には年式でちがうモジュールがいます。この車はどちらですか？ 決めるまで、ここで部品は動かしません（読むのはこれまでどおり）。`
+            : `${hex} の機種は、名乗り（IDENT）からは決められません。この車はどれですか？ 決めるまで、ここで部品は動かしません（読むのはこれまでどおり）。`,
     variant_ruledOut: (hex, other) => `この車の ${hex} は ${other} です。このモジュールの部品は動かしません。`,
     gate_what: '何が動くか',
     gate_needs: '前提（すべて確認）',
@@ -246,6 +252,8 @@ export const ja: Localised = {
     info_hide: '説明を閉じる',
     actuator_runnable: (n, total) => `${total} 件中 ${n} 件が実行可能`,
     actuator_onlyRunnable: '実行できるものだけ',
+    actuator_noneInSgbd: 'このモジュールの SGBD には、部品を動かすジョブ（作動テスト）がありません。読む項目は DIAGNOSIS と SERVICE にあります。',
+    actuator_noneOwnerOff: (n) => `このモジュールの部品を動かすジョブ ${n} 件は、どれも運営者の表で出さないもの（書き込み・安全装置の展開など）です。このアプリからは送りません。`,
     actuator_values: '値を選ぶ',
     actuator_armed: '作動中',
     gate_plan: '送信内容',
@@ -288,6 +296,7 @@ export const ja: Localised = {
         silent: '応答なし',
         rejected: '拒否',
         refused: '送らない',
+        noFaultRead: '故障読取なし（SGBD に無い）',
         skipped: '未実施',
     },
     scan_shared: 'どれが付いているかは、MODULE で選んで開きます。',
@@ -770,6 +779,12 @@ export const ja: Localised = {
     sessions_nothingToSend: '送っていないセッションはありません。',
     sessions_sendWhenOnline: '電波がありません。電波が戻ったら、自動で一度送ります。',
     sessions_sendFailed: '送れませんでした。端末には保存してあります。電波のある所でもう一度 SYNC してください。',
+    sessions_sendFailedAt: (status) =>
+        status === 0
+            ? '送れませんでした（送り先から応答がありません）。端末には保存してあります。電波のある所でもう一度 SYNC してください。'
+            : status === 404
+              ? '送れませんでした。この版には送り先がありません（HTTP 404）。端末には保存してあります。'
+              : `送れませんでした。送り先が受け取りませんでした（HTTP ${status}）。端末には保存してあります。`,
     sessions_sendExpired: 'サインインの期限が切れているため送れませんでした。端末には保存してあります。',
     sessions_tooLarge: (label) => `${label} は大きすぎて送れません（1 件 1.9 MB まで）。端末には保存してあります。`,
     sessions_restored: 'この端末に復元しました。',

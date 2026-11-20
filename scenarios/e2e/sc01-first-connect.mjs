@@ -17,13 +17,13 @@ const scenario = {
         { shot: 's01-open' },
         {
             check: {
-                desc: '手順 1：STARTUP が出ていて、何をすればよいかが一行で書いてある',
+                desc: '手順 1：MANUAL の画面で開き（運営者 2026-11-02）、何をすればよいかが一行で書いてある（PRACTICE を入れて CONNECT、または実車で CONNECT）',
                 run: async (page) => {
                     const t = await screenText(page);
-                    const startup = t.includes('STARTUP');
-                    const oneLine = t.split('\n').some((l) => /(PRACTICE|CONNECT|接続|つな)/.test(l) && /(押|選|して|ください)/.test(l));
-                    if (startup && oneLine) return true;
-                    return `${startup ? '' : 'STARTUP が出ていない。'}${oneLine ? '' : '何をすればよいかの一行が無い。'}画面：${t.split('\n').slice(0, 8).join(' / ')}`;
+                    const manual = (await page.locator('button[data-mode="manual"][aria-pressed="true"]').count()) > 0;
+                    const oneLine = t.split('\n').some((l) => /PRACTICE/.test(l) && /CONNECT/.test(l) && /(押|選|して|ください)/.test(l));
+                    if (manual && oneLine) return true;
+                    return `${manual ? '' : 'MANUAL で開いていない。'}${oneLine ? '' : '何をすればよいかの一行が無い。'}画面：${t.split('\n').slice(0, 8).join(' / ')}`;
                 },
             },
         },
@@ -125,7 +125,7 @@ const scenario = {
                     const rows = await scanRows(page);
                     const bad = Object.entries(rows)
                         .filter(([a]) => !['0x12', '0xB8'].includes(a))
-                        .filter(([, r]) => !['故障なし', '応答なし', '送らない'].includes(r.tag))
+                        .filter(([, r]) => !['故障なし', '応答なし', '送らない', '故障読取なし（SGBD に無い）'].includes(r.tag))
                         .map(([a, r]) => `${a} ${r.name.slice(0, 24)}：${r.tag}`);
                     return bad.length ? bad.join(' | ') : true;
                 },

@@ -3,7 +3,8 @@ import { always, bodyText, tool } from './_owner.mjs';
 /**
  * SC12（docs/VIRTUAL-CAR-TESTS.md M1）：残す・渡す・頼む。
  * 1「前の記録を開いて」→ AI が候補を日付で言い、選ぶと画面に開く。
- * 2「TUNER を開いて」→ TUNER が開く。MONITORING の記録は止まらない。
+ * 2「TUNER を開いて」→ TUNER は同じタブで開く（ケーブルは一本で、TUNER もそれを使う）。記録中は AI が「記録を止めてから」と答え、
+ *   記録は止まらない（黙って止めない）。止めて保存したあと TUNER が開く。
  * 3「開発に、この表示が分かりにくいって送って」→ AI「送りました」。あとで「返事来た？」に開発の返事を読む。
  *   開発への頼みごと（monitoring_dev_request・dev_status）は中継が持ち、タブには無いので、ここでは確かめない（FINDINGS に記す）。
  */
@@ -59,10 +60,17 @@ const scenario = {
                 run: async (page, st) => {
                     await tool(page, 'monitoring_display', { show: 'memory' });
                     await page.waitForTimeout(600);
+                    // The record the assistant opened above is on the screen: back to the list first, as a person would.
+                    const back = page.locator('button:visible:has-text("Back")');
+                    if (await back.count()) {
+                        await back.first().click();
+                        await page.waitForTimeout(400);
+                    }
                     const pick = st.saved?.[1];
                     const row = page.locator(`text=${pick?.label}`).first();
                     if ((await row.count()) === 0) return 'MEMORY に記録が無い';
-                    const view = page.locator('button:visible').filter({ hasText: /見る|view|開く/i }).last();
+                    // Its own row's VIEW (the rows carry the label, and each its VIEW).
+                    const view = page.locator(`xpath=//*[.//button[contains(normalize-space(.), "View")]][contains(normalize-space(.), "${pick.label}")]`).last().locator('button:visible').filter({ hasText: /見る|view|開く/i }).last();
                     if ((await view.count()) === 0) return '開くボタンが無い';
                     await view.click();
                     await page.waitForTimeout(800);
@@ -79,8 +87,8 @@ const scenario = {
         {
             ai: 'monitoring_open_tuner',
             args: { confirmed: true },
-            means: 'TUNER が開き、MONITORING の記録は止まらない',
-            expect: (r) => (r?.opened === true ? true : `開かない: ${r?.reason}`),
+            means: 'TUNER は同じタブで開くので、記録中は開かず「記録を止めてから」と答える（記録を黙って止めない）',
+            expect: (r) => (r?.opened === false && /Stop it first|recording/i.test(r?.reason ?? '') ? true : `記録中に答えが違う: ${JSON.stringify(r).slice(0, 200)}`),
         },
         {
             check: {

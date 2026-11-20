@@ -186,7 +186,13 @@ export const en: Localised = {
     notSent_engineOn: (rpm) => `The engine is stopped (${rpm} rpm). Start the engine, then run it.`,
     notSent_link: 'Not run: the speed and battery could not be measured. Check the connection.',
     notSent_permission: 'Not sent: not the frame that was allowed.',
-    variant_ask: (hex) => `${hex} is one of two modules, by the car's year. Which is this car's? Nothing is driven here until you say (reads go on as before).`,
+    variant_identOnly: (hex) => `Which module is at ${hex} on this car is not known (?). Nothing but its IDENT is sent.`,
+    variant_notCarried: (hex, sgbd) => `On this car ${hex} is ${sgbd}, whose SGBD this app does not carry yet: only its IDENT is sent.`,
+    variant_otherHere: (hex, sgbd) => `On this car ${hex} is ${sgbd}: this module's frames are not sent there.`,
+    variant_ask: (hex, byYear) =>
+        byYear
+            ? `${hex} is one of two modules, by the car's year. Which is this car's? Nothing is driven here until you say (reads go on as before).`
+            : `${hex}'s IDENT does not tell which model this is. Which is this car's? Nothing is driven here until you say (reads go on as before).`,
     variant_ruledOut: (hex, other) => `On this car ${hex} is ${other}: this module's parts are not driven.`,
     gate_what: 'What moves',
     gate_needs: 'Preconditions (confirm each)',
@@ -245,6 +251,8 @@ export const en: Localised = {
     info_hide: 'Hide the explanation',
     actuator_runnable: (n, total) => `${n} of ${total} can be sent`,
     actuator_onlyRunnable: 'Only what can run',
+    actuator_noneInSgbd: "This module's own SGBD has no job that drives a part (actuator test). What it reads is on DIAGNOSIS and SERVICE.",
+    actuator_noneOwnerOff: (n) => `This module's ${n} job${n === 1 ? '' : 's'} that drive a part are all ones the owner's table keeps off (writes, deploying a safety device and the like). This app does not send them.`,
     actuator_values: 'Choose values',
     actuator_armed: 'Engaged',
     gate_plan: 'What will be sent',
@@ -289,6 +297,7 @@ export const en: Localised = {
         silent: 'No answer',
         rejected: 'Refused',
         refused: 'Not sent',
+        noFaultRead: 'No fault read in its SGBD',
         skipped: 'Not reached',
     },
     scan_shared: 'Which one is fitted is chosen on MODULE, then opened.',
@@ -770,6 +779,12 @@ export const en: Localised = {
     sessions_nothingToSend: 'Every session has been sent already.',
     sessions_sendWhenOnline: 'No network. It will send by itself, once, when the network is back.',
     sessions_sendFailed: 'Could not send. It is saved on this device — SYNC again where there is signal.',
+    sessions_sendFailedAt: (status) =>
+        status === 0
+            ? 'Could not send: no answer from where it goes. It is saved on this device — SYNC again where there is signal.'
+            : status === 404
+              ? 'Could not send: this build has nowhere to send to (HTTP 404). It is saved on this device.'
+              : `Could not send: it was not taken (HTTP ${status}). It is saved on this device.`,
     sessions_sendExpired: 'Could not send: your sign-in has expired. It is saved on this device.',
     sessions_tooLarge: (label) => `${label} is too large to send (1.9 MB per session). It is saved on this device.`,
     sessions_restored: 'Restored to this device.',

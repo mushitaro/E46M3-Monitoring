@@ -19,7 +19,7 @@ import type { Fitment, ScanRun } from '@tsunagi/monitoring-engine';
 
 export type VariantState =
     | { state: 'ok' }
-    | { state: 'ask'; address: number; hex: string; candidates: { id: string; name: string }[] }
+    | { state: 'ask'; address: number; hex: string; candidates: { id: string; name: string; nameJa?: string }[] }
     | { state: 'ruledOut'; address: number; hex: string; other: string };
 
 /** The owner's answers: car key → address → module id. */
@@ -52,8 +52,8 @@ export function identifiedAt(address: number, fitment: Fitment, scan: ScanRun | 
 export function variantState(input: {
     moduleId: string;
     address: number;
-    /** This app's modules at the address, with their names. */
-    candidates: { id: string; name: string }[];
+    /** This app's modules at the address, with their names (English, and the screen's Japanese). */
+    candidates: { id: string; name: string; nameJa?: string }[];
     /** The address has a group rule: its IDENT decides. */
     hasRule: boolean;
     identified: { moduleId: string | null; sgbd: string | null } | null;
@@ -72,12 +72,22 @@ export function variantState(input: {
     return { state: 'ask', address, hex, candidates };
 }
 
+/**
+ * Whether the car's year is what decides between an address's modules (0x56: ASC MK20 early, DSC late).
+ * Elsewhere (0xF0's board monitors, 0x7F's navigation computers) no IDENT rule tells them apart, and
+ * nothing says the year does either.
+ */
+export function decidedByYear(candidates: readonly { id: string }[]): boolean {
+    const ids = new Set(candidates.map((c) => c.id));
+    return ids.has('ascmk20') && ids.has('dsc_e46');
+}
+
 /** The assistant's sentence for a state that is not ok, or null. */
 export function variantRefusal(v: VariantState, moduleName: string): string | null {
     if (v.state === 'ruledOut')
         return `On this car ${v.hex} is ${v.other}, not ${moduleName}: ${moduleName}'s jobs are not run here, and nothing of it is offered. Say so to the owner.`;
     if (v.state === 'ask')
-        return `${v.hex} may be ${v.candidates.map((c) => c.name).join(' or ')} (the car's year decides, and no IDENT rule tells them apart). Nothing that drives is sent there until the owner has said which, once, on the screen (ACTUATOR asks). Reads go on as before.`;
+        return `${v.hex} may be ${v.candidates.map((c) => c.name).join(' or ')} (${decidedByYear(v.candidates) ? "the car's year decides, and " : ''}no IDENT rule tells them apart). Nothing that drives is sent there until the owner has said which, once, on the screen (ACTUATOR asks). Reads go on as before.`;
     return null;
 }
 

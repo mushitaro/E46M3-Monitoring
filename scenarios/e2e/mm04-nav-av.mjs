@@ -1,11 +1,26 @@
-import { always, bodyText, hasJa, practiceOneOnScreen, scanModules, tool } from './_owner.mjs';
+import { always, bodyText, hasJa, onModule, practiceOneOnScreen, scanModules, tool } from './_owner.mjs';
 
 /**
  * MM04（docs/VIRTUAL-CAR-TESTS.md M2）：ナビと AV（8）。
  * 1 ラジオ・ボードモニター・ナビ・CD を、車の装備を変えながら接続 → 同じ場所にある別の機種を、正しい名前で出し分ける。
  * 2 それぞれで動かす項目を一つ → 動くものは動作中 → 止まった。動かないものは理由が出る。
  * ボードモニター（0xF0）とナビ（0x7F）は、同じアドレスに機種が 3〜4 つある。練習の車は IDENT の答え（ハードウェア番号・診断インデックス）を変えて機種を替える。
+ * この二つにはグループファイルの規則が無く（D_00xx.grp は 0x12・0x32・0x80 だけ）、名乗りからは機種を決められない。推測で決めない（CLAUDE.md）
+ * ので、画面は「?（A、B、C のどれか）」と出し、オーナーが ACTUATOR で一度答えたら、その名前で出す（運営者 2026-11-20 の基準）。
  */
+
+/** Which model the owner says is fitted, as ACTUATOR's buttons name it. */
+const OWNER_SAYS = [
+    { address: '0xF0', id: 'bmbt46rn', button: 'ボードモニター (Radio Nav)' },
+    { address: '0x7F', id: 'navmk4', button: 'ナビゲーション MK4' },
+];
+
+/** The scan list's row for an address: the line under its address. */
+const rowNameOf = async (page, address) => {
+    const lines = (await bodyText(page)).split('\n');
+    const i = lines.findIndex((l) => l.trim() === address);
+    return i < 0 ? null : (lines[i + 1] ?? '').trim();
+};
 const AV = [0x68, 0xf0, 0x7f, 0x76];
 const BASE = [0x32, 0x56, 0x57, 0x44, 0x00, 0x80, 0xd0, 0x50, 0x5b, 0xa4];
 
@@ -45,13 +60,14 @@ const scenario = {
         { shot: 's01-b' },
         {
             check: {
-                desc: 'ボードモニター（0xF0）とナビ（0x7F）：IDENT が選んだ機種の名前が一つ出る（候補を並べたままにしない）',
+                desc: 'ボードモニター（0xF0）とナビ（0x7F）：名乗りで決められないので、推測した機種を出さない（変種は ?）',
                 run: async (page, st) => {
                     const why = [];
                     for (const [label, rows] of Object.entries(st.av ?? {})) {
                         for (const a of [0xf0, 0x7f]) {
                             const r = rows[a];
-                            if (!r?.sgbd || r.sgbd === '?') why.push(`${label} 0x${a.toString(16).toUpperCase()}：機種が分からない（候補 ${r?.names?.join(' / ')}）`);
+                            if (r?.sgbd && r.sgbd !== '?') why.push(`${label} 0x${a.toString(16).toUpperCase()}：名乗りに規則が無いのに ${r.sgbd} と決めている`);
+                            if (r?.outcome !== 'answered') why.push(`${label} 0x${a.toString(16).toUpperCase()}：応答していない（${r?.outcome}）`);
                         }
                     }
                     return why.length ? why.join('、') : true;
@@ -60,20 +76,63 @@ const scenario = {
         },
         {
             check: {
-                desc: '画面：ボードモニターとナビの行が、一つの機種の名前で出る（「/」で候補を並べない）',
+                desc: '画面：ボードモニターとナビの行は「?（A、B、C のどれか。名乗りからは決められません）」と出る（候補を「/」で並べて全部付いているように見せない）',
                 run: async (page) => {
-                    const text = await bodyText(page);
-                    const lines = text.split('\n');
                     const why = [];
                     for (const a of ['0xF0', '0x7F']) {
-                        const i = lines.findIndex((l) => l.trim() === a);
-                        const name = lines[i + 1] ?? '';
-                        if (/ \/ /.test(name)) why.push(`${a}：「${name}」`);
+                        const name = (await rowNameOf(page, a)) ?? '';
+                        if (!/^\?（.+のどれか。名乗りからは決められません）$/.test(name) || / \/ /.test(name)) why.push(`${a}：「${name}」`);
                     }
                     return why.length ? why.join('、') : true;
                 },
             },
         },
+        {
+            check: {
+                desc: 'オーナーが ACTUATOR で機種を答える（ボードモニター：Radio Nav、ナビ：MK4）。答える行は日本語で、候補が日本語の名前で並ぶ',
+                run: async (page) => {
+                    const why = [];
+                    for (const o of OWNER_SAYS) {
+                        const off = await onModule(page, o.id);
+                        if (off) {
+                            why.push(off);
+                            continue;
+                        }
+                        await page.locator('[role=tab]:has-text("ACTUATOR")').first().click();
+                        await page.waitForTimeout(500);
+                        const text = await bodyText(page);
+                        if (!text.includes(`${o.address} の機種は、名乗り（IDENT）からは決められません。`)) why.push(`${o.address}：答えを訊く文が無い`);
+                        const pick = page.getByRole('button', { name: o.button, exact: true });
+                        if (!(await pick.count())) {
+                            why.push(`${o.address}：「${o.button}」のボタンが無い`);
+                            continue;
+                        }
+                        await pick.first().click();
+                        await page.waitForTimeout(400);
+                    }
+                    // Back to the list: ALL MODULES is offered on DIAGNOSIS only.
+                    await page.locator('[role=tab]:has-text("DIAGNOSIS")').first().click();
+                    await page.waitForTimeout(400);
+                    await page.locator('select:has(option[value="all"])').first().selectOption('all');
+                    await page.waitForTimeout(800);
+                    return why.length ? why.join('、') : true;
+                },
+            },
+        },
+        {
+            check: {
+                desc: '画面：答えたあと、ボードモニターとナビの行がオーナーの答えた名前一つで出る',
+                run: async (page) => {
+                    const why = [];
+                    for (const o of OWNER_SAYS) {
+                        const name = await rowNameOf(page, o.address);
+                        if (name !== o.button) why.push(`${o.address}：「${name}」（想定「${o.button}」）`);
+                    }
+                    return why.length ? why.join('、') : true;
+                },
+            },
+        },
+        { shot: 's01-owner-said' },
         {
             check: {
                 desc: 'ラジオ（0x68）と CD（0x76）は名前が一つで、応答している',

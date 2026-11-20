@@ -142,8 +142,10 @@ const scenario = {
             if (!(await pick.count())) return 'ACTUATOR に機種を答える行が無い';
             await pick.click();
             await page.waitForTimeout(400);
-            await page.locator('select:has(option[value="all"])').first().selectOption('all').catch(() => {});
+            // Back to the list: ALL MODULES is offered on DIAGNOSIS only.
             await page.locator('[role=tab]:has-text("DIAGNOSIS")').first().click();
+            await page.waitForTimeout(400);
+            await page.locator('select:has(option[value="all"])').first().selectOption('all');
             await page.waitForTimeout(600);
             return true;
         }),

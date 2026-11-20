@@ -301,23 +301,27 @@ export function useSessions(input: {
     /**
      * SAVE, then send every session on this device that the account does not have yet. One
      * action — the two halves of the same flow, never a second button somewhere else.
+     *
+     * Says how it went, to the screen (the notice line) and to its caller (the assistant's
+     * monitoring_sync_upload), in the same terms: what went, and when something did not, why (SC05).
      */
-    const sync = useCallback(async () => {
-        if (!cloudEnabled) return;
+    const sync = useCallback(async (): Promise<SyncOutcome> => {
+        if (!cloudEnabled) return { sent: 0, stopped: 'noSync', status: null, tooLarge: [] };
         // No network: nothing can go now. Said, and kept: it goes once by itself when the network is back.
         if (!online) {
             setSendWhenOnline(true);
             setNotice({ text: t.sessions_sendWhenOnline, tone: 'info' });
-            return;
+            return { sent: 0, stopped: 'offline', status: null, tooLarge: [] };
         }
         setSendWhenOnline(false);
         setBusy('sync');
+        const tooLarge: string[] = [];
         try {
-            if (unsaved && !(await saveNow())) return;
+            if (unsaved && !(await saveNow())) return { sent: 0, stopped: 'notSaved', status: null, tooLarge };
             const pending = (await listLocal()).filter(needsSync);
             if (pending.length === 0) {
                 setNotice({ text: t.sessions_nothingToSend, tone: 'info' });
-                return;
+                return { sent: 0, stopped: null, status: null, tooLarge };
             }
             let sent = 0;
             for (const s of pending) {
@@ -330,17 +334,20 @@ export function useSessions(input: {
                 if (r.tooLarge) {
                     // This one cannot go, ever, as it is. Say which, and let the rest go.
                     setNotice({ text: t.sessions_tooLarge(s.label), tone: 'warn' });
+                    tooLarge.push(s.label);
                     continue;
                 }
-                setNotice({ text: r.expired ? t.sessions_sendExpired : t.sessions_sendFailed, tone: 'error' });
+                const stopped = sendStoppedBy(r);
+                setNotice({ text: stopped === 'expired' ? t.sessions_sendExpired : t.sessions_sendFailedAt(r.status), tone: 'error' });
                 if (r.expired) setGate({ state: 'expired', label: gate?.label ?? null });
-                return;
+                return { sent, stopped, status: r.status, tooLarge };
             }
             if (sent > 0) {
                 setNotice((n) => (n?.tone === 'warn' ? n : { text: t.sessions_sent(sent), tone: 'ok' }));
                 await flushErrorRecords();
                 await flushReadRecords();
             }
+            return { sent, stopped: null, status: null, tooLarge };
         } finally {
             await refreshLocal();
             await refreshCloud();
@@ -487,6 +494,35 @@ export function useSessions(input: {
 }
 
 export type Sessions = ReturnType<typeof useSessions>;
+
+/**
+ * How a SYNC went: how many sessions went, and, when it stopped before all had, why — in terms both
+ * the notice line and the assistant's answer say.
+ *
+ *   - `noSync`: this build sends nothing (not the WORKS build, or its notice not confirmed).
+ *   - `offline`: no network; kept, and sent by itself once the network is back.
+ *   - `notSaved`: what is on the screen could not be saved first.
+ *   - `unreachable`: no answer from the server (status 0: the request did not complete).
+ *   - `expired`: the sign-in has expired (401).
+ *   - `noDestination`: there is nothing at the address to send to on this build (404).
+ *   - `refused`: the server answered and did not take it (any other status), with the status.
+ */
+export interface SyncOutcome {
+    sent: number;
+    stopped: null | 'noSync' | 'offline' | 'notSaved' | 'unreachable' | 'expired' | 'noDestination' | 'refused';
+    /** The HTTP status the server answered with, where it answered one. */
+    status: number | null;
+    /** Sessions too large ever to go as they are. */
+    tooLarge: string[];
+}
+
+/** Why a send that did not go stopped, from the request's own answer. */
+export function sendStoppedBy(r: { status: number; expired: boolean }): NonNullable<SyncOutcome['stopped']> {
+    if (r.expired) return 'expired';
+    if (r.status === 0) return 'unreachable';
+    if (r.status === 404) return 'noDestination';
+    return 'refused';
+}
 
 /**
  * The account's side, read in one go: the lists, the gate's state, and the outbox. When the gate

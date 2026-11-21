@@ -49,6 +49,10 @@ export const TEST_ID = {
     datalogSegmentMark: 'segment-mark',
     /** The moment the assistant analysed, on the graphs. */
     datalogCursor: 'datalog-cursor',
+
+    // --- PROBE ---------------------------------------------------------------
+    /** A value card on the board: pressed, it shows its mean and spread (UX-10). */
+    valueCard: 'value-card',
 } as const;
 
 export type TestIdKey = keyof typeof TEST_ID;

@@ -93,6 +93,7 @@ export function AppHeader({
     assistant = null,
     signIn = 'ok',
     onReauth = null,
+    practiceArmed = false,
 }: {
     state: LinkState;
     mode: LinkMode;
@@ -111,6 +112,8 @@ export function AppHeader({
     /** SIGN IN AGAIN, while it can be pressed; null while it cannot. The shell confirms first when
      *  something unsaved would be lost. */
     onReauth?: (() => void) | null;
+    /** PRACTICE is ticked: the badge says so before the link opens too (UX-03, tsunagi-m-ux §16). */
+    practiceArmed?: boolean;
 }) {
     const { lang, t } = useLang();
     // The preview sends what production never does, so it links to where that is written down —
@@ -152,7 +155,7 @@ export function AppHeader({
                 {/* PRACTICE in words, at every width, while the practice car is what is connected (SC01
                     step 2): the dot's hue alone says it only to someone who knows the hue. Never a
                     shade of "connected" (StatusLed). */}
-                {mode === 'practice' && state !== 'disconnected' && (
+                {(state === 'disconnected' ? practiceArmed : mode === 'practice') && (
                     <Pill tone="secondary" title={t.mode_practice}>
                         {t.practice}
                     </Pill>

@@ -1,7 +1,8 @@
 'use client';
 
-import { ChevronDown, ChevronUp, ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
-import { MSS54_CHANNELS, formatErrorCode, type ChannelId, type ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
+import { useState } from 'react';
+import { ChevronDown, ChevronUp, ChevronsDownUp, ChevronsUpDown, Radar } from 'lucide-react';
+import { formatErrorCode, type ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
 import type { RawFaultRead } from '@/hooks/useDs2Link';
 import type { ProbeProgress } from '@/hooks/useProbe';
 import { DataList, DataRow, Field, Pane, Pill, Provenance, Section, TextButton, humanName } from '@/components/ui';
@@ -11,11 +12,15 @@ import { useLang } from '@/lib/i18n';
 import { currentPlan } from '@/lib/notebook/rules';
 import { BOARD_LIMITS, defaultReadouts, type Part, type PartKind, type Readout } from '@/lib/probe/board';
 import { channelStats, compareRuns, type Comparison } from '@/lib/probe/compare';
+import { pairTargets, pairTitle } from '@/lib/channelLabel';
 import { graphOf, readoutsOf, type GraphTone } from '@/lib/probe/graph';
 import type { ProbeLive, StoredRun } from '@/lib/probe/runStore';
 import type { ScanRun } from '@tsunagi/monitoring-engine';
 import { formOf } from '@/lib/probe/sessions';
 import { standing } from '@/views/diagnosis/ScanView';
+import { Awaiting } from '@/views/shared/Awaiting';
+import { TEST_ID, tid } from '@/lib/testIds';
+import { useProbeNames } from './names';
 import type { ProbeSessions } from './useProbeSessions';
 
 /** What the board draws from besides the session: the screen's own reads. */
@@ -64,16 +69,20 @@ export function BoardView({ s, data }: { s: ProbeSessions; data: BoardData }) {
     const { t } = useLang();
     const parts = s.board?.parts ?? [];
     if (!s.current || parts.length === 0) {
-        // Nothing placed yet: a run in progress shows its values, as cards; otherwise say what comes here.
+        // Nothing placed: a run in progress lists what it is taking, the numbers large on VISU only
+        // (UX-08); once it stops, the last run stays, summed up (UX-07). Nothing at all is said once.
         const live = data.live && data.live.sessionId === s.current && data.live.samples.length > 0 ? data.live : null;
+        const last = s.current ? s.runs[s.runs.length - 1] : undefined;
         return (
             <Pane>
                 {live ? (
                     <Section title={KIND_LABEL.values(t)} note={`${t.run_tag} ${live.n} · v${live.planV} · LIVE`}>
-                        <ValueCards source={live} only={plannedChannels(s, live)} />
+                        <ValueRows source={live} only={plannedChannels(s, live)} />
                     </Section>
+                ) : last ? (
+                    <LastRun s={s} run={last} />
                 ) : (
-                    <Empty>{t.board_listEmpty}</Empty>
+                    <Awaiting icon={Radar} label={t.awaiting_probe} />
                 )}
             </Pane>
         );
@@ -165,18 +174,15 @@ export function compareOf(s: ProbeSessions, p: Part): Comparison | null {
 
 function PartBody({ part: p, s, data }: { part: Part; s: ProbeSessions; data: BoardData }) {
     const { lang, t } = useLang();
+    const names = useProbeNames();
     const runLabel = (r: { record: string; n: number; planV: number; startedAt: number }) =>
         // When it was taken, always: 「前回と比べて」 is answered with the day and time of the run before.
         `${r.record === s.current ? '' : `${day(r.startedAt)} `}${clock(r.startedAt)} ${t.run_tag} ${r.n} · v${r.planV}`;
 
     switch (p.kind) {
+        // The part's title already says AI: its words are not labelled a second time (UX-10).
         case 'message':
-            return (
-                <div className="space-y-1">
-                    <p className="whitespace-pre-line text-sm leading-relaxed text-slate-200">{p.text}</p>
-                    <Provenance>{t.board_aiWords}</Provenance>
-                </div>
-            );
+            return <p className="whitespace-pre-line text-sm leading-relaxed text-slate-200">{p.text}</p>;
 
         case 'faults': {
             const wanted = p.module ?? data.ecuId;
@@ -242,17 +248,17 @@ function PartBody({ part: p, s, data }: { part: Part; s: ProbeSessions; data: Bo
                         <Field label={t.run_tag} value={s.runs.length} />
                         {data.progress && <Field label="PROBE" value={`${data.progress.settled}/${data.progress.total} · ${data.progress.samples}`} tone="text-amber-400" />}
                     </div>
-                    <p className="text-sm text-slate-200">{b.purpose}</p>
+                    <p className="text-sm text-slate-200">{names.text(b.purpose)}</p>
                     {b.hypotheses && b.hypotheses.length > 0 && (
                         <DataList>
                             {b.hypotheses.map((h) => (
-                                <DataRow key={h.id} code={h.id} name={humanName(h.text)} detail={<p className="text-[11px] text-slate-500">{h.refutedBy}</p>} />
+                                <DataRow key={h.id} code={h.id} name={humanName(names.text(h.text))} detail={<p className="text-[11px] text-slate-500">{names.text(h.refutedBy)}</p>} />
                             ))}
                         </DataList>
                     )}
                     <DataList>
                         {b.steps.map((st) => (
-                            <DataRow key={st.n} code={String(st.n)} name={humanName(st.do)} ident={st.kind} />
+                            <DataRow key={st.n} code={String(st.n)} name={humanName(names.text(st.do))} ident={st.kind} />
                         ))}
                     </DataList>
                     <Readings s={s} />
@@ -264,25 +270,33 @@ function PartBody({ part: p, s, data }: { part: Part; s: ProbeSessions; data: Bo
             const run = runOf(s, p.run);
             if (!run) return <Empty>{p.run ? t.board_noRunN(p.run) : t.board_noRun}</Empty>;
             const defs = new Map((formOf(s.entries, run.sessionId, run.planV)?.judge ?? []).map((j) => [j.id, j]));
+            // Where the thresholds came from, said once when every one came from the same place; a
+            // row says its own only where it differs (UX-10).
+            const sources = new Set(run.judges.map((j) => j.provenance));
+            const one = sources.size === 1 ? [...sources][0] : null;
             return (
                 <div className="space-y-1">
-                    <p className="font-mono text-[11px] text-slate-500">{runLabel({ record: run.sessionId, n: run.n, planV: run.planV, startedAt: run.startedAt })}</p>
+                    <p className="font-mono text-[11px] text-slate-500">
+                        {runLabel({ record: run.sessionId, n: run.n, planV: run.planV, startedAt: run.startedAt })}
+                        {one ? ` · ${t.judges_source(t.judge_provenance[one as keyof typeof t.judge_provenance] ?? one)}` : ''}
+                    </p>
                     <DataList>
                         {run.judges.map((j) => {
                             const d = defs.get(j.id);
+                            const unit = d ? (d.unit ?? names.channel(d.channel).unit) : '';
                             return (
                                 <DataRow
                                     key={j.id}
                                     leading={<Pill tone={j.pass === null ? 'neutral' : j.pass ? 'ok' : 'danger'}>{j.pass === null ? '—' : j.pass ? t.pass : t.fail}</Pill>}
-                                    name={humanName('')}
+                                    name={humanName(d ? names.judge(d) : '')}
                                     ident={j.id}
                                     trailing={
                                         <span className="flex shrink-0 items-baseline gap-2">
                                             <span className="font-mono text-[11px] tabular-nums text-slate-200">
                                                 {num(j.value)}
-                                                {d ? ` ${d.op} ${d.value}${d.unit ? ` ${d.unit}` : ''}` : ''}
+                                                {unit ? ` ${unit}` : ''}
                                             </span>
-                                            <Provenance>{j.provenance}</Provenance>
+                                            {!one && <Provenance>{t.judge_provenance[j.provenance as keyof typeof t.judge_provenance] ?? j.provenance}</Provenance>}
                                         </span>
                                     }
                                 />
@@ -296,6 +310,11 @@ function PartBody({ part: p, s, data }: { part: Part; s: ProbeSessions; data: Bo
         case 'compare': {
             const c = compareOf(s, p);
             if (!c) return <Empty>{s.runs.length === 0 ? t.board_noRun : t.board_noCompare}</Empty>;
+            const pair = comparedRuns(s, p);
+            const judgeDefs = [
+                ...(pair ? (formOf(s.entries, pair.b.sessionId, pair.b.planV)?.judge ?? []) : []),
+                ...(pair ? (formOf(s.entries, pair.a.sessionId, pair.a.planV)?.judge ?? []) : []),
+            ];
             return (
                 <div className="space-y-2">
                     <p className="font-mono text-[11px] text-slate-500">
@@ -307,26 +326,30 @@ function PartBody({ part: p, s, data }: { part: Part; s: ProbeSessions; data: Bo
                         {t.compare_common(c.channels.length + c.judges.length)}
                     </p>
                     <DataList>
-                        {c.channels.map((x) => (
-                            <DataRow
-                                key={x.channel}
-                                name={humanName('')}
-                                ident={x.channel}
-                                trailing={
-                                    <span className="shrink-0 font-mono text-[11px] tabular-nums text-slate-300">
-                                        {num(x.a?.mean)} → {num(x.b?.mean)}
-                                        <span className={`ml-2 ${x.delta ? 'text-amber-400' : 'text-slate-600'}`}>
-                                            {x.delta !== null && x.delta > 0 ? '+' : ''}
-                                            {num(x.delta)}
+                        {c.channels.map((x) => {
+                            const l = names.channel(x.channel);
+                            return (
+                                <DataRow
+                                    key={x.channel}
+                                    name={humanName(l.name)}
+                                    ident={l.ident}
+                                    trailing={
+                                        <span className="shrink-0 font-mono text-[11px] tabular-nums text-slate-300">
+                                            {num(x.a?.mean)} → {num(x.b?.mean)}
+                                            <span className={`ml-2 ${x.delta ? 'text-amber-400' : 'text-slate-600'}`}>
+                                                {x.delta !== null && x.delta > 0 ? '+' : ''}
+                                                {num(x.delta)}
+                                            </span>
+                                            {l.unit ? <span className="ml-1 text-slate-500">{l.unit}</span> : null}
                                         </span>
-                                    </span>
-                                }
-                            />
-                        ))}
+                                    }
+                                />
+                            );
+                        })}
                         {c.judges.map((j) => (
                             <DataRow
                                 key={`j-${j.id}`}
-                                name={humanName('')}
+                                name={humanName(names.item({ key: '', kind: 'judge', label: j.id }, judgeDefs).name)}
                                 ident={j.id}
                                 trailing={
                                     <span className="shrink-0 font-mono text-[11px] tabular-nums text-slate-300">
@@ -336,25 +359,33 @@ function PartBody({ part: p, s, data }: { part: Part; s: ProbeSessions; data: Bo
                                 }
                             />
                         ))}
-                        {c.items?.added.map((i) => (
-                            <DataRow
-                                key={`+${i.key}`}
-                                leading={<Pill tone="ok">{t.item_added}</Pill>}
-                                name={humanName('')}
-                                ident={i.label}
-                                trailing={<span className="shrink-0 text-[11px] text-slate-500">{t.item_since(c.items!.to)}</span>}
-                            />
-                        ))}
-                        {c.items?.removed.map((i) => (
-                            <DataRow
-                                key={`-${i.key}`}
-                                leading={<Pill>{t.item_removed}</Pill>}
-                                name={humanName('')}
-                                ident={i.label}
-                                trailing={<span className="shrink-0 text-[11px] text-slate-500">{t.item_until(c.items!.to)}</span>}
-                            />
-                        ))}
+                        {c.items?.added.map((i) => {
+                            const n = names.item(i, judgeDefs);
+                            return (
+                                <DataRow
+                                    key={`+${i.key}`}
+                                    leading={<Pill tone="ok">{t.item_added}</Pill>}
+                                    name={humanName(n.name)}
+                                    ident={n.ident}
+                                    trailing={<span className="shrink-0 text-[11px] text-slate-500">{t.item_since(c.items!.to)}</span>}
+                                />
+                            );
+                        })}
+                        {c.items?.removed.map((i) => {
+                            const n = names.item(i, judgeDefs);
+                            return (
+                                <DataRow
+                                    key={`-${i.key}`}
+                                    leading={<Pill>{t.item_removed}</Pill>}
+                                    name={humanName(n.name)}
+                                    ident={n.ident}
+                                    trailing={<span className="shrink-0 text-[11px] text-slate-500">{t.item_until(c.items!.to)}</span>}
+                                />
+                            );
+                        })}
                     </DataList>
+                    {/* Once, under the list, not on every removed row (UX-10). */}
+                    {c.items && c.items.removed.length > 0 && <p className="text-[11px] text-slate-500">{t.item_keptNote}</p>}
                 </div>
             );
         }
@@ -371,7 +402,7 @@ function PartBody({ part: p, s, data }: { part: Part; s: ProbeSessions; data: Bo
                             ? `${t.run_tag} ${live.n} · v${live.planV} · LIVE`
                             : runLabel({ record: run!.sessionId, n: run!.n, planV: run!.planV, startedAt: run!.startedAt })}
                     </p>
-                    <ValueCards source={live ?? run!} only={p.channels} />
+                    <ValueCards source={live ?? run!} only={p.channels ?? plannedChannels(s, live ?? run!)} />
                 </div>
             );
         }
@@ -444,25 +475,21 @@ const TONE: Record<GraphTone, string> = { above: '#F87A7F', below: '#6CCBEF', wi
 /** The data series registry (tsunagi-m-design §1.10): measured feedback violet and thick, the target blue and dashed. */
 const SERIES = { value: '#B9A6EE', target: '#0A9BDB' };
 
-function channelLabel(id: string, lang: string): { name: string; unit: string } {
-    const c = MSS54_CHANNELS.get(id as ChannelId);
-    return c ? { name: lang === 'en' ? c.field.name : c.field.ja, unit: c.field.unit } : { name: id, unit: '' };
-}
-
 /**
  * A graph part: the value large, coloured by how far it is from its target (when the assistant gave
  * a band), the window's value and target as two lines, and the context values small. `large` is the
  * MULTI pane's, for a driver's glance; the board draws it compact.
  */
 export function GraphPart({ part: p, s, live, large = false }: { part: Part; s: ProbeSessions; live: ProbeLive | null | undefined; large?: boolean }) {
-    const { t, lang } = useLang();
+    const { t } = useLang();
+    const names = useProbeNames();
     const [value, target] = p.channels ?? [];
     const src = sourceOf(s, p, live);
     if (!value) return null;
     if (!src.live && !src.run) return <Empty>{p.run ? t.board_noRunN(p.run) : t.board_noRun}</Empty>;
     const samples = samplesOf(src);
     const g = graphOf(samples, { value, target, context: p.context, seconds: p.seconds ?? BOARD_LIMITS.seconds.default, band: p.band });
-    const v = channelLabel(value, lang);
+    const v = names.channel(value);
     if (!g.latest) return <Empty>{t.graph_noValue}</Empty>;
     // A tenth of the range above and below, so the thick line is not cut at the edges; a flat line sits in the middle.
     const pad = (g.max - g.min) * 0.1 || Math.max(1, Math.abs(g.max) * 0.05);
@@ -522,7 +549,7 @@ export function GraphPart({ part: p, s, live, large = false }: { part: Part; s: 
             {g.context.length ? (
                 <div className="flex flex-wrap gap-x-4 gap-y-1">
                     {g.context.map((c) => {
-                        const l = channelLabel(c.channel, lang);
+                        const l = names.channel(c.channel);
                         return (
                             <span key={c.channel} className="flex items-baseline gap-1 text-[11px] text-slate-500">
                                 {l.name}
@@ -539,33 +566,129 @@ export function GraphPart({ part: p, s, live, large = false }: { part: Part; s: 
 
 /**
  * The values as cards (operator, 2026-11-11: 「カードみたいなイメージ」): each channel's newest number
- * large with its unit, and its mean and spread small beneath — read at a glance from the driver's seat.
- * `large` is the MULTI pane's.
+ * large with its unit — read at a glance from the driver's seat. A target and its actual are one card
+ * under one title, 実 large and 目標 beside it, so neither name is cut to tell them apart (UX-08). The
+ * mean and spread are behind a press on the card (UX-10): at a glance, the number. `large` is the MULTI
+ * pane's; `max` caps the cards a glance takes in.
  */
-export function ValueCards({ source, only, large = false }: { source: Pick<ProbeLive, 'samples'>; only?: readonly string[]; large?: boolean }) {
-    const { lang } = useLang();
-    const stats = [...channelStats(source)].filter(([k]) => !only || only.includes(k));
+export function ValueCards({ source, only, large = false, max }: { source: Pick<ProbeLive, 'samples'>; only?: readonly string[]; large?: boolean; max?: number }) {
+    const { t } = useLang();
+    const names = useProbeNames();
+    const [open, setOpen] = useState<string | null>(null);
+    const stats = channelStats(source);
     const latest = latestValues(source);
+    const groups = pairTargets([...stats.keys()].filter((k) => !only || only.includes(k))).slice(0, max);
     return (
         <div className={`grid gap-2 ${large ? 'grid-cols-2 lg:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3'}`}>
-            {stats.map(([k, x]) => {
-                const l = channelLabel(k, lang);
+            {groups.map((g) => {
+                const key = g.join();
+                const looks = g.map((c) => names.channel(c));
+                // [target, actual]: the actual is the reading, large; the target small beside it.
+                const [shownId, besideId] = g.length > 1 ? [g[1], g[0]] : [g[0], null];
+                const unit = looks[0].unit;
                 return (
-                    <div key={k} className="min-w-0 rounded bg-slate-800/40 px-3 py-2">
-                        <p className="truncate text-[11px] text-slate-400" title={k}>
-                            {l.name}
+                    <button
+                        key={key}
+                        type="button"
+                        onClick={() => setOpen((o) => (o === key ? null : key))}
+                        aria-expanded={open === key}
+                        {...tid(TEST_ID.valueCard)}
+                        className="min-w-0 rounded bg-slate-800/40 px-3 py-2 text-left"
+                    >
+                        <p className="truncate text-[11px] text-slate-400" title={looks.map((l) => `${l.name} · ${l.ident}`).join('\n')}>
+                            {g.length > 1 ? pairTitle(looks[0].name, looks[1].name) : looks[0].name}
                         </p>
-                        <p className="flex items-baseline gap-1">
-                            <span className={`font-mono tabular-nums text-slate-100 ${large ? 'text-5xl' : 'text-3xl'}`}>{num(latest.get(k))}</span>
-                            <span className="text-xs text-slate-500">{l.unit}</span>
+                        <p className="flex flex-wrap items-baseline gap-x-2">
+                            {besideId && <span className="text-[11px] text-slate-500">{t.graph_actual}</span>}
+                            <span className={`font-mono tabular-nums text-slate-100 ${large ? 'text-5xl' : 'text-3xl'}`}>{num(latest.get(shownId))}</span>
+                            <span className="text-xs text-slate-500">{unit}</span>
+                            {besideId && (
+                                <span className="font-mono text-xs tabular-nums text-slate-400">
+                                    {t.graph_target} {num(latest.get(besideId))}
+                                </span>
+                            )}
                         </p>
-                        <p className="truncate font-mono text-[10px] tabular-nums text-slate-500">
-                            ⌀ {num(x.mean)} · {num(x.min)}–{num(x.max)} · n {x.n}
-                        </p>
-                    </div>
+                        {open === key &&
+                            g.map((c) => {
+                                const x = stats.get(c);
+                                return x ? (
+                                    <p key={c} className="truncate font-mono text-[10px] tabular-nums text-slate-500">
+                                        {g.length > 1 ? `${c === g[0] ? t.graph_target : t.graph_actual} ` : ''}⌀ {num(x.mean)} · {num(x.min)}–{num(x.max)} · n {x.n}
+                                    </p>
+                                ) : null;
+                            })}
+                    </button>
                 );
             })}
         </div>
+    );
+}
+
+/**
+ * What a run in progress is taking, as rows: the name, its identifier and the number now. MAIN's
+ * while the numbers are large on VISU — the same card is not drawn twice (UX-08).
+ */
+function ValueRows({ source, only }: { source: Pick<ProbeLive, 'samples'>; only?: readonly string[] }) {
+    const names = useProbeNames();
+    const latest = latestValues(source);
+    const ids = [...channelStats(source).keys()].filter((k) => !only || only.includes(k));
+    return (
+        <DataList>
+            {ids.map((k) => {
+                const l = names.channel(k);
+                return (
+                    <DataRow
+                        key={k}
+                        name={humanName(l.name)}
+                        ident={l.ident}
+                        trailing={
+                            <span className="shrink-0 font-mono text-xs tabular-nums text-slate-200">
+                                {num(latest.get(k))}
+                                {l.unit && <span className="ml-1 text-slate-500">{l.unit}</span>}
+                            </span>
+                        }
+                    />
+                );
+            })}
+        </DataList>
+    );
+}
+
+/**
+ * The last run, once it has stopped (UX-07): which run, how long, and each of its values summed up —
+ * the most and the mean — with the moments its plan captured. What the board had a second ago does not
+ * turn into an empty screen the moment STOP is pressed.
+ */
+function LastRun({ s, run }: { s: ProbeSessions; run: StoredRun }) {
+    const { t } = useLang();
+    const names = useProbeNames();
+    const secs = Math.max(0, Math.round((run.endedAt - run.startedAt) / 1000));
+    const elapsed = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+    const stats = channelStats(run);
+    const ids = plannedChannels(s, run).filter((k) => stats.has(k));
+    return (
+        <Section title={t.part_values} note={t.probe_lastRun(run.n, run.planV, elapsed)}>
+            <DataList>
+                {ids.map((k) => {
+                    const l = names.channel(k);
+                    const x = stats.get(k)!;
+                    return (
+                        <DataRow
+                            key={k}
+                            name={humanName(l.name)}
+                            ident={l.ident}
+                            trailing={
+                                <span className="shrink-0 font-mono text-[11px] tabular-nums text-slate-200">
+                                    {t.readout_max} {num(x.max)} · {t.readout_mean} {num(x.mean)}
+                                    {l.unit && <span className="ml-1 text-slate-500">{l.unit}</span>}
+                                </span>
+                            }
+                        />
+                    );
+                })}
+            </DataList>
+            {run.captures.length > 0 && <p className="mt-2 text-[11px] text-slate-400">{t.probe_captured(run.captures.length)}</p>}
+        </Section>
     );
 }
 
@@ -589,11 +712,12 @@ export function latestValues(live: Pick<ProbeLive, 'samples'>): Map<string, numb
 
 /**
  * PROBE's MULTI: the picture of the board. The first open graph part, large; otherwise the first
- * open compare part, as bars of how far each value moved for its own spread; otherwise the
- * assistant's latest words; otherwise nothing.
+ * open compare part, as bars of how far each value moved for its own spread; otherwise a run in
+ * progress, or the last run once it stopped (UX-07); otherwise the assistant's latest words.
  */
 export function BoardViz({ s, live }: { s: ProbeSessions; live?: ProbeLive | null }) {
     const { t } = useLang();
+    const names = useProbeNames();
     const parts = (s.board?.parts ?? []).filter((p) => p.open);
     // A graph is what a driver glances at: the first open one, large.
     const graph = parts.find((p) => p.kind === 'graph');
@@ -607,40 +731,50 @@ export function BoardViz({ s, live }: { s: ProbeSessions; live?: ProbeLive | nul
                 <p className="font-mono text-[11px] text-slate-500">
                     {t.compare_runs(`${t.run_tag} ${c.a.n} · v${c.a.planV}`, `${t.run_tag} ${c.b.n} · v${c.b.planV}`)}
                 </p>
-                {rows.map((x) => (
-                    <div key={x.channel} className="grid grid-cols-[6rem_minmax(0,1fr)] items-center gap-2">
-                        <span className="truncate font-mono text-[11px] text-slate-400">{x.channel}</span>
-                        <div className="h-1.5 bg-slate-900">
-                            <div className="h-full bg-blue-500/70" style={{ width: `${Math.min(100, Math.round((x.relative ?? 0) * 100))}%` }} />
+                {rows.map((x) => {
+                    const l = names.channel(x.channel);
+                    return (
+                        <div key={x.channel} className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] items-center gap-2">
+                            <span className="truncate text-[11px] text-slate-300" title={l.ident}>
+                                {l.name}
+                            </span>
+                            <div className="h-1.5 bg-slate-900">
+                                <div className="h-full bg-blue-500/70" style={{ width: `${Math.min(100, Math.round((x.relative ?? 0) * 100))}%` }} />
+                            </div>
                         </div>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
         );
     }
-    // A run in progress with no graph placed: its own channels, a graph of the first and the rest as
-    // cards (operator, 2026-11-12: VISU went black while recording). Nothing to draw is said, not black.
+    // A run in progress with no graph placed: its own channels, a graph of the first and up to two
+    // more as cards (operator, 2026-11-12: VISU went black while recording) — a target and its actual
+    // one card (UX-08). With a values part on the board the cards are MAIN's, and the graph has the pane.
     const recording = live && live.sessionId === s.current && live.samples.length > 0 ? live : null;
-    if (recording) {
+    const last = !recording && s.current ? s.runs[s.runs.length - 1] : undefined;
+    const source = recording ?? last ?? null;
+    const message = [...parts].reverse().find((p) => p.kind === 'message');
+    if (source && (recording || !message)) {
         // The plan's values only: a block is read whole, but what it was read for is what is shown (D2-4).
-        const channels = plannedChannels(s, recording);
+        const channels = plannedChannels(s, source);
         const first = channels[0];
         const auto = { id: 'auto', kind: 'graph', open: true, at: 0, channels: [first] } as Part;
-        // The graph keeps half the pane; a glance takes in six values, not a whole block's worth.
+        const cardsOnMain = parts.some((p) => p.kind === 'values');
+        const rest = channels.slice(1);
+        if (!first) return <Awaiting icon={Radar} label={t.awaiting_probe} />;
         return (
             <div className="flex h-full flex-col gap-3">
-                <div className="h-1/2 min-h-0 shrink-0">
+                <div className={`${cardsOnMain || rest.length === 0 ? 'h-full' : 'h-1/2'} min-h-0 shrink-0`}>
                     <GraphPart part={auto} s={s} live={recording} large />
                 </div>
-                {channels.length > 1 ? (
+                {!cardsOnMain && rest.length > 0 ? (
                     <div className="min-h-0 flex-1 overflow-hidden">
-                        <ValueCards source={recording} only={channels.slice(1, 7)} />
+                        <ValueCards source={source} only={rest} max={2} />
                     </div>
                 ) : null}
             </div>
         );
     }
-    const message = [...parts].reverse().find((p) => p.kind === 'message');
     if (message) {
         return (
             <div className="flex h-full flex-col justify-center gap-2">
@@ -649,12 +783,5 @@ export function BoardViz({ s, live }: { s: ProbeSessions; live?: ProbeLive | nul
             </div>
         );
     }
-    const values = parts.find((p) => p.kind === 'values');
-    const run = values ? sourceOf(s, values, live).run : null;
-    if (values && run) return <ValueCards source={run} only={values.channels} large />;
-    return (
-        <div className="flex h-full items-center justify-center">
-            <p className="text-sm text-slate-500">{t.board_vizEmpty}</p>
-        </div>
-    );
+    return <Awaiting icon={Radar} label={t.awaiting_probe} />;
 }

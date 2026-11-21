@@ -21,6 +21,7 @@ export function ControlPanel({
     notice,
     hub,
     corner,
+    practice,
     className = '',
     children,
 }: {
@@ -37,10 +38,16 @@ export function ControlPanel({
      * Absent in a build with one mode, where the row is not drawn at all.
      */
     corner?: React.ReactNode;
+    /**
+     * The mode's place: the window's top-right corner, in every link state (tsunagi-m-design §7,
+     * tsunagi-m-ux §16). In the top padding, so it adds no height to a panel whose slots are reserved.
+     */
+    practice?: React.ReactNode;
 }) {
     return (
         // px-5 pt-4 pb-5 is the control-panel padding from the spacing scale.
-        <div className={`flex h-[38.2%] min-h-fit flex-none flex-col overflow-y-auto px-5 pb-5 pt-4 ${className}`}>
+        <div className={`relative flex h-[38.2%] min-h-fit flex-none flex-col overflow-y-auto px-5 pb-5 pt-4 ${className}`}>
+            {practice && <div className="absolute right-5 top-0">{practice}</div>}
             {module}
 
             {/* A failure is reported HERE, in the slot that is already reserved

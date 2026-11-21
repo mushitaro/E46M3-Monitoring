@@ -18,6 +18,10 @@ const scenario = {
             check: {
                 desc: '練習の車のエンジンを止める（ENGINE の印を外す）',
                 run: async (page) => {
+                    // ENGINE is the practice car's, behind PRACTICE (UX-03): open it first.
+                    const door = page.locator('button[aria-controls="practice-car"]:visible').first();
+                    if ((await door.count()) === 0) return '練習の車の設定が無い';
+                    await door.click();
                     const box = page.locator('label:has-text("ENGINE") input[type=checkbox]').first();
                     if ((await box.count()) === 0) return 'ENGINE の切り替えが無い';
                     await box.uncheck();

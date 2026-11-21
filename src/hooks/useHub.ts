@@ -1,6 +1,6 @@
 'use client';
 
-import { CircleDot, Loader2, Play, PlayCircle, PlugZap, Radar, Radio, Square, Zap } from 'lucide-react';
+import { CircleDot, Database, Loader2, Play, PlayCircle, PlugZap, Radar, Radio, SkipForward, Square, Zap } from 'lucide-react';
 import type { HubConfig, NoticeTone } from '@/components/Hub';
 import type { useDs2Link } from '@/hooks/useDs2Link';
 import type { ProbeProgress } from '@/hooks/useProbe';
@@ -11,6 +11,7 @@ import { jobRiskOf, type CatalogJob } from '@tsunagi/monitoring-engine';
 import { useLang } from '@/lib/i18n';
 import { operationFor } from '@tsunagi/monitoring-engine';
 import type { RunVerdict } from '@tsunagi/monitoring-engine';
+import { TEST_ID } from '@/lib/testIds';
 import type { Tab } from '@/lib/tabs';
 import { viewHubFor } from '@/lib/viewHub';
 import { hasDecoder } from '@/views/adaptation/AdaptationView';
@@ -51,11 +52,32 @@ export function useHub(input: {
     scan?: { run: () => void; progress: { done: number; total: number } | null };
     /** PROBE's board: run the session on the screen (views/probe). */
     probeRun?: { runnable: boolean; run: () => void };
+    /**
+     * Something driven is on — an actuator output (`actuator`) or an SMG II procedure. The ring is its
+     * STOP on every tab, and `line` (what, and the seconds left) is the notice under which it stands.
+     */
+    engaged?: { stop: () => void; line?: string; actuator: boolean };
+    /** STARTUP: NEXT, and why it cannot go yet. */
+    startup?: { next: () => void; blocked: string | null };
+    /** MEMORY: SAVE, worded as its state. */
+    memory?: { label: string; disabled: boolean; save: () => void };
 }): { hub: HubConfig; notice: { text?: string; tone: NoticeTone } } {
     const { t } = useLang();
     const { link, datalog, selectedJob, runVerdict } = input;
 
     const hub = hubConfigFor({
+        // While something is driven, the ring is its STOP — red and still (`armed-danger`), on every tab
+        // (docs/UX-DESIGN.md §1). The actuator's carries the hook the row's STOP had.
+        engaged: input.engaged
+            ? {
+                  label: t.hub_stop,
+                  Icon: Square,
+                  tone: 'armed-danger',
+                  onClick: input.engaged.stop,
+                  notice: input.engaged.line,
+                  testId: input.engaged.actuator ? TEST_ID.actuatorStop : undefined,
+              }
+            : null,
         linkState: link.state,
         practiceArmed: input.practiceArmed,
         connect: (mode) => void link.connect(mode),
@@ -70,16 +92,18 @@ export function useHub(input: {
                 op_run: t.op_run,
                 op_start: t.op_start,
                 samples: t.samples,
-                plan_selectHint: t.plan_selectHint,
-                adaptations_noDecoder: t.adaptations_noDecoder,
-                faults_notEstablished: t.faults_notEstablished,
-                datalog_noDecoder: t.datalog_noDecoder,
-                probe: t.probe,
+                hub_pickRow: t.hub_pickRow,
+                hub_actuatorRows: t.hub_actuatorRows,
+                hub_noReadFrame: t.hub_noReadFrame,
+                hub_dmeOnly: t.hub_dmeOnly,
+                next_session: t.next_session,
                 probe_notRunnable: t.probe_notRunnable,
                 runBlock: (reason) => t.runBlock[reason],
             },
-            icons: { read: Zap, record: Radio, stop: Square, idle: CircleDot, run: Play, start: PlayCircle, probe: Radar },
+            icons: { read: Zap, record: Radio, stop: Square, idle: CircleDot, run: Play, start: PlayCircle, probe: Radar, next: SkipForward, save: Database },
             probeRun: input.probeRun,
+            startup: input.startup,
+            memory: input.memory,
             probe: input.probe
                 ? {
                       line: input.probe.progress.resuming
@@ -113,7 +137,7 @@ export function useHub(input: {
                     link.vehicleState && appNow() - link.vehicleState.at < 5_000 ? link.vehicleState.speedKmh : null,
                     t.datalog_hubLine,
                 ),
-                costNotice: datalog.costNotice,
+                stoppedLine: !datalog.running && datalog.samples.length > 0 ? stoppedLine(datalog, t.datalog_stoppedLine) : undefined,
                 start: datalog.start,
                 stop: datalog.stop,
             },
@@ -155,6 +179,13 @@ export function useHub(input: {
     });
 
     return { hub, notice };
+}
+
+/** The line once a recording is stopped: 止めました · m:ss · samples (UX-04: the press's result, not MAIN's cost again). */
+function stoppedLine(datalog: Datalog, line: (elapsed: string, samples: number) => string): string {
+    const last = datalog.samples[datalog.samples.length - 1];
+    const elapsed = last ? `${Math.floor(last.time / 60)}:${String(Math.floor(last.time % 60)).padStart(2, '0')}` : '0:00';
+    return line(elapsed, datalog.samples.length);
 }
 
 /** The hub's line while a recording runs: 記録中 m:ss · rpm · km/h · samples, from the latest sample. */

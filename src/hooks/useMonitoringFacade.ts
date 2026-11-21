@@ -210,6 +210,8 @@ export function useMonitoringFacade(input: {
 }): TabFacade {
     const { link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, tab } = input;
     const moduleName = (id: string) => ecuIndex?.modules.find((m) => m.id === id)?.name_en ?? id;
+    // The name the screen uses in Japanese (its selector, list and notice line): the one to say to the owner (UX-24).
+    const moduleNameJa = (id: string) => ecuIndex?.modules.find((m) => m.id === id)?.name || moduleName(id);
     const running = probe.progress !== null;
 
     /**
@@ -326,7 +328,7 @@ export function useMonitoringFacade(input: {
             summary: { modules: summary.modules, faults: summary.faults, ...(summary.cutShort ? { readPartWay: summary.cutShort } : {}) },
             modules: r.results.map((x) => ({
                 address: x.address,
-                modules: x.modules.map((id) => ({ id, name: moduleName(id) })),
+                modules: x.modules.map((id) => ({ id, name: moduleName(id), nameJa: moduleNameJa(id) })),
                 outcome: x.outcome,
                 ...(x.reason ? { reason: en.runBlock[x.reason as RunBlockKey] ?? x.reason } : {}),
                 // Read part of the way: what was read is kept, and the list may be short (IJ16).
@@ -470,9 +472,9 @@ export function useMonitoringFacade(input: {
             link: link.state,
             // What the module select on the screen says. With ALL MODULES chosen on DIAGNOSIS no one module
             // is selected, and saying the link's module here read as "MSS54 is selected" (operator, 2026-11-19).
-            module: tab === 'diagnosis' && input.allModules ? { id: null, name: CHROME.module_all, all: true } : { id: ecuId, name: moduleName(ecuId) },
+            module: tab === 'diagnosis' && input.allModules ? { id: null, name: CHROME.module_all, all: true } : { id: ecuId, name: moduleName(ecuId), nameJa: moduleNameJa(ecuId) },
             // The one module the link opens on, and the single-module tools act on, whatever the select says.
-            linkModule: { id: ecuId, name: moduleName(ecuId) },
+            linkModule: { id: ecuId, name: moduleName(ecuId), nameJa: moduleNameJa(ecuId) },
             speedKmh: link.vehicleState?.speedKmh ?? null,
             // DSC's speed over CAN. Above 1 km/h it alone makes the car moving (lib/vehicleState).
             speedCanKmh: link.vehicleState?.speedCanKmh ?? null,

@@ -55,7 +55,7 @@ export const MONITORING_TOOLS = {
     monitoring_status: {
         scope: 'read',
         description:
-            'The tab now: the device name, the module the screen has selected (module; with ALL MODULES chosen on DIAGNOSIS it is ALL MODULES with id null and all: true, and showing is all-modules — say that, not a module name), the one module the link opens on and single-module tools act on (linkModule), the link (practice or vehicle, connected, recording), the speed the DME last reported and whether the car is measured stationary, PROBE (running, plan version, progress), the mode (manual or probe), the session on the screen and its CO-WORK line (plan version, open questions), and its PROBE board as the owner left it (part ids, kinds, titles, open or closed, in their order). No VIN.',
+            'The tab now: the device name, the module the screen has selected (module; with ALL MODULES chosen on DIAGNOSIS it is ALL MODULES with id null and all: true, and showing is all-modules — say that, not a module name), the one module the link opens on and single-module tools act on (linkModule; nameJa is the name the screen shows in Japanese — say that one to a Japanese-speaking owner), the link (practice or vehicle, connected, recording), the speed the DME last reported and whether the car is measured stationary, PROBE (running, plan version, progress), the mode (manual or probe), the session on the screen and its CO-WORK line (plan version, open questions), and its PROBE board as the owner left it (part ids, kinds, titles, open or closed, in their order). No VIN.',
         inputSchema: obj({}),
     },
     monitoring_faults: {

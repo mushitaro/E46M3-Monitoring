@@ -1,6 +1,6 @@
 'use client';
 
-import { Play, Square } from 'lucide-react';
+import { Play } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { GateDialog } from '@/components/gate/GateDialog';
 import { DataList, DataRow, LABEL, ListControls, Pill, Section, TextButton, humanName } from '@/components/ui';
@@ -23,7 +23,6 @@ import type { Motion } from '@tsunagi/monitoring-engine';
 import { ReasonGlossary, ReasonTag, sharedReason } from '@/views/shared/RunReason';
 import { headline } from '@/lib/jobName';
 import type { VehicleState } from '@tsunagi/monitoring-engine';
-import { useNow } from '@/hooks/useNow';
 import { decidedByYear, type VariantState } from '@/lib/variantChoice';
 
 /** The parts a module's own data names (lib/partName `partTable`), by the value that selects them. */
@@ -51,14 +50,14 @@ type PartTable = ReadonlyMap<string, { ja: string; en: string }>;
  * chooses one set, listed under the part's own name (油圧ポンプ, not HYDROPUMPE
  * alone); the gate is asked with that set and its frame.
  *
- * ## STOP is not a sub-action
+ * ## STOP is the hub's ring
  *
- * It sits in the row, beside START, and it is pressable for exactly as long as
- * the output is energised — never disabled by the busy lock, never behind the
- * gate dialog, no confirmation. An armed actuator is a physical thing that is
- * on, and every route to turning it off has to stay open. `lib/arming` holds
- * that as `stopIsPressable`, whose signature has nothing to condition on. While it
- * is on, the row says what it drives and the seconds left until it stops by itself.
+ * While an output is on, the ring is its STOP on every tab (lib/hub tier 0) — one
+ * place to stop it, 80px rather than a word at a row's end that a head unit's
+ * width pushed off the screen (UX-01). It is pressable for exactly as long as the
+ * output is energised — never disabled by the busy lock, never behind the gate
+ * dialog, no confirmation (`lib/arming` `stopIsPressable`). The row says only that
+ * it is on; the seconds left are said once, on the notice line above the ring (UX-02).
  */
 export function ActuatorView({
     profile,
@@ -75,6 +74,7 @@ export function ActuatorView({
     onSentOnce,
     onRun,
     measured,
+    lineLost = false,
 }: {
     profile: EcuProfile;
     telegrams: TelegramTable | null;
@@ -98,13 +98,13 @@ export function ActuatorView({
     onRun: (jobId: string, hex: string, requires?: SendRequirement, permit?: ActuationPermit) => Promise<unknown>;
     /** The car as last measured, shown beside the confirmation's preconditions. */
     measured?: VehicleState | null;
+    /** The line is lost: what is on waits for it (the ECU's own time-out stops it), not counted down here. */
+    lineLost?: boolean;
 }) {
     const { lang, t } = useLang();
     const [query, setQuery] = useState('');
     const [onlyRunnable, setOnlyRunnable] = useState(false);
     const [pending, setPending] = useState<{ job: CatalogJob; phase: Phase; verdict: Extract<RunVerdict, { allowed: true }>; choice?: AgreedChoice } | null>(null);
-    // The seconds left on what is on, counted down while something is.
-    const now = useNow(arming.anyArmed ? 500 : null);
 
     // The jobs this tab is about: the ones that can leave an output energised.
     // Same function SERVICE asks, so the two lists partition the catalogue
@@ -293,7 +293,6 @@ export function ActuatorView({
                     {shown.map((job) => {
                         const entry = arming.armed.get(job.id);
                         const c = choiceOf(job.id);
-                        const left = entry?.timeoutS ? Math.min(entry.timeoutS, Math.max(0, Math.ceil((entry.at + entry.timeoutS * 1000 - now) / 1000))) : null;
                         return (
                             <Row
                                 key={job.id}
@@ -302,7 +301,7 @@ export function ActuatorView({
                                 motion={motion}
                                 variantOk={variant.state === 'ok'}
                                 armed={!!entry}
-                                secondsLeft={left}
+                                lineLost={lineLost}
                                 part={namedPartOf(entry?.args ?? c?.start.args)}
                                 sharedReason={shared?.reason ?? null}
                                 otherOn={arming.anyArmed && !arming.armed.has(job.id)}
@@ -320,7 +319,6 @@ export function ActuatorView({
                                 lang={lang}
                                 onStart={() => open(job, 'start')}
                                 onRunOnce={() => open(job, 'pulse')}
-                                onStop={() => void arming.stop(job.id, 'stop')}
                             />
                         );
                     })}
@@ -378,7 +376,7 @@ function Row({
     motion,
     variantOk,
     armed,
-    secondsLeft,
+    lineLost,
     part,
     sharedReason,
     otherOn,
@@ -389,15 +387,14 @@ function Row({
     lang,
     onStart,
     onRunOnce,
-    onStop,
 }: {
     job: CatalogJob;
     verdict: RunVerdict | null;
     motion: Motion;
     variantOk: boolean;
     armed: boolean;
-    /** Seconds until it stops by itself, while it is on. */
-    secondsLeft: number | null;
+    /** The line is lost while it is on: it waits for the line, not counted down. */
+    lineLost: boolean;
     /** The part it drives (the chosen set's, as the module's data names it), or null. */
     part: string | null;
     /** The reason the list's note already says for (nearly) every row: not repeated here. */
@@ -412,7 +409,6 @@ function Row({
     lang: 'ja' | 'en';
     onStart: () => void;
     onRunOnce: () => void;
-    onStop: () => void;
 }) {
     const { t } = useLang();
     const style = execStyleOf(operationFor(job));
@@ -432,13 +428,16 @@ function Row({
                     <Pill tone={job.risk === 'high' ? 'danger' : job.risk === 'medium' ? 'caution' : 'neutral'}>
                         {job.risk === 'high' ? t.risk_high : job.risk === 'medium' ? t.risk_medium : t.risk_low}
                     </Pill>
-                    {/* Reserved, but only on rows that can arm: the badge and the seconds left
-                        appear in place rather than pushing the name sideways — and a pulse row,
-                        which can never wear them, does not pay for the space. */}
+                    {/* Reserved, but only on rows that can arm: the badge appears in place rather
+                        than pushing the name sideways — and a pulse row, which can never wear it, does
+                        not pay for the space. One word: the seconds left are the notice line's (UX-02). */}
                     {style === 'hold' && (
-                        <span className={`flex shrink-0 items-baseline gap-1.5 ${armed ? '' : 'invisible'}`} aria-hidden={!armed}>
-                            <Pill tone="caution">{t.actuator_armed}</Pill>
-                            <span className="w-[4.5rem] font-mono text-[11px] tabular-nums text-amber-400">{t.actuator_left(secondsLeft ?? 10)}</span>
+                        <span className={`grid shrink-0 ${armed ? '' : 'invisible'}`} aria-hidden={!armed}>
+                            {[t.actuator_armed, t.actuator_waitLine].map((w) => (
+                                <span key={w} className={`[grid-area:1/1] ${(lineLost ? w === t.actuator_waitLine : w === t.actuator_armed) ? '' : 'invisible'}`}>
+                                    <Pill tone="caution">{w}</Pill>
+                                </span>
+                            ))}
                         </span>
                     )}
                 </>
@@ -462,17 +461,6 @@ function Row({
                                 {...tid(TEST_ID.actuatorStart)}
                             >
                                 {t.op_start}
-                            </TextButton>
-                            {/* Never disabled while armed, and it takes no busy
-                                lock — see the note at the top of this file. */}
-                            <TextButton
-                                onClick={onStop}
-                                disabled={!armed}
-                                tone="destructive"
-                                Icon={Square}
-                                {...tid(TEST_ID.actuatorStop)}
-                            >
-                                {t.op_stop}
                             </TextButton>
                         </>
                     ) : (

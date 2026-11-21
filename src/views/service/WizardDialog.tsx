@@ -72,6 +72,7 @@ export function WizardDialog({
     assistant,
     why,
     onEnded,
+    onLive,
     onClose,
 }: {
     procedure: Smg2Procedure;
@@ -92,6 +93,8 @@ export function WizardDialog({
     why?: () => { error: string | null; notSent: NotSent | null };
     /** Told how the run ended, so the page and the assistant can say it (monitoring_status `lastProcedure`). */
     onEnded?: (outcome: ProcedureOutcome) => void;
+    /** Told when the gearbox starts and stops working, with ABORT while it does: the hub's ring is that STOP. */
+    onLive?: (abort: (() => void) | null) => void;
     onClose: () => void;
 }) {
     const { lang, t } = useLang();
@@ -172,6 +175,18 @@ export function WizardDialog({
     const maxText = maxSec === null ? null : formatDuration(maxSec, t);
     // The result step: ended as the module ran it (well or not), as opposed to stopped or refused.
     const ranThrough = !state.result?.aborted && outcome?.ended !== 'refused' && outcome?.ended !== 'failed';
+    // The hub's ring is ABORT while the gearbox works (docs/UX-DESIGN.md §1): told on each change, and
+    // that it stopped when the dialog goes. Through refs, so a new handler from the page is not a change.
+    const onLiveRef = useRef(onLive);
+    const abortRef = useRef(abort);
+    useEffect(() => {
+        onLiveRef.current = onLive;
+        abortRef.current = abort;
+    });
+    useEffect(() => {
+        onLiveRef.current?.(live ? () => abortRef.current() : null);
+    }, [live]);
+    useEffect(() => () => onLiveRef.current?.(null), []);
     const statusText = workflows.testStatus.find(
         (s) => Number.parseInt(s.code, 16) === run.state.statusByte,
     );

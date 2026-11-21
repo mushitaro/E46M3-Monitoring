@@ -15,12 +15,14 @@
  * has to stay one press away from wherever the operator wandered to. Exactly the
  * argument that keeps ACTUATOR's STOP out of the sub-action row.
  *
- * ## Why ACTUATOR supplies nothing
+ * ## Every tab has a verb (docs/UX-DESIGN.md §1)
  *
- * It has 85 independently-runnable rows and a START and a STOP on each. Routing
- * them through one ring would be an extra click and a re-derived label, and the
- * ring cannot say WHICH solenoid it would energise. `Hub.tsx`'s own contract
- * note says views like this supply none; it falls through to tier 3.
+ * The ring is the one thing to press on the screen, and a ring with nothing to
+ * press (the old LINKED) is not shown any more. A job table with nothing chosen
+ * shows its verb disabled and says what it waits for. ACTUATOR's rows still
+ * carry their own START and RUN (each names the part it drives), so its ring is
+ * that verb, disabled, until something is on — then it is the thing's STOP
+ * (lib/hub tier 0), the one place to stop it.
  *
  * Pure, and the caller passes the strings, the glyphs and the handlers, so
  * vitest checks it under `environment: 'node'`.
@@ -39,11 +41,14 @@ export interface ViewHubStrings {
     op_run: string;
     op_start: string;
     samples: string;
-    plan_selectHint: string;
-    adaptations_noDecoder: string;
-    faults_notEstablished: string;
-    datalog_noDecoder: string;
-    probe: string;
+    /** The job tables with nothing chosen: what the verb waits for. */
+    hub_pickRow: string;
+    /** ACTUATOR: its rows start what they drive; the ring stops it. */
+    hub_actuatorRows: string;
+    /** Short forms for the notice line: the screen's MAIN says the whole sentence. */
+    hub_noReadFrame: string;
+    hub_dmeOnly: string;
+    next_session: string;
     probe_notRunnable: string;
     /** The refusal, already resolved to a sentence — `t.runBlock[reason]`. */
     runBlock: (reason: Extract<RunVerdict, { allowed: false }>['reason']) => string;
@@ -57,6 +62,8 @@ export interface ViewHubIcons {
     run: LucideIcon;
     start: LucideIcon;
     probe: LucideIcon;
+    next: LucideIcon;
+    save: LucideIcon;
 }
 
 export interface ViewHubState {
@@ -80,14 +87,21 @@ export interface ViewHubState {
      * session has no plan that may run now (none, a fork, its mandate ended).
      */
     probeRun?: { runnable: boolean; run: () => void };
+    /** STARTUP: carry the session on (NEXT). `blocked` is why it cannot go yet, said in the notice. */
+    startup?: { next: () => void; blocked: string | null };
+    /** MEMORY: SAVE, worded as its state (lib/sync/status `describeSave`). Works without a link. */
+    memory?: { label: string; disabled: boolean; save: () => void };
     datalog: {
         /** This module's live-block layout is ported. Only the MSS54's is. */
         decoded: boolean;
         sampleCount: number;
         /** While recording: the mark, how long, and the engine speed and road speed now, read at a glance. */
         recordingLine?: string;
-        /** One round trip per BLOCK, not per channel — the view words it. */
-        costNotice: string;
+        /**
+         * After a recording: what the press of STOP left — how long, how many samples. The cost
+         * (items / blocks / round trips) is MAIN's, said there once, not here again (UX-04).
+         */
+        stoppedLine?: string;
         start: () => void;
         stop: () => void;
     };
@@ -144,7 +158,7 @@ export function viewHubFor(s: ViewHubState): HubConfig | null {
                       Icon: s.icons.read,
                       tone: 'idle',
                       disabled: true,
-                      notice: s.t.faults_notEstablished,
+                      notice: s.t.hub_noReadFrame,
                   };
 
         case 'datalog':
@@ -154,7 +168,7 @@ export function viewHubFor(s: ViewHubState): HubConfig | null {
                     Icon: s.icons.record,
                     tone: 'idle',
                     disabled: true,
-                    notice: s.t.datalog_noDecoder,
+                    notice: s.t.hub_dmeOnly,
                 };
             }
             return {
@@ -162,7 +176,7 @@ export function viewHubFor(s: ViewHubState): HubConfig | null {
                 Icon: s.icons.record,
                 tone: 'ready',
                 onClick: s.datalog.start,
-                notice: s.datalog.costNotice,
+                notice: s.datalog.stoppedLine,
             };
 
         // The read is the hub here, not a sub-action. It is the one thing this
@@ -176,20 +190,20 @@ export function viewHubFor(s: ViewHubState): HubConfig | null {
                       Icon: s.icons.read,
                       tone: 'idle',
                       disabled: true,
-                      // "No decoder ported" is a different sentence from "this
-                      // module has none", and the hub says which one it means.
-                      notice: s.t.adaptations_noDecoder,
+                      // No notice: MAIN already says the module's adaptations are not
+                      // readable here, and the line does not say it a second time (UX-04).
                   };
 
         case 'service': {
             const sel = s.service.selected;
+            // The verb, waiting for its object: not a dead LINKED ring.
             if (!sel) {
                 return {
-                    label: s.t.hub_connected,
-                    Icon: s.icons.idle,
+                    label: s.t.op_run,
+                    Icon: s.icons.run,
                     tone: 'idle',
                     disabled: true,
-                    notice: s.t.plan_selectHint,
+                    notice: s.t.hub_pickRow,
                 };
             }
             // A procedure opens its wizard. Not `armed-danger`, whatever its
@@ -217,26 +231,39 @@ export function viewHubFor(s: ViewHubState): HubConfig | null {
             };
         }
 
+        // The rows start what they drive (each names its part, and a job that takes values chooses
+        // them on its row); the ring is the verb until something is on, then that thing's STOP.
         case 'actuator':
-            return null;
+            return { label: s.t.op_run, Icon: s.icons.run, tone: 'idle', disabled: true, notice: s.t.hub_actuatorRows };
 
-        // SAVE and SYNC work with or without a link, and the hub's first tier is the link's own
-        // (CONNECT while disconnected). Put there, SAVE would vanish exactly when the cable is
-        // unplugged — which is when an owner sits down to look back at a session. They live in
-        // the pane, beside the thing they save.
+        // SAVE works with or without a link, so it holds the ring while disconnected too (`offline`):
+        // under the link's CONNECT it would vanish exactly when the cable is unplugged, which is
+        // when an owner sits down to look back at a session.
         case 'memory':
-            return null;
+            if (!s.memory) return null;
+            return {
+                label: s.memory.label,
+                Icon: s.icons.save,
+                tone: s.memory.disabled ? 'idle' : 'ready',
+                disabled: s.memory.disabled,
+                onClick: s.memory.disabled ? undefined : s.memory.save,
+                offline: true,
+            };
 
         // PROBE's board: the one thing to do here is run the session's form. Present only with the
         // link up (the link tier answers CONNECT before this), and said plainly when it may not.
         case 'probe':
-            if (!s.probeRun) return null;
-            return s.probeRun.runnable
-                ? { label: s.t.probe, Icon: s.icons.probe, tone: 'ready', onClick: s.probeRun.run }
-                : { label: s.t.probe, Icon: s.icons.probe, tone: 'idle', disabled: true, notice: s.t.probe_notRunnable };
+            return s.probeRun?.runnable
+                ? { label: s.t.op_start, Icon: s.icons.probe, tone: 'ready', onClick: s.probeRun.run }
+                : { label: s.t.op_start, Icon: s.icons.probe, tone: 'idle', disabled: true, notice: s.t.probe_notRunnable };
 
-        // STARTUP's actions are on the sessions, in the sub-action row (NEW SESSION, NEXT).
+        // STARTUP: NEXT carries the session on — the one step here, and one that needs no link (a
+        // session is chosen before the drive), so it holds the ring disconnected too. NEW SESSION is
+        // the sub-action; CONNECT is on the board's ring, where the session is run.
         case 'startup':
-            return null;
+            if (!s.startup) return null;
+            return s.startup.blocked
+                ? { label: s.t.next_session, Icon: s.icons.next, tone: 'idle', disabled: true, notice: s.startup.blocked, offline: true }
+                : { label: s.t.next_session, Icon: s.icons.next, tone: 'ready', onClick: s.startup.next, offline: true };
     }
 }

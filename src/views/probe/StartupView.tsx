@@ -2,8 +2,9 @@
 
 import { DataList, DataRow, Pane, Section, humanName } from '@/components/ui';
 import { useLang } from '@/lib/i18n';
-import { diffForms, type Form } from '@/lib/probe/items';
+import { diffForms, type Form, type FormItem } from '@/lib/probe/items';
 import type { NotebookEntry } from '@/lib/notebook/rules';
+import { useProbeNames } from './names';
 import type { ProbeSessions } from './useProbeSessions';
 
 const when = (ms: number) => new Date(ms).toLocaleString();
@@ -14,8 +15,8 @@ const day = (ms: number) => new Date(ms).toLocaleDateString();
  *
  * Every session on the device, newest first: the owner's words that started it, its form's version,
  * how many runs it has taken, and the session it carries on. Choosing one puts it on the screen —
- * the board shows it, PROBE runs it, and the assistant's calls that name no session mean it. NEW
- * SESSION and NEXT are in the sub-action row under the hub.
+ * the board shows it, PROBE runs it, and the assistant's calls that name no session mean it. NEXT
+ * is the hub's ring here, NEW SESSION the sub-action under it.
  */
 export function StartupView({ s }: { s: ProbeSessions }) {
     const { t } = useLang();
@@ -64,8 +65,10 @@ export function StartupView({ s }: { s: ProbeSessions }) {
 interface SeriesForm {
     record: string;
     v: number;
-    added: string[];
-    removed: string[];
+    added: FormItem[];
+    removed: FormItem[];
+    /** The judgements of this form and the one before, so a judgement item can be named by what it tests. */
+    judges: NonNullable<Form['judge']>;
 }
 
 /** The forms written along a series, in order, each with its change from the last one that differed. */
@@ -82,7 +85,7 @@ export function seriesForms(entries: readonly NotebookEntry[], series: readonly 
                 continue;
             }
             const d = prev ? diffForms(prev, form) : null;
-            out.push({ record, v: form.v, added: d ? d.added.map((i) => i.label) : [], removed: d ? d.removed.map((i) => i.label) : [] });
+            out.push({ record, v: form.v, added: d ? d.added : [], removed: d ? d.removed : [], judges: [...(form.judge ?? []), ...(prev?.judge ?? [])] });
             prev = form;
         }
     }
@@ -95,6 +98,7 @@ export function seriesForms(entries: readonly NotebookEntry[], series: readonly 
  */
 export function StartupViz({ s }: { s: ProbeSessions }) {
     const { t } = useLang();
+    const names = useProbeNames();
     if (!s.current || s.series.length === 0) {
         return <p className="text-xs text-slate-600">{t.series_none}</p>;
     }
@@ -118,18 +122,25 @@ export function StartupViz({ s }: { s: ProbeSessions }) {
                                     versions.length > 0 ? (
                                         <div className="space-y-0.5">
                                             {versions.map((f) => (
-                                                <p key={f.v} className="font-mono text-[11px] text-slate-400">
-                                                    <span className="text-blue-400">v{f.v}</span>
-                                                    {f.added.map((a) => (
-                                                        <span key={`+${a}`} className="ml-2 text-emerald-400">
-                                                            +{a}
-                                                        </span>
-                                                    ))}
-                                                    {f.removed.map((r) => (
-                                                        <span key={`-${r}`} className="ml-2 text-slate-500 line-through">
-                                                            {r}
-                                                        </span>
-                                                    ))}
+                                                // Each item by its name; the identifier is its title (UX-09).
+                                                <p key={f.v} className="flex flex-wrap items-baseline gap-x-3 text-[11px] text-slate-400">
+                                                    <span className="font-mono text-blue-400">v{f.v}</span>
+                                                    {f.added.map((a) => {
+                                                        const n = names.item(a, f.judges);
+                                                        return (
+                                                            <span key={`+${a.key}`} className="text-emerald-400" title={n.ident}>
+                                                                +{n.name}
+                                                            </span>
+                                                        );
+                                                    })}
+                                                    {f.removed.map((r) => {
+                                                        const n = names.item(r, f.judges);
+                                                        return (
+                                                            <span key={`-${r.key}`} className="text-slate-500 line-through" title={n.ident}>
+                                                                {n.name}
+                                                            </span>
+                                                        );
+                                                    })}
                                                 </p>
                                             ))}
                                         </div>

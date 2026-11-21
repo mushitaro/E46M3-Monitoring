@@ -207,6 +207,44 @@ export interface Localised {
     gate_stopsAfter: (s: number) => string;
     gate_once: string;
     gate_onPress: (start: boolean) => string;
+    /**
+     * The one confirmation shape (docs/UX-DESIGN.md §5, UX-11/12/13): the title names what moves or
+     * what goes, the body is what happens → until when → what pressing does, and the SGBD's quotes,
+     * the frames and the job names are under 詳細.
+     */
+    conf_drives: (name: string) => string;
+    conf_reads: (name: string) => string;
+    conf_runs: (name: string) => string;
+    conf_readOnce: string;
+    conf_staysOn: string;
+    /** Beside a precondition: the car's state as last measured, or that pressing measures it. */
+    conf_measured: (value: string) => string;
+    conf_measureOnPress: string;
+    conf_details: string;
+    conf_sgbdNote: string;
+    clearFaults_titleOf: (module: string, n: number | null) => string;
+    clearFaults_what: string;
+    clearFaults_back: string;
+    clearFaults_press: (lastSpeedKmh: number | null) => string;
+    /** A duration in the reader's units (the SGBD writes `10 sek`, `3,0 min`). */
+    dur_sec: (n: number) => string;
+    dur_min: (n: number) => string;
+    wiz_asked: (n: number) => string;
+    wiz_until: (max: string | null) => string;
+    wiz_press: string;
+    /** A job's argument values that name a state, in the owner's words (STEUERART1 of SMG II's STEUERN_STELLGLIED). */
+    actuator_mode: Record<string, string>;
+    /** One reason that holds for (nearly) every row, said once on the list (UX-28). */
+    list_shared: (k: number, total: number, word: string) => string;
+    service_unverified: (k: number, total: number) => string;
+    facet_more: string;
+    proc_engineRunTag: string;
+    proc_engineOffNote: (k: number, total: number) => string;
+    adjust_tag: Record<'ok' | 'otherWrite' | 'otherModule' | 'sendsNothing' | 'notAgreed', string>;
+    adjust_info: string;
+    /** The sensor an adjustment's own job name names, where two rows would otherwise read the same. */
+    adjust_target: Record<string, string>;
+    adaptationsReset_unknownTag: string;
     /** The credits dialog. Reachable always; never inside the disclaimer. */
     credits_title: string;
     credits_lede: string;

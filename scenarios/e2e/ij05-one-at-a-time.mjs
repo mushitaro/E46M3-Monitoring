@@ -1,4 +1,4 @@
-import { connectPractice, tool } from './_lib.mjs';
+import { chooseSet, connectPractice, tool } from './_lib.mjs';
 import { PUMP_OFF, PUMP_ON, always, armedOnScreen, check, onModule, pageNow, screenText, startPump, wireSince } from './_ij.mjs';
 
 /** The STEUERN_STELLGLIED row on ACTUATOR. */
@@ -68,7 +68,7 @@ const scenario = {
         check('IJ09：画面で油圧ポンプを選んで START → 確認 → 実行', async (page, st) => {
             const row = pumpRow(page);
             for (let i = 0; i < 20 && (await row.locator('select').count()) === 0; i++) await page.waitForTimeout(250);
-            await row.locator('select').selectOption({ label: 'HYDROPUMPE · AKTIV · 0' });
+            if (!(await chooseSet(row, '油圧ポンプ', 'オン · 0'))) return '油圧ポンプ › オン · 0 が選べない';
             await row.locator('[data-test="tj-start"]').click();
             const dialog = page.locator('[role=dialog]').first();
             await dialog.waitFor({ timeout: 3000 });

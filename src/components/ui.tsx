@@ -679,15 +679,18 @@ export function DataRow({
                         {code}
                     </span>
                 )}
+                {/* `flex-auto` (basis auto), not `flex-1` (basis 0): with a zero basis the name was the
+                    first thing squeezed — 「アクチュ…」 beside a whole job id (UX-27). Now the ident gives
+                    way first, as the hierarchy says. */}
                 <span
-                    className={`min-w-0 flex-1 truncate text-xs ${
+                    className={`min-w-0 flex-auto truncate text-xs ${
                         nameless ? 'font-mono text-slate-400' : selected ? 'text-blue-300' : 'text-slate-200'
                     }`}
                 >
                     {nameless ? ident : name}
                 </span>
                 {ident !== undefined && !nameless && (
-                    <span className="min-w-0 shrink truncate font-mono text-[11px] text-slate-500">{ident}</span>
+                    <span className="min-w-0 shrink-[999] truncate font-mono text-[11px] text-slate-500">{ident}</span>
                 )}
                 {trailing}
             </div>

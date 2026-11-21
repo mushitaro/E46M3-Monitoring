@@ -121,11 +121,11 @@ const scenario = {
         { wait: 800 },
         {
             check: {
-                desc: '電波が無くても、部品を動かす項目と値の組が出る（SMG II の STEUERN_STELLGLIED と HYDROPUMPE の組）',
+                desc: '電波が無くても、部品を動かす項目と値の組が出る（SMG II の STEUERN_STELLGLIED と油圧ポンプ（HYDROPUMPE）の組）',
                 run: async (page) => {
                     const text = await bodyText(page);
                     if (!text.includes('STEUERN_STELLGLIED')) return '部品を動かす項目が出ない';
-                    const ok = await until(page, async () => (await page.locator('select option').allTextContents()).some((o) => /HYDROPUMPE/.test(o)), 6000, 300);
+                    const ok = await until(page, async () => (await page.locator('select option').allTextContents()).some((o) => /油圧ポンプ/.test(o)), 6000, 300);
                     return ok ? true : '値の組が出ない';
                 },
             },

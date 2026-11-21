@@ -918,7 +918,7 @@ export default function Home() {
               return s.confirmed || s.how === 'lineBack' ? said : `${said}${t.actuation_unanswered}`;
           })()
         : null;
-    const sentLine = sentOnce ? t.actuation_sentOnce(partJa(sentOnce.moduleId, sentOnce.jobId, sentOnce.args ?? undefined)) : null;
+    const sentLine = sentOnce && sentOnce.moduleId === ecuId ? t.actuation_sentOnce(partJa(sentOnce.moduleId, sentOnce.jobId, sentOnce.args ?? undefined)) : null;
     const leftLine = leftRunning.length ? t.actuation_leftRunning(partJa(leftRunning[0].moduleId ?? undefined, leftRunning[0].jobId, leftRunning[0].args ?? undefined), leftRunning[0].timeoutS ?? 10) : null;
     const shownNotice = screenNotice
         ? { text: screenNotice, tone: 'warn' as const }
@@ -968,6 +968,7 @@ export default function Home() {
                 telegrams={telegrams}
                 ledger={ledger}
                 motion={link.motion}
+                mode={link.mode}
             />
         ),
         service: catalog ? (
@@ -1000,6 +1001,7 @@ export default function Home() {
                 onConfirmVariant={confirmVariant}
                 onSentOnce={noteSentOnce}
                 onRun={link.runRead}
+                measured={link.vehicleState}
             />
         ) : (
             <AwaitingCatalog />
@@ -1459,6 +1461,7 @@ export default function Home() {
                     phase="pulse"
                     argValues={{}}
                     caution={cautionFor(jobText, serviceGate.job.id, lang) ?? undefined}
+                    measured={link.vehicleState}
                     onRun={() => {
                         const g = serviceGate;
                         setServiceGate(null);
@@ -1474,11 +1477,12 @@ export default function Home() {
 
             {clearOpen && (
                 <ConfirmDialog
-                    title={t.clearFaults_title}
-                    consequence={t.clearFaults_named(
-                        moduleName(ecuIndex, ecuId) ?? ecuId.toUpperCase(),
-                        link.vehicleState?.speedKmh ?? null,
+                    // The title names what goes (UX-13): this module's faults, in the reader's language.
+                    title={t.clearFaults_titleOf(
+                        (lang === 'en' ? moduleName(ecuIndex, ecuId) : ecuIndex?.modules.find((m) => m.id === ecuId)?.name) ?? ecuId.toUpperCase(),
+                        link.faults?.length ?? null,
                     )}
+                    steps={{ what: t.clearFaults_what, until: t.clearFaults_back, press: t.clearFaults_press(link.vehicleState?.speedKmh ?? null) }}
                     confirmLabel={t.clearFaults_confirm}
                     onCancel={() => setClearOpen(false)}
                     onConfirm={() => {

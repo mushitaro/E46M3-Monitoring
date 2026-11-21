@@ -66,7 +66,8 @@
  */
 
 import { useMemo, useState } from 'react';
-import { Chip, DataList, DataRow, FacetRow, LABEL, ListControls, Pane, Pill, Section } from '@/components/ui';
+import { ChevronDown, ChevronRight } from 'lucide-react';
+import { Chip, DataList, DataRow, FacetRow, LABEL, ListControls, Pane, Pill, Section, TextButton } from '@/components/ui';
 import {
     description,
     facetCounts,
@@ -116,6 +117,9 @@ export function ServicePane({
     const [audience, setAudience] = useState<Audience | 'all'>('owner');
     const [system, setSystem] = useState<string | 'all'>('all');
     const [onlyRunnable, setOnlyRunnable] = useState(false);
+    // The three facets are behind 絞り込み (UX-30): four rows of some twenty-five chips stood between
+    // the owner and the list every time. What they are set to is said on the closed line.
+    const [facetsOpen, setFacetsOpen] = useState(false);
 
     // Everything except the actuators, which have their own tab and their own
     // gate. The predicate lives in `lib/jobSurface` so the two views cannot
@@ -174,6 +178,20 @@ export function ServicePane({
 
     const hidden = jobs.length - rows.length;
 
+    // Not one of these has been confirmed on a car, today: a fact about the list, said once on it
+    // rather than as the same grey word on every row (UX-28). A confirmed row keeps its tag.
+    const unverified = useMemo(
+        () => jobs.filter((j) => !mayRunOnVehicle(ledger, `${profile.id}:${j.id}`).allowed).length,
+        [jobs, ledger, profile.id],
+    );
+    const facetSummary = [
+        cls !== 'all' ? t.jobClass[cls] : null,
+        audience !== 'all' ? t.audience[audience] : null,
+        system !== 'all' ? (t.system[system] ?? system) : null,
+    ]
+        .filter(Boolean)
+        .join(' · ');
+
     return (
         <Pane>
             {children}
@@ -184,6 +202,7 @@ export function ServicePane({
                 // The sentence that used to exist only in a code comment — behind the ⓘ now, where
                 // every block's explanation is (tsunagi-m-ux §17).
                 info={cls !== 'all' ? t.jobClassInfo[cls] : undefined}
+                note={unverified > 0 ? t.service_unverified(unverified, jobs.length) : undefined}
             >
                 <ListControls
                     query={query}
@@ -226,55 +245,71 @@ export function ServicePane({
                         </Chip>
                     </FacetRow>
 
-                    <FacetRow label={t.facet_purpose}>
-                        <Chip active={cls === 'all'} onClick={() => setCls('all')}>
-                            {t.facet_all}
-                        </Chip>
-                        {CLASS_ORDER.filter((c) => classCounts.some((x) => x.key === c)).map((c) => (
-                            <Chip
-                                key={c}
-                                active={cls === c}
-                                count={classCounts.find((x) => x.key === c)?.count}
-                                title={t.jobClassInfo[c]}
-                                onClick={() => setCls(cls === c ? 'all' : c)}
-                            >
-                                {t.jobClass[c]}
-                            </Chip>
-                        ))}
-                    </FacetRow>
+                    <div className="flex items-baseline gap-3">
+                        <TextButton
+                            tone="neutral"
+                            Icon={facetsOpen ? ChevronDown : ChevronRight}
+                            aria-expanded={facetsOpen}
+                            onClick={() => setFacetsOpen((v) => !v)}
+                        >
+                            {t.facet_more}
+                        </TextButton>
+                        {!facetsOpen && facetSummary && <span className={`${LABEL} text-slate-500`}>{facetSummary}</span>}
+                    </div>
 
-                    <FacetRow label={t.facet_audience}>
-                        <Chip active={audience === 'all'} onClick={() => setAudience('all')}>
-                            {t.facet_all}
-                        </Chip>
-                        {AUDIENCE_ORDER.filter((a) => audienceCounts.some((x) => x.key === a)).map((a) => (
-                            <Chip
-                                key={a}
-                                active={audience === a}
-                                count={audienceCounts.find((x) => x.key === a)?.count}
-                                title={t.audienceNote[a]}
-                                onClick={() => setAudience(audience === a ? 'all' : a)}
-                            >
-                                {t.audience[a]}
-                            </Chip>
-                        ))}
-                    </FacetRow>
+                    {facetsOpen && (
+                        <>
+                            <FacetRow label={t.facet_purpose}>
+                                <Chip active={cls === 'all'} onClick={() => setCls('all')}>
+                                    {t.facet_all}
+                                </Chip>
+                                {CLASS_ORDER.filter((c) => classCounts.some((x) => x.key === c)).map((c) => (
+                                    <Chip
+                                        key={c}
+                                        active={cls === c}
+                                        count={classCounts.find((x) => x.key === c)?.count}
+                                        title={t.jobClassInfo[c]}
+                                        onClick={() => setCls(cls === c ? 'all' : c)}
+                                    >
+                                        {t.jobClass[c]}
+                                    </Chip>
+                                ))}
+                            </FacetRow>
 
-                    <FacetRow label={t.facet_system}>
-                        <Chip active={system === 'all'} onClick={() => setSystem('all')}>
-                            {t.facet_all}
-                        </Chip>
-                        {systemCounts.map(({ key, count }) => (
-                            <Chip
-                                key={key}
-                                active={system === key}
-                                count={count}
-                                onClick={() => setSystem(system === key ? 'all' : key)}
-                            >
-                                {t.system[key] ?? key}
-                            </Chip>
-                        ))}
-                    </FacetRow>
+                            <FacetRow label={t.facet_audience}>
+                                <Chip active={audience === 'all'} onClick={() => setAudience('all')}>
+                                    {t.facet_all}
+                                </Chip>
+                                {AUDIENCE_ORDER.filter((a) => audienceCounts.some((x) => x.key === a)).map((a) => (
+                                    <Chip
+                                        key={a}
+                                        active={audience === a}
+                                        count={audienceCounts.find((x) => x.key === a)?.count}
+                                        title={t.audienceNote[a]}
+                                        onClick={() => setAudience(audience === a ? 'all' : a)}
+                                    >
+                                        {t.audience[a]}
+                                    </Chip>
+                                ))}
+                            </FacetRow>
+
+                            <FacetRow label={t.facet_system}>
+                                <Chip active={system === 'all'} onClick={() => setSystem('all')}>
+                                    {t.facet_all}
+                                </Chip>
+                                {systemCounts.map(({ key, count }) => (
+                                    <Chip
+                                        key={key}
+                                        active={system === key}
+                                        count={count}
+                                        onClick={() => setSystem(system === key ? 'all' : key)}
+                                    >
+                                        {t.system[key] ?? key}
+                                    </Chip>
+                                ))}
+                            </FacetRow>
+                        </>
+                    )}
                 </ListControls>
 
                 <DataList className="mt-3">
@@ -307,7 +342,7 @@ export function ServicePane({
                                             </span>
                                         )}
                                         <OpBadge kind={jobOperation(job).kind} />
-                                        <VerifiedBadge verified={gate.allowed} reason={gate.reason} />
+                                        {gate.allowed && <VerifiedBadge verified reason={gate.reason} />}
                                     </>
                                 }
                                 detail={
@@ -357,13 +392,9 @@ const OP_TONE: Partial<Record<OpKind, 'danger' | 'caution' | 'secondary'>> = {
 function OpBadge({ kind }: { kind: OpKind }) {
     const { t } = useLang();
     const tone = OP_TONE[kind];
-    if (!tone) {
-        return (
-            <span className={`hidden shrink-0 ${LABEL} text-slate-600 min-[1100px]:inline`}>
-                {t.opKind[kind]}
-            </span>
-        );
-    }
+    // The ordinary shapes (a read that answers inline) say nothing on the row: they were the same
+    // grey word on most of the list. The facet 用途 and the job's detail still name them.
+    if (!tone) return null;
     return <Pill tone={tone}>{t.opKind[kind]}</Pill>;
 }
 

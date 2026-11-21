@@ -20,8 +20,8 @@ import { mayRun } from '@tsunagi/monitoring-engine';
 import { bestTelegram, type TelegramTable } from '@tsunagi/monitoring-engine';
 import { Awaiting } from '@/views/shared/Awaiting';
 import { CountReadout } from '@/views/shared/CountReadout';
-import type { Motion } from '@tsunagi/monitoring-engine';
-import { ReasonGlossary, ReasonTag } from '@/views/shared/RunReason';
+import type { ActuationMode, Motion } from '@tsunagi/monitoring-engine';
+import { ReasonGlossary, ReasonTag, SentenceTag } from '@/views/shared/RunReason';
 import { Adjustments } from './Adjustments';
 
 /**
@@ -46,6 +46,7 @@ export const AdaptationView = memo(function AdaptationView({
     telegrams,
     ledger,
     motion,
+    mode,
 }: {
     /** What the ECU answered, or null before anyone asked. */
     blocks: AdaptationRead[] | null;
@@ -55,6 +56,8 @@ export const AdaptationView = memo(function AdaptationView({
     ledger: Ledger;
     /** As last measured (lib/vehicleState) — the gate is asked with it. */
     motion: Motion;
+    /** The link's mode: the adjustments answer as SERVICE's hub does in it. */
+    mode?: ActuationMode;
 }) {
     const { t, lang } = useLang();
 
@@ -126,9 +129,15 @@ export const AdaptationView = memo(function AdaptationView({
                     // list under the wrong one is the app asserting a module has
                     // no erase job when nobody has looked — which is precisely
                     // how the first draft of this pane lied about SMG II.
-                    <p className="py-2 text-[11px] leading-relaxed text-slate-500">
-                        {known.known ? t.adaptationsReset_none : t.adaptationsReset_unknown}
-                    </p>
+                    known.known ? (
+                        <p className="py-2 text-[11px] leading-relaxed text-slate-500">{t.adaptationsReset_none}</p>
+                    ) : (
+                        // Not surveyed, as a tag: the sentence that says what that does not mean is
+                        // the tag's, on a touch (UX-31), not a line that argues with itself.
+                        <p className="py-2">
+                            <SentenceTag word={t.adaptationsReset_unknownTag} sentence={t.adaptationsReset_unknown} />
+                        </p>
+                    )
                 ) : (
                     <DataList>
                         {resets.map(({ job, verdict }) => (
@@ -148,7 +157,7 @@ export const AdaptationView = memo(function AdaptationView({
                     </DataList>
                 )}
             </Section>
-            <Adjustments catalog={catalog} ecuId={ecuId} address={telegrams?.address ?? null} ledger={ledger} motion={motion} />
+            <Adjustments catalog={catalog} ecuId={ecuId} address={telegrams?.address ?? null} ledger={ledger} motion={motion} mode={mode} />
         </Pane>
     );
 });

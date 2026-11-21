@@ -41,7 +41,8 @@ const scenario = {
                 return f?.unverified === true && f?.codes?.some((c) => c.code === '0x01' && c.present === true) ? true : JSON.stringify(f).slice(0, 400);
             },
         },
-        { screen: { desc: '画面：コード 0x01、「現在あり」、実車未確認の注記', has: ['0x01', '現在あり', '実車ではまだ確かめていません'] } },
+        // The note under the heading is a word since UX-16 (実車未確認); its sentence is the heading's ⓘ.
+        { screen: { desc: '画面：コード 0x01、「現在あり」、実車未確認の注記', has: ['0x01', '現在あり', '実車未確認'] } },
         { shot: 'non-m3-faults' },
         ...scanAndWait,
         {
@@ -53,9 +54,12 @@ const scenario = {
                     const at = (a) => mods.find((m) => m.address === a);
                     const dme = at('0x12');
                     const gs = at('0x32');
+                    // The SGBD's fault text: its name where a person translated it, else the German itself with
+                    // `untranslated` (lib/faultText, the screen's 故障（訳なし）).
+                    const named = (c) => (typeof c.text === 'string' && c.text.length > 0) || (!!c.untranslated && typeof c.original === 'string' && c.original.length > 0);
                     const ok = (m, sgbd, code, count) =>
                         m?.outcome === 'answered' && m?.variant?.sgbd === sgbd && m?.variant?.carried === true && m?.unverified === true &&
-                        m?.codes?.some((c) => c.code === code && c.count === count && typeof c.text === 'string' && c.text.length > 0) && !m?.faults;
+                        m?.codes?.some((c) => c.code === code && c.count === count && named(c)) && !m?.faults;
                     if (!ok(dme, 'MS430DS0', '0x01', 3)) return `0x12: ${JSON.stringify(dme).slice(0, 400)}`;
                     if (dme.codes[0].present !== true) return `0x12 present: ${JSON.stringify(dme.codes)}`;
                     if (!ok(gs, 'GS20', '0x01', 2)) return `0x32: ${JSON.stringify(gs).slice(0, 400)}`;

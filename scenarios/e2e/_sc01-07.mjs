@@ -110,11 +110,14 @@ export function faultsByAddress(faultsAnswer) {
     return out;
 }
 
-/** 画面の全モジュール一覧から、アドレスごとの札（「故障 2」「故障なし」「応答なし」…）。 */
+/**
+ * 画面の全モジュール一覧から、アドレスごとの札（「故障 2」「故障なし」「応答なし」…）。
+ * 「?」の行は名前と札のあいだに「候補 n」がある（UX-19）。札はその次の行。
+ */
 export async function scanRows(page) {
     const t = await screenText(page);
     const rows = {};
-    const re = /\n(0x[0-9A-F]{2})\n([^\n]+)\n([^\n]+)/g;
+    const re = /\n(0x[0-9A-F]{2})\n([^\n]+)\n(?:候補 \d+\n)?([^\n]+)/g;
     for (let m = re.exec(t); m; m = re.exec(t)) rows[m[1]] ??= { name: m[2], tag: m[3] };
     return rows;
 }

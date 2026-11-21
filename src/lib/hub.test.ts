@@ -94,6 +94,27 @@ describe('busy keeps the view’s verb, without keeping a copy of it', () => {
     });
 });
 
+describe('tier 0 — something driven is on', () => {
+    const stop: HubConfig = { label: 'STOP', Icon: VIEW_ICON, tone: 'armed-danger', onClick: () => {} };
+
+    it('is the ring on every link state, busy included — a read in flight never locks the stop', () => {
+        for (const linkState of ['disconnected', 'connecting', 'connected', 'busy', 'logging'] as const) {
+            const c = hubConfigFor(state({ linkState, fromView: viewCfg, engaged: stop }));
+            expect(c, linkState).toBe(stop);
+            expect(c.disabled, linkState).toBeFalsy();
+        }
+    });
+});
+
+describe('a view whose verb needs no link', () => {
+    it('keeps the ring while disconnected, instead of CONNECT', () => {
+        const save: HubConfig = { label: 'SAVE', Icon: VIEW_ICON, tone: 'ready', onClick: () => {}, offline: true };
+        expect(hubConfigFor(state({ linkState: 'disconnected', fromView: save }))).toBe(save);
+        // Any other view still gets CONNECT.
+        expect(hubConfigFor(state({ linkState: 'disconnected', fromView: viewCfg })).label).toBe('CONNECT');
+    });
+});
+
 describe('tier 2 and tier 3', () => {
     it('hands the view’s config straight through when the link is free', () => {
         expect(hubConfigFor(state({ fromView: viewCfg }))).toBe(viewCfg);

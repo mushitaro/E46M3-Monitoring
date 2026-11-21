@@ -53,3 +53,67 @@ export const plan = (body) => ({
         },
     },
 });
+
+/**
+ * Chooses a whole set of values on an ACTUATOR row: the option `label` (「オン · 0」) under the part's
+ * heading (「— 油圧ポンプ」), the way a person reads the list (UX-27). Returns whether it was there.
+ */
+export async function chooseSet(row, part, label) {
+    const select = row.locator('select').first();
+    const value = await select.evaluate(
+        (s, [p, l]) => {
+            let under = null;
+            for (const o of s.options) {
+                if (o.disabled && o.text.startsWith('— ')) under = o.text.slice(2);
+                else if (under === p && o.text === l) return o.value;
+            }
+            return null;
+        },
+        [part, label],
+    );
+    if (value === null) return false;
+    await select.selectOption({ value });
+    return true;
+}
+
+/** The sets an ACTUATOR row offers, as 「部品 › 値」 (「油圧ポンプ › オン · 0」), headings resolved. */
+export async function setsOf(row) {
+    return row
+        .locator('select')
+        .first()
+        .evaluate((s) => {
+            let under = null;
+            const out = [];
+            for (const o of s.options) {
+                if (o.disabled && o.text.startsWith('— ')) under = o.text.slice(2);
+                else if (o.value !== '') out.push(`${under} › ${o.text}`);
+            }
+            return out;
+        });
+}
+
+/** Opens a dialog's 詳細 ⓘ (or another details toggle by its label), where the SGBD's words and the frames are. */
+export async function openDetails(page, label = '詳細') {
+    const toggle = page.locator('[role=dialog] button[aria-controls]', { hasText: label }).first();
+    if ((await toggle.count()) && (await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+}
+
+/**
+ * ACTUATOR, since the ring is the chosen row's START or RUN (UX-01): a row is its name's button
+ * (`tj-pick`) and what stands beside it (the value picker, the reason's word). The innermost element
+ * holding the job's SGBD name and that button.
+ */
+export const actuatorRowOf = (page, job) =>
+    page.getByText(job, { exact: true }).first().locator('xpath=ancestor::*[.//*[@data-test="tj-pick"]][1]');
+
+/** The hub's ring while it is an ACTUATOR row's action: START (a part held on) or RUN (sent once). */
+export const actuatorRing = (page) => page.locator('[data-test="tj-start"], [data-test="tj-run"]').first();
+
+/** Chooses an ACTUATOR row by pressing its name; returns the ring, now that row's START or RUN (null: no such row). */
+export async function pickActuator(page, job) {
+    const row = actuatorRowOf(page, job);
+    if ((await row.count()) === 0) return null;
+    await row.locator('[data-test="tj-pick"]').first().click();
+    await page.waitForTimeout(200);
+    return actuatorRing(page);
+}

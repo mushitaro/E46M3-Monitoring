@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { EcuIndex, EcuProfile } from '@tsunagi/monitoring-engine';
 import { execStyleOf } from './execStyle';
-import { allChecked, requiredChecks } from './gateChecks';
+import { MEASURE_SHOWN_MS, allChecked, holdsRun, isMeasuredPrereq, lastMeasured, measuredAtSend, procedureMeasured, requiredChecks } from './gateChecks';
 import { operationFor } from '@tsunagi/monitoring-engine';
 
 const DATA = path.resolve(import.meta.dirname, '..', '..', 'public', 'ecu-data');
@@ -100,5 +100,111 @@ describe('across everything that ships', () => {
         expect(missing).toEqual([]);
         // A rule applied to nothing is not applied.
         expect(seen).toBeGreaterThan(0);
+    });
+});
+
+describe('what the app measures is not a box (operator, 2026-11-21)', () => {
+    const run = { requires: 'parked' as const, actuation: { nature: 'actuate', who: 'screen', engine: 'off' as const, timeoutS: 10, stopJob: null } } as never;
+    const runNoEngine = { requires: 'parked' as const, actuation: { nature: 'actuate', who: 'screen', engine: null, timeoutS: 10, stopJob: null } } as never;
+
+    it('a job that drives something: the speed, the battery and the engine its SGBD asks for are measured at the wire', () => {
+        expect(measuredAtSend('stationary', run)).toBe(true);
+        expect(measuredAtSend('voltage_ok', run)).toBe(true);
+        expect(measuredAtSend('engine_off', run)).toBe(true);
+        // The engine is measured only as the terms (the job's own preconditions) ask.
+        expect(measuredAtSend('engine_off', runNoEngine)).toBe(false);
+        expect(measuredAtSend('engine_running', run)).toBe(false);
+        // What the link does not measure stays the person's.
+        expect(measuredAtSend('ignition_on', run)).toBe(false);
+    });
+
+    it('a read: only a parked read’s speed is measured; the battery is not', () => {
+        expect(measuredAtSend('stationary', { requires: 'parked' })).toBe(true);
+        expect(measuredAtSend('stationary', { requires: 'none' })).toBe(false);
+        expect(measuredAtSend('voltage_ok', { requires: 'parked' })).toBe(false);
+    });
+
+    it('drops the measured boxes and keeps the acknowledgements', () => {
+        const j = job('IO_STATUS_VORGEBEN');
+        expect(requiredChecks(j, operationFor(j), run)).toEqual(['ack:irreversible']);
+        // Without the verdict (or for a read), the boxes are as before.
+        expect(requiredChecks(j, operationFor(j), { requires: 'parked' })).toEqual(['pre:voltage_ok', 'ack:irreversible']);
+    });
+
+    it('so RUN needs no tick on a job whose every precondition is measured and nothing is lost', () => {
+        const j = mss54.jobs.find((x) => x.preconditions.length > 0 && !operationFor(x).irreversible && execStyleOf(operationFor(x)) !== 'pulse-unreleasable')!;
+        expect(j.preconditions.every((p) => ['voltage_ok', 'stationary', 'engine_off'].includes(p))).toBe(true);
+        const keys = requiredChecks(j, operationFor(j), run);
+        expect(keys).toEqual([]);
+        expect(allChecked(keys, new Set())).toBe(true);
+    });
+
+    it('every precondition any shipped job lists is one the link measures for a job that drives', () => {
+        const seen = new Set<string>();
+        for (const [, p] of profiles) for (const j of p.jobs) for (const pre of j.preconditions) seen.add(pre);
+        const unmeasured = [...seen].filter((pre) => !measuredAtSend(pre, run));
+        expect(unmeasured).toEqual([]);
+    });
+});
+
+describe('the last measurement beside a measured precondition', () => {
+    const at = 1_800_000_000_000;
+    const state = { speedKmh: 0, speedCanKmh: 0, rpm: 0, voltageV: 12.6, at, engineAt: at };
+
+    it('says the value and whether the press would pass it', () => {
+        expect(lastMeasured('voltage_ok', state, at + 1000)).toEqual({ kind: 'ok', value: 12.6, current: true });
+        expect(lastMeasured('stationary', state, at + 1000)).toEqual({ kind: 'ok', value: 0, current: true });
+        expect(lastMeasured('engine_off', state, at + 1000)).toEqual({ kind: 'ok', value: 0, current: true });
+        expect(lastMeasured('engine_running', state, at + 1000)).toEqual({ kind: 'bad', value: 0, current: true });
+    });
+
+    it('fails what the link would refuse: under 12 V, moving, the engine not as asked', () => {
+        expect(lastMeasured('voltage_ok', { ...state, voltageV: 11.9 }, at)).toEqual({ kind: 'bad', value: 11.9, current: true });
+        expect(lastMeasured('stationary', { ...state, speedKmh: 30, speedCanKmh: 30 }, at)).toEqual({ kind: 'bad', value: 30, current: true });
+        expect(lastMeasured('engine_off', { ...state, rpm: 850 }, at)).toEqual({ kind: 'bad', value: 850, current: true });
+    });
+
+    it('holds RUN only while the failing reading is current; an older one is shown and the press decides', () => {
+        const low = { ...state, voltageV: 11.9 };
+        expect(holdsRun(lastMeasured('voltage_ok', low, at + 4000))).toBe(true);
+        const older = lastMeasured('voltage_ok', low, at + 30_000);
+        expect(older).toEqual({ kind: 'bad', value: 11.9, current: false });
+        expect(holdsRun(older)).toBe(false);
+        expect(holdsRun(lastMeasured('voltage_ok', state, at))).toBe(false);
+        expect(holdsRun({ kind: 'unmeasured' })).toBe(false);
+    });
+
+    it('is unmeasured past a minute, or with no reading at all', () => {
+        expect(lastMeasured('voltage_ok', state, at + MEASURE_SHOWN_MS + 1)).toEqual({ kind: 'unmeasured' });
+        expect(lastMeasured('stationary', state, at + MEASURE_SHOWN_MS + 1)).toEqual({ kind: 'unmeasured' });
+        expect(lastMeasured('voltage_ok', null, at)).toEqual({ kind: 'unmeasured' });
+        expect(lastMeasured('voltage_ok', { ...state, voltageV: null }, at)).toEqual({ kind: 'unmeasured' });
+    });
+
+    it('takes the battery’s age from its own reading, not from a newer speed reading', () => {
+        // A voltage carried over from a recording two minutes ago is not "the last minute's".
+        const carried = { ...state, at: at + 120_000, engineAt: at };
+        expect(lastMeasured('stationary', carried, at + 121_000).kind).toBe('ok');
+        expect(lastMeasured('voltage_ok', carried, at + 121_000)).toEqual({ kind: 'unmeasured' });
+        expect(lastMeasured('voltage_ok', { ...state, engineAt: undefined }, at)).toEqual({ kind: 'unmeasured' });
+    });
+});
+
+describe('an SMG II procedure', () => {
+    const workflows = read<{ procedures: { id: string; engine: string; prereq: { ja: string; en: string }[] }[] }>('smg2-workflows.json');
+
+    it('measures the speed, the battery and the engine state it names', () => {
+        expect(procedureMeasured('off')).toEqual(['voltage_ok', 'stationary', 'engine_off']);
+        expect(procedureMeasured('run')).toEqual(['voltage_ok', 'stationary', 'engine_running']);
+        expect(procedureMeasured('')).toEqual(['voltage_ok', 'stationary']);
+    });
+
+    it('loses exactly one box, the battery’s, in every procedure; the sentences that mix in what is not measured stay', () => {
+        expect(workflows.procedures.length).toBeGreaterThan(0);
+        for (const p of workflows.procedures) {
+            const measured = p.prereq.filter(isMeasuredPrereq);
+            expect(measured.map((x) => x.ja), p.id).toEqual(['バッテリ電圧が十分（充電器推奨）']);
+            expect(p.prereq.filter((x) => !isMeasuredPrereq(x)).every((x) => /ニュートラル|油温|平坦/.test(x.ja)), p.id).toBe(true);
+        }
     });
 });

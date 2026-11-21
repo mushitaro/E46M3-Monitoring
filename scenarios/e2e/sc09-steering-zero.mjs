@@ -51,25 +51,34 @@ const scenario = {
         {
             check: {
                 desc: '実行できる：実行のボタンが押せる。押せないなら、理由とどうすれば動くかが日本語で出る（U2）',
-                run: async (page) => {
+                run: async (page, st) => {
                     const start = page.locator('button.rounded-full:not([disabled])').filter({ hasText: /^(Start|Run|実行)$/ }).first();
                     const can = await until(page, async () => (await start.count()) > 0, 3000, 250);
                     if (can) return true;
-                    const text = await bodyText(page);
                     // The DSC's zero point also writes the sensor's calibration (ABGLEICH_SCHREIBEN at 0x57), and
-                    // writes are off in the owner's table: the screen says so and where it can be done instead.
-                    if (/書き込み|書込/.test(text) && /ディーラー|INPA/.test(text)) return true;
-                    const reason = /送りません|確定していません/.test(text) ? text.match(/[^\n]*(送りません|確定していません)[^\n]*/)?.[0] : null;
-                    return `実行できない。画面の理由：「${reason ?? 'なし'}」（どうすれば動くかは言っていない）`;
+                    // writes are off in the owner's table: the row's tag says so (「書き込みを含む」), and touching
+                    // it says where it can be done instead — the sentence is the tag's, not a paragraph (UX-31).
+                    const row = page.locator('li', { hasText: JOB }).first();
+                    const tag = row.locator('button[aria-expanded]').first();
+                    if ((await tag.count()) === 0) return `${JOB} の行に理由の札が無い`;
+                    const word = (await tag.innerText()).trim();
+                    await tag.click();
+                    await page.waitForTimeout(300);
+                    const said = (await row.locator('[role=tooltip]').first().innerText().catch(() => '')) || '';
+                    if (/書き込み|書込/.test(word + said) && /ディーラー|INPA/.test(said)) {
+                        st.outside = true;
+                        return true;
+                    }
+                    return `実行できない。札「${word}」、触ると「${said.slice(0, 160)}」（どうすれば動くかは言っていない）`;
                 },
             },
         },
         {
             check: {
                 desc: '実行 → 「完了」と出る',
-                run: async (page) => {
+                run: async (page, st) => {
                     const start = page.locator('button.rounded-full:not([disabled])').filter({ hasText: /^(Start|Run|実行)$/ }).first();
-                    if ((await start.count()) === 0) return /書き込み|書込/.test(await bodyText(page)) ? true : '実行のボタンが無いので実行できない';
+                    if ((await start.count()) === 0) return st.outside ? true : '実行のボタンが無いので実行できない';
                     await start.click();
                     if (!(await confirmRun(page))) return '確認が出ない';
                     const done = await until(page, async () => /完了/.test(await bodyText(page)), 8000, 300);
@@ -81,9 +90,9 @@ const scenario = {
         {
             check: {
                 desc: '続けて舵角の値を読み、0° 付近（±2°）を単位つきで表示する',
-                run: async (page) => {
+                run: async (page, st) => {
+                    if (st.outside) return true;
                     const text = await bodyText(page);
-                    if (/書き込み|書込/.test(text) && /ディーラー|INPA/.test(text)) return true;
                     const m = /舵角[^\n]*\n?\s*(-?[\d.]+)\s*°/.exec(text);
                     return m && Math.abs(Number(m[1])) <= 2 ? true : '舵角の値が画面に無い';
                 },

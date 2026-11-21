@@ -2,7 +2,7 @@
 
 import { Cpu } from 'lucide-react';
 import { LABEL, TextButton } from '@/components/ui';
-import type { LinkMode, LinkState } from '@/hooks/useDs2Link';
+import type { LinkState } from '@/hooks/useDs2Link';
 import type { EcuIndex } from '@tsunagi/monitoring-engine';
 import { CHROME } from '@/lib/i18n/chrome';
 import { ALL_MODULES } from '@tsunagi/monitoring-engine';
@@ -54,6 +54,12 @@ export function useTabLabels(): Record<Tab, string> {
  * top of LIST would be two ways to one job in one layout (tsunagi-m-ux §11),
  * and LIST gets the 44px back. The comms log that sits at this bar's right goes
  * to the footer's right-hand slot (LogPopover's `openUp`).
+ *
+ * One tab is lit, and it changes in the same frame as the pane under it. There is no colour
+ * transition: with one, the tab being left kept a fading underline for its duration, and a screen
+ * the assistant had just switched showed two underlines over one pane (UX-15, four shots — the
+ * headless browser does not advance a transition until something paints). The pane switches
+ * instantly (Overlaid), so its tab does too.
  */
 export function TabBar({
     tab,
@@ -80,7 +86,7 @@ export function TabBar({
                         aria-selected={tab === id}
                         aria-controls={`pane-${id}`}
                         onClick={() => onChange(id)}
-                        className={`flex h-full shrink-0 items-center whitespace-nowrap border-b-2 ${LABEL} transition-colors ${
+                        className={`flex h-full shrink-0 items-center whitespace-nowrap border-b-2 ${LABEL} ${
                             tab === id
                                 ? 'border-blue-400 text-blue-400'
                                 : 'border-transparent text-slate-500 hover:text-slate-300'
@@ -103,18 +109,19 @@ export function TabBar({
 
 /**
  * The status row: what is being addressed on the left — the label and, beside
- * it, the module it names — and the mode or the link's controls at the right
- * end (operator, 2026-10-28: the select belongs to MODULE, PRACTICE to the
- * edge). Centring a lone chip left the panel with no anchor and no label.
+ * it, the module it names — and the link's controls at the right end. Centring a
+ * lone chip left the panel with no anchor and no label.
  *
  * DISCONNECT lives HERE, not in the sub-action row, because this is the row that
  * states what you are talking to. It ends the session the row is describing,
  * which is a different kind of act from the row below — those act on the current
  * run and on the workspace.
  *
- * It also takes the slot PRACTICE vacates. The mode cannot change under an open
- * link, so the checkbox has nothing left to say; leaving it there disabled spent
- * the only free space in a 32px row on a dead control.
+ * PRACTICE is not in this row any more. It used to sit at its right end while
+ * disconnected and give its slot to the link's state on connect — so the one mark
+ * that tells a practice run from a car left the screen at the moment it mattered
+ * most (UX-03). It lives in the hub window's top-right now, in every link state
+ * (PracticeCorner, tsunagi-m-ux §16), and the practice car's ENGINE behind it.
  *
  * ## What gives when the row is short
  *
@@ -131,15 +138,13 @@ export function TabBar({
  *   2. the chip's text, which truncates inside its own box (EcuSelect). It is the
  *      one thing here whose length is open-ended — 51 names, and the widest makes
  *      the select 297px — so it is the one that takes up a short row;
- *   3. nothing else. PRACTICE, the mode and phase, and DISCONNECT are always
- *      whole: the mode is the one mark that tells a practice run from a car
- *      (tsunagi-m-ux §16).
+ *   3. nothing else. The link's phase and DISCONNECT are always whole.
  *
  * Below 900 on its side — the head unit, a phone held landscape — HUB stands
  * beside MAIN at φ, 261px wide at 683x400, and the one line would leave the chip
  * 9px. There the row is two lines in every state: the module on the first, the
- * mode and DISCONNECT (or PRACTICE) at the right end of the second. Still one
- * reserved height, only a taller one; the query is page.tsx's NARROW_GRID.
+ * phase and DISCONNECT at the right end of the second. Still one reserved height,
+ * only a taller one; the query is page.tsx's NARROW_GRID.
  *
  * Before this, nothing yielded. The chip was pushed out past the column's edge
  * and clipped there: at 360x800 it ran to x=413, the row overflowed by 73px
@@ -150,32 +155,23 @@ export function ModuleRow({
     index,
     ecuId,
     connected,
-    mode,
     state,
-    practiceArmed,
-    onPractice,
     onDisconnect,
     onChangeEcu,
     allowAll = false,
     all = false,
-    practiceEngine,
     hidden,
 }: {
     index: EcuIndex | null;
     ecuId: string;
     connected: boolean;
-    mode: LinkMode;
     state: LinkState;
-    practiceArmed: boolean;
-    onPractice: (v: boolean) => void;
     onDisconnect: () => void;
     onChangeEcu: (id: string) => void;
     /** DIAGNOSIS offers ALL MODULES (`ALL_MODULES`) above the modules; the other tabs need one. */
     allowAll?: boolean;
     /** ALL MODULES is chosen. Shown only where it is offered. */
     all?: boolean;
-    /** PRACTICE's simulated engine, running or stopped: what a job asking for the engine off or on is practised against. */
-    practiceEngine?: { running: boolean; onChange: (v: boolean) => void };
     /** Modules this car ruled out at their address (its IDENT, or the owner): not offered. */
     hidden?: ReadonlySet<string>;
 }) {
@@ -190,17 +186,9 @@ export function ModuleRow({
                 <EcuSelect index={index} value={all && allowAll ? ALL_MODULES : ecuId} module={ecuId} connected={connected} allowAll={allowAll} onChange={onChangeEcu} hidden={hidden} />
             </div>
             <div className="ml-auto flex shrink-0 items-center gap-3 [@media(max-width:899px)_and_(orientation:landscape)]:h-8">
-                {!connected ? (
-                    <PracticeToggle checked={practiceArmed} disabled={false} onChange={onPractice} />
-                ) : (
+                {connected && (
                     <>
-                        {mode === 'practice' && practiceEngine && (
-                            <label className={`flex shrink-0 cursor-pointer items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider ${practiceEngine.running ? 'text-indigo-400' : 'text-slate-500'}`} title={t.practice_engine_title}>
-                                <input type="checkbox" checked={practiceEngine.running} onChange={(e) => practiceEngine.onChange(e.target.checked)} className="size-3 accent-indigo-500" />
-                                {t.practice_engine}
-                            </label>
-                        )}
-                        <LinkReadout mode={mode} state={state} />
+                        <LinkReadout state={state} />
                         <TextButton onClick={onDisconnect} tone="danger">
                             {t.disconnect}
                         </TextButton>
@@ -224,21 +212,18 @@ const LIVE_PHASES: Record<Exclude<LinkState, 'disconnected'>, true> = {
 };
 
 /**
- * Mode over phase, as wide as the longest phase, whichever phase it shows.
- *
- * Stacked, because side by side "PRACTICE · CONNECTING" is 137px, and with
- * DISCONNECT next to it a 360 phone's chip had room for its arrow and none of
- * its name. Two 12px lines fit inside the 32px row.
+ * The phase, one word, as wide as the longest phase, whichever phase it shows.
+ * The mode is not repeated here: PRACTICE says it in the hub's top-right corner,
+ * in every link state (UX-03).
  *
  * Every phase is laid out in one grid cell and all but the current one are
  * invisible, as in Overlaid. Where the row is short the chip takes whatever is
  * left, so a readout that followed its word would slide DISCONNECT sideways
  * every time a read started or ended.
  */
-function LinkReadout({ mode, state }: { mode: LinkMode; state: LinkState }) {
+function LinkReadout({ state }: { state: LinkState }) {
     return (
         <span className="grid shrink-0 font-mono text-[10px] uppercase leading-3 tracking-wider text-slate-600">
-            <span>{mode}</span>
             <span className="grid">
                 {(Object.keys(LIVE_PHASES) as LinkState[]).map((phase) => (
                     <span key={phase} className={`[grid-area:1/1] ${phase === state ? '' : 'invisible'}`}>
@@ -247,49 +232,6 @@ function LinkReadout({ mode, state }: { mode: LinkMode; state: LinkState }) {
                 ))}
             </span>
         </span>
-    );
-}
-
-/**
- * PRACTICE as a checkbox, not a second connect button.
- *
- * It is a MODE — which link the one CONNECT verb will open — and a button beside
- * CONNECT made it a fork with no stated default, so the app had two primary
- * actions and told you nothing about which one you were about to take. As a
- * checkbox the hub reads CONNECT either way and the box states which link you
- * get. It is a checkbox rather than a switch on purpose: a switch is for a mode
- * that changes what the app DOES to the car, and this changes whether there is a
- * car at all.
- *
- * Disabled once a session is open, because the session already IS one or the
- * other and a control that cannot take effect must not read as available.
- */
-function PracticeToggle({
-    checked,
-    disabled,
-    onChange,
-}: {
-    checked: boolean;
-    disabled: boolean;
-    onChange: (v: boolean) => void;
-}) {
-    const { t } = useLang();
-    return (
-        <label
-            className={`flex shrink-0 items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider ${
-                disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'
-            } ${checked && !disabled ? 'text-indigo-400' : 'text-slate-500'}`}
-            title={t.mode_practice}
-        >
-            <input
-                type="checkbox"
-                checked={checked}
-                disabled={disabled}
-                onChange={(e) => onChange(e.target.checked)}
-                className="size-3 accent-indigo-500"
-            />
-            {t.practice}
-        </label>
     );
 }
 
@@ -322,6 +264,8 @@ function EcuSelect({
     allowAll: boolean;
     onChange: (id: string) => void;
 }) {
+    const { lang } = useLang();
+    const pick = (o: { ja: string; en: string }) => (lang === 'en' ? o.en : o.ja);
     // The fitment hint is on the rows that NEED it — the ones sharing a DS2 address with
     // another module, where the name alone cannot tell them apart. Everywhere else it is
     // noise, and noise that costs: a native select shows the selected option in the closed
@@ -337,12 +281,12 @@ function EcuSelect({
     // and printing it twice on one 32px line is the sort of thing that makes a
     // panel look unread.
     //
-    // English in both languages, so this takes no `lang`. `MSS54`, `SMG II` and
-    // `DSC` are the ECUs' own designations and `S54 / E46 M3` is a chassis code —
-    // the whole string is machine identity, not prose, and it sits in a row of
-    // English chrome tokens (MODULE, PRACTICE) under English tabs. The Japanese
-    // variant only ever translated the one common noun in it (エンジン / 変速機),
-    // which bought nothing and broke the row's vocabulary.
+    // The module's name in the reader's language — the same word the ALL MODULES
+    // list, the notice line and MEMORY use. It was English in both languages, on
+    // the reasoning that `MSS54 (S54 / E46 M3 Engine)` is machine identity; but most
+    // of the 52 are not designations — `Radio`, `CD changer`, `Convertible top
+    // module` — and the selector called ラジオ "Radio" beside a list that called it
+    // ラジオ: one module, two words (UX-24).
     //
     // `min-w-0` on the chip and the select, and `truncate`: this is what yields
     // when the row is short (ModuleRow). A select is as wide as its WIDEST
@@ -370,12 +314,12 @@ function EcuSelect({
                     const rows = (index?.modules ?? []).filter((e) => e.group === g.key && !hidden?.has(e.id));
                     if (rows.length === 0) return null;
                     return (
-                        <optgroup key={g.key} label={g.en} className="bg-slate-900">
+                        <optgroup key={g.key} label={pick(g)} className="bg-slate-900">
                             {rows.map((e) => (
                                 <option key={e.id} value={e.id} disabled={connected && e.id !== module} className="bg-slate-900 text-slate-300">
-                                    {e.name_en || e.name}
+                                    {lang === 'en' ? e.name_en || e.name : e.name || e.name_en}
                                     {sharesAddress.has(e.address) && index?.fit[e.fit]
-                                        ? ` — ${index.fit[e.fit].en}` : ''}
+                                        ? ` — ${pick(index.fit[e.fit])}` : ''}
                                 </option>
                             ))}
                         </optgroup>

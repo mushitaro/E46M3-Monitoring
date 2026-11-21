@@ -89,7 +89,7 @@ export const scanRow = async (page, address) => {
     const i = lines.indexOf(address);
     if (i < 0) return null;
     const out = [];
-    for (let j = i + 1; j < lines.length && !/^0x[0-9A-F]{2}$/.test(lines[j]) && !/^VISUALIZATION/.test(lines[j]); j++) out.push(lines[j]);
+    for (let j = i + 1; j < lines.length && !/^0x[0-9A-F]{2}$/.test(lines[j]) && !/^VISU$/.test(lines[j]); j++) out.push(lines[j]);
     return out.join(' / ');
 };
 

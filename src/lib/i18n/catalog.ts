@@ -69,6 +69,46 @@ export interface Localised {
     datalog_markLabel: (why: string) => string;
     datalog_cursorLabel: string;
     datalog_hubLine: (elapsed: string, rpm: string, kmh: string, samples: number) => string;
+    /** The notice after a recording is stopped: how long, how many samples (UX-04). */
+    datalog_stoppedLine: (elapsed: string, samples: number) => string;
+    /** The hub's notices, short: a job table with nothing chosen, a module with no read frame, DATALOG off the DME. */
+    hub_pickRow: string;
+    /**
+     * The chosen row's job will not be sent: the conclusion first, then the reason in a word
+     * (`runBlockShort`) — the notice line's form (docs/UX-DESIGN.md §2). The sentence is the row's tag
+     * and VISU's.
+     */
+    hub_wontSend: (why: string) => string;
+    /** ACTUATOR, before anything drives: which module answers at this address is the owner's to say first. */
+    hub_variantFirst: string;
+    hub_noReadFrame: string;
+    hub_dmeOnly: string;
+    /** The door, beside PRACTICE, to the practice car's settings (its ENGINE). */
+    practice_car: string;
+    /** A recorded value with no name in its module's data: the kind of value, never its identifier (UX-09). */
+    channel_ofModule: (module: string) => string;
+    channel_unnamed: string;
+    /** A pair's measured line, beside 目標 (graph_target). */
+    graph_actual: string;
+    /** DATALOG's picture: how many chosen values are on LIST only (UX-05). */
+    datalog_moreInList: (n: number) => string;
+    /** A judgement said as what it tests (UX-09): the statistic, and the threshold with its comparison. */
+    judge_stat: Record<'max' | 'min' | 'mean' | 'spread' | 'count', string>;
+    judge_op: Record<'<' | '<=' | '>' | '>=' | '==' | '!=', (value: string) => string>;
+    /** Items of a form that are not a value or a judgement. */
+    item_faults: (module: string) => string;
+    item_adapt: string;
+    item_read: (module: string) => string;
+    item_capture: string;
+    /** Said once over a comparison's removed items (UX-10). */
+    item_keptNote: string;
+    /** Where the thresholds came from, once over a list of judgements whose every source is the same (UX-10). */
+    judges_source: (source: string) => string;
+    judge_provenance: Record<'sgbd' | 'inpa' | 'authored' | 'observed', string>;
+    /** PROBE after a run: the last run, stopped (UX-07). */
+    probe_lastRun: (n: number, v: number, elapsed: string) => string;
+    probe_captured: (n: number) => string;
+    awaiting_probe: string;
     sessions_segments: (lines: string) => string;
     rate: string;
     samples: string;
@@ -207,6 +247,52 @@ export interface Localised {
     gate_stopsAfter: (s: number) => string;
     gate_once: string;
     gate_onPress: (start: boolean) => string;
+    /**
+     * The one confirmation shape (docs/UX-DESIGN.md §5, UX-11/12/13): the title names what moves or
+     * what goes, the body is what happens → until when → what pressing does, and the SGBD's quotes,
+     * the frames and the job names are under 詳細.
+     */
+    conf_drives: (name: string) => string;
+    conf_reads: (name: string) => string;
+    conf_runs: (name: string) => string;
+    conf_readOnce: string;
+    conf_staysOn: string;
+    /**
+     * A precondition the app measures (lib/gateChecks), said as its last measurement instead of a box:
+     * the value, and — when it would fail the measurement taken on the press — what makes it pass.
+     */
+    conf_measured: (p: 'voltage_ok' | 'stationary' | 'engine_off' | 'engine_running', value: string, ok: boolean, minV: number) => string;
+    /** Beside a measured precondition with nothing measured lately: pressing measures it, then sends. */
+    conf_measureOnPress: string;
+    /** After a failing measurement that is not from just now: the press measures again and decides. */
+    conf_remeasureOnPress: string;
+    conf_details: string;
+    conf_sgbdNote: string;
+    /** Over what a caution tells the person to do, where the job has no precondition boxes (lib/instructions). */
+    conf_instructions: string;
+    clearFaults_titleOf: (module: string, n: number | null) => string;
+    clearFaults_what: string;
+    clearFaults_back: string;
+    clearFaults_press: (lastSpeedKmh: number | null) => string;
+    /** A duration in the reader's units (the SGBD writes `10 sek`, `3,0 min`). */
+    dur_sec: (n: number) => string;
+    dur_min: (n: number) => string;
+    wiz_asked: (n: number) => string;
+    wiz_until: (max: string | null) => string;
+    wiz_press: string;
+    /** A job's argument values that name a state, in the owner's words (STEUERART1 of SMG II's STEUERN_STELLGLIED). */
+    actuator_mode: Record<string, string>;
+    /** One reason that holds for (nearly) every row, said once on the list (UX-28). */
+    list_shared: (k: number, total: number, word: string) => string;
+    service_unverified: (k: number, total: number) => string;
+    facet_more: string;
+    proc_engineRunTag: string;
+    proc_engineOffNote: (k: number, total: number) => string;
+    adjust_tag: Record<'ok' | 'otherWrite' | 'otherModule' | 'sendsNothing' | 'notAgreed', string>;
+    adjust_info: string;
+    /** The sensor an adjustment's own job name names, where two rows would otherwise read the same. */
+    adjust_target: Record<string, string>;
+    adaptationsReset_unknownTag: string;
     /** The credits dialog. Reachable always; never inside the disclaimer. */
     credits_title: string;
     credits_lede: string;
@@ -225,6 +311,7 @@ export interface Localised {
     precond_voltage_ok: string;
     precond_stationary: string;
     precond_engine_off: string;
+    precond_engine_running: string;
     module: string;
     faultRef: string;
     faultRef_info: string;
@@ -243,6 +330,8 @@ export interface Localised {
     /** The placeholder of a job's value sets: the sets the app and EdiabasLib build alike. */
     actuator_values: string;
     actuator_armed: string;
+    /** A row's word while what it drives waits for the line to come back. */
+    actuator_waitLine: string;
     gate_plan: string;
     gate_preconditions: string;
     gate_preconditions_none: string;
@@ -281,11 +370,17 @@ export interface Localised {
      */
     scan_variant: (sgbd: string | null, carried: boolean) => string;
     /** A shared address: which of its SGBDs is fitted is chosen on the select. */
-    scan_shared: string;
     /** The scan in one line: how many modules answered, how many faults their reads hold (SC01 step 3). */
     scan_summary: (modules: number, faults: number) => string;
     /** A row whose module is not decided: its candidates, never joined as if all were fitted (IJ15, F03). */
-    scan_undecided: (names: string[], byYear: boolean) => string;
+    /** A `?` row (UX-19): how many modules it may be, on the row; which, once it is opened. */
+    scan_candidates: (n: number) => string;
+    /** A scan row's two presses (UX-23): its name puts the module on the screen; its chevron opens what it said. */
+    scan_rowOpen: (name: string) => string;
+    scan_rowExpand: string;
+    scan_rowCollapse: string;
+    scan_candidateList: (names: string[], byYear: boolean) => string;
+    scan_either: (a: string, b: string) => string;
     /** Under a read that stopped part of the way (IJ16). */
     scan_partial: string;
     /** The scan engine's reasons, in the reader's words; undefined: none to say (the row says it already). */
@@ -297,7 +392,8 @@ export interface Localised {
     /** The hub's notice while it runs. */
     scan_progress: (done: number, total: number) => string;
     awaiting_scan: string;
-    viz_scanAnswered: string;
+    /** Under ALL MODULES' fault count: how many addresses answered, of how many asked (UX-18). */
+    viz_scanAnsweredOf: (answered: number, asked: number) => string;
     /** The hub's notice where a module's own SGBD carries no short IDENT or fault-read frame. */
     faults_notEstablished: string;
     /** The hub's notice on DATALOG for a module whose live-block layout this app does not have. */
@@ -327,7 +423,7 @@ export interface Localised {
     sessions_current_info: string;
     /** What a press of SAVE / SYNC would do, or why it cannot — `title`, beside the one-word label. */
     save_title: Record<'nothing' | 'ready' | 'busy' | 'saved', string>;
-    sync_title: Record<'signedOut' | 'unreachable' | 'offline' | 'busy' | 'clean', string> & { ready: (n: number) => string };
+    sync_title: Record<'signedOut' | 'unreachable' | 'offline' | 'busy' | 'clean' | 'local', string> & { ready: (n: number) => string };
     /**
      * ASSISTANT (chrome.ts) — the owner's assistant reaching this tab through TSUNAGI///Matrix. WORKS
      * only. What turning it on sends, by where, to whom, and what it can and cannot do: the notice
@@ -348,7 +444,7 @@ export interface Localised {
     /** The header's AI switch: what a press does, for its title. */
     ai_pressToTurnOn: string;
     ai_pressToTurnOff: string;
-    /** In SESSION SYNC: where the switch is now that it is not here. */
+    /** On MEMORY's ASSISTANT: where the switch is now that it is not here. */
     assistant_whereSwitch: string;
     /** The name a device answers as when the owner gave it none: the head unit, a phone, a computer. */
     assistant_defaultDevice: Record<'nav' | 'phone' | 'pc', string>;
@@ -377,6 +473,10 @@ export interface Localised {
     sessions_expiresIn: (days: number) => string;
     /** The time of the episode in progress is not certain yet (the device clock not put right). */
     sessions_timeUnsure: string;
+    /** In place of a record's time while the time is not certain (UX-32). */
+    sessions_timeUnsureShort: string;
+    /** MEMORY's "this connection" while nothing is connected: what SAVE keeps is the row below. */
+    sessions_noLink: string;
     sessions_undated: (days: number | null) => string;
     sessions_inAccount: string;
     sessions_errors: string;
@@ -432,12 +532,11 @@ export interface Localised {
     install_dismissed: string;
     install_unavailable: string;
     viewer_faults: string;
-    viewer_noFaultsRead: string;
     viewer_datalog: string;
     viewer_rows: (shown: number, total: number) => string;
     viewer_failures: string;
-    viewer_noFailures: string;
-    viz_sessions: string;
+    /** MEMORY's VISU while no saved record is open (UX-32). */
+    viz_noRecord: string;
     mode_probeLocked: string;
     startup_sessions: string;
     startup_info: string;
@@ -482,6 +581,12 @@ export interface Localised {
     fault_stored: string;
     /** A code its module's own table does not name. */
     fault_unnamed: string;
+    /** A fault whose module's table holds no Japanese a person reads for it: named as what it is, the German beside it (UX-22). */
+    fault_untranslated: string;
+    /** One-word provenance under the faults' heading (UX-16): the sentences are behind the ⓘ. */
+    faults_tag: { sgbd: string; unverified: string; estimated: string; bytes: string };
+    /** The collapsed section with the frames a module's own fault read sent, and what came back. */
+    faults_sentFrames: string;
     door_wifi: string;
     door_datetime: string;
     board_up: string;

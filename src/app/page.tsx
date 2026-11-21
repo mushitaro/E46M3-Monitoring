@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, ArrowRight, Download, Plus, Radar, RotateCcw, SkipForward, Square } from 'lucide-react';
+import { AlertTriangle, Download, Plus, Radar, RotateCcw } from 'lucide-react';
 import { AppHeader } from '@/components/AppHeader';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { CreditsDialog } from '@/components/CreditsDialog';
@@ -13,6 +13,7 @@ import { MobileMenu } from '@/components/MobileMenu';
 import { BAR, ModuleRow, TabBar, useTabLabels } from '@/components/shell/Chrome';
 import { ControlPanel } from '@/components/shell/ControlPanel';
 import { ModeCorner } from '@/components/shell/ModeCorner';
+import { PracticeCorner } from '@/components/shell/PracticeCorner';
 import { Overlaid } from '@/components/shell/Overlaid';
 import { LABEL, TextButton } from '@/components/ui';
 import { takeLeftRunning, useActuatorArming, type LeftRunning } from '@/hooks/useActuatorArming';
@@ -21,6 +22,8 @@ import { partName, partTable } from '@/lib/partName';
 import { notSentLine } from '@/lib/notSentText';
 import { carKey, choiceFor, decidedByYear, identifiedAt, readChoices, variantRefusal, variantState, withChoice, VARIANT_CHOICE_KEY, type VariantChoices } from '@/lib/variantChoice';
 import type { ProcedureEnd } from '@/lib/procedureEnd';
+import { procedureRefusalOf } from '@/lib/procedureRun';
+import type { ActuatorRing } from '@/lib/viewHub';
 import { procedureReason } from '@/lib/procedureEnd';
 import { loadVariantRules, ruleFor, type VariantRules } from '@tsunagi/monitoring-engine';
 import { useNow } from '@/hooks/useNow';
@@ -50,7 +53,6 @@ import {
     type EcuProfile,
 } from '@tsunagi/monitoring-engine';
 import { useLang } from '@/lib/i18n';
-import { hasStopControl, operationFor } from '@tsunagi/monitoring-engine';
 import { cautionFor, loadJobText, type JobTextTable } from '@/lib/jobText';
 import { GateDialog } from '@/components/gate/GateDialog';
 import { PRIVACY_PREVIEW } from '@/lib/links';
@@ -80,8 +82,11 @@ import { WizardDialog } from '@/views/service/WizardDialog';
 import { BoardView, BoardViz } from '@/views/probe/BoardView';
 import { StartupView, StartupViz } from '@/views/probe/StartupView';
 import { useProbeSessions } from '@/views/probe/useProbeSessions';
+import { ChannelNames } from '@/views/probe/names';
 import { SessionsView, SessionsViz } from '@/views/sessions/SessionsView';
 import { SyncPanel } from '@/views/sessions/SyncPanel';
+import { AssistantSection } from '@/views/sessions/AssistantSection';
+import { MovingOkSection } from '@/views/sessions/MovingOkSection';
 import { useJournal } from '@/views/sessions/useJournal';
 import { useE2EDoor } from '@/lib/e2e';
 import { useFailureNotes, useSessions } from '@/views/sessions/useSessions';
@@ -246,7 +251,7 @@ export default function Home() {
     }, [ecuIndex, ecuId, telegrams]);
     // The verified ledger, for this page's life. Reads that answer on a car measured stationary are
     // recorded into it as facts (`observed-parked`); nothing here promotes a read further — clearing
-    // one for a moving car is the owner's press in SESSION SYNC (`onGrantMovingOk`). Not persisted yet:
+    // one for a moving car is the owner's press on MEMORY (`onGrantMovingOk`). Not persisted yet:
     // the production build stores nothing on the device, and the WORKS build's copy goes with SYNC.
     const [observed, setObserved] = useState<Ledger>(EMPTY_LEDGER);
     const onObserved = useCallback(
@@ -273,7 +278,7 @@ export default function Home() {
             setObserved((l) => recordVehicleRun(l, `${r.moduleId}:${r.jobId}`, { at: r.at, telegram: r.telegram, response: r.response, outcome: r.outcome, ecuIdent: r.ecuIdent })),
         [],
     );
-    // The owner's press in SESSION SYNC → WHILE MOVING, after the confirmation. grantMovingOk refuses
+    // The owner's press on MEMORY → WHILE MOVING, after the confirmation. grantMovingOk refuses
     // anything without enough stationary answers, so a stale screen cannot clear more than it showed.
     const onGrantMovingOk = useCallback(
         (id: string) => setObserved((l) => grantMovingOk(l, id, { who: 'owner', at: new Date().toISOString() }).ledger),
@@ -332,7 +337,7 @@ export default function Home() {
     const journal = useJournal({ enabled: sessionsEnabled, paused: probe.progress !== null, link, ecuId, datalog, failures: failures.notes });
     const sessions = useSessions({
         enabled: sessionsEnabled,
-        active: tab === 'memory',
+        active: tab === 'memory' || syncOpen,
         link,
         ecuId,
         datalog,
@@ -567,7 +572,6 @@ export default function Home() {
      * K-line. The other tabs need one module, so they keep showing it.
      */
     const scopeAll = allModules && tab === 'diagnosis';
-    const [scanOpen, setScanOpen] = useState<string | null>(null);
     const ledgerRef = useRef(ledger);
     useEffect(() => {
         ledgerRef.current = ledger;
@@ -577,7 +581,6 @@ export default function Home() {
         if (!ecuIndex) return 'The module index has not loaded yet.';
         const targets = await loadScanTargets(ecuIndex);
         setAllModules(true);
-        setScanOpen(null);
         void link.scanAll(targets, () => ledgerRef.current);
         return { addresses: targets.length };
     }, [ecuIndex, link]);
@@ -594,9 +597,8 @@ export default function Home() {
         },
         [ecuId, changeEcu],
     );
-    // OPEN under the scan: the chosen row's module on the screen. A shared address has more than one
-    // SGBD and is chosen on the select instead.
-    const scanOpenModule = scopeAll && scanOpen ? (link.scan?.results.find((x) => x.address === scanOpen)?.modules ?? []) : [];
+    // A scan row's name: its module on the screen, by the module switch's own path (UX-23). A shared
+    // address has more than one SGBD and is chosen on the select instead (views/diagnosis `rowModule`).
     const openScanned = useCallback(
         (id: string) => {
             setAllModules(false);
@@ -691,6 +693,8 @@ export default function Home() {
     // read by re-asking, up to sixteen minutes with the clutch energised — and
     // the hub cannot express any of that. `lib/procedureRun` holds the protocol.
     const [wizardOpen, setWizardOpen] = useState(false);
+    // The procedure's ABORT while the gearbox works (WizardDialog `onLive`): the hub's ring while it does.
+    const [procedureAbort, setProcedureAbort] = useState<(() => void) | null>(null);
     // The assistant started the procedure on the owner's spoken OK (monitoring_procedure): the dialog
     // takes the word as the ticks and runs it, through the same gate as its START.
     const [wizardAssistant, setWizardAssistant] = useState<{ ownerSaid: string; gear?: number } | null>(null);
@@ -704,6 +708,9 @@ export default function Home() {
         [selectJob, changeTab],
     );
     const procedure = selectedJob ? procedureForJob(selectedJob, workflows) : null;
+    // ACTUATOR's chosen row, as its ring presses it. The view derives it from the row's own verdict on
+    // every render and hands it up; the hub renders it (lib/viewHub `ActuatorRing`).
+    const [actuatorRing, setActuatorRing] = useState<ActuatorRing | null>(null);
     // How the last procedure ended, for the assistant (monitoring_status `lastProcedure`, IJ F10, SC08 F08).
     const [lastProcedure, setLastProcedure] = useState<ProcedureEnd | null>(null);
 
@@ -866,6 +873,14 @@ export default function Home() {
             : null;
 
 
+    // The selected procedure's own gate, as its wizard asks it (lib/procedureRun): on a car only.
+    const linkMode = link.mode;
+    const linkMotion = link.motion;
+    const procedureRefusal = useMemo(
+        () => procedureRefusalOf(procedure, catalog, linkMode, ledger, linkMotion),
+        [procedure, catalog, linkMode, ledger, linkMotion],
+    );
+
     // Two pure deciders, wired to this app's glyphs and strings in one hook —
     // `lib/hub` for the link's tiers, `lib/viewHub` for the view's.
     const { hub, notice } = useHub({
@@ -879,18 +894,35 @@ export default function Home() {
         runVerdict,
         catalogError,
         openProcedure: procedure ? () => setWizardOpen(true) : undefined,
+        procedureRefusal,
+        actuator: tab === 'actuator' ? actuatorRing : null,
         confirmRun: () => {
             // Which module answers at this address is the IDENT's, or the owner's to say on ACTUATOR, first.
             const v = variantOf(ecuId);
             if (v.state !== 'ok') return setScreenNotice(v.state === 'ruledOut' ? t.variant_ruledOut(v.hex, v.other) : t.variant_ask(v.hex, decidedByYear(v.candidates)));
             if (selectedJob && runVerdict?.allowed) setServiceGate({ job: selectedJob, verdict: runVerdict });
         },
-        probe: probe.progress ? { progress: probe.progress, stop: probe.stop, moduleName: (id) => moduleName(ecuIndex, id) ?? id } : undefined,
+        probe: probe.progress ? { progress: probe.progress, stop: probe.stop, moduleName: (id) => moduleName(ecuIndex, id, lang) ?? id } : undefined,
         scan: scopeAll ? { run: () => void startScan(), progress: link.scanProgress } : undefined,
         probeRun:
             tab === 'probe' && probeSessions.current
                 ? { runnable: probeSessions.runnable, run: () => void probe.start(probeSessions.current ?? undefined) }
                 : undefined,
+        // What is driven, if anything: the ring is its STOP on every tab (UX-01). An output on, or the
+        // SMG II procedure's ABORT while the gearbox works.
+        engaged: arming.anyArmed
+            ? { stop: () => void arming.stopAll('stop'), actuator: true }
+            : procedureAbort
+              ? { stop: procedureAbort, actuator: false }
+              : undefined,
+        startup:
+            tab === 'startup'
+                ? {
+                      next: () => void probeSessions.next().then((why) => why && setScreenNotice(t.next_why[why])),
+                      blocked: probeSessions.nextBlocked ? t.next_why[probeSessions.nextBlocked] : null,
+                  }
+                : undefined,
+        memory: tab === 'memory' && sessionsEnabled ? { label: sessions.saveLook.label, disabled: sessions.saveLook.disabled || sessions.busy !== null, save: () => void sessions.save() } : undefined,
     });
     // The notice line, one sentence, in this order: what the screen owes for a press; the line lost; the
     // car refusing at the wire (measured: km/h, volts — IJ02, IJ03); what is on and its seconds left;
@@ -916,7 +948,7 @@ export default function Home() {
               return s.confirmed || s.how === 'lineBack' ? said : `${said}${t.actuation_unanswered}`;
           })()
         : null;
-    const sentLine = sentOnce ? t.actuation_sentOnce(partJa(sentOnce.moduleId, sentOnce.jobId, sentOnce.args ?? undefined)) : null;
+    const sentLine = sentOnce && sentOnce.moduleId === ecuId ? t.actuation_sentOnce(partJa(sentOnce.moduleId, sentOnce.jobId, sentOnce.args ?? undefined)) : null;
     const leftLine = leftRunning.length ? t.actuation_leftRunning(partJa(leftRunning[0].moduleId ?? undefined, leftRunning[0].jobId, leftRunning[0].args ?? undefined), leftRunning[0].timeoutS ?? 10) : null;
     const shownNotice = screenNotice
         ? { text: screenNotice, tone: 'warn' as const }
@@ -949,13 +981,12 @@ export default function Home() {
                 progress={link.scanProgress}
                 index={ecuIndex}
                 mss54={mss54Catalog}
-                selected={scanOpen}
-                onSelect={setScanOpen}
+                onOpen={link.state === 'busy' ? undefined : openScanned}
                 idleHint={link.state === 'disconnected' ? t.start_hint : undefined}
                 ownerChose={(address) => choiceFor(variantChoices, car, address)}
             />
         ) : (
-            <DiagnosisView ident={link.ident} faults={link.faults} rawFaults={link.rawFaults} catalog={catalog} />
+            <DiagnosisView ident={link.ident} faults={link.faults} rawFaults={link.rawFaults} catalog={catalog} known={variantOf(ecuId).state === 'ok'} />
         ),
         datalog: <DatalogView datalog={datalog} plan={datalogPlan} />,
         adaptation: (
@@ -966,6 +997,7 @@ export default function Home() {
                 telegrams={telegrams}
                 ledger={ledger}
                 motion={link.motion}
+                mode={link.mode}
             />
         ),
         service: catalog ? (
@@ -998,13 +1030,30 @@ export default function Home() {
                 onConfirmVariant={confirmVariant}
                 onSentOnce={noteSentOnce}
                 onRun={link.runRead}
+                measured={link.vehicleState}
+                lineLost={link.lineLost}
+                onRing={setActuatorRing}
             />
         ) : (
             <AwaitingCatalog />
         ),
         // Rendered only where the registry opens it: a production build never mounts it, so it
         // never opens the device store or asks the network for anything.
-        memory: sessionsEnabled ? <SessionsView sessions={sessions} catalog={catalog} ecuId={ecuId} onOpenSync={() => setSyncOpen(true)} /> : null,
+        // ASSISTANT and WHILE MOVING sit under MEMORY's lists, out of SESSION SYNC (UX-33).
+        memory: sessionsEnabled ? (
+            <SessionsView
+                sessions={sessions}
+                catalog={catalog}
+                ecuId={ecuId}
+                onOpenSync={() => setSyncOpen(true)}
+                extra={
+                    <>
+                        <AssistantSection assistant={assistant} />
+                        <MovingOkSection ledger={ledger} motion={link.motion} catalog={catalog} ecuId={ecuId} onGrant={onGrantMovingOk} />
+                    </>
+                }
+            />
+        ) : null,
         // PROBE's two, WORKS only like the rest of PROBE.
         startup: probeEnabled ? <StartupView s={probeSessions} /> : null,
         probe: probeEnabled ? (
@@ -1012,7 +1061,7 @@ export default function Home() {
                 s={probeSessions}
                 data={{
                     ecuId,
-                    moduleName: (id) => moduleName(ecuIndex, id) ?? id,
+                    moduleName: (id) => moduleName(ecuIndex, id, lang) ?? id,
                     faults: link.faults,
                     rawFaults: link.rawFaults,
                     catalog,
@@ -1025,9 +1074,9 @@ export default function Home() {
     };
 
     const vizzes: Record<Tab, React.ReactNode> = {
-        diagnosis: scopeAll ? <ScanViz run={link.scan} progress={link.scanProgress} /> : <DiagnosisViz faults={link.faults} />,
+        diagnosis: scopeAll ? <ScanViz run={link.scan} progress={link.scanProgress} /> : <DiagnosisViz faults={link.faults} rawFaults={link.rawFaults} />,
         datalog: <DatalogViz datalog={datalog} active={tab === 'datalog' && pictureUp} />,
-        adaptation: <AdaptationViz blocks={link.adaptations} />,
+        adaptation: <AdaptationViz blocks={link.adaptations} ecuId={ecuId} />,
         service: (
             <ServiceViz
                 lastRun={link.lastRun}
@@ -1039,13 +1088,13 @@ export default function Home() {
                 runVerdict={runVerdict}
             />
         ),
-        // ACTUATOR's rows carry their own controls, their own gate verdict and
-        // their own refusal text, so the right column has no per-row question
-        // left to answer. It answers the only one remaining: what IS this
+        // ACTUATOR's rows carry their own gate verdict and refusal word, and the
+        // chosen row's action is the ring, so the right column has no per-row
+        // question left to answer. It answers the only one remaining: what IS this
         // module. Same component SERVICE falls back to, because it is the same
         // question and the numbers are about the module, not the tab.
         actuator: <ActuatorViz profile={catalog} arming={arming} workflows={workflows} lastRun={link.lastRun} />,
-        memory: sessionsEnabled ? <SessionsViz count={sessions.local?.length ?? 0} /> : null,
+        memory: sessionsEnabled ? <SessionsViz sessions={sessions} /> : null,
         startup: probeEnabled ? <StartupViz s={probeSessions} /> : null,
         probe: probeEnabled ? <BoardViz s={probeSessions} live={probe.live()} /> : null,
     };
@@ -1053,7 +1102,6 @@ export default function Home() {
     return (
         <div className="flex h-dvh flex-col overflow-hidden bg-slate-950">
             <AppHeader
-                ident={link.ident}
                 state={link.state}
                 mode={link.mode}
                 hasError={!!link.error}
@@ -1064,12 +1112,15 @@ export default function Home() {
                 assistant={sessionsEnabled ? assistant : null}
                 signIn={preview ? signIn : 'ok'}
                 onReauth={canReauth ? startReauth : null}
+                practiceArmed={practiceArmed}
             />
 
             {/* Below 900 a grid: MAIN and MULTI share one cell, HUB has the other (NARROW_GRID —
                 beside it on its side, below it standing). From 900 the columns are flex siblings,
                 as they always were. The columns are minmax(0,…): an implicit `auto` track would be
                 sized by the widest thing in either window. */}
+            {/* The other modules' channel names, for PROBE's board, picture and series (UX-09). */}
+            <ChannelNames.Provider value={datalog.moduleInfo}>
             <main className={`grid min-h-0 flex-1 overflow-hidden ${NARROW_GRID} min-[900px]:flex min-[900px]:flex-row`}>
                 {/* Both columns carry a faint fill. Left at /40, right at /20 over
                     the true-black base: without them the split is a single
@@ -1119,7 +1170,7 @@ export default function Home() {
                         there is no split to line up across — the footer already names the window. */}
                     <div className={`${BAR} max-[900px]:hidden`}>
                         <span className={`truncate ${LABEL} text-slate-500`}>
-                            {t.pane_visualization}
+                            {t.pane_visu}
                         </span>
                     </div>
 
@@ -1161,11 +1212,7 @@ export default function Home() {
                                     index={ecuIndex}
                                     ecuId={ecuId}
                                     connected={link.state !== 'disconnected'}
-                                    mode={link.mode}
                                     state={link.state}
-                                    practiceArmed={practiceArmed}
-                                    onPractice={setPracticeArmed}
-                                    practiceEngine={practiceEngine}
                                     onDisconnect={disconnect}
                                     onChangeEcu={chooseModule}
                                     allowAll={tab === 'diagnosis'}
@@ -1175,6 +1222,15 @@ export default function Home() {
                             }
                             notice={shownNotice}
                             hub={hub}
+                            practice={
+                                <PracticeCorner
+                                    // Under an open link the tick is the link's mode, not what was ticked before it.
+                                    checked={link.state === 'disconnected' ? practiceArmed : link.mode === 'practice'}
+                                    locked={link.state !== 'disconnected'}
+                                    onChange={setPracticeArmed}
+                                    engine={link.state === 'disconnected' || link.mode === 'practice' ? practiceEngine : undefined}
+                                />
+                            }
                             corner={probeEnabled ? <ModeCorner mode={mode} onChange={switchMode} probeLocked={!assistant.on} /> : undefined}
                         >
                             {/* The two failure kinds need OPPOSITE advice, so only
@@ -1186,16 +1242,14 @@ export default function Home() {
                                     {t.details}
                                 </TextButton>
                             ) : (
-                                link.error && (
+                                // A failure only: a refusal at the wire (moving, low battery) is not
+                                // something RETRY can help, and the row has room for two (UX-23).
+                                link.error &&
+                                !link.notSent && (
                                     <TextButton onClick={link.clearError} tone="primary" Icon={RotateCcw}>
                                         {t.retry}
                                     </TextButton>
                                 )
-                            )}
-                            {scanOpenModule.length === 1 && link.state !== 'busy' && (
-                                <TextButton onClick={() => openScanned(scanOpenModule[0])} Icon={ArrowRight}>
-                                    {t.open_module}
-                                </TextButton>
                             )}
                             {/* DISCONNECT was here. It is now on the MODULE row —
                                 see the note in Chrome.tsx. */}
@@ -1212,26 +1266,12 @@ export default function Home() {
                                     {t.probe}
                                 </TextButton>
                             )}
-                            {/* STARTUP's two (TUNER's NEW SESSION; NEXT carries the session on). NEXT
-                                is drawn disabled before it can go, and says why when pressed. */}
+                            {/* STARTUP: NEW SESSION (TUNER's). NEXT, which carries the session on, is
+                                the ring — the one step here (UX-01). */}
                             {tab === 'startup' && (
-                                <>
-                                    <TextButton onClick={() => probeSessions.newSession()} Icon={Plus} title={t.startup_new_title}>
-                                        {t.new_session}
-                                    </TextButton>
-                                    <TextButton
-                                        onClick={() =>
-                                            probeSessions.nextBlocked
-                                                ? setScreenNotice(t.next_why[probeSessions.nextBlocked])
-                                                : void probeSessions.next().then((why) => why && setScreenNotice(t.next_why[why]))
-                                        }
-                                        tone={probeSessions.nextBlocked ? 'neutral' : 'primary'}
-                                        Icon={SkipForward}
-                                        title={probeSessions.nextBlocked ? t.next_why[probeSessions.nextBlocked] : t.startup_next_title}
-                                    >
-                                        {t.next_session}
-                                    </TextButton>
-                                </>
+                                <TextButton onClick={() => probeSessions.newSession()} Icon={Plus} title={t.startup_new_title}>
+                                    {t.new_session}
+                                </TextButton>
                             )}
                             {/* READ ADAPTATIONS was here. It is the ADAPTATION
                                 tab's hub now — a tab's whole purpose does not
@@ -1254,24 +1294,17 @@ export default function Home() {
                                     >
                                         {t.clearFaults}
                                     </TextButton>
-                                    {link.motion === 'moving' && <span className={`${LABEL} text-amber-400`}>{t.runBlockShort.run_block_moving}</span>}
+                                    {link.motion === 'moving' && <span className={`${LABEL} shrink-0 whitespace-nowrap text-amber-400`}>{t.runBlockShort.run_block_moving}</span>}
                                 </>
                             )}
-                            {/* A held or paired job needs a STOP that is NOT the
-                                hub: the hub is what started it, and re-deriving one
-                                control into "now it stops" is how an operator ends
-                                up pressing start twice. `latching` gets none — it
-                                has no release job, and a disabled STOP would imply
-                                one exists. */}
-                            {tab === 'service' && selectedJob && hasStopControl(operationFor(selectedJob)) && (
-                                <TextButton disabled tone="destructive" Icon={Square} title={t.gate_practiceOnly}>
-                                    {operationFor(selectedJob).kind === 'procedure' ? t.op_abort : t.op_stop}
-                                </TextButton>
-                            )}
+                            {/* No STOP here. While something is driven the ring itself is its STOP
+                                (lib/hub tier 0), on every tab: one way to stop it, never a second,
+                                disabled one beside it (UX-01). */}
                         </ControlPanel>
                     </div>
                 </aside>
             </main>
+            </ChannelNames.Provider>
 
             {/* The footer, below 900 (tsunagi-m-mobile §3, §4, §7, §8): the window switch on
                 the left, the M button at the centre, the triggers of this app's panels on the
@@ -1279,7 +1312,7 @@ export default function Home() {
                 (tsunagi-m-mobile references/mobile-chrome.md §2, §3).
                 ────────────────────────────────────────────────────────
                 HUB is not in it: below 900 HUB is always up, so the next step — CONNECT, READ,
-                OPEN — is never a tap away from the rows it acts on. The switch turns over the
+                RUN — is never a tap away from the rows it acts on. The switch turns over the
                 window beside it, MAIN or MULTI, labelled LIST and VISU. The tab bar is not drawn below 900 (the views are
                 the M menu's), so that window has its cell's whole height:
 
@@ -1332,6 +1365,8 @@ export default function Home() {
                         onPointerDown={(e) => {
                             e.preventDefault();
                             setMenuOpen(true);
+                            // The sheet's SYNC cell says what MEMORY's does: read the account's side now (UX-25).
+                            if (sessionsEnabled) void sessions.refreshCloud();
                             setMenuDrag({ x: e.clientX, y: e.clientY });
                         }}
                         aria-label={t.menu_open}
@@ -1370,7 +1405,7 @@ export default function Home() {
                     // new one, and HUB is up regardless (tsunagi-m-mobile §3's second trap does not
                     // arise when no window is left showing another tab).
                     onSelectTab={changeTab}
-                    module={moduleName(ecuIndex, ecuId)}
+                    module={moduleName(ecuIndex, ecuId, lang)}
                     ident={link.ident}
                     mode={link.mode}
                     state={link.state}
@@ -1399,16 +1434,7 @@ export default function Home() {
             )}
 
             {syncOpen && sessionsEnabled && (
-                <SyncPanel
-                    sessions={sessions}
-                    assistant={assistant}
-                    ledger={ledger}
-                    motion={link.motion}
-                    catalog={catalog}
-                    ecuId={ecuId}
-                    onGrantMovingOk={onGrantMovingOk}
-                    onClose={() => setSyncOpen(false)}
-                />
+                <SyncPanel sessions={sessions} onClose={() => setSyncOpen(false)} />
             )}
 
             {firstRun && <DisclaimerDialog preview={preview} onAgree={(dontShowAgain) => agreeToFirstRun(preview, dontShowAgain)} />}
@@ -1421,9 +1447,11 @@ export default function Home() {
                     telegrams={telegrams}
                     mode={link.mode}
                     gate={procedureGate}
+                    measured={link.vehicleState}
                     send={link.runRead}
                     assistant={wizardAssistant ?? undefined}
                     why={() => ({ error: link.lastError(), notSent: link.lastNotSent() })}
+                    onLive={(abort) => setProcedureAbort(() => abort)}
                     onEnded={(o) =>
                         setLastProcedure({
                             program: procedure.testprg,
@@ -1451,6 +1479,7 @@ export default function Home() {
                     phase="pulse"
                     argValues={{}}
                     caution={cautionFor(jobText, serviceGate.job.id, lang) ?? undefined}
+                    measured={link.vehicleState}
                     onRun={() => {
                         const g = serviceGate;
                         setServiceGate(null);
@@ -1466,11 +1495,12 @@ export default function Home() {
 
             {clearOpen && (
                 <ConfirmDialog
-                    title={t.clearFaults_title}
-                    consequence={t.clearFaults_named(
-                        moduleName(ecuIndex, ecuId) ?? ecuId.toUpperCase(),
-                        link.vehicleState?.speedKmh ?? null,
+                    // The title names what goes (UX-13): this module's faults, in the reader's language.
+                    title={t.clearFaults_titleOf(
+                        (lang === 'en' ? moduleName(ecuIndex, ecuId) : ecuIndex?.modules.find((m) => m.id === ecuId)?.name) ?? ecuId.toUpperCase(),
+                        link.faults?.length ?? null,
                     )}
+                    steps={{ what: t.clearFaults_what, until: t.clearFaults_back, press: t.clearFaults_press(link.vehicleState?.speedKmh ?? null) }}
                     confirmLabel={t.clearFaults_confirm}
                     onCancel={() => setClearOpen(false)}
                     onConfirm={() => {
@@ -1532,8 +1562,13 @@ function AwaitingCatalog() {
     return <p className="py-2 font-mono text-xs uppercase text-slate-600">{t.awaiting_catalog}</p>;
 }
 
-/** The module's name as the module selector shows it, or null until the index has loaded. */
-function moduleName(index: EcuIndex | null, id: string): string | null {
+/**
+ * The module's name, or null until the index has loaded. On the screen it is the reader's language —
+ * the same word the module selector and the ALL MODULES list use (ラジオ, not Radio: UX-24); the
+ * assistant's sentences, which are English, keep the English name (the default).
+ */
+function moduleName(index: EcuIndex | null, id: string, lang: 'ja' | 'en' = 'en'): string | null {
     const entry = index?.modules.find((m) => m.id === id);
-    return entry ? entry.name_en || entry.name : null;
+    if (!entry) return null;
+    return lang === 'ja' ? entry.name || entry.name_en : entry.name_en || entry.name;
 }

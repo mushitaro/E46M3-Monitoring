@@ -40,6 +40,7 @@ describe('a state from live-block values', () => {
             rpm: 880,
             voltageV: 13.6,
             at,
+            engineAt: at,
         });
     });
 
@@ -48,7 +49,13 @@ describe('a state from live-block values', () => {
     });
 
     it('keeps the last engine speed and voltage when only block 19 was read', () => {
-        const prior = { speedKmh: 0, speedCanKmh: 0, rpm: 900, voltageV: 13.9, at: at - 100 };
+        const prior = { speedKmh: 0, speedCanKmh: 0, rpm: 900, voltageV: 13.9, at: at - 100, engineAt: at - 100 };
         expect(vehicleStateFrom({ '19:v': 0, '19:v_asc': null }, at, prior)).toMatchObject({ rpm: 900, voltageV: 13.9, speedCanKmh: null });
+    });
+
+    it('keeps the carried engine speed and voltage at their own age, not the new speed reading’s', () => {
+        const prior = { speedKmh: 0, speedCanKmh: 0, rpm: 900, voltageV: 13.9, at: at - 100, engineAt: at - 90_000 };
+        expect(vehicleStateFrom({ '19:v': 0 }, at, prior)?.engineAt).toBe(at - 90_000);
+        expect(vehicleStateFrom({ '19:v': 0 }, at)?.engineAt).toBeNull();
     });
 });

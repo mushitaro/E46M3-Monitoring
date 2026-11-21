@@ -1,4 +1,5 @@
 import { all, ask, pressAndTime, rowOf, rowText, screenText, wire } from './_sc01-07.mjs';
+import { chooseSet, setsOf } from './_lib.mjs';
 
 /**
  * SC06 部品を動かす（画面）— SMG II の油圧ポンプ。docs/VIRTUAL-CAR-TESTS.md M1。
@@ -7,17 +8,26 @@ import { all, ask, pressAndTime, rowOf, rowText, screenText, wire } from './_sc0
  * 時間切れで止まるところは、PRACTICE で確かめる。
  */
 const JOB = 'STEUERN_STELLGLIED';
-const SET = 'HYDROPUMPE · AKTIV · 0';
+/** HYDROPUMPE · AKTIV · 0, as the row lists it: 「オン · 0」 under 「— 油圧ポンプ」 (UX-27). */
+const PART = '油圧ポンプ';
+const SET = 'オン · 0';
 const START_FRAME = /^32 07 0c 05 01 00 3d$/;
 const STOP_FRAME = /^32 07 0c 05 00 00 3c$/;
 
-const row = (page) => rowOf(page, JOB, 'tj-start');
+const row = (page) => rowOf(page, JOB, 'tj-pick');
+/** The row chosen by its name: the hub's ring is then its START (UX-01, one entrance). */
+const choose = async (page) => {
+    await row(page).locator('[data-test="tj-pick"]').first().click();
+    await page.waitForTimeout(200);
+};
+const start = (page) => page.locator('[data-test="tj-start"]');
 
 const scenario = {
     id: 'SC06',
-    title: '部品を動かす（画面）：SMG II の油圧ポンプ — 「練習から」→ PRACTICE で値を選んで START → 確認 → 動作中 → STOP → 実車モードで札が消える',
+    title: '部品を動かす（画面）：SMG II の油圧ポンプ — 「練習から」→ PRACTICE で行と値を選んでハブの START → 確認 → 動作中 → STOP → 実車モードで札が消える',
     story:
-        '実車モード・停車で SMG II の ACTUATOR を開くと、油圧ポンプの行に「練習から」。PRACTICE にして値を選び、START の確認に何が動くか・前提・秒数が出る。' +
+        '実車モード・停車で SMG II の ACTUATOR を開くと、油圧ポンプの行に「練習から」。PRACTICE にして行と値を選ぶとハブがその START になり、確認に何が動くか・前提・秒数が出る。' +
+        '前提の電圧と停車はアプリが測るので印ではなく、最後に測った値（測っていなければ「押すと測ってから送ります」）が出て、印を付けずに実行できる。' +
         '実行すると「動作中 残り n 秒」と STOP、結果欄に送信と応答。STOP で「止まった」。実車モードに戻ると札が消え、START が押せる。実車では測ってから動き、時間切れで止まる。',
     steps: all([
         // 1. 実車モード・停車で、SMG II の ACTUATOR を開く
@@ -29,10 +39,12 @@ const scenario = {
                 run: async (page) => {
                     const r = row(page);
                     for (let i = 0; i < 20 && (await r.locator('select').count()) === 0; i++) await page.waitForTimeout(250);
-                    await r.locator('select').selectOption({ label: SET });
+                    await chooseSet(r, PART, SET);
+                    await choose(page);
                     await page.waitForTimeout(400);
                     const t = await rowText(r);
-                    const disabled = await r.locator('[data-test="tj-start"]').isDisabled();
+                    // Not connected, the ring is CONNECT; there is no START anywhere that could be pressed.
+                    const disabled = (await page.locator('[data-test="tj-start"]:not([disabled])').count()) === 0;
                     return t.includes('練習から') && disabled ? true : `札：${t.replace(/\n/g, ' / ')}、START ${disabled ? '押せない' : '押せる'}`;
                 },
             },
@@ -62,8 +74,9 @@ const scenario = {
                 run: async (page) => {
                     const r = row(page);
                     await r.locator('select').selectOption({ index: 0 });
-                    await page.waitForTimeout(300);
-                    return (await r.locator('[data-test="tj-start"]').isDisabled()) ? true : 'START が押せる';
+                    await choose(page);
+                    if ((await start(page).count()) === 0) return 'ハブが油圧ポンプの行の START にならない';
+                    return (await start(page).isDisabled()) ? true : 'START が押せる';
                 },
             },
         },
@@ -72,7 +85,7 @@ const scenario = {
                 desc: '手順 2：選べるものが部品の名前で並ぶ（番号ではない）',
                 run: async (page) => {
                     const labels = await row(page).locator('select option').allTextContents();
-                    if (!labels.includes(SET)) return `「${SET}」が無い`;
+                    if (!(await setsOf(row(page))).includes(`${PART} › ${SET}`)) return `「${PART} › ${SET}」が無い`;
                     return labels.some((l) => /0x[0-9A-F]{2}/i.test(l)) ? 'PIN の番号が混じる' : true;
                 },
             },
@@ -93,9 +106,9 @@ const scenario = {
                 desc: '手順 3：値を選んで START、1 秒以内に確認が出る（U1）',
                 run: async (page, st) => {
                     const r = row(page);
-                    await r.locator('select').selectOption({ label: SET });
-                    await page.waitForTimeout(300);
-                    const ms = await pressAndTime(page, r.locator('[data-test="tj-start"]'));
+                    await chooseSet(r, PART, SET);
+                    await choose(page);
+                    const ms = await pressAndTime(page, start(page));
                     await page.locator('[role=dialog]').first().waitFor({ timeout: 3000 });
                     st.dialog = await page.locator('[role=dialog]').first().innerText();
                     return ms !== null && ms <= 1000 ? true : `${ms} ms`;
@@ -123,6 +136,24 @@ const scenario = {
         },
         {
             check: {
+                desc: '手順 3：アプリが測る前提（電圧・停車）は印ではなく測った値の行で出る。この 1 分に測っていなければ「押すと測ってから送ります」（運営者 2026-11-21）',
+                run: async (page, st) => {
+                    const dialog = page.locator('[role=dialog]').first();
+                    const lines = await dialog.locator('[data-test="gate-measured"]').allInnerTexts();
+                    const boxes = await dialog.locator('[data-test="gate-cond"]').count();
+                    const why = [];
+                    if (boxes > 0) why.push(`前提の印が ${boxes} 個残る`);
+                    if (!lines.some((l) => /電圧/.test(l))) why.push('電圧の行が無い');
+                    if (!lines.some((l) => /停車/.test(l))) why.push('停車の行が無い');
+                    // Nothing has measured the practice car's battery yet: the honest line is that the press measures.
+                    if (!lines.every((l) => /押すと測ってから送ります|前回の測定/.test(l))) why.push(`測った値でも「押すと測ってから」でもない：${lines.join(' / ')}`);
+                    st.measuredLines = lines;
+                    return why.length ? why.join('、') : true;
+                },
+            },
+        },
+        {
+            check: {
                 desc: '手順 3：確認に、止まるまでの秒数（このアプリが自分で止めるまで）が出る',
                 run: async (_page, st) => {
                     const d = st.dialog ?? '';
@@ -144,10 +175,10 @@ const scenario = {
         // 4. 実行
         {
             check: {
-                desc: '手順 4：実行すると、始めの電文が車に届き、動作中になる',
+                desc: '手順 4：印を付けずに実行でき、始めの電文が車に届き、動作中になる（測る前提は送る直前にリンクが測る）',
                 run: async (page, st) => {
-                    const dialog = page.locator('[role=dialog]').first();
-                    for (const box of await dialog.locator('input[type=checkbox]').all()) await box.check();
+                    // No box to tick: the battery and the standstill are measured by the link on the press.
+                    if (await page.locator('[data-test="gate-run"]').isDisabled()) return '印を付けないと RUN が押せない';
                     st.t0 = Date.now();
                     await page.locator('[data-test="gate-run"]').click();
                     await page.waitForTimeout(1200);
@@ -166,7 +197,9 @@ const scenario = {
                     const t = await screenText(page);
                     const why = [];
                     if (!/残り\s*\d+\s*秒/.test(t)) why.push('残り秒数が無い');
-                    if (!(await row(page).locator('[data-test="tj-stop"]').isEnabled())) why.push('STOP が押せない');
+                    // STOP is the hub's ring while something is on (UX-01); the row says 作動中.
+                    if (!(await page.locator('[data-test="tj-stop"]').isEnabled())) why.push('STOP が押せない');
+                    if (!(await rowText(row(page))).includes('作動中')) why.push('行が作動中と言わない');
                     if (!/油圧ポンプ|HYDROPUMPE/.test(await rowText(row(page)))) why.push('何が動いているか（油圧ポンプ）が行に無い（選択は「値を選ぶ」に戻る）');
                     return why.length ? why.join('、') : true;
                 },
@@ -187,16 +220,21 @@ const scenario = {
                 desc: '手順 5：STOP で止めの電文が届き、動作中の表示が消える',
                 run: async (page, st) => {
                     const t0 = Date.now();
-                    const before = await row(page).locator('[data-test="tj-start"]').boundingBox();
-                    await row(page).locator('[data-test="tj-stop"]').click();
+                    // The ring is STOP while it runs and the row's START again after: one control, in one place.
+                    const before = await page.locator('[data-test="tj-stop"]').boundingBox();
+                    const rowBefore = await row(page).boundingBox();
+                    await page.locator('[data-test="tj-stop"]').click();
                     await page.waitForTimeout(1200);
                     st.afterStop = await screenText(page);
-                    const after = await row(page).locator('[data-test="tj-start"]').boundingBox();
+                    const after = await start(page).boundingBox();
+                    const rowAfter = await row(page).boundingBox();
                     const heard = await wire(page, t0);
                     const why = [];
                     if (!heard.some((h) => STOP_FRAME.test(h))) why.push(`止めの電文が無い：${heard.join(' | ')}`);
                     if ((await rowText(row(page))).includes('作動中')) why.push('作動中のまま');
-                    if (before && after && (Math.abs(before.x - after.x) > 1 || Math.abs(before.y - after.y) > 1)) why.push(`START の位置が動いた（U7）：${JSON.stringify([before, after])}`);
+                    if (!before || !after) why.push('STOP のあとハブが START に戻らない');
+                    else if (Math.abs(before.x - after.x) > 1 || Math.abs(before.y - after.y) > 1) why.push(`STOP と START の位置が違う（U7）：${JSON.stringify([before, after])}`);
+                    if (rowBefore && rowAfter && (Math.abs(rowBefore.x - rowAfter.x) > 1 || Math.abs(rowBefore.y - rowAfter.y) > 1)) why.push(`行の位置が動いた（U7）：${JSON.stringify([rowBefore, rowAfter])}`);
                     return why.length ? why.join('、') : true;
                 },
             },
@@ -211,14 +249,18 @@ const scenario = {
         // 時間切れ（PRACTICE で確かめる）
         {
             check: {
-                desc: '手順 7（PRACTICE で）：もう一度動かすと、自分で止まり「時間切れで止まった」と出る（合格は 10 秒）',
+                desc: '手順 7（PRACTICE で）：もう一度動かすと（確認は前回測った停車を言う）、自分で止まり「時間切れで止まった」と出る（合格は 10 秒）',
                 run: async (page) => {
                     const r = row(page);
-                    await r.locator('select').selectOption({ label: SET });
-                    await r.locator('[data-test="tj-start"]').click();
+                    await chooseSet(r, PART, SET);
+                    await choose(page);
+                    await start(page).click();
                     const dialog = page.locator('[role=dialog]').first();
                     await dialog.waitFor({ timeout: 3000 });
-                    for (const box of await dialog.locator('input[type=checkbox]').all()) await box.check();
+                    // The first run measured the standstill just before it was sent: shown now as the last measurement.
+                    const lines = (await dialog.locator('[data-test="gate-measured"]').allInnerTexts()).join(' / ');
+                    if (!/停車中（0 km\/h、前回の測定）/.test(lines)) return `停車の行が前回の測定（0 km/h）を言わない：${lines}`;
+                    if (await page.locator('[data-test="gate-run"]').isDisabled()) return '印を付けないと RUN が押せない';
                     const t0 = Date.now();
                     await page.locator('[data-test="gate-run"]').click();
                     let off = null;
@@ -250,7 +292,7 @@ const scenario = {
                 desc: '手順 6：実車モードで同じ行の「練習から」の札が消える',
                 run: async (page) => {
                     const r = row(page);
-                    await r.locator('select').selectOption({ label: SET });
+                    await chooseSet(r, PART, SET);
                     await page.waitForTimeout(400);
                     const t = await rowText(r);
                     return t.includes('練習から') ? `札が残る：${t.replace(/\n/g, ' / ')}` : true;

@@ -14,8 +14,14 @@ const CAR = {
     ],
 };
 
-/** 画面の名前（MSS54：車速直接入力、MK60：SGBD の日本語訳）。 */
-const JA = { '0x2A': '車速直接入力', '0x5D8C': 'センサ・Cluster・タイムアウトCAN', '0x5D96': 'センサ・Cluster・CAN・Bus・Off' };
+/**
+ * 画面の名前。MSS54 の 0x2A には読める日本語の名がある。MK60 の二つは表の日本語がドイツ語の混ざった半訳
+ * （「センサ・Cluster・タイムアウトCAN」）なので、名前の位置には「故障（訳なし）」が出て、SGBD のドイツ語がその隣に出る
+ * （UX-22、docs/UX-DESIGN.md §3：推し量った訳を本物の顔で出さない）。
+ */
+const JA = { '0x2A': '車速直接入力' };
+const GERMAN = { '0x5D8C': 'Sensor-Cluster Timeout CAN', '0x5D96': 'Sensor-Cluster CAN Bus-Off' };
+const HALF = /センサ・Cluster|Cluster・/;
 
 const scenario = {
     id: 'SC02',
@@ -82,14 +88,22 @@ const scenario = {
             check: {
                 desc: '手順 2：一件ずつ開くと、日本語の名前と、その故障の SGBD が記録した条件（回転・負荷・車速・電圧など）が単位つきで読める',
                 run: async (page, st) => {
-                    await page.getByText('故障 1', { exact: true }).first().click();
-                    await page.waitForTimeout(500);
-                    await page.getByText('故障 2', { exact: true }).first().click();
-                    await page.waitForTimeout(500);
+                    // Each row opens by its chevron, beside the address (UX-23: the name puts the module on
+                    // the screen instead). The two rows with faults: the DME (0x12) and DSC MK60 (0xB8).
+                    for (const address of ['0x12', '0xB8']) {
+                        await page.locator('button[aria-expanded]', { hasText: address }).first().click();
+                        await page.waitForTimeout(500);
+                    }
                     const t = await screenText(page);
                     const why = [];
-                    const shown = Object.entries(JA).filter(([, ja]) => t.includes(ja)).map(([c]) => c);
-                    if (shown.length < 3) why.push(`日本語の名前が出ているのは ${shown.join(', ') || 'なし'}${/Sensor-Cluster/.test(t) ? '（DSC はドイツ語のまま）' : ''}`);
+                    // Each fault reads as what it is: a Japanese name where there is one, else「故障（訳なし）」with the
+                    // SGBD's German beside it — never the half-translation in the name's place.
+                    const named = Object.entries(JA).filter(([, ja]) => t.includes(ja)).map(([c]) => c);
+                    const german = Object.entries(GERMAN).filter(([, de]) => t.includes(de)).map(([c]) => c);
+                    const untranslated = (t.match(/故障（訳なし）/g) ?? []).length;
+                    if (named.length < 1) why.push('0x2A の日本語の名前が無い');
+                    if (german.length < 2 || untranslated < 2) why.push(`DSC の二つが「故障（訳なし）」と SGBD のドイツ語で出ない（ドイツ語 ${german.join(', ') || 'なし'}、訳なし ${untranslated}）`);
+                    if (HALF.test(t)) why.push('半訳（センサ・Cluster…）が名前の位置に出ている');
                     // The conditions each fault's own SGBD recorded with it, as the answer carries them (the DME's
                     // freeze frames; a module's own job's values that have a unit). Each must read on the screen
                     // with its unit. A fault whose SGBD records none (MK60's 0x18 read holds code and status only)
@@ -110,6 +124,27 @@ const scenario = {
             },
         },
         { shot: 's02-detail' },
+        {
+            check: {
+                desc: '手順 2：AI の答えも画面と同じ名前で言う（D3-4）：MK60 の二つは「故障（訳なし）」と訳なしの印、SGBD のドイツ語。半訳を名前として渡さない',
+                run: async (_page, st) => {
+                    const mk60 = (st.faults?.faults?.scan?.modules ?? st.faults?.scan?.modules ?? []).find((m) => m.address === '0xB8')?.sgbdRead?.faults ?? [];
+                    const why = [];
+                    for (const [code, de] of Object.entries(GERMAN)) {
+                        const f = mk60.find((x) => x.code === code || x.code?.toUpperCase?.() === code.toUpperCase());
+                        if (!f) {
+                            why.push(`${code} が答えに無い`);
+                            continue;
+                        }
+                        if (f.textJa !== '故障（訳なし）' || f.untranslated !== true) why.push(`${code} の名前：${f.textJa}（untranslated ${f.untranslated}）`);
+                        if (!String(f.original ?? '').includes(de)) why.push(`${code} の原文：${f.original}`);
+                    }
+                    const all = JSON.stringify(st.faults ?? null);
+                    if (HALF.test(all)) why.push('半訳が答えに残る');
+                    return why.length ? why.join('、') : true;
+                },
+            },
+        },
         // 3. 走行中に「消して」
         { say: '消して' },
         {
@@ -167,6 +202,43 @@ const scenario = {
                 run: async (page, st) => {
                     const s = await ask(page, st, 'monitoring_status');
                     return s.car !== 'moving' ? true : `止まって 6 秒たっても car: ${s.car}、speedKmh: ${s.speedKmh}`;
+                },
+            },
+        },
+        {
+            check: {
+                desc: '手順 4：停車中、画面の CLEAR FAULTS を押すと確認が出る。題は消えるもの（そのモジュールの故障）、本文は 消えるもの → 戻せない → 押すと の順（UX-13）',
+                run: async (page, st) => {
+                    await ask(page, st, 'monitoring_display', { show: 'diagnosis', pane: 'list' });
+                    await page.waitForTimeout(800);
+                    const clear = page.locator('button:visible:has-text("CLEAR FAULTS")').last();
+                    if ((await clear.count()) === 0) return 'CLEAR FAULTS が無い';
+                    if (await clear.isDisabled()) return '停車しているのに押せない';
+                    await clear.click();
+                    const d = page.locator('[role=dialog]').first();
+                    await d.waitFor({ timeout: 3000 });
+                    // Past the dialog's 200 ms fade-in, so the capture below is of the settled dialog.
+                    await page.waitForTimeout(400);
+                    const text = await d.innerText();
+                    const title = text.split('\n')[0] ?? '';
+                    const why = [];
+                    if (!/故障/.test(title)) why.push(`題が消えるものの名前でない：「${title}」`);
+                    const what = text.indexOf('消えます');
+                    const back = text.indexOf('戻せません');
+                    const press = text.indexOf('押すと');
+                    if (!(what >= 0 && back > what && press > back)) why.push(`消えるもの → 戻せない → 押すと の順でない：${text.replace(/\n/g, ' / ').slice(0, 200)}`);
+                    return why.length ? why.join('、') : true;
+                },
+            },
+        },
+        { shot: 's04-clear-confirm' },
+        {
+            check: {
+                desc: '手順 4：確認はキャンセルで閉じる（消すのは手順 5、オーナーの「いいよ」のあと）',
+                run: async (page) => {
+                    await page.locator('[role=dialog] button:has-text("キャンセル")').first().click();
+                    await page.waitForTimeout(400);
+                    return (await page.locator('[role=dialog]').count()) === 0 ? true : 'ダイアログが残る';
                 },
             },
         },

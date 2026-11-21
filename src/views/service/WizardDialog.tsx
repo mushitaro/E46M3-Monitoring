@@ -3,13 +3,17 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { AlertTriangle, PlayCircle, Square } from 'lucide-react';
 import { DialogFrame } from '@/components/DialogFrame';
+import { ConfirmDetails, ConfirmSteps, Measured, Told, useMeasureClock } from '@/components/gate/ConfirmBody';
+import { holdsRun, isMeasuredPrereq, lastMeasured, procedureMeasured } from '@/lib/gateChecks';
+import { instructionsIn } from '@/lib/instructions';
+import { formatDuration, procedureMaxSec } from '@/lib/duration';
 import { DialogButton, Field, LABEL, MicroLabel, Provenance, Well, emphasise } from '@/components/ui';
 import { useProcedureRun, type ProcedureOutcome } from '@/hooks/useProcedureRun';
 import type { JobRunResult } from '@/hooks/useDs2Link';
 import type { CatalogJob } from '@tsunagi/monitoring-engine';
 import { useLang } from '@/lib/i18n';
 import { planProcedure, type ProcedureBlockKey } from '@/lib/procedureRun';
-import type { ActuationPermit, Ledger, Motion, NotSent, SendRequirement } from '@tsunagi/monitoring-engine';
+import type { ActuationPermit, Ledger, Motion, NotSent, SendRequirement, VehicleState } from '@tsunagi/monitoring-engine';
 import { notSentLine } from '@/lib/notSentText';
 import type { Smg2Procedure, Smg2Workflows } from '@/lib/smg2Workflows';
 import type { TelegramTable } from '@tsunagi/monitoring-engine';
@@ -50,6 +54,16 @@ import {
  * rather than showing nothing, because "did that finish?" is the question the
  * operator will have and a dialog that vanishes answers it wrongly.
  *
+ * ## What the app measures is shown measured, not ticked (operator, 2026-11-21)
+ *
+ * The start goes with a `run` permit, so the link measures the speed, the battery and the engine state
+ * the procedure asks for immediately before it, and refuses when one fails (`preflightRun`). Those
+ * are lines with their last measurement on the first step (lib/gateChecks), not boxes; the SGBD's
+ * battery sentence, wholly measured, loses its box and keeps its advice (charger) as an instruction.
+ * The SGBD's other sentences mix in what the app cannot measure (neutral, fluid temperature, level
+ * ground) and stay boxes. A last measurement that fails is red and says what makes it pass; taken just
+ * now, it holds START. The measurement on the press decides either way.
+ *
  * ## What the numbers are, and are not
  *
  * The status text, the activity text, the preconditions, the duration and the
@@ -66,10 +80,12 @@ export function WizardDialog({
     telegrams,
     mode,
     gate,
+    measured,
     send,
     assistant,
     why,
     onEnded,
+    onLive,
     onClose,
 }: {
     procedure: Smg2Procedure;
@@ -79,17 +95,23 @@ export function WizardDialog({
     mode: 'vehicle' | 'practice';
     /** On a car: the ledger and the car as last measured, for the owner's decision (runGate.mayRunProcedure). */
     gate: { ledger: Ledger; motion: Motion };
+    /** The car as last measured (lib/vehicleState): shown in place of the preconditions the link measures. */
+    measured?: VehicleState | null;
     send: (jobId: string, hex: string, requires?: SendRequirement, permit?: ActuationPermit) => Promise<JobRunResult | null>;
     /**
      * Started by the assistant on the owner's spoken OK (monitoring_procedure, after it read back every
-     * precondition): the word ticks the boxes and START is pressed once — through the same plan and gate
-     * as a press here. Everything else is as on the screen, ABORT included.
+     * precondition): the word ticks the boxes — the preconditions the app cannot measure, and the
+     * safety acknowledgement — and START is pressed once, through the same plan and gate as a press
+     * here; the battery, standstill and engine are measured by the link on that press, as on a person's.
+     * Everything else is as on the screen, ABORT included.
      */
     assistant?: { ownerSaid: string; gear?: number };
     /** Why the last send came back empty (the link's own sentence and shape, read straight after the await). */
     why?: () => { error: string | null; notSent: NotSent | null };
     /** Told how the run ended, so the page and the assistant can say it (monitoring_status `lastProcedure`). */
     onEnded?: (outcome: ProcedureOutcome) => void;
+    /** Told when the gearbox starts and stops working, with ABORT while it does: the hub's ring is that STOP. */
+    onLive?: (abort: (() => void) | null) => void;
     onClose: () => void;
 }) {
     const { lang, t } = useLang();
@@ -100,17 +122,21 @@ export function WizardDialog({
     // How the run ended, for the result step: a module's refusal is said as one (IJ06).
     const [outcome, setOutcome] = useState<ProcedureOutcome | null>(null);
 
-    // Every precondition the SGBD lists, plus one acknowledgement of the safety
-    // statement. The keys are indices into the procedure's own array rather than
-    // invented names, so a procedure with different preconditions gets different
-    // boxes without this file knowing anything about them.
+    // Every precondition the SGBD lists that the app cannot measure, plus one acknowledgement of the
+    // safety statement. The keys are indices into the procedure's own array rather than invented
+    // names, so a procedure with different preconditions gets different boxes without this file
+    // knowing anything about them. The battery's sentence is measured (lib/gateChecks), not a box.
     const shape: WizardShape = useMemo(
         () => ({
-            prereqChecks: procedure.prereq.map((_, i) => `pre:${i}`),
+            prereqChecks: procedure.prereq.flatMap((p, i) => (isMeasuredPrereq(p) ? [] : [`pre:${i}`])),
             safetyChecks: ['safety'],
         }),
         [procedure],
     );
+    // What the link measures before the start, as last measured; one failing just now holds START.
+    const now = useMeasureClock();
+    const readings = procedureMeasured(procedure.engine).map((p) => ({ p, m: lastMeasured(p, measured, now) }));
+    const failing = readings.filter((r) => holdsRun(r.m));
     const [state, dispatch] = useReducer(
         (s: Parameters<typeof wizardReducer>[0], a: Parameters<typeof wizardReducer>[1]) =>
             wizardReducer(s, a, shape),
@@ -164,7 +190,30 @@ export function WizardDialog({
         onClose();
     }, [onClose, run]);
 
+    // What the module-wide safety text and the procedure's note tell the person to do: said on the
+    // 何が起きるか step itself, not under 詳細 (docs/UX-DESIGN.md §5). The texts whole stay there.
+    const told = [
+        ...instructionsIn(workflows.safety ? pick(workflows.safety) : null, lang),
+        ...instructionsIn(procedure.note ? pick(procedure.note) : null, lang),
+    ];
     const live = isRunning(state) || run.live;
+    // The SGBD's longest run, in seconds and minutes rather than its `sek` and `3,0 min` (UX-12).
+    const maxSec = procedureMaxSec(procedure);
+    const maxText = maxSec === null ? null : formatDuration(maxSec, t);
+    // The result step: ended as the module ran it (well or not), as opposed to stopped or refused.
+    const ranThrough = !state.result?.aborted && outcome?.ended !== 'refused' && outcome?.ended !== 'failed';
+    // The hub's ring is ABORT while the gearbox works (docs/UX-DESIGN.md §1): told on each change, and
+    // that it stopped when the dialog goes. Through refs, so a new handler from the page is not a change.
+    const onLiveRef = useRef(onLive);
+    const abortRef = useRef(abort);
+    useEffect(() => {
+        onLiveRef.current = onLive;
+        abortRef.current = abort;
+    });
+    useEffect(() => {
+        onLiveRef.current?.(live ? () => abortRef.current() : null);
+    }, [live]);
+    useEffect(() => () => onLiveRef.current?.(null), []);
     const statusText = workflows.testStatus.find(
         (s) => Number.parseInt(s.code, 16) === run.state.statusByte,
     );
@@ -179,8 +228,10 @@ export function WizardDialog({
             tone={procedure.risk === 'high' ? 'danger' : 'neutral'}
             // Handed only when the state says leaving is allowed. That is the
             // one-way-out rule expressed as a missing prop rather than as an
-            // early return inside a key handler.
-            onClose={canDismiss(state) ? leave : undefined}
+            // early return inside a key handler. On the result step the way out
+            // is its CLOSE alone — no X beside it (UX-12) — and Escape is CLOSE.
+            onClose={canDismiss(state) && state.step !== 'result' ? leave : undefined}
+            onEscape={canDismiss(state) ? leave : undefined}
             footer={
                 <Footer
                     step={state.step}
@@ -188,6 +239,7 @@ export function WizardDialog({
                     canNext={canAdvance(state, shape)}
                     canBack={canGoBack(state)}
                     blocked={plan.ok ? null : plan.reason}
+                    measuredBad={failing.length > 0}
                     onBack={() => dispatch({ type: 'back' })}
                     onNext={() => dispatch({ type: 'next' })}
                     onStart={startRun}
@@ -200,19 +252,35 @@ export function WizardDialog({
 
             {state.step === 'prereq' && (
                 <>
-                    <p className="text-[11px] leading-relaxed text-slate-500">{t.wiz_prereq_note}</p>
-                    <ul className="mt-3 space-y-2">
-                        {procedure.prereq.map((p, i) => (
-                            <Check
-                                key={i}
-                                checked={state.ticked.has(`pre:${i}`)}
-                                onToggle={() => dispatch({ type: 'toggle', key: `pre:${i}` })}
-                                label={pick(p)}
-                            />
+                    {/* Where the list comes from, as a provenance tag; its sentence is the tag's title. */}
+                    {/* What the app measures before the start, as measured; then the SGBD's sentences
+                        it cannot measure, a box each; the battery's advice (charger) without a box. */}
+                    <div className="flex flex-col gap-1.5">
+                        {readings.map(({ p, m }) => (
+                            <Measured key={p} label={t[`precond_${p}`]} p={p} m={m} />
                         ))}
+                    </div>
+                    <div className="mt-3">
+                        <Provenance title={t.wiz_prereq_note}>{t.provenance['sgbd-comment']}</Provenance>
+                    </div>
+                    <ul className="mt-2 space-y-2">
+                        {procedure.prereq.map((p, i) =>
+                            isMeasuredPrereq(p) ? (
+                                <li key={i} className="pl-[22px] text-[11px] leading-relaxed text-slate-300">
+                                    {pick(p)}
+                                </li>
+                            ) : (
+                                <Check
+                                    key={i}
+                                    checked={state.ticked.has(`pre:${i}`)}
+                                    onToggle={() => dispatch({ type: 'toggle', key: `pre:${i}` })}
+                                    label={pick(p)}
+                                />
+                            ),
+                        )}
                     </ul>
                     <div className="mt-4 flex flex-wrap items-baseline gap-x-6 gap-y-2">
-                        <Field label={t.proc_duration} value={procedure.durMax || '—'} />
+                        <Field label={t.proc_duration} value={maxText ?? '—'} />
                         <Field
                             label={t.mode}
                             value={procedure.engine === 'run' ? t.proc_engineRun : t.proc_engineOff}
@@ -224,13 +292,17 @@ export function WizardDialog({
 
             {state.step === 'safety' && (
                 <>
-                    {workflows.safety && (
-                        <p className="text-xs leading-relaxed text-slate-300">{pick(workflows.safety)}</p>
-                    )}
-                    {procedure.note && (
-                        <p className="mt-3 text-[11px] leading-relaxed text-slate-400">
-                            {emphasise(pick(procedure.note))}
-                        </p>
+                    {/* What happens → until when → what pressing does (docs/UX-DESIGN.md §5); then what the
+                        texts tell the person to do. The module-wide safety text and the procedure's note,
+                        whole, are under 詳細. */}
+                    <ConfirmSteps what={pick(procedure.desc)} until={t.wiz_until(maxText)} press={t.wiz_press} />
+                    {told.length > 0 && (
+                        <>
+                            <MicroLabel className="mt-4">{t.conf_instructions}</MicroLabel>
+                            <div className="mt-1 flex flex-col gap-1.5">
+                                <Told lines={told} />
+                            </div>
+                        </>
                     )}
                     {procedure.auswahl && (
                         <div className="mt-4">
@@ -259,60 +331,70 @@ export function WizardDialog({
                             label={t.wiz_safety_ack}
                         />
                     </ul>
+                    {/* A last measurement that fails holds START: said here, beside it. */}
+                    {failing.length > 0 && (
+                        <div className="mt-4 flex flex-col gap-1.5">
+                            {failing.map(({ p, m }) => (
+                                <Measured key={p} label={t[`precond_${p}`]} p={p} m={m} />
+                            ))}
+                        </div>
+                    )}
                     {!plan.ok && <Blocked reason={plan.reason} detail={plan.detail} />}
+                    {(workflows.safety || procedure.note) && (
+                        <ConfirmDetails>
+                            {workflows.safety && <p>{pick(workflows.safety)}</p>}
+                            {procedure.note && <p className="mt-2">{emphasise(pick(procedure.note))}</p>}
+                        </ConfirmDetails>
+                    )}
                 </>
             )}
 
             {state.step === 'run' && (
                 <>
-                    <p className="text-[11px] leading-relaxed text-slate-500">{emphasise(t.wiz_run_note)}</p>
-                    {/* What the owner does while it runs: keep the preconditions, stay, ABORT if needed. */}
-                    <p className="mt-2 text-xs leading-relaxed text-slate-200">{t.wiz_owner}</p>
+                    {/* What the owner does while it runs, first: keep the preconditions, stay, ABORT if
+                        needed. How the app keeps asking the module is the code's business (UX-12). */}
+                    <p className="text-xs leading-relaxed text-slate-200">{t.wiz_owner}</p>
                     <div className="mt-4 flex flex-wrap items-baseline gap-x-6 gap-y-2">
                         <Field
                             label={t.wiz_elapsed}
-                            value={`${run.state.elapsedSec}s`}
-                            unit={procedure.durMax ? t.wiz_of(procedure.durMax) : undefined}
+                            value={formatDuration(run.state.elapsedSec, t)}
+                            unit={maxText ? t.wiz_of(maxText) : undefined}
                         />
-                        <Field label={t.wiz_polls(run.state.polls)} value={run.state.polls} />
+                        <span className="text-[11px] text-slate-500">{t.wiz_asked(run.state.polls)}</span>
                     </div>
 
-                    <MicroLabel className="mt-4">{t.wiz_status}</MicroLabel>
-                    <p className="text-xs text-slate-200">
-                        {statusText ? pick(statusText) : '—'}
+                    <div className="mt-4 flex items-baseline gap-2">
+                        <MicroLabel>{t.wiz_status}</MicroLabel>
+                        {/* The byte positions are read from the SGBD's wording: a decode, marked as one —
+                            only once there is a decoded status for the mark to be about. */}
                         {run.state.statusByte !== null && (
-                            <span className="ml-2 font-mono text-[10px] text-slate-500">
-                                0x{run.state.statusByte.toString(16).padStart(2, '0')}
-                            </span>
+                            <Provenance title={t.wiz_offsetsInferred}>{t.provenance.inferred}</Provenance>
                         )}
-                    </p>
+                    </div>
+                    <p className="text-xs text-slate-200">{statusText ? pick(statusText) : '—'}</p>
 
                     <MicroLabel className="mt-3">{t.wiz_activity}</MicroLabel>
                     <p className="text-xs text-slate-200">{activityText ? pick(activityText) : '—'}</p>
-
-                    <MicroLabel className="mt-3">{t.wiz_raw}</MicroLabel>
-                    <Well>
-                        <p className="break-all font-mono text-[11px] text-slate-400">
-                            {run.state.rawResponse ?? '—'}
-                        </p>
-                    </Well>
-                    <div className="mt-2">
-                        <Provenance title={t.wiz_offsetsInferred}>{t.provenance.inferred}</Provenance>
-                    </div>
 
                     <p className="mt-4 text-[11px] leading-relaxed text-amber-400">{t.wiz_abortOnly}</p>
                     {run.state.error && (
                         <p className="mt-2 text-[11px] leading-relaxed text-red-400">{run.state.error}</p>
                     )}
+
+                    <ConfirmDetails>
+                        <RawAnswer status={run.state.statusByte} raw={run.state.rawResponse} />
+                    </ConfirmDetails>
                 </>
             )}
 
             {state.step === 'result' && (
                 <>
+                    {/* The state's word in the state's colour (docs/UX-DESIGN.md §4): finished and stopped
+                        are grey, a failure or a refusal is red. The answer below is CLOSE whatever it says. */}
                     <p
                         className={`text-xs ${
-                            state.result?.aborted ? 'text-amber-400'
-                            : run.finishedWell ? 'text-emerald-400'
+                            state.result?.aborted ? 'text-slate-300'
+                            : ranThrough && run.finishedWell ? 'text-slate-200'
                             : 'text-red-400'
                         }`}
                     >
@@ -328,32 +410,47 @@ export function WizardDialog({
                     {outcome?.ended === 'failed' && !outcome.notSent && outcome.error && (
                         <p className="mt-1 break-words font-mono text-[10px] text-slate-500">{outcome.error}</p>
                     )}
-                    <p className="mt-1 text-[11px] text-slate-500">{t.wiz_stopSent}</p>
 
-                    {statusText && (
+                    {/* The module's last word, where it ran through. After a stop or a refusal the last
+                        status read is from before the end (IJ06: 「実行中」 under 「止めました」), so it
+                        is under 詳細 with the raw answer, not said as the state now. */}
+                    {ranThrough && statusText && (
                         <>
                             <MicroLabel className="mt-4">{t.wiz_status}</MicroLabel>
                             <p className="text-xs text-slate-200">{pick(statusText)}</p>
                         </>
                     )}
-                    {run.state.rawResponse && (
-                        <>
-                            <MicroLabel className="mt-3">{t.wiz_raw}</MicroLabel>
-                            <Well>
-                                <p className="break-all font-mono text-[11px] text-slate-400">
-                                    {run.state.rawResponse}
-                                </p>
-                            </Well>
-                        </>
-                    )}
-                    {procedure.readResultsNote && (
-                        <p className="mt-3 text-[11px] leading-relaxed text-slate-400">
-                            {emphasise(pick(procedure.readResultsNote))}
-                        </p>
-                    )}
+
+                    <ConfirmDetails>
+                        <p>{t.wiz_stopSent}</p>
+                        {!ranThrough && statusText && (
+                            <p className="mt-1">
+                                {t.wiz_status}: {pick(statusText)}
+                            </p>
+                        )}
+                        <RawAnswer status={run.state.statusByte} raw={run.state.rawResponse} />
+                        {procedure.readResultsNote && <p className="mt-2">{emphasise(pick(procedure.readResultsNote))}</p>}
+                    </ConfirmDetails>
                 </>
             )}
         </DialogFrame>
+    );
+}
+
+/** The module's answer as it came, with the status byte the decode read: under 詳細. */
+function RawAnswer({ status, raw }: { status: number | null; raw: string | null }) {
+    const { t } = useLang();
+    if (!raw) return null;
+    return (
+        <>
+            <MicroLabel className="mt-2">{t.wiz_raw}</MicroLabel>
+            <Well className="mt-1">
+                <p className="break-all font-mono text-[11px] text-slate-400">
+                    {raw}
+                    {status !== null && <span className="ml-2 text-slate-500">(0x{status.toString(16).padStart(2, '0')})</span>}
+                </p>
+            </Well>
+        </>
     );
 }
 
@@ -431,6 +528,7 @@ function Footer({
     canNext,
     canBack,
     blocked,
+    measuredBad,
     onBack,
     onNext,
     onStart,
@@ -442,6 +540,8 @@ function Footer({
     canNext: boolean;
     canBack: boolean;
     blocked: ProcedureBlockKey | null;
+    /** The car's last measurement fails what the start is measured for: START waits. */
+    measuredBad: boolean;
     onBack: () => void;
     onNext: () => void;
     onStart: () => void;
@@ -449,15 +549,22 @@ function Footer({
     onClose: () => void;
 }) {
     const { t } = useLang();
+    // Keyed, so the result's CLOSE is a new button and not the ABORT repainted: a reused element
+    // eased from ABORT's red into CLOSE's colour, and a capture caught a red CLOSE (UX-12).
     if (step === 'run') {
         return (
-            <DialogButton onClick={onAbort} tone="danger" Icon={Square} disabled={!live}>
+            <DialogButton key="abort" onClick={onAbort} tone="danger" Icon={Square} disabled={!live}>
                 {t.op_abort}
             </DialogButton>
         );
     }
     if (step === 'result') {
-        return <DialogButton onClick={onClose}>{t.wiz_close}</DialogButton>;
+        // The way out, plain, whatever the result said (docs/UX-DESIGN.md §5).
+        return (
+            <DialogButton key="close" onClick={onClose} tone="neutral">
+                {t.wiz_close}
+            </DialogButton>
+        );
     }
     return (
         <>
@@ -467,7 +574,7 @@ function Footer({
                 </DialogButton>
             )}
             {step === 'safety' ? (
-                <DialogButton onClick={onStart} disabled={!canNext || blocked !== null} tone="danger" Icon={PlayCircle}>
+                <DialogButton onClick={onStart} disabled={!canNext || blocked !== null || measuredBad} tone="danger" Icon={PlayCircle}>
                     {t.op_start}
                 </DialogButton>
             ) : (

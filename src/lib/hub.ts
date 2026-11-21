@@ -52,13 +52,25 @@ export interface HubState {
     practiceArmed: boolean;
     /** What the view would offer if the link let it. `null` = nothing to offer. */
     fromView: HubConfig | null;
+    /**
+     * Something driven is on — an actuator output, an SMG II procedure. Its STOP outranks every
+     * tier, the link's busy included: an energised output is a physical thing that is on, and the
+     * one way to stop it must never be the control a read in flight has locked (lib/arming
+     * `stopIsPressable`). Absent when nothing is.
+     */
+    engaged?: HubConfig | null;
     connect: (mode: 'practice' | 'vehicle') => void;
     t: HubStrings;
     icons: HubIcons;
 }
 
 export function hubConfigFor(s: HubState): HubConfig {
+    // --- tier 0: something driven is on ----------------------------------------
+    if (s.engaged) return s.engaged;
+
     // --- tier 1: the link -----------------------------------------------------
+    // A view whose verb needs no link (MEMORY's SAVE) keeps the ring while disconnected.
+    if (s.linkState === 'disconnected' && s.fromView?.offline) return s.fromView;
     if (s.linkState === 'disconnected') {
         return {
             label: s.t.hub_connect,
@@ -105,6 +117,8 @@ export function hubConfigFor(s: HubState): HubConfig {
     if (s.fromView) return s.fromView;
 
     // --- tier 3: nothing to do ------------------------------------------------
+    // Every view supplies its verb now (docs/UX-DESIGN.md §1); this is the floor for one that
+    // has not loaded what it needs yet, said as a statement, not offered as an action.
     return { label: s.t.hub_connected, Icon: s.icons.idle, tone: 'idle', disabled: true };
 }
 

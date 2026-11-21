@@ -12,6 +12,8 @@ const ICONS = {
     run: icon('RUN'),
     start: icon('START'),
     probe: icon('PROBE'),
+    next: icon('NEXT'),
+    save: icon('SAVE'),
 };
 
 const T = {
@@ -22,11 +24,10 @@ const T = {
     op_run: 'RUN',
     op_start: 'START',
     samples: 'SAMPLES',
-    plan_selectHint: 'pick a job',
-    adaptations_noDecoder: 'no decoder ported',
-    faults_notEstablished: 'no frame for this module',
-    datalog_noDecoder: 'no live-block layout',
-    probe: 'PROBE',
+    hub_pickRow: 'pick a row',
+    hub_noReadFrame: 'no frame for this module',
+    hub_dmeOnly: 'no live-block layout',
+    next_session: 'NEXT',
     probe_notRunnable: 'no plan may run',
     runBlock: (r: string) => `blocked: ${r}`,
 };
@@ -38,7 +39,7 @@ const state = (over: Partial<ViewHubState> = {}): ViewHubState => ({
     icons: ICONS,
     readFaults: () => {},
     faultsAvailable: true,
-    datalog: { decoded: true, sampleCount: 0, costNotice: '2 channels / 1 block', start: () => {}, stop: () => {} },
+    datalog: { decoded: true, sampleCount: 0, start: () => {}, stop: () => {} },
     adaptation: { decoded: true, read: () => {} },
     service: { selected: null, verdict: null, run: () => {} },
     ...over,
@@ -119,10 +120,12 @@ describe('each tab supplies its own verb', () => {
         expect(readFaults).not.toHaveBeenCalled();
     });
 
-    it('DATALOG records, and states the cost before you press it', () => {
+    it('DATALOG records; the cost is MAIN\'s, and the line says what the last STOP left', () => {
         const cfg = viewHubFor(state({ tab: 'datalog' }));
         expect(cfg?.label).toBe('RECORD');
-        expect(cfg?.notice).toBe('2 channels / 1 block');
+        expect(cfg?.notice).toBeUndefined();
+        const after = viewHubFor(state({ tab: 'datalog', datalog: { ...state().datalog, stoppedLine: 'stopped · 0:58 · 4006' } }));
+        expect(after?.notice).toBe('stopped · 0:58 · 4006');
     });
 
     it('ADAPTATION reads where a decoder was ported', () => {
@@ -133,28 +136,54 @@ describe('each tab supplies its own verb', () => {
         expect(cfg?.disabled).toBeFalsy();
     });
 
-    it('ADAPTATION says WHY it cannot, rather than going quiet', () => {
-        // "No decoder ported" and "this module has learned nothing" are
-        // different sentences, and only one of them is true here.
+    it('ADAPTATION cannot read where no decoder was ported, and does not repeat MAIN\'s sentence', () => {
         const cfg = viewHubFor(state({ tab: 'adaptation', adaptation: { decoded: false, read: () => {} } }));
         expect(cfg?.disabled).toBe(true);
         expect(cfg?.onClick).toBeUndefined();
-        expect(cfg?.notice).toBe('no decoder ported');
+        expect(cfg?.notice).toBeUndefined();
     });
 
-    it('ACTUATOR supplies nothing — its rows carry their own controls', () => {
-        expect(viewHubFor(state({ tab: 'actuator' }))).toBeNull();
+    it('ACTUATOR shows its verb waiting for a row, not a dead LINKED ring', () => {
+        const cfg = viewHubFor(state({ tab: 'actuator' }));
+        expect(cfg).toMatchObject({ label: 'RUN', disabled: true, notice: 'pick a row' });
+    });
+
+    it("ACTUATOR's ring is the chosen row's START or RUN, through the row's own press", () => {
+        const press = vi.fn();
+        const hold = viewHubFor(state({ tab: 'actuator', actuator: { phase: 'start', risk: 'medium', why: null, press } }));
+        expect(hold).toMatchObject({ label: 'START', Icon: ICONS.start, tone: 'ready', testId: 'tj-start' });
+        hold?.onClick?.();
+        expect(press).toHaveBeenCalledOnce();
+        const once = viewHubFor(state({ tab: 'actuator', actuator: { phase: 'pulse', risk: 'high', why: null, press } }));
+        expect(once).toMatchObject({ label: 'RUN', Icon: ICONS.run, tone: 'armed-danger', testId: 'tj-run' });
+    });
+
+    it("ACTUATOR does not offer a row its gate refuses: disabled, and the notice says why", () => {
+        const press = vi.fn();
+        const cfg = viewHubFor(state({ tab: 'actuator', actuator: { phase: 'start', risk: 'high', why: 'not sent · moving', press } }));
+        expect(cfg).toMatchObject({ label: 'START', tone: 'idle', disabled: true, notice: 'not sent · moving', testId: 'tj-start' });
+        expect(cfg?.onClick).toBeUndefined();
+    });
+
+    it('MEMORY saves, and keeps the ring without a link', () => {
+        const save = vi.fn();
+        const cfg = viewHubFor(state({ tab: 'memory', linkState: 'disconnected', memory: { label: 'SAVE', disabled: false, save } }));
+        expect(cfg).toMatchObject({ label: 'SAVE', tone: 'ready', offline: true });
+        cfg?.onClick?.();
+        expect(save).toHaveBeenCalledOnce();
+        const none = viewHubFor(state({ tab: 'memory', memory: { label: 'NOTHING YET', disabled: true, save } }));
+        expect(none).toMatchObject({ disabled: true, onClick: undefined });
     });
 });
 
 describe('SERVICE renders the gate, and never re-derives it', () => {
     const sel = { isProcedure: false, risk: 'low' } as const;
 
-    it('has no verb with no object', () => {
+    it('shows its verb waiting for an object, not a dead LINKED ring', () => {
         const cfg = viewHubFor(state({ tab: 'service' }));
-        expect(cfg?.label).toBe('LINKED');
+        expect(cfg?.label).toBe('RUN');
         expect(cfg?.disabled).toBe(true);
-        expect(cfg?.notice).toBe('pick a job');
+        expect(cfg?.notice).toBe('pick a row');
     });
 
     it('is disabled with the gate’s own reason when the gate refuses', () => {
@@ -211,6 +240,24 @@ describe('SERVICE renders the gate, and never re-derives it', () => {
         expect(proc?.label).toBe('START');
         expect(proc?.Icon).toBe(ICONS.start);
     });
+
+    it('does not offer the START of a procedure its own gate refuses (UX-30)', () => {
+        const open = vi.fn();
+        const refused = viewHubFor(
+            state({
+                tab: 'service',
+                service: { selected: { isProcedure: true, risk: 'high' }, verdict: null, run: () => {}, openProcedure: open, procedureRefusal: 'run_block_practiceFirst' },
+            }),
+        );
+        expect(refused).toMatchObject({ label: 'START', disabled: true, tone: 'idle', notice: 'blocked: run_block_practiceFirst' });
+        expect(refused?.onClick).toBeUndefined();
+        const may = viewHubFor(
+            state({ tab: 'service', service: { selected: { isProcedure: true, risk: 'high' }, verdict: null, run: () => {}, openProcedure: open, procedureRefusal: null } }),
+        );
+        expect(may).toMatchObject({ label: 'START', tone: 'ready' });
+        may?.onClick?.();
+        expect(open).toHaveBeenCalledOnce();
+    });
 });
 
 describe('the switch is exhaustive', () => {
@@ -249,14 +296,24 @@ describe('PROBE', () => {
     it('runs the session on the screen from the board, and says why not when it may not', () => {
         const run = vi.fn();
         const ok = viewHubFor(state({ tab: 'probe', probeRun: { runnable: true, run } }));
-        expect(ok).toMatchObject({ label: 'PROBE', tone: 'ready' });
+        expect(ok).toMatchObject({ label: 'START', tone: 'ready' });
         ok?.onClick?.();
         expect(run).toHaveBeenCalled();
         const no = viewHubFor(state({ tab: 'probe', probeRun: { runnable: false, run } }));
         expect(no).toMatchObject({ disabled: true, notice: 'no plan may run' });
     });
 
-    it('leaves STARTUP to its sub-actions', () => {
-        expect(viewHubFor(state({ tab: 'startup' }))).toBeNull();
+    it('STARTUP\'s ring is NEXT, without a link too, and says why it cannot go yet', () => {
+        const next = vi.fn();
+        const ok = viewHubFor(state({ tab: 'startup', linkState: 'disconnected', startup: { next, blocked: null } }));
+        expect(ok).toMatchObject({ label: 'NEXT', tone: 'ready', offline: true });
+        ok?.onClick?.();
+        expect(next).toHaveBeenCalledOnce();
+        const no = viewHubFor(state({ tab: 'startup', startup: { next, blocked: 'no session' } }));
+        expect(no).toMatchObject({ disabled: true, notice: 'no session' });
+    });
+
+    it('a board with no session still shows START, disabled, with the reason', () => {
+        expect(viewHubFor(state({ tab: 'probe' }))).toMatchObject({ label: 'START', disabled: true, notice: 'no plan may run' });
     });
 });

@@ -102,6 +102,25 @@ export interface PlanInput {
     selection?: number;
 }
 
+/**
+ * The procedure's own gate as its plan asks it on a car (`mayRunProcedure`), for the hub's ring before
+ * the wizard opens (UX-30: no START that would be refused). Null when it may run, in PRACTICE (which has
+ * no gate here), or when the module has no start job (the plan says that one itself).
+ */
+export function procedureRefusalOf(
+    procedure: Smg2Procedure | null,
+    profile: { jobs: readonly CatalogJob[] } | null,
+    mode: 'vehicle' | 'practice',
+    ledger: Ledger,
+    motion: Motion,
+): RunBlockKey | null {
+    if (!procedure || mode === 'practice') return null;
+    const start = profile?.jobs.find((j) => j.id === START_JOB);
+    if (!start) return null;
+    const v = mayRunProcedure('smg2', start, procedure.testprg, ledger, motion);
+    return v.allowed ? null : v.reason;
+}
+
 export function planProcedure(input: PlanInput): ProcedurePlanResult {
     const { procedure, jobs, telegrams, mode } = input;
 

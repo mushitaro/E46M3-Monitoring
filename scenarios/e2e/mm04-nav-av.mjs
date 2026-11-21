@@ -6,7 +6,7 @@ import { always, bodyText, hasJa, onModule, practiceOneOnScreen, scanModules, to
  * 2 それぞれで動かす項目を一つ → 動くものは動作中 → 止まった。動かないものは理由が出る。
  * ボードモニター（0xF0）とナビ（0x7F）は、同じアドレスに機種が 3〜4 つある。練習の車は IDENT の答え（ハードウェア番号・診断インデックス）を変えて機種を替える。
  * この二つにはグループファイルの規則が無く（D_00xx.grp は 0x12・0x32・0x80 だけ）、名乗りからは機種を決められない。推測で決めない（CLAUDE.md）
- * ので、画面は「?（A、B、C のどれか）」と出し、オーナーが ACTUATOR で一度答えたら、その名前で出す（運営者 2026-11-20 の基準）。
+ * ので、画面は「? 共通の名前」と「候補 n」を出し（候補は行を開くと出る。UX-19）、オーナーが ACTUATOR で一度答えたら、その名前で出す（運営者 2026-11-20 の基準）。
  */
 
 /** Which model the owner says is fitted, as ACTUATOR's buttons name it. */
@@ -76,12 +76,16 @@ const scenario = {
         },
         {
             check: {
-                desc: '画面：ボードモニターとナビの行は「?（A、B、C のどれか。名乗りからは決められません）」と出る（候補を「/」で並べて全部付いているように見せない）',
+                // UX-19: the row is「? 共通の名前」with「候補 n」beside it; the candidates are named when it is opened,
+                // and why the IDENT cannot choose is the list's ⓘ, once.
+                desc: '画面：ボードモニターとナビの行は「?」で始まり、候補の数が付く（機種を推測しない。候補を「/」で並べて全部付いているように見せない）',
                 run: async (page) => {
                     const why = [];
                     for (const a of ['0xF0', '0x7F']) {
                         const name = (await rowNameOf(page, a)) ?? '';
-                        if (!/^\?（.+のどれか。名乗りからは決められません）$/.test(name) || / \/ /.test(name)) why.push(`${a}：「${name}」`);
+                        const lines = (await bodyText(page)).split('\n').map((l) => l.trim());
+                        const count = lines[lines.indexOf(a) + 2] ?? '';
+                        if (!/^\? \S/.test(name) || / \/ /.test(name) || !/^候補 [2-9]$/.test(count)) why.push(`${a}：「${name}」「${count}」`);
                     }
                     return why.length ? why.join('、') : true;
                 },

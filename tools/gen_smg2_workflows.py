@@ -14,7 +14,8 @@
 #  ★データ（番号・所要時間・状態コード・独語原文）は SGBD 由来＝権威。
 #    ja/en は下の PHRASES で厳選訳、無い語は translate.py にフォールバック。
 #    手順の実行コマンド列（TESTPRG_STOP→…）は js/workflow.js 側にエンジンとして実装。
-#    ※実車では書込/駆動系のため既定で実行不可（verified:false・デモ専用ゲート）。
+#    ※実車へは運営者の表（packages/monitoring-engine/src/policy.ts）に従って送る：手順ごとに
+#      練習で一度（runGate.ts の mayRunProcedure）、停車中に、画面の確認のあとで。safety の文はそれを言う。
 # ============================================================================
 import re, json, os, sys
 sys.path.insert(0, os.path.dirname(__file__))
@@ -287,8 +288,8 @@ def build():
         "module": "smg2", "sgbd": "SMG2.prg", "address": "0x32",
         "source": "EdiabasLib tables TESTPRG/STELLGLIEDER/INFOTEXTE*/STATTESTTEXTE (authoritative)",
         "safety": {
-            "ja": "これらはすべて実車ECUへ書込・アクチュエータ駆動を行うサービス機能です。誤操作は変速機・クラッチ・油圧系を損傷し得ます。油圧ポンプは自動停止しません（最大60秒／SG-Timeout 10秒）。100barで圧力制限弁が開きポンプが劣化します。本アプリでは既定で実行不可（デモ専用）。実施は必ず整備マニュアル(TIS)と適合条件の確認後に。",
-            "en": "These are all service functions that WRITE to the ECU and drive actuators. Misuse can damage the gearbox, clutch, or hydraulics. The hydraulic pump does not auto-stop (max 60 s / SG-Timeout 10 s). At 100 bar the relief valve opens and degrades the pump. Disabled by default in this app (demo only). Only perform after confirming the repair manual (TIS) and conditions.",
+            "ja": "これらはすべて実車ECUへ書込・アクチュエータ駆動を行うサービス機能です。誤操作は変速機・クラッチ・油圧系を損傷し得ます。油圧ポンプは自動停止しません（最大60秒／SG-Timeout 10秒）。100barで圧力制限弁が開きポンプが劣化します。本アプリは運営者の表に従って送る：手順ごとに練習モードで一度動かしたあと、停車中に、画面の確認のあとで、一度に一つ。送る直前に車速・電圧（12 V 以上）・その手順が求めるエンジンの状態を測り、合わなければ送らない。実施は必ず整備マニュアル(TIS)と適合条件の確認後に。",
+            "en": "These are all service functions that WRITE to the ECU and drive actuators. Misuse can damage the gearbox, clutch, or hydraulics. The hydraulic pump does not auto-stop (max 60 s / SG-Timeout 10 s). At 100 bar the relief valve opens and degrades the pump. This app sends them as the owner's table says: each procedure practised once in PRACTICE first, then only parked, after the on-screen confirmation, one at a time. Just before sending it measures road speed, battery voltage (12 V or more) and the engine state the procedure asks for, and sends nothing if they do not hold. Only perform after confirming the repair manual (TIS) and conditions.",
         },
         "categories": [{"key": k, "ja": ja, "en": en} for k, ja, en in CATS],
         "actuators": stell, "testStatus": teststatus,

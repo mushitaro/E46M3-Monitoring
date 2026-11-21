@@ -7,20 +7,15 @@ import { DialogFrame } from "@/components/DialogFrame";
 import {
   DataList,
   DataRow,
+  Fold,
   Pill,
   Section,
   TextButton,
   humanName,
 } from "@/components/ui";
-import type { AssistantBridge } from "@/hooks/useAssistantBridge";
-import type { EcuProfile } from "@tsunagi/monitoring-engine";
 import { useLang } from "@/lib/i18n";
 import { CHROME } from "@/lib/i18n/chrome";
-import type { Ledger } from "@tsunagi/monitoring-engine";
 import { SYNC_TONE } from "@/lib/sync/status";
-import type { Motion } from "@tsunagi/monitoring-engine";
-import { AssistantSection } from "./AssistantSection";
-import { MovingOkSection } from "./MovingOkSection";
 import { StatusButton } from "./StatusButton";
 import type { Sessions } from "./useSessions";
 
@@ -40,38 +35,27 @@ const kb = (bytes: number) =>
   `${(bytes / 1024).toFixed(bytes < 10_240 ? 1 : 0)} KB`;
 
 /**
- * SESSION SYNC — TUNER's panel behind SYNC (operator, 2026-11-02: SYNC, the error records and
- * ASSISTANT where TUNER has them, and the reads cleared for a moving car with them). One place for everything this WORKS build does with the owner's account and on the
- * owner's say-so, rather than a tab that mixed the records with the settings:
+ * SESSION SYNC — the send and the account, and nothing else (UX-33, 2026-11-21):
  *
  *   - the send itself, first, with where it goes and what is waiting;
- *   - the copies in the account, to pull back or remove;
- *   - the error records the build sent by itself;
- *   - ASSISTANT: whether the assistant can hear this tab, and this device's name;
- *   - the reads the owner cleared for a moving car (the ledger's WHILE MOVING).
+ *   - the copies in the account, to pull back or remove, and folded under them the error records
+ *     the build sent by itself.
+ *
+ * It held six subjects once (operator, 2026-11-02, after TUNER's panel): the two above, the error
+ * records open, ASSISTANT, this device's name and the reads cleared for a moving car — and on the head
+ * unit it scrolled before it reached the second. ASSISTANT's state and the device's name, and WHILE
+ * MOVING, are MEMORY's now, under its lists; ASSISTANT's switch was already AI in the header.
  *
  * Opened from MEMORY's SYNC from 900px and from the menu sheet's SYNC below it, one panel for both
- * (the shell owns it). Every account surface is gated on `cloudEnabled`, false on the dev server:
- * there the panel says it has nowhere to send instead of offering a button that cannot work.
+ * (the shell owns it). Every account surface is gated on `cloudEnabled`, false on the dev server, and
+ * on the build having somewhere to send (`noDestination`): there the panel says it has nowhere to
+ * send instead of offering a button that cannot work.
  */
 export function SyncPanel({
   sessions: s,
-  assistant,
-  ledger,
-  motion,
-  catalog,
-  ecuId,
-  onGrantMovingOk,
   onClose,
 }: {
   sessions: Sessions;
-  assistant: AssistantBridge;
-  /** The verified ledger, and the owner's press that clears a read for a moving car. */
-  ledger: Ledger;
-  motion: Motion;
-  catalog: EcuProfile | null;
-  ecuId: string;
-  onGrantMovingOk: (id: string) => void;
   onClose: () => void;
 }) {
   const { t } = useLang();
@@ -79,7 +63,7 @@ export function SyncPanel({
   const busy = s.busy !== null;
 
   const account =
-    !s.cloudEnabled || s.gate === null
+    !s.cloudEnabled || s.noDestination || s.gate === null
       ? null
       : s.gate.state === "active"
         ? t.sessions_account(s.gate.label || "—")
@@ -110,7 +94,9 @@ export function SyncPanel({
               />
             )}
             <span className="text-[11px] text-slate-500">
-              {s.cloudEnabled ? (account ?? "…") : t.sessions_noCloud}
+              {s.cloudEnabled && !s.noDestination
+                ? (account ?? "…")
+                : t.sessions_noCloud}
             </span>
             {s.waiting > 0 && (
               <span className="text-[11px] text-amber-400">
@@ -126,7 +112,7 @@ export function SyncPanel({
           </p>
         </div>
 
-        {s.cloudEnabled && (
+        {s.cloudEnabled && !s.noDestination && (
           <Section title={t.sessions_inAccount} count={s.cloud?.length}>
             {s.cloud !== null && s.cloud.length === 0 ? (
               <p className="py-2 text-xs text-slate-500">
@@ -183,11 +169,12 @@ export function SyncPanel({
           </Section>
         )}
 
-        {s.cloudEnabled && (
-          <Section
+        {/* Folded: the build sent these by itself, and they are read only when something failed. */}
+        {s.cloudEnabled && !s.noDestination && (
+          <Fold
             title={t.sessions_errors}
             count={s.diagnostics?.length}
-            info={t.sessions_errors_info}
+            note={t.sessions_errors_info}
           >
             {s.diagnostics !== null && s.diagnostics.length === 0 ? (
               <p className="py-2 text-xs text-slate-500">
@@ -234,18 +221,8 @@ export function SyncPanel({
                 ))}
               </DataList>
             )}
-          </Section>
+          </Fold>
         )}
-
-        <AssistantSection assistant={assistant} />
-
-        <MovingOkSection
-          ledger={ledger}
-          motion={motion}
-          catalog={catalog}
-          ecuId={ecuId}
-          onGrant={onGrantMovingOk}
-        />
       </DialogFrame>
 
       {confirm && (

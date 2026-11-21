@@ -45,6 +45,7 @@ import { deliversResultElsewhere, hasStopControl, operationFor, type OpKind } fr
 import { cautionFor, type JobTextTable } from '@/lib/jobText';
 import { readResultsFor, type ResultBlockRef, type Smg2Procedure, type Smg2Sequence, type Smg2Workflows } from '@/lib/smg2Workflows';
 import { GATE_CODE, GATE_OF, GEARS, MEASURES, PASSES, gearWindows } from '@/lib/gearWindows';
+import { formatDuration, procedureMaxSec } from '@/lib/duration';
 import { stepsFromActivity, stepsFromSequence } from '@/lib/procedureSteps';
 import { StepList } from '@/components/StepList';
 import { useLang } from '@/lib/i18n';
@@ -72,6 +73,7 @@ export function JobDetail({
     workflows,
     procedure,
     lastRun,
+    frame,
 }: {
     profile: EcuProfile;
     job: CatalogJob;
@@ -83,6 +85,11 @@ export function JobDetail({
     /** The gate's answer moved to `JobFrameViz`, which is where it is read. */
     /** What the last run of THIS job returned, if there was one. */
     lastRun?: JobRunResult | null;
+    /**
+     * What goes out and whether it will (`JobFrameViz`), placed after what the job does and what it
+     * needs — the order a person reads a job in: name → what happens → preconditions → the frame (UX-30).
+     */
+    frame?: React.ReactNode;
 }) {
     const { lang, t } = useLang();
     const op = operationFor(job);
@@ -91,9 +98,11 @@ export function JobDetail({
     // An adapted SMG II procedure has no jobtext entry of its own — it is not an
     // SGBD job. It IS `TESTPRG_STARTEN` with a program number, so it inherits
     // that job's caution.
-    const caution =
-        cautionFor(jobText, job.id, lang) ??
-        (procedure ? cautionFor(jobText, 'TESTPRG_STARTEN', lang) : null);
+    //
+    // Not for a procedure: TESTPRG_STARTEN's note is how to sequence the module's jobs (send
+    // TESTPRG_STOP first, keep asking), which the procedure's own run does — an instruction the
+    // owner could not follow, in the module's job names (UX-30).
+    const caution = procedure ? null : cautionFor(jobText, job.id, lang);
 
     // The argument values the operator has chosen. They decide which results come
     // back — ADAPTIONSWERTE_LESEN declares 216 and returns about 30 of them.
@@ -244,6 +253,8 @@ export function JobDetail({
                     </div>
                 )}
             </Section>
+
+            {frame}
 
             {/* 3. Arguments, as controls where the SGBD supplies real choices. */}
             {job.args.length > 0 && (
@@ -420,12 +431,13 @@ function Axis({ term, value, mono = false }: { term: string; value: string; mono
     );
 }
 
+/** A note to read before pressing: one rule on its left in the note's colour, not a tinted box (tsunagi-m-design §3). */
 function Callout({ tone, text }: { tone: 'caution' | 'danger'; text: string }) {
-    const cls = tone === 'danger' ? 'bg-red-500/10 text-red-400' : 'bg-amber-500/10 text-amber-400';
+    const rule = tone === 'danger' ? 'border-red-500/60 text-red-400' : 'border-amber-500/60 text-amber-400';
     return (
-        <div className={`flex items-start gap-2 rounded p-2 ${cls}`}>
+        <div className={`flex items-start gap-2 border-l-2 pl-2.5 ${rule}`}>
             <AlertTriangle className="mt-0.5 size-3 shrink-0" />
-            <p className="text-[11px] leading-relaxed">{emphasise(text)}</p>
+            <p className="text-[11px] leading-relaxed text-slate-300">{emphasise(text)}</p>
         </div>
     );
 }
@@ -642,7 +654,7 @@ function ProcedureDetail({
     return (
         <>
             <div className="grid grid-cols-2 gap-x-3 border-t border-slate-800/50 pt-3">
-                <Field label={t.proc_duration} value={procedure.durMax || '—'} stacked />
+                <Field label={t.proc_duration} value={procedureMaxSec(procedure) === null ? '—' : formatDuration(procedureMaxSec(procedure)!, t)} stacked />
                 <Field
                     label={t.proc_engine}
                     value={procedure.engine === 'run' ? t.proc_engineRun : t.proc_engineOff}

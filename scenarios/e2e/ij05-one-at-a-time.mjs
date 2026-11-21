@@ -1,8 +1,8 @@
-import { connectPractice, tool } from './_lib.mjs';
+import { chooseSet, connectPractice, tool } from './_lib.mjs';
 import { PUMP_OFF, PUMP_ON, always, armedOnScreen, check, onModule, pageNow, screenText, startPump, wireSince } from './_ij.mjs';
 
 /** The STEUERN_STELLGLIED row on ACTUATOR. */
-const pumpRow = (page) => page.getByText('STEUERN_STELLGLIED', { exact: true }).first().locator('xpath=ancestor::*[.//*[@data-test="tj-start"]][1]');
+const pumpRow = (page) => page.getByText('STEUERN_STELLGLIED', { exact: true }).first().locator('xpath=ancestor::*[.//*[@data-test="tj-pick"]][1]');
 
 /** How many outputs ACTUATOR's right column lists as on. */
 const armedCount = async (page) => {
@@ -68,11 +68,14 @@ const scenario = {
         check('IJ09：画面で油圧ポンプを選んで START → 確認 → 実行', async (page, st) => {
             const row = pumpRow(page);
             for (let i = 0; i < 20 && (await row.locator('select').count()) === 0; i++) await page.waitForTimeout(250);
-            await row.locator('select').selectOption({ label: 'HYDROPUMPE · AKTIV · 0' });
-            await row.locator('[data-test="tj-start"]').click();
+            if (!(await chooseSet(row, '油圧ポンプ', 'オン · 0'))) return '油圧ポンプ › オン · 0 が選べない';
+            // The row chosen: the ring is its START (UX-01, one entrance).
+            await row.locator('[data-test="tj-pick"]').first().click();
+            await page.locator('[data-test="tj-start"]').click();
             const dialog = page.locator('[role=dialog]').first();
             await dialog.waitFor({ timeout: 3000 });
-            for (const box of await dialog.locator('input[type=checkbox]').all()) await box.check();
+            // The battery, the standstill and the engine are measured, not ticked (operator, 2026-11-21): only an acknowledgement is a box.
+            for (const box of await dialog.locator('[data-test="gate-ack"]').all()) await box.check();
             st.t9 = await pageNow(page);
             await page.locator('[data-test="gate-run"]').click();
             await page.waitForTimeout(2000);
@@ -108,11 +111,17 @@ const scenario = {
             const n = await armedCount(page);
             return n === 1 ? true : `動作中 ${n}`;
         }),
-        check('IJ09：画面では、動いている間は値も START も変えられない', async (page) => {
+        check('IJ09：画面では、動いている間は値も START も変えられない（ハブは STOP で、START はどこにも無い）', async (page) => {
             const row = pumpRow(page);
             const sel = await row.locator('select').isDisabled();
-            const start = await row.locator('[data-test="tj-start"]').isDisabled();
-            return sel && start ? true : `値 ${sel ? '固定' : '変えられる'}、START ${start ? '押せない' : '押せる'}`;
+            // Choosing another row while it is on does not bring a START back: the ring stays its STOP.
+            const other = page.locator('[data-test="tj-pick"]').first();
+            if (await other.count()) await other.click();
+            await page.waitForTimeout(200);
+            const start = page.locator('[data-test="tj-start"]:not([disabled]), [data-test="tj-run"]:not([disabled])');
+            const noStart = (await start.count()) === 0;
+            const stop = (await page.locator('[data-test="tj-stop"]:not([disabled])').count()) > 0;
+            return sel && noStart && stop ? true : `値 ${sel ? '固定' : '変えられる'}、START ${noStart ? '無し' : '押せる'}、STOP ${stop ? 'あり' : '無し'}`;
         }),
         { shot: 's04-voice-refused' },
         check('後片付け：止める', async (page) => {

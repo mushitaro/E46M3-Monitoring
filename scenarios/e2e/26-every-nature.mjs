@@ -83,10 +83,8 @@ const byScreen = async (page, { module, job, values, actuator }) => {
     if (actuator) {
         await page.locator('[role=tab]:has-text("ACTUATOR")').first().click();
         await page.waitForTimeout(600);
-        // The innermost element holding both the job's name and a RUN: its row.
-        const row = page
-            .locator(`xpath=//*[.//*[@data-test="tj-run" or @data-test="tj-start"]][.//*[normalize-space(text())="${job}"]]`)
-            .last();
+        // The innermost element holding both the job's name and its name's button: its row.
+        const row = page.locator(`xpath=//*[.//*[@data-test="tj-pick"]][.//*[normalize-space(text())="${job}"]]`).last();
         if ((await row.count()) === 0) return `${job}: no ACTUATOR row`;
         if (values) {
             const select = row.locator('select').first();
@@ -98,7 +96,11 @@ const byScreen = async (page, { module, job, values, actuator }) => {
             if (at < 1) return `${job}: no set to choose — ${options.join(' / ').slice(0, 200)}`;
             await select.selectOption({ index: at });
         }
-        const button = row.locator('[data-test="tj-run"], [data-test="tj-start"]').first();
+        // The row chosen by its name: the ring is its RUN or START (UX-01, one entrance).
+        await row.locator('[data-test="tj-pick"]').first().click();
+        await page.waitForTimeout(200);
+        const button = page.locator('[data-test="tj-run"], [data-test="tj-start"]').first();
+        if ((await button.count()) === 0) return `${job}: the ring is not its RUN`;
         if (await button.isDisabled()) return `${job}: RUN is disabled — ${(await row.innerText()).slice(0, 200)}`;
         await button.click();
     } else {
@@ -115,7 +117,8 @@ const byScreen = async (page, { module, job, values, actuator }) => {
     }
     const run = page.locator('[data-test="gate-run"]');
     await run.waitFor({ timeout: 3000 });
-    for (const box of await page.locator('[role=dialog] input[type=checkbox]').all()) await box.check();
+    // The battery, the standstill and the engine are measured, not ticked (operator, 2026-11-21): only an acknowledgement is a box.
+    for (const box of await page.locator('[role=dialog] [data-test="gate-ack"]').all()) await box.check();
     await run.click();
     await page.waitForTimeout(2500);
     const s = await tool(page, 'monitoring_status');

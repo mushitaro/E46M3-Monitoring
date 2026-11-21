@@ -99,12 +99,14 @@ const scenario = {
         {
             screen: {
                 desc: '比較：共通の車速、足した 2 番は「v2 から」、外した 1 番は「記録は残る」',
-                has: ['COMPARE', '先週と今週', '19:v', 'ADDED', '19:tz2', 'v2 から測っています', 'REMOVED', '19:tz1', 'それまでの記録は残ります'],
+                // Each by its name, its identifier beside it (UX-09).
+                has: ['COMPARE', '先週と今週', '車速（直接入力）', '19:v', 'ADDED', '点火時期 気筒2', '19:tz2', 'v2 から測っています', 'REMOVED', '点火時期 気筒1', '19:tz1', 'それまでの記録は残ります'],
             },
         },
         { shot: 'compare' },
         { ui: 'tab', name: 'STARTUP', means: 'オーナーが STARTUP を開く' },
-        { screen: { desc: '系列：二つのセッション、v2 で足した項目と外した項目', has: ['SERIES', 'v2', '+19:tz2', '+J3'] } },
+        // The items by name (UX-09): the value 2 番の点火角 and the judgement J3 on it (its spread).
+        { screen: { desc: '系列：二つのセッション、v2 で足した項目と外した項目', has: ['SERIES', 'v2', '+点火時期 気筒2', '+点火時期 気筒2（幅'] } },
         { shot: 'series' },
     ],
 };

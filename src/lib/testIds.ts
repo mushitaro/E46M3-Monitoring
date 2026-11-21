@@ -32,8 +32,12 @@
 export const TEST_ID = {
     // --- the gate ---------------------------------------------------------
     gateDialog: 'gate-dialog',
-    /** Every checkbox in the gate. The suites count them and tick them all. */
+    /** A precondition's checkbox in the gate: only what the app cannot measure (lib/gateChecks). */
     gateCond: 'gate-cond',
+    /** An acknowledgement's checkbox: what cannot be undone, what cannot be stopped. */
+    gateAck: 'gate-ack',
+    /** A precondition the app measures, shown as its last measurement, with no box (lib/gateChecks). */
+    gateMeasured: 'gate-measured',
     gateRun: 'gate-run',
     gateCancel: 'gate-cancel',
 
@@ -41,6 +45,8 @@ export const TEST_ID = {
     actuatorRun: 'tj-run',
     actuatorStart: 'tj-start',
     actuatorStop: 'tj-stop',
+    /** A row's name on ACTUATOR: pressed, it is the chosen row, and the ring is its START or RUN. */
+    actuatorPick: 'tj-pick',
 
     // --- DATALOG -------------------------------------------------------------
     /** A segment of the recording in the list: where its channels changed, or a ten-minute cut. */
@@ -49,6 +55,10 @@ export const TEST_ID = {
     datalogSegmentMark: 'segment-mark',
     /** The moment the assistant analysed, on the graphs. */
     datalogCursor: 'datalog-cursor',
+
+    // --- PROBE ---------------------------------------------------------------
+    /** A value card on the board: pressed, it shows its mean and spread (UX-10). */
+    valueCard: 'value-card',
 } as const;
 
 export type TestIdKey = keyof typeof TEST_ID;

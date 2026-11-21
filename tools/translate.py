@@ -303,6 +303,46 @@ def translate(text, lang, decompose=True, strip_prefixes=("STATUS_", "STAT_", "S
     return joined or text                                  # ③ 最終手段
 
 
+# translate() のどの段が訳を出したか。出荷する訳の一つ一つに付く（gen_ecu_data.py の TextPool）。
+#
+#   phrase  ① tools/terms/*.py の厳選フレーズ表。人が SGBD を読んで、その原文に書いた訳
+#   word    ② のうち、原文がトークン辞書の 1 語そのもの（分解も組み立ても無い）。人が書いた
+#           その語の訳だが、語は文脈を持たない
+#   tokens  ② トークン辞書の訳語を語ごとに並べた機械的な組み立て（独語が残るものも含む）
+#   source  ③ 辞書が 1 語も当たらず、原文のまま
+#
+# 画面が名前の欄に人の書いた訳として出すのは phrase と word だけ（src/lib/faultText.ts）。
+TIERS = ("phrase", "word", "tokens", "source")
+
+
+def tier(text, decompose=True, strip_prefixes=("STATUS_", "STAT_", "STEUERN_"), sgbd=None):
+    """translate(text, ..., decompose, strip_prefixes, sgbd) の ja がどの段から来たか（TIERS）。
+
+    translate() と同じ順で同じものを見る。ja と en は同じ段から出る（フレーズ表の値は
+    (ja, en) の組で、トークン辞書も同じ）ので、言語は問わない。"""
+    if _phrase_lookup((text or "").strip(), "ja", sgbd) is not None:
+        return "phrase"
+    s = text or ""
+    for p in strip_prefixes:
+        if s.startswith(p):
+            s = s[len(p):]; break
+    s = s.replace("JOBCOMMENT:", "")
+    parts = [p for p in re.split(r"[ _\-/().]+", s) if p]
+    words = [p for p in parts if not p.isdigit()]
+    if not words:
+        return "source"
+    if len(parts) == 1 and parts[0].upper() in DICT:
+        return "word"
+    for p in words:
+        T = p.upper()
+        if T in DICT:
+            return "tokens"
+        if decompose and any(T[i:j] in DICT for i in range(len(T))
+                             for j in range(i + 1, min(len(T), i + _MAXLEN) + 1)):
+            return "tokens"
+    return "source"
+
+
 def leftover_ratio(text, decompose=True, strip_prefixes=("STATUS_", "STAT_", "STEUERN_"),
                    sgbd=None):
     """0.0=完全に翻訳済み 〜 1.0=丸ごと未訳（独語のまま）。

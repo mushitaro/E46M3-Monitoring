@@ -188,11 +188,25 @@ const AUDIENCES = Object.keys({
  */
 export type TextRef = number;
 
+/**
+ * Where a text's ja and en came from: the step of the generator's translation that made them
+ * (tools/translate.py `TIERS`, recorded per text by tools/gen_ecu_data.py).
+ *
+ * - `phrase`: the curated phrase tables (tools/terms) — a person read the SGBD and wrote this text's translation.
+ * - `word`: the text is one word of the token dictionary, translated as that word; nothing composed.
+ * - `tokens`: the token dictionary's words laid side by side — a word-by-word machine composition,
+ *   German left in or not (`frei 15` → `許可15`).
+ * - `source`: no dictionary word matched; the German as it was.
+ */
+export type TextTier = 'phrase' | 'word' | 'tokens' | 'source';
+
 export interface LocalisedText {
     /** The SGBD original. Always kept — a confident mistranslation of an actuator name is an operating hazard. */
     de: string;
     ja: string;
     en: string;
+    /** Where ja and en came from. Absent in a catalogue generated before tiers were recorded: not known. */
+    tier?: TextTier;
 }
 
 /**

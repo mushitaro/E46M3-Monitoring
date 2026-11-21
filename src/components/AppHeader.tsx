@@ -27,7 +27,12 @@ import type { LinkState, LinkMode } from '@/hooks/useDs2Link';
  *
  * Composition follows the recipe exactly:
  *
- *   [ status-dot · TITLE /// ROLE · build-badge · AI · version | identity-readouts ] ⟷ [ icons ]
+ *   [ status-dot · TITLE /// ROLE · build-badge · AI · version ] ⟷ [ icons ]
+ *
+ * No identity readout. It was IDENT's raw hex and LEN, which answer no question the owner asks and
+ * stayed on screen after the link went (UX-14, 2026-11-21). The header's identity is what a person
+ * reads — the car, the build, the version (tsunagi-m-design §5.11). The bytes are in the COMMS LOG,
+ * DIAGNOSIS's IDENT section (collapsed) and the M menu's VEHICLE band.
  *
  * The build badge says which build this URL serves — WORKS on the owner build,
  * nothing at all on production — and only says it: a tinted span, never a
@@ -54,10 +59,8 @@ import type { LinkState, LinkMode } from '@/hooks/useDs2Link';
  * this is, and what cannot live anywhere else:
  *
  *   - the wordmark drops to 11px (WORDMARK in ui.tsx): 143.5px wide, not 189.9;
- *   - the version and the identity readouts step aside. IDENT and LEN are the
- *     first thing the DIAGNOSIS pane shows, with the whole hex, and the M menu's
- *     VEHICLE band; the version is at the foot of CREDITS and under the M menu's
- *     strip;
+ *   - the version steps aside: it is at the foot of CREDITS and under the M
+ *     menu's strip;
  *   - the icons step aside too, into the M menu's strip — PRIVACY | GITHUB |
  *     CREDITS | RELOAD in this order, the family's (tsunagi-m-chrome §1). The
  *     credits are what the licence of the work under this app asks to stay
@@ -80,7 +83,6 @@ import type { LinkState, LinkMode } from '@/hooks/useDs2Link';
  * already gives.
  */
 export function AppHeader({
-    ident,
     state,
     mode,
     hasError,
@@ -91,8 +93,8 @@ export function AppHeader({
     assistant = null,
     signIn = 'ok',
     onReauth = null,
+    practiceArmed = false,
 }: {
-    ident: { hex: string; length: number } | null;
     state: LinkState;
     mode: LinkMode;
     hasError: boolean;
@@ -110,6 +112,8 @@ export function AppHeader({
     /** SIGN IN AGAIN, while it can be pressed; null while it cannot. The shell confirms first when
      *  something unsaved would be lost. */
     onReauth?: (() => void) | null;
+    /** PRACTICE is ticked: the badge says so before the link opens too (UX-03, tsunagi-m-ux §16). */
+    practiceArmed?: boolean;
 }) {
     const { lang, t } = useLang();
     // The preview sends what production never does, so it links to where that is written down —
@@ -151,7 +155,7 @@ export function AppHeader({
                 {/* PRACTICE in words, at every width, while the practice car is what is connected (SC01
                     step 2): the dot's hue alone says it only to someone who knows the hue. Never a
                     shade of "connected" (StatusLed). */}
-                {mode === 'practice' && state !== 'disconnected' && (
+                {(state === 'disconnected' ? practiceArmed : mode === 'practice') && (
                     <Pill tone="secondary" title={t.mode_practice}>
                         {t.practice}
                     </Pill>
@@ -162,14 +166,6 @@ export function AppHeader({
                     {APP_VERSION}
                 </span>
 
-                {/* Identity readouts, fenced off with a rule. Mono, because this
-                    is data read off a machine — the split from the sans chrome is
-                    a core identity cue, not a font preference. Desk only: the
-                    rule and its margins alone are 65px of a phone's 312. */}
-                <div className="ml-8 hidden min-w-0 flex-1 items-center gap-4 overflow-hidden whitespace-nowrap border-l border-slate-800 pl-8 font-mono text-[10px] text-slate-500 min-[900px]:flex">
-                    <Readout label={t.field_ident} value={ident ? truncate(ident.hex, 26) : '—'} />
-                    <Readout label={t.field_len} value={ident ? String(ident.length) : '—'} />
-                </div>
             </div>
 
             {signIn !== 'ok' && <SignInNotice signIn={signIn} onReauth={onReauth} />}
@@ -309,17 +305,4 @@ function HeaderIcon({
             {glyph}
         </button>
     );
-}
-
-function Readout({ label, value }: { label: string; value: string }) {
-    return (
-        <span className="flex min-w-0 items-center gap-1.5">
-            <span className="shrink-0 uppercase tracking-wider">{label}</span>
-            <span className="truncate text-slate-300">{value}</span>
-        </span>
-    );
-}
-
-function truncate(s: string, n: number): string {
-    return s.length <= n ? s : `${s.slice(0, n)}…`;
 }

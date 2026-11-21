@@ -21,19 +21,29 @@
 
 import { AlertTriangle } from 'lucide-react';
 import { DialogFrame } from '@/components/DialogFrame';
+import { ConfirmDetails, ConfirmSteps } from '@/components/gate/ConfirmBody';
 import { DialogButton } from '@/components/ui';
 import { useLang } from '@/lib/i18n';
 
 export function ConfirmDialog({
     title,
     consequence,
+    steps,
+    details,
     confirmLabel,
     onConfirm,
     onCancel,
 }: {
     title: string;
     /** What this does that cannot be undone. Concrete — bytes, memory, values. */
-    consequence: string;
+    consequence?: string;
+    /**
+     * The same, in the one confirmation shape (docs/UX-DESIGN.md §5): what goes → that it cannot
+     * come back → what pressing does. Used instead of `consequence` where the dialog has those three.
+     */
+    steps?: { what: string; until: string; press: string };
+    /** Behind 詳細 ⓘ, for what is true but not needed to decide. */
+    details?: React.ReactNode;
     confirmLabel: string;
     onConfirm: () => void;
     onCancel: () => void;
@@ -56,7 +66,8 @@ export function ConfirmDialog({
                 </>
             }
         >
-            <p className="text-xs leading-relaxed text-slate-300">{consequence}</p>
+            {steps ? <ConfirmSteps {...steps} /> : <p className="text-xs leading-relaxed text-slate-300">{consequence}</p>}
+            {details && <ConfirmDetails>{details}</ConfirmDetails>}
         </DialogFrame>
     );
 }

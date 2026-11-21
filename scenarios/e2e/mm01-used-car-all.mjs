@@ -75,7 +75,8 @@ const scenario = {
                             bad.push(`${m.ja}：一覧に無い`);
                             continue;
                         }
-                        const state = lines[i + 2]?.trim() ?? '';
+                        // A `?` row has「候補 n」between its name and its tag (UX-19).
+                        const state = (/^候補 \d+$/.test(lines[i + 2]?.trim() ?? '') ? lines[i + 3] : lines[i + 2])?.trim() ?? '';
                         if (/応答なし|未解読|送らない/.test(state)) bad.push(`${m.ja}：${state}`);
                     }
                     return bad.length ? bad.join('、') : true;

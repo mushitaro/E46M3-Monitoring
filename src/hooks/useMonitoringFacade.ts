@@ -18,7 +18,7 @@ import { getBoard, putBoard } from '@/lib/probe/boardStore';
 import { listRuns } from '@/lib/probe/runStore';
 import { probeKept } from '@/lib/probeKept';
 import { MSS54_PRESENT_SOURCE, mss54Present, mss54Sporadic, presentFromKinds, readCutShort, scanCounts, scanSummary, type ScanRun, type SgbdFault } from '@tsunagi/monitoring-engine';
-import { codeText, faultName, faultNameAsShown, freezeFrameConditions } from '@/lib/faultText';
+import { codeText, faultLabel, faultName, faultNameAsShown, freezeFrameConditions } from '@/lib/faultText';
 import { isUnnamedLocation, kindsJa } from '@/lib/faultKinds';
 import type { RunBlockKey } from '@tsunagi/monitoring-engine';
 import { mayRun, mayRunProtocolRead, telegramBytes } from '@tsunagi/monitoring-engine';
@@ -96,6 +96,9 @@ const jaFault = (profile: EcuProfile | null, code: number | string | null) => fa
 const UNTRANSLATED_NOTE =
     "untranslated: true means the module's own table has no Japanese name a person can read for this fault; the screen shows 故障（訳なし） (textJa) with the SGBD's German (original). Say it that way. Do not give a translation of your own as its name.";
 
+/** A fault's English name, by the same rule as the Japanese (lib/faultText `untranslatedText`): null where no person translated it. */
+const enFault = (profile: EcuProfile | null, code: number | string | null) => faultLabel(profile, code, 'en')?.text ?? null;
+
 /**
  * MSS54 entries as the assistant reads them: the code, its name from the SGBD's own table (English, the
  * Japanese the screen shows, and the German original), whether it is there now, how often, and the
@@ -111,7 +114,7 @@ function describeEntries(entries: readonly ErrorMemoryEntry[], profile: EcuProfi
         return {
             code,
             type: formatErrorCode(f.errorType),
-            text: known && profile ? resolveText(profile, known.text, 'en').text : null,
+            text: enFault(profile, code),
             original: name?.original ?? null,
             ...jaFault(profile, code),
             inTable: !!known,
@@ -251,13 +254,11 @@ export function useMonitoringFacade(input: {
             const rows = raw as RawFaultRead[];
             const kwp = rows.flatMap((r) => r.kwpDtcs ?? []);
             if (rows.some((r) => r.kwpDtcs)) {
-                const byCode = new Map((catalog?.faultText ?? []).map((f) => [normCode(f.code), f]));
                 const codes = kwp.map((d) => {
-                    const known = byCode.get(normCode(d.code));
                     return {
                         code: d.code,
                         status: `0x${d.status.toString(16).padStart(2, '0')}`,
-                        text: known && catalog ? resolveText(catalog, known.text, 'en').text : null,
+                        text: enFault(catalog, d.code),
                         ...jaFault(catalog, d.code),
                     };
                 });
@@ -291,12 +292,10 @@ export function useMonitoringFacade(input: {
 
     /** Decoded codes with their module's own fault text (FORTTEXTE), in English. */
     const codesOf = (faults: readonly DecodedFault[], profile: EcuProfile | null) => {
-        const byCode = new Map((profile?.faultText ?? []).map((f) => [normCode(f.code), f]));
         return faults.map((f) => {
-            const known = byCode.get(normCode(f.code));
             return {
                 code: f.code,
-                text: known && profile ? resolveText(profile, known.text, 'en').text : null,
+                text: enFault(profile, f.code),
                 ...jaFault(profile, f.code),
                 count: f.count,
                 present: f.present,
@@ -313,14 +312,12 @@ export function useMonitoringFacade(input: {
         // DSC MK60 (lib/kwpOnDs2): its codes with its own SGBD's text — an estimate, as on its screen.
         const kwpId = r.results.find((x) => x.kwpDtcs)?.modules[0];
         const kwpCatalog = !kwpId ? null : kwpId === ecuId && catalog ? catalog : await loadEcuCatalog(kwpId).catch(() => null);
-        const kwpText = new Map((kwpCatalog?.faultText ?? []).map((f) => [normCode(f.code), f]));
         const kwpCodes = (dtcs: NonNullable<ScanRun['results'][number]['kwpDtcs']>) =>
             dtcs.map((d) => {
-                const known = kwpText.get(normCode(d.code));
                 return {
                     code: d.code,
                     status: `0x${d.status.toString(16).padStart(2, '0')}`,
-                    text: known && kwpCatalog ? resolveText(kwpCatalog, known.text, 'en').text : null,
+                    text: enFault(kwpCatalog, d.code),
                     ...jaFault(kwpCatalog, d.code),
                 };
             });

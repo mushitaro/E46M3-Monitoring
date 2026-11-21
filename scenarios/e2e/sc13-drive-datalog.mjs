@@ -193,7 +193,10 @@ const scenario = {
                 run: async (page) => {
                     const lines = await page.evaluate(() => [...document.querySelectorAll('svg polyline')].filter((p) => p.getBoundingClientRect().width > 0).length);
                     const text = await bodyText(page);
-                    const viz = text.slice(text.indexOf('VISUALIZATION & CONTROLS'));
+                    // The right column from its heading on: VISU since UX-26 (it was VISUALIZATION & CONTROLS).
+                    const at = text.indexOf('\nVISU\n');
+                    if (at < 0) return 'VISU の見出しが無い';
+                    const viz = text.slice(at);
                     const why = [];
                     if (lines !== 6) why.push(`線は ${lines} 本（回転・車速の 2 本と、カムの目標と実 2 組で 6 本のはず）`);
                     for (const n of ['エンジン回転数', '車速', '吸気VANOS バンク1', '排気VANOS バンク1', 'rpm', 'km/h']) if (!viz.includes(n)) why.push(`VISU に「${n}」が無い`);

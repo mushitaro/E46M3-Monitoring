@@ -102,9 +102,12 @@ const scenario = {
         }),
         { ui: 'tab', name: 'ACTUATOR' },
         check('IJ10：画面の ACTUATOR に、ロールバーを動かせるボタンが無い（押せない・札あり）', async (page) => {
-            const row = page.locator(`xpath=//*[.//*[@data-test="tj-run" or @data-test="tj-start"]][.//*[normalize-space(text())="STEUERN_BUEGEL"]]`).last();
+            const row = page.locator(`xpath=//*[.//*[@data-test="tj-pick"]][.//*[normalize-space(text())="STEUERN_BUEGEL"]]`).last();
             if ((await row.count()) === 0) return true;
-            const btn = row.locator('[data-test="tj-run"], [data-test="tj-start"]').first();
+            // The row chosen, the ring is its RUN or START (UX-01): it must not be pressable.
+            await row.locator('[data-test="tj-pick"]').first().click();
+            await page.waitForTimeout(200);
+            const btn = page.locator('[data-test="tj-run"], [data-test="tj-start"]').first();
             const text = await row.innerText();
             return (await btn.isDisabled()) && /出さない|表示だけ/.test(text) ? true : `押せる、または札が無い: ${text.slice(0, 160)}`;
         }),

@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { DataList, DataRow, LABEL, Section, humanName } from '@/components/ui';
+import { DataList, DataRow, LABEL, Section, emphasise, humanName } from '@/components/ui';
 import { SentenceTag } from '@/views/shared/RunReason';
 import { adjustmentJobs, adjustmentStatus, type AdjustmentStatus } from '@/lib/adjustments';
 import { cautionFor, loadJobText, type JobTextTable } from '@/lib/jobText';
+import { instructionsIn } from '@/lib/instructions';
+import { ConfirmDetails } from '@/components/gate/ConfirmBody';
 import { useLang } from '@/lib/i18n';
 import { label, type ActuationMode, type EcuProfile, type Ledger, type Motion } from '@tsunagi/monitoring-engine';
 
@@ -17,6 +19,10 @@ import { label, type ActuationMode, type EcuProfile, type Ledger, type Motion } 
  * A row is its name, what it needs, and one tag (UX-31): the reason's sentence is the tag's, said when
  * the tag is touched (as ACTUATOR's are), and the section's ⓘ says what the tags are. Three lines of
  * paragraph under every row said the same two sentences four times.
+ *
+ * What a row needs is said whole, in the reader's language: the preconditions, and what the job's
+ * caution tells the person to do (「平坦な場所で、車輪を直進に向け、車両を完全に静止させてから」 —
+ * `lib/instructions`). The caution itself, with the SGBD's words, is under 詳細 (docs/UX-DESIGN.md §5).
  */
 export function Adjustments({
     catalog,
@@ -96,6 +102,7 @@ export function Adjustments({
                     const s = status[j.id];
                     const tag = tagOf(s);
                     const caution = cautionFor(text, j.id, lang);
+                    const needs = [...j.preconditions.map(pre), ...instructionsIn(caution, lang)];
                     return (
                         <DataRow
                             key={j.id}
@@ -108,7 +115,16 @@ export function Adjustments({
                                     <span className={`shrink-0 ${LABEL} text-slate-600`}>{t.awaiting_read}</span>
                                 )
                             }
-                            detail={<p className="text-[11px] text-slate-400">{t.adjust_pre([...j.preconditions.map(pre), ...(caution ? [caution] : [])].join(' · '))}</p>}
+                            detail={
+                                <>
+                                    {needs.length > 0 && <p className="text-[11px] text-slate-300">{t.adjust_pre(needs.join(' · '))}</p>}
+                                    {caution && (
+                                        <ConfirmDetails className="">
+                                            <p>{emphasise(caution)}</p>
+                                        </ConfirmDetails>
+                                    )}
+                                </>
+                            }
                         />
                     );
                 })}

@@ -25,7 +25,6 @@ const T = {
     op_start: 'START',
     samples: 'SAMPLES',
     hub_pickRow: 'pick a row',
-    hub_actuatorRows: 'start a row',
     hub_noReadFrame: 'no frame for this module',
     hub_dmeOnly: 'no live-block layout',
     next_session: 'NEXT',
@@ -144,9 +143,26 @@ describe('each tab supplies its own verb', () => {
         expect(cfg?.notice).toBeUndefined();
     });
 
-    it('ACTUATOR shows its verb, not a dead LINKED ring; its rows start what they drive', () => {
+    it('ACTUATOR shows its verb waiting for a row, not a dead LINKED ring', () => {
         const cfg = viewHubFor(state({ tab: 'actuator' }));
-        expect(cfg).toMatchObject({ label: 'RUN', disabled: true, notice: 'start a row' });
+        expect(cfg).toMatchObject({ label: 'RUN', disabled: true, notice: 'pick a row' });
+    });
+
+    it("ACTUATOR's ring is the chosen row's START or RUN, through the row's own press", () => {
+        const press = vi.fn();
+        const hold = viewHubFor(state({ tab: 'actuator', actuator: { phase: 'start', risk: 'medium', why: null, press } }));
+        expect(hold).toMatchObject({ label: 'START', Icon: ICONS.start, tone: 'ready', testId: 'tj-start' });
+        hold?.onClick?.();
+        expect(press).toHaveBeenCalledOnce();
+        const once = viewHubFor(state({ tab: 'actuator', actuator: { phase: 'pulse', risk: 'high', why: null, press } }));
+        expect(once).toMatchObject({ label: 'RUN', Icon: ICONS.run, tone: 'armed-danger', testId: 'tj-run' });
+    });
+
+    it("ACTUATOR does not offer a row its gate refuses: disabled, and the notice says why", () => {
+        const press = vi.fn();
+        const cfg = viewHubFor(state({ tab: 'actuator', actuator: { phase: 'start', risk: 'high', why: 'not sent · moving', press } }));
+        expect(cfg).toMatchObject({ label: 'START', tone: 'idle', disabled: true, notice: 'not sent · moving', testId: 'tj-start' });
+        expect(cfg?.onClick).toBeUndefined();
     });
 
     it('MEMORY saves, and keeps the ring without a link', () => {
@@ -223,6 +239,24 @@ describe('SERVICE renders the gate, and never re-derives it', () => {
         );
         expect(proc?.label).toBe('START');
         expect(proc?.Icon).toBe(ICONS.start);
+    });
+
+    it('does not offer the START of a procedure its own gate refuses (UX-30)', () => {
+        const open = vi.fn();
+        const refused = viewHubFor(
+            state({
+                tab: 'service',
+                service: { selected: { isProcedure: true, risk: 'high' }, verdict: null, run: () => {}, openProcedure: open, procedureRefusal: 'run_block_practiceFirst' },
+            }),
+        );
+        expect(refused).toMatchObject({ label: 'START', disabled: true, tone: 'idle', notice: 'blocked: run_block_practiceFirst' });
+        expect(refused?.onClick).toBeUndefined();
+        const may = viewHubFor(
+            state({ tab: 'service', service: { selected: { isProcedure: true, risk: 'high' }, verdict: null, run: () => {}, openProcedure: open, procedureRefusal: null } }),
+        );
+        expect(may).toMatchObject({ label: 'START', tone: 'ready' });
+        may?.onClick?.();
+        expect(open).toHaveBeenCalledOnce();
     });
 });
 

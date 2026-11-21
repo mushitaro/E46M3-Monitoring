@@ -9,7 +9,7 @@ const JOB = 'STEUERN_STELLGLIED';
 const SET = ['HYDROPUMPE', 'AKTIV', '0'];
 const START_FRAME = /^32 07 0c 05 01 00 3d$/;
 const STOP_FRAME = /^32 07 0c 05 00 00 3c$/;
-const row = (page) => rowOf(page, JOB, 'tj-start');
+const row = (page) => rowOf(page, JOB, 'tj-pick');
 
 /** 自分で止まるまで待つ：止まった ms（75 秒たっても止まらなければ null）。 */
 async function untilOff(page, t0) {

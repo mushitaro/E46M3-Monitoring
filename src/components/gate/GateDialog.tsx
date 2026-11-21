@@ -4,7 +4,7 @@ import { AlertTriangle, Play } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { DialogFrame } from '@/components/DialogFrame';
 import { DialogButton, LABEL, MicroLabel, Pill, Well, emphasise } from '@/components/ui';
-import { ConfirmDetails, ConfirmSteps } from '@/components/gate/ConfirmBody';
+import { ConfirmDetails, ConfirmSteps, Told } from '@/components/gate/ConfirmBody';
 import { planLines, type Phase } from '@/lib/actuatorArgs';
 import type { CatalogJob } from '@tsunagi/monitoring-engine';
 import { execStyleOf } from '@/lib/execStyle';
@@ -15,6 +15,7 @@ import { operationFor } from '@tsunagi/monitoring-engine';
 import type { RunVerdict } from '@tsunagi/monitoring-engine';
 import type { ActuationMode } from '@tsunagi/monitoring-engine';
 import { appNow, type VehicleState } from '@tsunagi/monitoring-engine';
+import { instructionsIn } from '@/lib/instructions';
 
 /**
  * The confirmation between pressing RUN and bytes leaving.
@@ -48,6 +49,11 @@ import { appNow, type VehicleState } from '@tsunagi/monitoring-engine';
  * quotation, the call lines, the frame and how sure it is are all still here, under 詳細: true,
  * and not what a person needs to read to decide. The one safety fact the quotation carried for a
  * held output (the pump does not stop by itself) is the second line, said as what this app does.
+ *
+ * What the job's caution tells the person to do or not do (「実行中はブレーキペダルに触れないでください」,
+ * 「エンジンを止めてから」) is not a detail: it is a precondition, said in the visible body with the others,
+ * in the reader's language (`lib/instructions`). No box of its own — the boxes are the operator's list,
+ * and this dialog asks for exactly those. The caution whole stays under 詳細 with the SGBD's words.
  */
 export function GateDialog({
     job,
@@ -122,6 +128,7 @@ export function GateDialog({
         : style === 'pulse-unreleasable' ? t.conf_staysOn
         : t.gate_once;
     const verb = phase === 'start' ? t.op_start : t.op_run;
+    const told = instructionsIn(caution, lang);
 
     return (
         <DialogFrame
@@ -159,10 +166,11 @@ export function GateDialog({
             {/* What happens → until when → what pressing does (docs/UX-DESIGN.md §5). */}
             <ConfirmSteps what={what} until={until} press={t.gate_onPress(phase === 'start')} />
 
-            {/* --- preconditions: the operator's rule, a box each, the measurement beside it ----- */}
-            {job.preconditions.length > 0 && (
+            {/* --- preconditions: the operator's rule, a box each, the measurement beside it; then what
+                the caution tells the person to do, in their words, without a box ----------------- */}
+            {(job.preconditions.length > 0 || told.length > 0) && (
                 <>
-                    <MicroLabel className="mt-4">{t.gate_needs}</MicroLabel>
+                    <MicroLabel className="mt-4">{job.preconditions.length > 0 ? t.gate_needs : t.conf_instructions}</MicroLabel>
                     <div className="mt-1 flex flex-col gap-1.5">
                         {job.preconditions.map((p) => (
                             <Check
@@ -173,6 +181,7 @@ export function GateDialog({
                                 onToggle={() => toggle(`pre:${p}`)}
                             />
                         ))}
+                        <Told lines={told} indent={job.preconditions.length > 0} />
                     </div>
                 </>
             )}

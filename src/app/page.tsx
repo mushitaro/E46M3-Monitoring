@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, ArrowRight, Download, Plus, Radar, RotateCcw } from 'lucide-react';
+import { AlertTriangle, Download, Plus, Radar, RotateCcw } from 'lucide-react';
 import { AppHeader } from '@/components/AppHeader';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { CreditsDialog } from '@/components/CreditsDialog';
@@ -22,6 +22,8 @@ import { partName, partTable } from '@/lib/partName';
 import { notSentLine } from '@/lib/notSentText';
 import { carKey, choiceFor, decidedByYear, identifiedAt, readChoices, variantRefusal, variantState, withChoice, VARIANT_CHOICE_KEY, type VariantChoices } from '@/lib/variantChoice';
 import type { ProcedureEnd } from '@/lib/procedureEnd';
+import { procedureRefusalOf } from '@/lib/procedureRun';
+import type { ActuatorRing } from '@/lib/viewHub';
 import { procedureReason } from '@/lib/procedureEnd';
 import { loadVariantRules, ruleFor, type VariantRules } from '@tsunagi/monitoring-engine';
 import { useNow } from '@/hooks/useNow';
@@ -570,7 +572,6 @@ export default function Home() {
      * K-line. The other tabs need one module, so they keep showing it.
      */
     const scopeAll = allModules && tab === 'diagnosis';
-    const [scanOpen, setScanOpen] = useState<string | null>(null);
     const ledgerRef = useRef(ledger);
     useEffect(() => {
         ledgerRef.current = ledger;
@@ -580,7 +581,6 @@ export default function Home() {
         if (!ecuIndex) return 'The module index has not loaded yet.';
         const targets = await loadScanTargets(ecuIndex);
         setAllModules(true);
-        setScanOpen(null);
         void link.scanAll(targets, () => ledgerRef.current);
         return { addresses: targets.length };
     }, [ecuIndex, link]);
@@ -597,9 +597,8 @@ export default function Home() {
         },
         [ecuId, changeEcu],
     );
-    // OPEN under the scan: the chosen row's module on the screen. A shared address has more than one
-    // SGBD and is chosen on the select instead.
-    const scanOpenModule = scopeAll && scanOpen ? (link.scan?.results.find((x) => x.address === scanOpen)?.modules ?? []) : [];
+    // A scan row's name: its module on the screen, by the module switch's own path (UX-23). A shared
+    // address has more than one SGBD and is chosen on the select instead (views/diagnosis `rowModule`).
     const openScanned = useCallback(
         (id: string) => {
             setAllModules(false);
@@ -709,6 +708,9 @@ export default function Home() {
         [selectJob, changeTab],
     );
     const procedure = selectedJob ? procedureForJob(selectedJob, workflows) : null;
+    // ACTUATOR's chosen row, as its ring presses it. The view derives it from the row's own verdict on
+    // every render and hands it up; the hub renders it (lib/viewHub `ActuatorRing`).
+    const [actuatorRing, setActuatorRing] = useState<ActuatorRing | null>(null);
     // How the last procedure ended, for the assistant (monitoring_status `lastProcedure`, IJ F10, SC08 F08).
     const [lastProcedure, setLastProcedure] = useState<ProcedureEnd | null>(null);
 
@@ -871,6 +873,14 @@ export default function Home() {
             : null;
 
 
+    // The selected procedure's own gate, as its wizard asks it (lib/procedureRun): on a car only.
+    const linkMode = link.mode;
+    const linkMotion = link.motion;
+    const procedureRefusal = useMemo(
+        () => procedureRefusalOf(procedure, catalog, linkMode, ledger, linkMotion),
+        [procedure, catalog, linkMode, ledger, linkMotion],
+    );
+
     // Two pure deciders, wired to this app's glyphs and strings in one hook —
     // `lib/hub` for the link's tiers, `lib/viewHub` for the view's.
     const { hub, notice } = useHub({
@@ -884,6 +894,8 @@ export default function Home() {
         runVerdict,
         catalogError,
         openProcedure: procedure ? () => setWizardOpen(true) : undefined,
+        procedureRefusal,
+        actuator: tab === 'actuator' ? actuatorRing : null,
         confirmRun: () => {
             // Which module answers at this address is the IDENT's, or the owner's to say on ACTUATOR, first.
             const v = variantOf(ecuId);
@@ -969,8 +981,7 @@ export default function Home() {
                 progress={link.scanProgress}
                 index={ecuIndex}
                 mss54={mss54Catalog}
-                selected={scanOpen}
-                onSelect={setScanOpen}
+                onOpen={link.state === 'busy' ? undefined : openScanned}
                 idleHint={link.state === 'disconnected' ? t.start_hint : undefined}
                 ownerChose={(address) => choiceFor(variantChoices, car, address)}
             />
@@ -1021,6 +1032,7 @@ export default function Home() {
                 onRun={link.runRead}
                 measured={link.vehicleState}
                 lineLost={link.lineLost}
+                onRing={setActuatorRing}
             />
         ) : (
             <AwaitingCatalog />
@@ -1076,9 +1088,9 @@ export default function Home() {
                 runVerdict={runVerdict}
             />
         ),
-        // ACTUATOR's rows carry their own controls, their own gate verdict and
-        // their own refusal text, so the right column has no per-row question
-        // left to answer. It answers the only one remaining: what IS this
+        // ACTUATOR's rows carry their own gate verdict and refusal word, and the
+        // chosen row's action is the ring, so the right column has no per-row
+        // question left to answer. It answers the only one remaining: what IS this
         // module. Same component SERVICE falls back to, because it is the same
         // question and the numbers are about the module, not the tab.
         actuator: <ActuatorViz profile={catalog} arming={arming} workflows={workflows} lastRun={link.lastRun} />,
@@ -1239,11 +1251,6 @@ export default function Home() {
                                     </TextButton>
                                 )
                             )}
-                            {scanOpenModule.length === 1 && link.state !== 'busy' && (
-                                <TextButton onClick={() => openScanned(scanOpenModule[0])} Icon={ArrowRight}>
-                                    {t.open_module}
-                                </TextButton>
-                            )}
                             {/* DISCONNECT was here. It is now on the MODULE row —
                                 see the note in Chrome.tsx. */}
                             {tab === 'datalog' && datalog.samples.length > 0 && (
@@ -1305,7 +1312,7 @@ export default function Home() {
                 (tsunagi-m-mobile references/mobile-chrome.md §2, §3).
                 ────────────────────────────────────────────────────────
                 HUB is not in it: below 900 HUB is always up, so the next step — CONNECT, READ,
-                OPEN — is never a tap away from the rows it acts on. The switch turns over the
+                RUN — is never a tap away from the rows it acts on. The switch turns over the
                 window beside it, MAIN or MULTI, labelled LIST and VISU. The tab bar is not drawn below 900 (the views are
                 the M menu's), so that window has its cell's whole height:
 

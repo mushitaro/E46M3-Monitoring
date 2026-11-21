@@ -1,7 +1,4 @@
-import { chooseSet, openDetails, setsOf, tool } from './_lib.mjs';
-
-/** The row of a job: the nearest ancestor of its name that holds the given control. */
-const rowOf = (page, job, testId) => page.getByText(job, { exact: true }).first().locator(`xpath=ancestor::*[.//*[@data-test="${testId}"]][1]`);
+import { actuatorRowOf, chooseSet, openDetails, pickActuator, setsOf, tool } from './_lib.mjs';
 
 /**
  * SMG II's STEUERN_STELLGLIED on PRACTICE: a part chosen with a whole set of values, the frame its own
@@ -13,7 +10,7 @@ const scenario = {
     title: 'SMG II の部品を値の組で動かす：EdiabasLib と同じ電文だけを、止める電文と一緒に（練習モード）',
     story:
         'オーナーの決定（2026-11-15）：部品を動かすジョブは、画面で選んだ値で動かす。値を取るジョブは、選んだ値の組でジョブ自身の SGBD のコードが組む電文が、' +
-        'EdiabasLib の組む電文と同じになる組だけを出す。ACTUATOR の STEUERN_STELLGLIED は、部品ごとにまとめた値の組を選ぶ。選ぶまで START は押せない。' +
+        'EdiabasLib の組む電文と同じになる組だけを出す。ACTUATOR の STEUERN_STELLGLIED は、部品ごとにまとめた値の組を選ぶ。行を選ぶとハブがその START になり、値を選ぶまで押せない。' +
         '選んで START を押すと、確認に始めと止めの呼び出しが出て、実行すると送られ、止める電文が手元に置かれる。STOP で止まる。' +
         'オーナーの決定（2026-11-16）で、部品を動かすものは AI も始められる。AI が値を渡さずに頼むと、EdiabasLib と比べた組が返り、比べていない組では始めない。',
     steps: [
@@ -25,11 +22,15 @@ const scenario = {
             check: {
                 desc: '値を選ぶまで、STEUERN_STELLGLIED の START は押せない',
                 run: async (page) => {
-                    const row = rowOf(page, 'STEUERN_STELLGLIED', 'tj-start');
+                    const row = actuatorRowOf(page, 'STEUERN_STELLGLIED');
                     if ((await row.count()) === 0) return 'STEUERN_STELLGLIED の行が無い';
                     for (let i = 0; i < 20 && (await row.locator('select').count()) === 0; i++) await page.waitForTimeout(250);
                     if ((await row.locator('select').count()) === 0) return '値の組の選択が無い';
-                    return (await row.locator('[data-test="tj-start"]').isDisabled()) ? true : 'START が押せてしまう';
+                    // The row chosen: the ring is its START, and it waits for the values.
+                    await pickActuator(page, 'STEUERN_STELLGLIED');
+                    const start = page.locator('[data-test="tj-start"]');
+                    if ((await start.count()) === 0) return 'ハブが STEUERN_STELLGLIED の START にならない';
+                    return (await start.isDisabled()) ? true : 'START が押せてしまう';
                 },
             },
         },
@@ -37,7 +38,7 @@ const scenario = {
             check: {
                 desc: '値の組は部品の名前の下に人の語で並び（油圧ポンプ › オン · 0）、PIN（0x05 など）も SGBD の独語も無く、止め（INAKTIV＝オフ）は始めとして出ない',
                 run: async (page) => {
-                    const row = rowOf(page, 'STEUERN_STELLGLIED', 'tj-start');
+                    const row = actuatorRowOf(page, 'STEUERN_STELLGLIED');
                     const labels = await row.locator('select option').allTextContents();
                     const sets = await setsOf(row);
                     if (!sets.includes('油圧ポンプ › オン · 0')) return `油圧ポンプ › オン · 0 が無い: ${sets.slice(0, 8).join(' | ')}`;
@@ -52,9 +53,10 @@ const scenario = {
             check: {
                 desc: '油圧ポンプ › オン · 0（HYDROPUMPE · AKTIV · 0）を選んで START、確認の詳細に始めと止めの呼び出しが出て、実行すると送られて止めが置かれる',
                 run: async (page) => {
-                    const row = rowOf(page, 'STEUERN_STELLGLIED', 'tj-start');
+                    const row = actuatorRowOf(page, 'STEUERN_STELLGLIED');
                     if (!(await chooseSet(row, '油圧ポンプ', 'オン · 0'))) return '油圧ポンプ › オン · 0 が選べない';
-                    const start = row.locator('[data-test="tj-start"]');
+                    await pickActuator(page, 'STEUERN_STELLGLIED');
+                    const start = page.locator('[data-test="tj-start"]');
                     if (await start.isDisabled()) return `選んでも START が押せない: ${(await row.innerText()).slice(0, 200)}`;
                     await start.click();
                     const dialog = page.locator('[role=dialog]').first();
@@ -84,7 +86,7 @@ const scenario = {
                     await stop.click();
                     await page.waitForTimeout(1500);
                     // Stopped: the ring is no longer a STOP, and the row no longer says it is on.
-                    const row = await rowOf(page, 'STEUERN_STELLGLIED', 'tj-start').innerText();
+                    const row = await actuatorRowOf(page, 'STEUERN_STELLGLIED').innerText();
                     return (await stop.count()) === 0 && !row.includes('作動中') ? true : 'まだ止まっていない';
                 },
             },

@@ -114,6 +114,23 @@ export function faultLabel(profile: EcuProfile | null, code: number | string | n
     return l.text || l.original ? l : null;
 }
 
+/**
+ * A fault's Japanese name for the assistant, as the screen says it (UX-22, D3-4): the module's own name
+ * where its Japanese reads as Japanese; where it still carries the SGBD's German (`hasSourceLeft`), the
+ * screen's word for that (`untranslated`, 「故障（訳なし）」) with `untranslated: true` and the German as
+ * `original`. A half-translation is never handed on as a name. Null name: the table has no such code.
+ */
+export function faultNameAsShown(
+    profile: EcuProfile | null,
+    code: number | string | null,
+    untranslated: string,
+): { textJa: string | null; untranslated?: true; original?: string } {
+    const label = faultLabel(profile, code, 'ja');
+    if (!label) return { textJa: null };
+    if (label.text) return { textJa: label.text };
+    return label.original ? { textJa: untranslated, untranslated: true, original: label.original } : { textJa: null };
+}
+
 /** One condition a freeze frame recorded, named and with its unit. */
 export interface Condition {
     name: HumanName;

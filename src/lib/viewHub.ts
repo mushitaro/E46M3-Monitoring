@@ -19,10 +19,12 @@
  *
  * The ring is the one thing to press on the screen, and a ring with nothing to
  * press (the old LINKED) is not shown any more. A job table with nothing chosen
- * shows its verb disabled and says what it waits for. ACTUATOR's rows still
- * carry their own START and RUN (each names the part it drives), so its ring is
- * that verb, disabled, until something is on — then it is the thing's STOP
- * (lib/hub tier 0), the one place to stop it.
+ * shows its verb disabled and says what it waits for. ACTUATOR is one of them:
+ * the ring is the chosen row's START (a part held on) or RUN (sent once) — the
+ * one entrance, through the row's own gate and confirmation — and, while
+ * something is on, that thing's STOP (lib/hub tier 0), the one place to stop it.
+ * A row its gate refuses is not offered: the ring is disabled and the notice
+ * says so, conclusion first (docs/UX-DESIGN.md §2). SERVICE the same.
  *
  * Pure, and the caller passes the strings, the glyphs and the handlers, so
  * vitest checks it under `environment: 'node'`.
@@ -32,6 +34,20 @@ import type { HubConfig } from '@/components/Hub';
 import type { LinkState } from '@/hooks/useDs2Link';
 import type { RunVerdict } from '@tsunagi/monitoring-engine';
 import type { Tab } from '@/lib/tabs';
+import { TEST_ID } from '@/lib/testIds';
+
+/**
+ * ACTUATOR's chosen row, as its ring presses it (views/actuator/ActuatorView). Derived there from the
+ * row's own verdict — the one its press asks — on every render; the ring only renders it.
+ */
+export interface ActuatorRing {
+    /** START holds the part on until STOP or its time-out; RUN sends it once. */
+    phase: 'start' | 'pulse';
+    risk: 'high' | 'medium' | 'low';
+    /** Null: it may go now, and `press` opens its confirmation. Otherwise the notice line's words. */
+    why: string | null;
+    press: () => void;
+}
 
 export interface ViewHubStrings {
     hub_read: string;
@@ -43,14 +59,12 @@ export interface ViewHubStrings {
     samples: string;
     /** The job tables with nothing chosen: what the verb waits for. */
     hub_pickRow: string;
-    /** ACTUATOR: its rows start what they drive; the ring stops it. */
-    hub_actuatorRows: string;
     /** Short forms for the notice line: the screen's MAIN says the whole sentence. */
     hub_noReadFrame: string;
     hub_dmeOnly: string;
     next_session: string;
     probe_notRunnable: string;
-    /** The refusal, already resolved to a sentence — `t.runBlock[reason]`. */
+    /** The refusal, already resolved to the notice line's words — `t.hub_wontSend(t.runBlockShort[reason])`. */
     runBlock: (reason: Extract<RunVerdict, { allowed: false }>['reason']) => string;
 }
 
@@ -128,7 +142,14 @@ export interface ViewHubState {
          * answer instead of a one-line refusal.
          */
         openProcedure?: () => void;
+        /**
+         * The procedure's own gate (`mayRunProcedure` on a car; nothing in PRACTICE), null when it may
+         * run. A START that opens a wizard only to say it is refused is not offered (UX-30).
+         */
+        procedureRefusal?: Extract<RunVerdict, { allowed: false }>['reason'] | null;
     };
+    /** ACTUATOR's chosen row, or null when none is chosen. */
+    actuator?: ActuatorRing | null;
 }
 
 export function viewHubFor(s: ViewHubState): HubConfig | null {
@@ -207,14 +228,14 @@ export function viewHubFor(s: ViewHubState): HubConfig | null {
                 };
             }
             // A procedure opens its wizard. Not `armed-danger`, whatever its
-            // risk: nothing is armed, because pressing this sends no frame.
+            // risk: nothing is armed, because pressing this sends no frame. But
+            // not when its own gate refuses it: the wizard would open only to
+            // say so, and the ring would be a START that cannot start (UX-30).
             if (sel.isProcedure && s.service.openProcedure) {
-                return {
-                    label: s.t.op_start,
-                    Icon: s.icons.start,
-                    tone: 'ready',
-                    onClick: s.service.openProcedure,
-                };
+                const refused = s.service.procedureRefusal ?? null;
+                return refused
+                    ? { label: s.t.op_start, Icon: s.icons.start, tone: 'idle', disabled: true, notice: s.t.runBlock(refused) }
+                    : { label: s.t.op_start, Icon: s.icons.start, tone: 'ready', onClick: s.service.openProcedure };
             }
             const v = s.service.verdict;
             const allowed = v?.allowed === true;
@@ -231,10 +252,21 @@ export function viewHubFor(s: ViewHubState): HubConfig | null {
             };
         }
 
-        // The rows start what they drive (each names its part, and a job that takes values chooses
-        // them on its row); the ring is the verb until something is on, then that thing's STOP.
-        case 'actuator':
-            return { label: s.t.op_run, Icon: s.icons.run, tone: 'idle', disabled: true, notice: s.t.hub_actuatorRows };
+        // The chosen row's START or RUN — the one entrance, through the row's own gate and confirmation
+        // (a job that takes values chooses them on its row). While something is on, its STOP (tier 0).
+        case 'actuator': {
+            const r = s.actuator;
+            if (!r) return { label: s.t.op_run, Icon: s.icons.run, tone: 'idle', disabled: true, notice: s.t.hub_pickRow };
+            const start = r.phase === 'start';
+            const base = {
+                label: start ? s.t.op_start : s.t.op_run,
+                Icon: start ? s.icons.start : s.icons.run,
+                testId: start ? TEST_ID.actuatorStart : TEST_ID.actuatorRun,
+            };
+            if (r.why !== null) return { ...base, tone: 'idle', disabled: true, notice: r.why };
+            // Red only when it is armed to drive something risky AND may go — as SERVICE's.
+            return { ...base, tone: r.risk === 'high' ? 'armed-danger' : 'ready', onClick: r.press };
+        }
 
         // SAVE works with or without a link, so it holds the ring while disconnected too (`offline`):
         // under the link's CONNECT it would vanish exactly when the cable is unplugged, which is

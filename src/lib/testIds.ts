@@ -41,6 +41,8 @@ export const TEST_ID = {
     actuatorRun: 'tj-run',
     actuatorStart: 'tj-start',
     actuatorStop: 'tj-stop',
+    /** A row's name on ACTUATOR: pressed, it is the chosen row, and the ring is its START or RUN. */
+    actuatorPick: 'tj-pick',
 
     // --- DATALOG -------------------------------------------------------------
     /** A segment of the recording in the list: where its channels changed, or a ten-minute cut. */

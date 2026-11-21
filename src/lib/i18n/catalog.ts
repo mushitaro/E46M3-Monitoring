@@ -71,9 +71,16 @@ export interface Localised {
     datalog_hubLine: (elapsed: string, rpm: string, kmh: string, samples: number) => string;
     /** The notice after a recording is stopped: how long, how many samples (UX-04). */
     datalog_stoppedLine: (elapsed: string, samples: number) => string;
-    /** The hub's notices, short: a job table with nothing chosen, ACTUATOR's rows, a module with no read frame, DATALOG off the DME. */
+    /** The hub's notices, short: a job table with nothing chosen, a module with no read frame, DATALOG off the DME. */
     hub_pickRow: string;
-    hub_actuatorRows: string;
+    /**
+     * The chosen row's job will not be sent: the conclusion first, then the reason in a word
+     * (`runBlockShort`) — the notice line's form (docs/UX-DESIGN.md §2). The sentence is the row's tag
+     * and VISU's.
+     */
+    hub_wontSend: (why: string) => string;
+    /** ACTUATOR, before anything drives: which module answers at this address is the owner's to say first. */
+    hub_variantFirst: string;
     hub_noReadFrame: string;
     hub_dmeOnly: string;
     /** The door, beside PRACTICE, to the practice car's settings (its ENGINE). */
@@ -255,6 +262,8 @@ export interface Localised {
     conf_measureOnPress: string;
     conf_details: string;
     conf_sgbdNote: string;
+    /** Over what a caution tells the person to do, where the job has no precondition boxes (lib/instructions). */
+    conf_instructions: string;
     clearFaults_titleOf: (module: string, n: number | null) => string;
     clearFaults_what: string;
     clearFaults_back: string;
@@ -359,6 +368,10 @@ export interface Localised {
     /** A row whose module is not decided: its candidates, never joined as if all were fitted (IJ15, F03). */
     /** A `?` row (UX-19): how many modules it may be, on the row; which, once it is opened. */
     scan_candidates: (n: number) => string;
+    /** A scan row's two presses (UX-23): its name puts the module on the screen; its chevron opens what it said. */
+    scan_rowOpen: (name: string) => string;
+    scan_rowExpand: string;
+    scan_rowCollapse: string;
     scan_candidateList: (names: string[], byYear: boolean) => string;
     scan_either: (a: string, b: string) => string;
     /** Under a read that stopped part of the way (IJ16). */

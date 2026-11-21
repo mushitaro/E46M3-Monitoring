@@ -521,7 +521,9 @@ export function DatalogViz({
     [datalog.selected],
   );
   const view = useMemo(() => {
-    if (!active || datalog.samples.length < 2) return null;
+    // One sample is a sample: its values stand on the panels from the first one (UX-17 — a recording
+    // with samples does not say it is waiting for them).
+    if (!active || datalog.samples.length === 0) return null;
     const all = datalog.samples;
     const end = all[all.length - 1].time;
     // The cursor stands while its moment is on the graph: once the run has moved half a minute on, the
@@ -541,6 +543,8 @@ export function DatalogViz({
     return { thin, x, marks, end, cursor: cursorAt === null || ci === null ? null : { x: x(cursorAt), t: cursorAt, i: ci } };
   }, [active, datalog.samples, datalog.segments, datalog.cursor]);
 
+  // Not on the screen: nothing to draw, and no "waiting" for a reader who is not there.
+  if (!active) return null;
   if (!view) return <Awaiting icon={Activity} label={t.awaiting_samples} />;
 
   const { shown: groups, more } = panelsOf(groupChannels(channels), look);

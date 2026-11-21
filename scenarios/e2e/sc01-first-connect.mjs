@@ -169,6 +169,26 @@ const scenario = {
         },
         noVin,
         { shot: 's04-end' },
+        // 5. 一覧から一つを開く（UX-23：OPEN のサブアクションは消え、行の名前を押す）
+        {
+            check: {
+                desc: '手順 5：全モジュールの一覧で SMG II の行の名前を押すと、DISCONNECT → CONNECT で SMG II が画面に出る（OPEN と同じ道）',
+                run: async (page) => {
+                    const name = page.locator('button[title$="を画面に出す"]', { hasText: 'SMG' }).first();
+                    if ((await name.count()) === 0) return 'SMG II の行の名前が押せない';
+                    await name.click();
+                    let s = null;
+                    for (let i = 0; i < 40; i++) {
+                        await page.waitForTimeout(250);
+                        s = await page.evaluate(() => window.__monitoringE2E.tool('monitoring_status'));
+                        if (s?.module?.id === 'smg2' && s.link === 'connected' && s.showing === 'module') break;
+                    }
+                    if (s?.module?.id !== 'smg2' || s.showing !== 'module') return `画面は ${JSON.stringify(s?.module)}・${s?.showing}`;
+                    return s.link === 'connected' ? true : `つながっていない（${s.link}）`;
+                },
+            },
+        },
+        { shot: 's05-opened' },
     ]),
 };
 

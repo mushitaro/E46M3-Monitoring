@@ -191,7 +191,7 @@ export function useJournal(input: {
         if (was !== 'disconnected' && was !== 'connecting' && link.state === 'disconnected') append({ t: t + 1, kind: 'disconnect', lost: link.error !== null });
     }, [link.state, link.mode, link.error, ecuId, datalog, append]);
 
-    // A module switch under an open link (monitoring_module, the screen's OPEN) disconnects and
+    // A module switch under an open link (monitoring_module, a scan row's name) disconnects and
     // connects again faster than a render: the states in between never reach this hook. The module
     // changing is the boundary that survives, so it is recorded as one.
     const prevEcu = useRef(ecuId);

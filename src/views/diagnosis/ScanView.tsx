@@ -22,9 +22,11 @@ export interface ScanShown {
     index: EcuIndex | null;
     /** The MSS54's own catalogue, for the text of the one module that is decoded. */
     mss54: EcuProfile | null;
-    /** The address OPEN under the hub puts on the screen: the row opened last. */
-    selected: string | null;
-    onSelect: (address: string | null) => void;
+    /**
+     * Put a row's module on the screen — the module switch's own path (DISCONNECT → CONNECT under an open
+     * link). Absent while the link is busy: nothing switches under a read in progress.
+     */
+    onOpen?: (moduleId: string) => void;
     /** What to do first, said where the list will be while nothing is connected (SC01 step 1). */
     idleHint?: string;
     /** The module the owner said answers at an address no IDENT rule decides (0x56 ASC or DSC; lib/variantChoice). */
@@ -120,6 +122,19 @@ export function undecidedName(names: readonly string[], group: string | null, ei
     return `? ${group ?? names[0]}`;
 }
 
+/**
+ * The one module a row names, which pressing its name opens: the owner's word for the address, the module
+ * its IDENT chose, or the only one there is. Null for a `?` row: a shared address is chosen on the
+ * module select, where the candidates are listed, not guessed here.
+ */
+export function rowModule(r: ScanResult, ownerChose?: (address: number) => string | null): string | null {
+    const owner = ownerChose?.(typeof r.address === 'number' ? r.address : parseInt(String(r.address), 16));
+    if (owner && r.modules.includes(owner)) return owner;
+    const chosen = r.variant?.moduleId;
+    if (chosen && r.modules.includes(chosen) && r.variant?.basis !== 'm3-fitment') return chosen;
+    return r.modules.length === 1 ? r.modules[0] : null;
+}
+
 /** Whether a row's module is still one of several (the `?` rows). */
 function undecided(r: ScanResult, ownerChose?: (address: number) => string | null): boolean {
     const owner = ownerChose?.(typeof r.address === 'number' ? r.address : parseInt(String(r.address), 16));
@@ -177,13 +192,14 @@ const hhmm = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digi
 
 /**
  * DIAGNOSIS with ALL MODULES: one row per address the scan asked, the address in the code column
- * and the module's name where a name goes. Pressing a row opens what it said — the codes with their
- * names, whether each is there now, and the conditions recorded with it; another module's bytes as
- * they came back where nothing reads them; or why it was not asked — and OPEN under the hub puts the
- * module of the row opened last on the screen. Rows open and close on their own, so two modules'
- * faults can be read side by side (SC02 step 2).
+ * and the module's name where a name goes. Two presses, each doing one thing (UX-23): the row's NAME
+ * puts its module on the screen, as the module select does (it was OPEN under the hub, a third
+ * sub-action that overflowed a head unit's row); the CHEVRON beside the address opens what it said —
+ * the codes with their names, whether each is there now, and the conditions recorded with it; another
+ * module's bytes as they came back where nothing reads them; or why it was not asked. Rows open and
+ * close on their own, so two modules' faults can be read side by side (SC02 step 2).
  */
-export const ScanList = memo(function ScanList({ run, progress, index, mss54, selected, onSelect, idleHint, ownerChose }: ScanShown) {
+export const ScanList = memo(function ScanList({ run, progress, index, mss54, onOpen, idleHint, ownerChose }: ScanShown) {
     const { lang, t } = useLang();
     const nameOf = (id: string) => {
         const m = index?.modules.find((x) => x.id === id);
@@ -204,13 +220,8 @@ export const ScanList = memo(function ScanList({ run, progress, index, mss54, se
     const summary = run ? scanSummary(run.results) : null;
     const toggle = (address: string) => {
         const next = new Set(open);
-        if (next.has(address)) {
-            next.delete(address);
-            if (selected === address) onSelect(null);
-        } else {
-            next.add(address);
-            onSelect(address);
-        }
+        if (next.has(address)) next.delete(address);
+        else next.add(address);
         setOpen(next);
     };
 
@@ -232,14 +243,17 @@ export const ScanList = memo(function ScanList({ run, progress, index, mss54, se
                     {rows.map(({ r, s }) => {
                         const isOpen = open.has(r.address);
                         const several = undecided(r, ownerChose);
+                        const target = rowModule(r, ownerChose);
+                        const name = rowName(r, nameOf, groupOf, t, ownerChose);
                         return (
                             <DataRow
                                 key={r.address}
                                 code={r.address}
                                 codeTone={s.rank === 0 ? 'danger' : 'neutral'}
-                                name={humanName(rowName(r, nameOf, groupOf, t, ownerChose))}
-                                selected={isOpen}
-                                onSelect={() => toggle(r.address)}
+                                name={humanName(name)}
+                                expand={{ open: isOpen, onToggle: () => toggle(r.address), label: isOpen ? t.scan_rowCollapse : t.scan_rowExpand }}
+                                onSelect={target && onOpen ? () => onOpen(target) : undefined}
+                                pressTitle={target ? t.scan_rowOpen(name) : undefined}
                                 trailing={
                                     <>
                                         {several && <span className={`shrink-0 ${LABEL} text-slate-500`}>{t.scan_candidates(r.modules.length)}</span>}

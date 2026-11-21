@@ -97,3 +97,23 @@ export async function openDetails(page, label = '詳細') {
     const toggle = page.locator('[role=dialog] button[aria-controls]', { hasText: label }).first();
     if ((await toggle.count()) && (await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
 }
+
+/**
+ * ACTUATOR, since the ring is the chosen row's START or RUN (UX-01): a row is its name's button
+ * (`tj-pick`) and what stands beside it (the value picker, the reason's word). The innermost element
+ * holding the job's SGBD name and that button.
+ */
+export const actuatorRowOf = (page, job) =>
+    page.getByText(job, { exact: true }).first().locator('xpath=ancestor::*[.//*[@data-test="tj-pick"]][1]');
+
+/** The hub's ring while it is an ACTUATOR row's action: START (a part held on) or RUN (sent once). */
+export const actuatorRing = (page) => page.locator('[data-test="tj-start"], [data-test="tj-run"]').first();
+
+/** Chooses an ACTUATOR row by pressing its name; returns the ring, now that row's START or RUN (null: no such row). */
+export async function pickActuator(page, job) {
+    const row = actuatorRowOf(page, job);
+    if ((await row.count()) === 0) return null;
+    await row.locator('[data-test="tj-pick"]').first().click();
+    await page.waitForTimeout(200);
+    return actuatorRing(page);
+}

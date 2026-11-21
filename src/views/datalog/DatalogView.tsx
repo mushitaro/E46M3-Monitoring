@@ -23,6 +23,7 @@ import {
   humanName,
 } from "@/components/ui";
 import { useLang } from "@/lib/i18n";
+import { channelLabel, normUnit, pairTitle } from "@/lib/channelLabel";
 import { TEST_ID, tid } from "@/lib/testIds";
 import {
   GEAR_CHANNEL,
@@ -45,26 +46,19 @@ export interface DatalogPlan {
 /** A channel's name, unit and series colour, wherever it comes from (the DME's blocks or another module). */
 interface ChannelLook {
   id: ChannelId;
+  /** A person's name, or the kind of value — never the identifier (lib/channelLabel, UX-09). */
   name: string;
+  /** One spelling per unit: `rpm`, not the SGBD's `1/min` beside the DME's `rpm`. */
   unit: string;
+  /** The identifier, for the ident slot. */
+  ident: string;
 }
 
 function useLook(datalog: Datalog) {
-  const { lang } = useLang();
+  const { lang, t } = useLang();
   return (id: ChannelId): ChannelLook => {
-    const ch = MSS54_CHANNELS.get(id);
-    if (ch)
-      return {
-        id,
-        name: lang === "en" ? ch.field.name : ch.field.ja,
-        unit: ch.field.unit,
-      };
-    const other = datalog.moduleInfo(id);
-    return {
-      id,
-      name: other ? (lang === "en" ? other.name : other.ja) : id,
-      unit: other?.unit ?? "",
-    };
+    const l = channelLabel(id, lang, t, datalog.moduleInfo);
+    return { id, name: l.name, unit: l.unit, ident: l.ident };
   };
 }
 
@@ -149,10 +143,7 @@ export function DatalogView({
               <DataRow
                 key={id}
                 name={humanName(l.name)}
-                ident={
-                  ch?.field.symbol ??
-                  (other ? `${other.module} · ${other.result}` : id)
-                }
+                ident={ch?.field.symbol ?? l.ident}
                 // The block is part of the channel's identity, so
                 // it is shown where the identity is shown.
                 code={ch ? String(ch.block.selection) : undefined}
@@ -339,7 +330,7 @@ function Compare({
         return (
           <div key={g.join()} className="text-[11px]">
             <div className="flex items-baseline gap-2 text-slate-400">
-              <span className="truncate">{g.map((c) => look(c).name).join(" / ")}</span>
+              <span className="truncate">{g.length > 1 ? pairTitle(look(g[0]).name, look(g[1]).name) : look(g[0]).name}</span>
               <span className="shrink-0 font-mono text-slate-500">{look(g[0]).unit}</span>
             </div>
             <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="h-12 w-full">
@@ -427,12 +418,12 @@ function OtherModules({ datalog }: { datalog: Datalog }) {
                   className="size-3 shrink-0 accent-blue-500"
                 />
               }
-              name={humanName(lang === "en" ? i.name : i.ja)}
+              name={humanName(channelLabel(i.channel, lang, t, datalog.moduleInfo).name)}
               ident={`${i.job} · ${i.result}`}
               trailing={
                 i.unit ? (
                   <span className="shrink-0 font-mono text-[11px] text-slate-500">
-                    {i.unit}
+                    {normUnit(i.unit)}
                   </span>
                 ) : undefined
               }
@@ -467,6 +458,30 @@ function groupChannels(channels: readonly ChannelId[]): ChannelId[][] {
     used.add(c);
   }
   return out;
+}
+
+/**
+ * The panels a glance can take in while driving (UX-05, docs/UX-DESIGN.md §6): four at most. Engine
+ * speed and road speed first — what a driver reads the others against — then the target/actual pairs,
+ * then the rest in the order chosen. Shown in the order chosen, so a panel does not jump when another
+ * is added. The rest are on LIST, with every value; the picture says how many.
+ */
+const MAX_PANELS = 4;
+function panelsOf(groups: ChannelId[][], look: (id: ChannelId) => ChannelLook): { shown: ChannelId[][]; more: number } {
+  if (groups.length <= MAX_PANELS) return { shown: groups, more: 0 };
+  const rank = (g: ChannelId[]) => {
+    const u = look(g[0]).unit;
+    return u === "rpm" ? 0 : u === "km/h" ? 1 : g.length > 1 ? 2 : 3;
+  };
+  const keep = new Set(
+    groups
+      .map((g, i) => ({ g, i, r: rank(g) }))
+      .sort((a, b) => a.r - b.r || a.i - b.i)
+      .slice(0, MAX_PANELS)
+      .map((x) => x.g),
+  );
+  const shown = groups.filter((g) => keep.has(g));
+  return { shown, more: groups.reduce((n, g) => n + (keep.has(g) ? 0 : g.length), 0) };
 }
 
 /** The colour a quantity is drawn in, by its role (globals.css: the datalog series). */
@@ -528,7 +543,7 @@ export function DatalogViz({
 
   if (!view) return <Awaiting icon={Activity} label={t.awaiting_samples} />;
 
-  const groups = groupChannels(channels);
+  const { shown: groups, more } = panelsOf(groupChannels(channels), look);
   const cursorSample = view.cursor ? datalog.samples[view.cursor.i] : null;
   const cursorGear = view.cursor ? gearAt(datalog.samples, view.cursor.i) : null;
   return (
@@ -548,7 +563,7 @@ export function DatalogViz({
         </span>
       </div>
       <div
-        className={`grid min-h-0 flex-1 gap-x-3 gap-y-1 ${groups.length > 3 ? "grid-cols-2" : "grid-cols-1"}`}
+        className={`grid min-h-0 flex-1 gap-x-3 gap-y-2 ${groups.length > 3 ? "grid-cols-2" : "grid-cols-1"}`}
         style={{ gridTemplateRows: `repeat(${Math.ceil(groups.length / (groups.length > 3 ? 2 : 1))}, minmax(0, 1fr))` }}
       >
         {groups.map((g) => (
@@ -564,6 +579,10 @@ export function DatalogViz({
           />
         ))}
       </div>
+      {/* Reserved: the count of what is on LIST only keeps its line whether or not there is one. */}
+      <p className="min-h-[14px] truncate text-[11px] leading-[14px] text-slate-500">
+        {more > 0 ? t.datalog_moreInList(more) : ""}
+      </p>
     </div>
   );
 }
@@ -609,22 +628,30 @@ function Trace({
   const has = Number.isFinite(min);
   const span = max - min || 1;
   const y = (v: number) => 92 - ((v - min) / span) * 84;
+  const pair = looks.length > 1;
   return (
     <div className="flex min-h-0 flex-col">
-      <div className="flex min-w-0 items-baseline gap-2 text-[10px]">
+      {/* One title per panel — a pair's is what its two names share — and the unit; under it the
+          values, a pair's as 目標 and 実 (UX-05). Two lines, so the title is not cut to fit numbers. */}
+      <div className="flex min-w-0 items-baseline gap-2 text-[11px]">
+        <span className="min-w-0 truncate font-sans text-slate-300" title={looks.map((l) => l.name).join(" / ")}>
+          {pair ? pairTitle(looks[0].name, looks[1].name) : looks[0].name}
+        </span>
+        <span className="ml-auto shrink-0 font-mono text-[10px] text-slate-500">{looks[0].unit}</span>
+      </div>
+      <div className="flex min-w-0 items-baseline gap-3 text-[10px]">
         {looks.map((l, k) => (
-          <span key={l.id} className="flex min-w-0 items-baseline gap-1">
+          <span key={l.id} className="flex shrink-0 items-baseline gap-1">
             <span
               className="inline-block h-0.5 w-2 shrink-0"
               style={{ background: seriesOf(l.unit, k > 0) }}
             />
-            <span className="truncate font-sans text-slate-300">{l.name}</span>
-            <span className="shrink-0 font-mono tabular-nums text-slate-100">
+            {pair && <span className="font-sans text-slate-500">{k === 0 ? t.graph_target : t.graph_actual}</span>}
+            <span className="font-mono tabular-nums text-slate-100">
               {formatValue(q(cursor ? cursor.values : latest, l.id), l.unit)}
             </span>
           </span>
         ))}
-        <span className="ml-auto shrink-0 font-mono text-slate-500">{looks[0].unit}</span>
       </div>
       <svg
         viewBox="0 0 100 100"
@@ -673,7 +700,9 @@ function Trace({
             x2={cursor.x}
             y1={0}
             y2={100}
-            style={{ stroke: "var(--color-series-heat)" }}
+            // Neutral: a pointer is not a reading, and red is the fault's and the heat's (UX-06,
+            // tsunagi-m-design §1.3).
+            style={{ stroke: "var(--color-slate-100)" }}
             strokeWidth="1"
             vectorEffect="non-scaling-stroke"
           />

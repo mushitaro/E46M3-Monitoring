@@ -64,8 +64,9 @@ const scenario = {
                     await page.waitForTimeout(2500);
                     const s = await tool(page, 'monitoring_status');
                     if (s.error) return `送れなかった: ${s.error}`;
-                    const stop = rowOf(page, 'STEUERN_STELLGLIED', 'tj-stop').locator('[data-test="tj-stop"]');
-                    return (await stop.isEnabled()) ? true : '止めが置かれていない（STOP が押せない）';
+                    // STOP is the hub's ring while something is on (UX-01): one place to stop it.
+                    const stop = page.locator('[data-test="tj-stop"]');
+                    return (await stop.count()) && (await stop.isEnabled()) ? true : '止めが置かれていない（STOP が押せない）';
                 },
             },
         },
@@ -74,10 +75,12 @@ const scenario = {
             check: {
                 desc: 'STOP で止まる',
                 run: async (page) => {
-                    const stop = rowOf(page, 'STEUERN_STELLGLIED', 'tj-stop').locator('[data-test="tj-stop"]');
+                    const stop = page.locator('[data-test="tj-stop"]');
                     await stop.click();
                     await page.waitForTimeout(1500);
-                    return (await stop.isDisabled()) ? true : 'まだ止まっていない';
+                    // Stopped: the ring is no longer a STOP, and the row no longer says it is on.
+                    const row = await rowOf(page, 'STEUERN_STELLGLIED', 'tj-start').innerText();
+                    return (await stop.count()) === 0 && !row.includes('作動中') ? true : 'まだ止まっていない';
                 },
             },
         },

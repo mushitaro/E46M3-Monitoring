@@ -47,7 +47,8 @@ const scenario = {
         { wait: 800 },
         { check: { desc: '画面は PROBE のボードに移っている', run: screenIs('probe') } },
         { until: 'LIVE', means: 'グラフを置かなくても、VISU に記録中の値が出る' },
-        { screen: { desc: 'VISU：最初の値（回転）のグラフと、残りの値のカード', has: ['エンジン回転数', 'LIVE', '⌀'] } },
+        // The rest as cards: a target and its actual one card, under one name, 実 and 目標 (UX-08).
+        { screen: { desc: 'VISU：最初の値（回転）のグラフと、残りの値のカード（目標と実は一枚）', has: ['エンジン回転数', 'LIVE', '吸気VANOS バンク1', '実', '目標'] } },
         { shot: 'visu-auto' },
         { ai: 'monitoring_faults', args: { module: 'mss54', refresh: true }, means: '記録中に故障を読ませる', expect: () => true },
         { wait: 800 },
@@ -60,7 +61,19 @@ const scenario = {
         },
         { ai: 'monitoring_display', args: { pane: 'list' }, means: '狭い画面では、ボードの一覧に戻す', expect: () => true },
         { until: '今の値', means: 'ボードに値の部品が出る' },
-        { screen: { desc: 'ボードの値は大きな数字のカード（名前・値・単位、平均と幅）', has: ['今の値', 'エンジン回転数', '⌀'] } },
+        { screen: { desc: 'ボードの値は大きな数字のカード（名前・値・単位）', has: ['今の値', 'エンジン回転数', 'rpm'] } },
+        {
+            check: {
+                desc: 'カードを押すと、その値の平均と幅が出る（UX-10：一目では数だけ）',
+                run: async (page) => {
+                    const card = page.locator('[data-test="value-card"]:visible').first();
+                    if ((await card.count()) === 0) return 'カードが無い';
+                    await card.click();
+                    await page.waitForTimeout(300);
+                    return (await card.innerText()).includes('⌀') ? true : '押しても平均と幅が出ない';
+                },
+            },
+        },
         { shot: 'value-cards' },
         { ai: 'monitoring_stop_log', args: { confirmed: true }, means: '止める（復唱のあと）', expect: () => true },
     ],

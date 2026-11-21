@@ -122,7 +122,8 @@ const scenario = {
                     const why = [];
                     if (!/油圧ポンプ|HYDROPUMPE/.test(r)) why.push('何が動いているかが行に無い');
                     if (!/残り\s*\d+\s*秒/.test(t)) why.push('残り秒数が無い');
-                    if (!(await row(page).locator('[data-test="tj-stop"]').isEnabled().catch(() => false))) why.push('STOP が押せない');
+                    // STOP is the hub's ring while something is on (UX-01): at the head unit's width too.
+                    if (!(await page.locator('[data-test="tj-stop"]:visible').isEnabled().catch(() => false))) why.push('STOP が押せない');
                     return why.length ? why.join('、') : true;
                 },
             },

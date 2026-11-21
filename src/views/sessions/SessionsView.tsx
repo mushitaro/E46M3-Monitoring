@@ -10,7 +10,7 @@ import { useLang } from '@/lib/i18n';
 import { text as resolveText, type EcuProfile } from '@tsunagi/monitoring-engine';
 import { KEEP_MS, expiresAt, type Episode, type JournalEvent } from '@tsunagi/monitoring-engine';
 import { mss54Present, needsSync, parseCsv, savedScanFaults, sessionFaultCount, sessionLabel, summarise, type SavedSession } from '@tsunagi/monitoring-engine';
-import { SAVE_TONE, SYNC_TONE } from '@/lib/sync/status';
+import { SYNC_TONE } from '@/lib/sync/status';
 import { CountReadout } from '@/views/shared/CountReadout';
 import { StatusButton } from './StatusButton';
 import type { Sessions } from './useSessions';
@@ -92,13 +92,11 @@ export const SessionsView = memo(function SessionsView({
                 title={t.sessions_current}
                 info={t.sessions_current_info}
                 actions={
-                    // From 900px only. Below it SAVE and SYNC are the menu sheet's SESSION cells,
-                    // where TUNER keeps them — two doors on a phone would be two to one job
-                    // (tsunagi-m-ux §11). SYNC opens SESSION SYNC, whose first control sends —
-                    // TUNER's door beside NEW SESSION. Labels, sentences and tones from
-                    // lib/sync/status, so the two places cannot disagree.
+                    // From 900px only. Below it SYNC is the menu sheet's SESSION cell, where TUNER
+                    // keeps it — two doors on a phone would be two to one job (tsunagi-m-ux §11).
+                    // SYNC opens SESSION SYNC, whose first control sends. SAVE is the hub's ring on
+                    // this tab (UX-01), worded the same (lib/sync/status), so it is not here again.
                     <span className="hidden items-baseline gap-4 min-[900px]:flex">
-                        <StatusButton look={s.saveLook} tones={SAVE_TONE} Icon={Database} busy={busy} onClick={() => void s.save()} />
                         {s.syncLook && (
                             <StatusButton look={{ ...s.syncLook, disabled: false }} tones={SYNC_TONE} Icon={CloudUpload} busy={false} onClick={onOpenSync} />
                         )}

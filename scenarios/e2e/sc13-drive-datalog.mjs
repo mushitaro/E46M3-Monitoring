@@ -186,10 +186,19 @@ const scenario = {
         { wait: 2500 },
         {
             check: {
-                desc: '①8 本のグラフ：名前・単位・今の値つき',
+                // UX-05 (docs/UX-DESIGN.md §6): VISU is what a glance takes in while driving — four panels,
+                // a target and its actual on one; the other values are on LIST (checked at the head unit's
+                // width below), and VISU says how many.
+                desc: '①VISU は一目で読める 4 枚（回転・車速・吸気と排気のカムは目標と実を一枚に）、名前・単位・今の値つき。ほかは LIST',
                 run: async (page) => {
                     const lines = await page.evaluate(() => [...document.querySelectorAll('svg polyline')].filter((p) => p.getBoundingClientRect().width > 0).length);
-                    return lines >= 8 ? true : `グラフは ${lines} 本（8 本ではない）`;
+                    const text = await bodyText(page);
+                    const viz = text.slice(text.indexOf('VISUALIZATION & CONTROLS'));
+                    const why = [];
+                    if (lines !== 6) why.push(`線は ${lines} 本（回転・車速の 2 本と、カムの目標と実 2 組で 6 本のはず）`);
+                    for (const n of ['エンジン回転数', '車速', '吸気VANOS バンク1', '排気VANOS バンク1', 'rpm', 'km/h']) if (!viz.includes(n)) why.push(`VISU に「${n}」が無い`);
+                    if (!/ほか\s*2\s*項目は LIST/.test(viz)) why.push('「ほか 2 項目は LIST」が無い');
+                    return why.length ? why.join('、') : true;
                 },
             },
         },
@@ -234,7 +243,7 @@ const scenario = {
         { shot: 's02-recording' },
         {
             check: {
-                desc: 'ナビの幅（683×400）：LIST と VISU が切り替えられ、どちらでも 8 項目が見える',
+                desc: 'ナビの幅（683×400）：LIST と VISU が切り替えられ、LIST に 8 項目、VISU に 4 枚が名前を切らずに見える',
                 run: async (page) => {
                     await page.setViewportSize({ width: 683, height: 400 });
                     await page.waitForTimeout(600);
@@ -254,8 +263,20 @@ const scenario = {
                             };
                             return [...document.querySelectorAll('body *')].filter((e) => e.children.length === 0 && vis(e)).map((e) => e.textContent).join('\n');
                         });
-                        const seen = ['エンジン回転数', 'アクセル', '吸気VANOS バンク1 目標角', '吸気VANOS バンク1 実角', '排気VANOS バンク1 目標角', '排気VANOS バンク1 実角', '車速', 'ノック'].filter((n) => text.includes(n)).length;
-                        if (seen < 8) out.push(`${pane} で見える項目 ${seen}/8`);
+                        if (pane === 'LIST') {
+                            const seen = ['エンジン回転数', 'アクセル', '吸気VANOS バンク1 目標角', '吸気VANOS バンク1 実角', '排気VANOS バンク1 目標角', '排気VANOS バンク1 実角', '車速', 'ノック'].filter((n) => text.includes(n)).length;
+                            if (seen < 8) out.push(`${pane} で見える項目 ${seen}/8`);
+                        } else {
+                            const seen = ['エンジン回転数', '車速', '吸気VANOS バンク1', '排気VANOS バンク1', '目標', '実', 'ほか 2 項目は LIST'].filter((n) => text.includes(n)).length;
+                            if (seen < 7) out.push(`${pane} で見える項目 ${seen}/7`);
+                            // A panel's name is not cut (UX-05): its box holds the whole of it.
+                            const cut = await page.evaluate(() =>
+                                [...document.querySelectorAll('#narrow-visu .truncate')]
+                                    .filter((e) => e.getBoundingClientRect().width > 0 && e.scrollWidth > e.clientWidth + 1)
+                                    .map((e) => e.textContent),
+                            );
+                            if (cut.length) out.push(`VISU で切れた名前：${cut.join('、')}`);
+                        }
                         await page.screenshot({ path: `e2e-report/shots/SC13-s02-narrow-${pane.toLowerCase()}.png` }).catch(() => {});
                     }
                     await page.setViewportSize({ width: 1280, height: 800 });
@@ -331,11 +352,15 @@ const scenario = {
         },
         {
             check: {
-                desc: 'グラフに排気カムの目標線と実測線が出ている（二本とも見える）',
+                desc: 'グラフに排気カムの目標線と実測線が出ている（一枚に二本、凡例は「目標」「実」）',
                 run: async (page) => {
-                    const text = await bodyText(page);
-                    const viz = text.slice(text.indexOf('VISUALIZATION & CONTROLS'));
-                    return viz.includes('排気VANOS バンク1 目標角') && viz.includes('排気VANOS バンク1 実角') ? true : `グラフは「${viz.split('\n')[1] ?? ''}」だけ`;
+                    const panel = await page.evaluate(() => {
+                        const title = [...document.querySelectorAll('#narrow-visu span')].find((e) => e.textContent === '排気VANOS バンク1');
+                        const box = title?.closest('div')?.parentElement;
+                        return box ? { lines: [...box.querySelectorAll('svg polyline')].length, text: box.textContent ?? '' } : null;
+                    });
+                    if (!panel) return 'VISU に排気カムの一枚が無い';
+                    return panel.lines === 2 && panel.text.includes('目標') && panel.text.includes('実') ? true : `排気カムの一枚：線 ${panel.lines} 本、「${panel.text.slice(0, 80)}」`;
                 },
             },
         },

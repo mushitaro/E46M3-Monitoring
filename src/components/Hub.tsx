@@ -2,6 +2,7 @@
 
 import type { LucideIcon } from 'lucide-react';
 import { useBusyLock } from '@/hooks/useBusyLock';
+import { tid, type TestId } from '@/lib/testIds';
 import { HUB_LABEL, TextButton } from './ui';
 
 /**
@@ -27,9 +28,12 @@ import { HUB_LABEL, TextButton } from './ui';
  *     notice?          text for the reserved line above; layout never jumps
  *   }
  *
- * Views with many independently-runnable rows (the job tables) deliberately
- * supply none: routing dozens of named jobs through one button would be an
- * extra click and a re-derived label. They fall back to the connection action.
+ * Every view supplies one (docs/UX-DESIGN.md §1): a ring with nothing to press —
+ * the old LINKED — is not a state the screen shows any more. A view whose verb
+ * needs an object (a job table with nothing chosen) shows the verb disabled and
+ * says in the notice what it waits for. And while something is driven — an
+ * actuator output or an SMG II procedure — the ring is that thing's STOP on
+ * every tab (`armed-danger`): one place to stop it, not a word at a row's end.
  */
 
 export type HubTone = 'idle' | 'connecting' | 'busy' | 'ready' | 'armed' | 'armed-danger' | 'done' | 'fail';
@@ -42,6 +46,13 @@ export interface HubConfig {
     disabled?: boolean;
     notice?: string;
     spin?: boolean;
+    /** A test hook on the ring itself — the actuator's STOP is selected by the suites as it was on the row. */
+    testId?: TestId;
+    /**
+     * The view's verb works without a link (MEMORY's SAVE): it holds the ring while disconnected
+     * too, instead of CONNECT taking it away exactly when the owner sits down to look back.
+     */
+    offline?: boolean;
 }
 
 /** The ring echoes the status layer, which lives inside the tricolor. */
@@ -100,7 +111,7 @@ const HUB_SIZE = 'size-20';
 const HUB_ICON = 'size-5';
 
 export function Hub({ config }: { config: HubConfig }) {
-    const { label, Icon, onClick, tone, disabled, spin } = config;
+    const { label, Icon, onClick, tone, disabled, spin, testId } = config;
     return (
         <div className="relative">
             <div className={`absolute -inset-1 rounded-full border ${RING[tone]}`} aria-hidden="true" />
@@ -108,6 +119,7 @@ export function Hub({ config }: { config: HubConfig }) {
                 type="button"
                 onClick={disabled ? undefined : onClick}
                 disabled={disabled}
+                {...(testId ? tid(testId) : {})}
                 className={`relative flex ${HUB_SIZE} flex-col items-center justify-center gap-1 rounded-full border border-slate-700 bg-slate-900 shadow-2xl ring-1 ring-slate-800 transition-colors hover:bg-slate-800 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-slate-900 ${
                     disabled ? 'text-slate-500' : FACE[tone]
                 }`}

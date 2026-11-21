@@ -69,6 +69,39 @@ export interface Localised {
     datalog_markLabel: (why: string) => string;
     datalog_cursorLabel: string;
     datalog_hubLine: (elapsed: string, rpm: string, kmh: string, samples: number) => string;
+    /** The notice after a recording is stopped: how long, how many samples (UX-04). */
+    datalog_stoppedLine: (elapsed: string, samples: number) => string;
+    /** The hub's notices, short: a job table with nothing chosen, ACTUATOR's rows, a module with no read frame, DATALOG off the DME. */
+    hub_pickRow: string;
+    hub_actuatorRows: string;
+    hub_noReadFrame: string;
+    hub_dmeOnly: string;
+    /** The door, beside PRACTICE, to the practice car's settings (its ENGINE). */
+    practice_car: string;
+    /** A recorded value with no name in its module's data: the kind of value, never its identifier (UX-09). */
+    channel_ofModule: (module: string) => string;
+    channel_unnamed: string;
+    /** A pair's measured line, beside 目標 (graph_target). */
+    graph_actual: string;
+    /** DATALOG's picture: how many chosen values are on LIST only (UX-05). */
+    datalog_moreInList: (n: number) => string;
+    /** A judgement said as what it tests (UX-09): the statistic, and the threshold with its comparison. */
+    judge_stat: Record<'max' | 'min' | 'mean' | 'spread' | 'count', string>;
+    judge_op: Record<'<' | '<=' | '>' | '>=' | '==' | '!=', (value: string) => string>;
+    /** Items of a form that are not a value or a judgement. */
+    item_faults: (module: string) => string;
+    item_adapt: string;
+    item_read: (module: string) => string;
+    item_capture: string;
+    /** Said once over a comparison's removed items (UX-10). */
+    item_keptNote: string;
+    /** Where the thresholds came from, once over a list of judgements whose every source is the same (UX-10). */
+    judges_source: (source: string) => string;
+    judge_provenance: Record<'sgbd' | 'inpa' | 'authored' | 'observed', string>;
+    /** PROBE after a run: the last run, stopped (UX-07). */
+    probe_lastRun: (n: number, v: number, elapsed: string) => string;
+    probe_captured: (n: number) => string;
+    awaiting_probe: string;
     sessions_segments: (lines: string) => string;
     rate: string;
     samples: string;
@@ -243,6 +276,8 @@ export interface Localised {
     /** The placeholder of a job's value sets: the sets the app and EdiabasLib build alike. */
     actuator_values: string;
     actuator_armed: string;
+    /** A row's word while what it drives waits for the line to come back. */
+    actuator_waitLine: string;
     gate_plan: string;
     gate_preconditions: string;
     gate_preconditions_none: string;

@@ -61,7 +61,8 @@ const scenario = {
             },
         },
         { ui: 'tab', name: 'DATALOG', means: 'オーナーが DATALOG を開く' },
-        { screen: { desc: 'DATALOG の「ほかのモジュールの値」に SMG II の欄と、選んだ SMG II の値', has: ['ほかのモジュールの値', 'SMG2', 'STAT_HYDRAULIKTEMPERATUR_WERT', '1/min'] } },
+        // The screen spells the unit as the catalogue does (rpm, not the SGBD's 1/min: UX-09); the AI's answer above keeps the SGBD's.
+        { screen: { desc: 'DATALOG の「ほかのモジュールの値」に SMG II の欄と、選んだ SMG II の値（単位は画面の表記 rpm）', has: ['ほかのモジュールの値', 'SMG2', 'STAT_HYDRAULIKTEMPERATUR_WERT', 'rpm'], hasNot: ['1/min'] } },
         { shot: 'smg2-datalog' },
         { ai: 'monitoring_stop_log', args: { confirmed: true }, means: '復唱のあと止める', expect: (r) => (r && r.stopped === 'recording' ? true : JSON.stringify(r)) },
         { wait: 1000 },

@@ -166,7 +166,9 @@ const scenario = {
                     const t = await screenText(page);
                     const why = [];
                     if (!/残り\s*\d+\s*秒/.test(t)) why.push('残り秒数が無い');
-                    if (!(await row(page).locator('[data-test="tj-stop"]').isEnabled())) why.push('STOP が押せない');
+                    // STOP is the hub's ring while something is on (UX-01); the row says 作動中.
+                    if (!(await page.locator('[data-test="tj-stop"]').isEnabled())) why.push('STOP が押せない');
+                    if (!(await rowText(row(page))).includes('作動中')) why.push('行が作動中と言わない');
                     if (!/油圧ポンプ|HYDROPUMPE/.test(await rowText(row(page)))) why.push('何が動いているか（油圧ポンプ）が行に無い（選択は「値を選ぶ」に戻る）');
                     return why.length ? why.join('、') : true;
                 },
@@ -188,7 +190,7 @@ const scenario = {
                 run: async (page, st) => {
                     const t0 = Date.now();
                     const before = await row(page).locator('[data-test="tj-start"]').boundingBox();
-                    await row(page).locator('[data-test="tj-stop"]').click();
+                    await page.locator('[data-test="tj-stop"]').click();
                     await page.waitForTimeout(1200);
                     st.afterStop = await screenText(page);
                     const after = await row(page).locator('[data-test="tj-start"]').boundingBox();

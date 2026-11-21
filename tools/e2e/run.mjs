@@ -49,7 +49,8 @@ try {
 const args = process.argv.slice(2);
 const reportAt = args.includes('--report') ? resolve(args[args.indexOf('--report') + 1]) : join(ROOT, 'e2e-report');
 const only = args.filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--report');
-const PORT = 4320;
+// E2E_PORT: two worktrees running their scenarios on one machine at once.
+const PORT = Number(process.env.E2E_PORT) || 4320;
 
 if (!existsSync(join(ROOT, 'out', 'index.html'))) {
     console.error('No out/. Run `npm run build:e2e` first.');

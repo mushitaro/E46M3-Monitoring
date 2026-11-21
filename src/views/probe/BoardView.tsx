@@ -6,8 +6,8 @@ import { formatErrorCode, type ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
 import type { RawFaultRead } from '@/hooks/useDs2Link';
 import type { ProbeProgress } from '@/hooks/useProbe';
 import { DataList, DataRow, Field, Pane, Pill, Provenance, Section, TextButton, humanName } from '@/components/ui';
-import { text as resolveText, type EcuProfile } from '@tsunagi/monitoring-engine';
-import { normCode } from '@/lib/faultCode';
+import type { EcuProfile } from '@tsunagi/monitoring-engine';
+import { faultLabel } from '@/lib/faultText';
 import { useLang } from '@/lib/i18n';
 import { currentPlan } from '@/lib/notebook/rules';
 import { BOARD_LIMITS, defaultReadouts, type Part, type PartKind, type Readout } from '@/lib/probe/board';
@@ -189,18 +189,20 @@ function PartBody({ part: p, s, data }: { part: Part; s: ProbeSessions; data: Bo
             if (wanted !== data.ecuId) return <Empty>{t.board_otherModule(data.moduleName(data.ecuId))}</Empty>;
             if (data.faults !== null) {
                 if (data.faults.length === 0) return <p className="py-2 text-xs text-emerald-400">{t.faults_none}</p>;
-                const text = new Map((data.catalog?.faultText ?? []).map((f) => [normCode(f.code), f]));
                 return (
                     <DataList>
                         {data.faults.map((f) => {
                             const code = formatErrorCode(f.errorCode);
-                            const known = text.get(normCode(code));
+                            // The name slot's rule, as on DIAGNOSIS (UX-22, lib/faultText): a name a person
+                            // wrote, else what it is with the SGBD's German beside it.
+                            const label = faultLabel(data.catalog, code, lang);
                             return (
                                 <DataRow
                                     key={`${f.number}-${f.errorCode}`}
                                     code={code}
                                     codeTone="danger"
-                                    name={known && data.catalog ? resolveText(data.catalog, known.text, lang).text : humanName('')}
+                                    name={label?.text ?? humanName(label?.original ? t.fault_untranslated : '')}
+                                    ident={label?.text ? undefined : label?.original || undefined}
                                     trailing={<span className="shrink-0 font-mono text-[11px] text-slate-500">×{f.frequencyCounter}</span>}
                                 />
                             );

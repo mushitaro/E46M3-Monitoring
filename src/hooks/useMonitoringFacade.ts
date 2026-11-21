@@ -18,7 +18,7 @@ import { getBoard, putBoard } from '@/lib/probe/boardStore';
 import { listRuns } from '@/lib/probe/runStore';
 import { probeKept } from '@/lib/probeKept';
 import { MSS54_PRESENT_SOURCE, mss54Present, mss54Sporadic, presentFromKinds, readCutShort, scanCounts, scanSummary, type ScanRun, type SgbdFault } from '@tsunagi/monitoring-engine';
-import { codeText, faultName, freezeFrameConditions } from '@/lib/faultText';
+import { codeText, faultLabel, freezeFrameConditions, untranslated } from '@/lib/faultText';
 import { isUnnamedLocation, kindsJa } from '@/lib/faultKinds';
 import type { RunBlockKey } from '@tsunagi/monitoring-engine';
 import { mayRun, mayRunProtocolRead, telegramBytes } from '@tsunagi/monitoring-engine';
@@ -90,6 +90,24 @@ const GEAR_NOTE =
     "83:gang is the DME's own calculated gear (block 83), read beside the channels once a second; a moment's gear is the last read at most 1.5 s before it (`readS` says how long), null when none was.";
 
 /**
+ * A fault's name for the assistant, by the screen's rule (lib/faultText `untranslated`, the one rule both
+ * use): the Japanese and English a person wrote, or null for both and `untranslated` with the SGBD's
+ * German, where the name slot says 故障（訳なし）. Spread after the fields it replaces.
+ */
+function nameFor(profile: EcuProfile | null, code: number | string | null) {
+    const ja = faultLabel(profile, code, 'ja');
+    const en = faultLabel(profile, code, 'en');
+    return {
+        text: en?.text ?? null,
+        textJa: ja?.text ?? null,
+        ...(untranslated(profile, code) ? { untranslated: UNTRANSLATED, original: ja?.original ?? null } : {}),
+    };
+}
+
+/** Said with a fault whose name no person translated (`nameFor`). */
+const UNTRANSLATED = `No translation a person wrote: the generator's Japanese and English would be word by word from a dictionary, or still carry German. The screen names it ${ja.fault_untranslated} with the SGBD's German (original) beside it. Read the German; do not give a composed name as the fault's name.`;
+
+/**
  * MSS54 entries as the assistant reads them: the code, its name from the SGBD's own table (English, the
  * Japanese the screen shows, and the German original), whether it is there now, how often, and the
  * conditions its freeze frames recorded, with units — what the screen's ALL MODULES row opens to (U3).
@@ -99,14 +117,12 @@ function describeEntries(entries: readonly ErrorMemoryEntry[], profile: EcuProfi
     return entries.map((f) => {
         const code = formatErrorCode(f.errorCode);
         const known = byCode.get(normCode(code));
-        const ja = faultName(profile, code, 'ja');
         const present = mss54Present(f.errorType);
         return {
             code,
             type: formatErrorCode(f.errorType),
-            text: known && profile ? resolveText(profile, known.text, 'en').text : null,
-            textJa: ja?.text ?? null,
-            original: ja?.original ?? null,
+            original: known && profile ? (profile.texts[known.text]?.de ?? null) : null,
+            ...nameFor(profile, code),
             inTable: !!known,
             present,
             state: present ? 'present now' : 'stored, not present now',
@@ -130,16 +146,16 @@ function describeEntries(entries: readonly ErrorMemoryEntry[], profile: EcuProfi
  */
 function describeSgbdFaults(faults: readonly SgbdFault[], profile: EcuProfile | null) {
     return faults.map((f) => {
-        const ja = faultName(profile, f.code, 'ja');
-        const en = faultName(profile, f.code, 'en');
-        const unnamed = !ja && isUnnamedLocation(f.text);
+        const name = nameFor(profile, f.code);
+        const unnamed = !name.textJa && !name.untranslated && isUnnamedLocation(f.text);
         const present = presentFromKinds(f.kinds);
         return {
             location: f.code,
             code: codeText(profile, f.code),
             text: unnamed ? null : f.text,
-            textJa: ja?.text ?? (unnamed ? 'この場所の名前は SGBD に無い' : null),
-            textEn: en?.text ?? null,
+            textJa: name.textJa ?? (unnamed ? 'この場所の名前は SGBD に無い' : null),
+            textEn: name.text,
+            ...(name.untranslated ? { untranslated: name.untranslated } : {}),
             ...(unnamed ? { unnamed: 'Its SGBD has no name for this location.' } : {}),
             present,
             ...(present === null ? {} : { stateJa: present ? '今出ている' : '記録のみ（今は出ていない）' }),
@@ -240,16 +256,11 @@ export function useMonitoringFacade(input: {
             const rows = raw as RawFaultRead[];
             const kwp = rows.flatMap((r) => r.kwpDtcs ?? []);
             if (rows.some((r) => r.kwpDtcs)) {
-                const byCode = new Map((catalog?.faultText ?? []).map((f) => [normCode(f.code), f]));
-                const codes = kwp.map((d) => {
-                    const known = byCode.get(normCode(d.code));
-                    return {
-                        code: d.code,
-                        status: `0x${d.status.toString(16).padStart(2, '0')}`,
-                        text: known && catalog ? resolveText(catalog, known.text, 'en').text : null,
-                        textJa: faultName(catalog, d.code, 'ja')?.text ?? null,
-                    };
-                });
+                const codes = kwp.map((d) => ({
+                    code: d.code,
+                    status: `0x${d.status.toString(16).padStart(2, '0')}`,
+                    ...nameFor(catalog, d.code),
+                }));
                 return { module: ecuId, read: true, decoded: false, estimated: true, note: 'Codes read as ISO 14230 lays out a $58 answer; not yet confirmed on a MK60. The bytes are the answer.', codes, raw };
             }
             const job = rows.find((r) => r.jobFaults)?.jobFaults;
@@ -279,17 +290,12 @@ export function useMonitoringFacade(input: {
 
     /** Decoded codes with their module's own fault text (FORTTEXTE), in English. */
     const codesOf = (faults: readonly DecodedFault[], profile: EcuProfile | null) => {
-        const byCode = new Map((profile?.faultText ?? []).map((f) => [normCode(f.code), f]));
-        return faults.map((f) => {
-            const known = byCode.get(normCode(f.code));
-            return {
-                code: f.code,
-                text: known && profile ? resolveText(profile, known.text, 'en').text : null,
-                textJa: faultName(profile, f.code, 'ja')?.text ?? null,
-                count: f.count,
-                present: f.present,
-            };
-        });
+        return faults.map((f) => ({
+            code: f.code,
+            ...nameFor(profile, f.code),
+            count: f.count,
+            present: f.present,
+        }));
     };
 
     /** A scan result's fault reads, without the IDENT that chose its module. */
@@ -301,15 +307,12 @@ export function useMonitoringFacade(input: {
         // DSC MK60 (lib/kwpOnDs2): its codes with its own SGBD's text — an estimate, as on its screen.
         const kwpId = r.results.find((x) => x.kwpDtcs)?.modules[0];
         const kwpCatalog = !kwpId ? null : kwpId === ecuId && catalog ? catalog : await loadEcuCatalog(kwpId).catch(() => null);
-        const kwpText = new Map((kwpCatalog?.faultText ?? []).map((f) => [normCode(f.code), f]));
         const kwpCodes = (dtcs: NonNullable<ScanRun['results'][number]['kwpDtcs']>) =>
             dtcs.map((d) => {
-                const known = kwpText.get(normCode(d.code));
                 return {
                     code: d.code,
                     status: `0x${d.status.toString(16).padStart(2, '0')}`,
-                    text: known && kwpCatalog ? resolveText(kwpCatalog, known.text, 'en').text : null,
-                    textJa: faultName(kwpCatalog, d.code, 'ja')?.text ?? null,
+                    ...nameFor(kwpCatalog, d.code),
                 };
             });
         // The catalogue of each module whose codes were read from its own layout, for their text.

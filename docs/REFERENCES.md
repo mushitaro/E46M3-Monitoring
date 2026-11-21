@@ -110,7 +110,7 @@ public repo を clone した人が、**何がどれだけ欠けているか**を
 | `gen_dump_manifest.py` | `$SGBD_DUMP_DIR/*.json` | `tools/SgbdDump/out.manifest.json`（**コミットされる**） |
 | `extract_telegrams.py` | #1 | `public/ecu-data/<id>.telegrams.json`（51 モジュール） |
 | `sgbd/gen_variants.py` | #1 の `D_00xx.grp`（`SgbdDump --tables`）＋ `RULES`（逆アセンブルを読んで書いた選び方）。`SgbdDump --ident` で EdiabasLib にグループファイルそのものを走らせ、食い違えば書かない | `public/ecu-data/variants.json`, `variants.oracle.json` |
-| `gen_ecu_data.py` | ダンプ ＋ `sgbd/*` ＋ `translate.py` | `public/ecu-data/<id>.jobs.json`, `index.json` |
+| `gen_ecu_data.py` | ダンプ ＋ `sgbd/*` ＋ `translate.py` | `public/ecu-data/<id>.jobs.json`, `index.json`。`texts` の一つ一つに訳の出所 `tier`（`translate.py` の `TIERS`：厳選フレーズ表 `phrase`・辞書の 1 語 `word`・語ごとの機械の組み立て `tokens`・原文のまま `source`）。画面と AI は `phrase`・`word` の訳だけを故障の名前に出す（`src/lib/faultText.ts` の `untranslatedText`） |
 | `sgbd/gen_fault_layouts.py` | #1 の各モジュールの FS_LESEN（`SgbdDump --exec` を EdiabasLib の模擬で走らせる。答えは使い捨ての `.sim`）。乱数の答えで EdiabasLib と一致しなければ書かない | `public/ecu-data/fault-layouts.json` |
 | `sgbd/gen_job_frames.py` | #1 の全モジュール（E46 M3・M3 以外の E46・DSC MK60）の、動かすジョブ（作動テスト・検査・模擬・リセット・消去・初期化ほか。書き込みは除く）を、値を取らないものも含めて、値の組ごと（選択肢は全部、数は型の端まで散らした値）に `SgbdDump --exec … --string` で EdiabasLib の模擬に走らせ、送った電文と与えた答えを順に記録する（答えは使い捨ての `.sim`。IDENT は `variants.oracle.json` の答え、ほかは肯定の空の答え、KWP は SID+0x40）。アプリが同じジョブのコードで組む電文（二通以上なら、同じ答えを返して順に）と一致したものだけを実車に開く（`sgbd/agreedFrame.ts`）。Linux でも動く：EdiabasLib のソースを net8.0 で SgbdDump と一緒に組み、`SGBD_DUMP_EXE`・`EDIABAS_ECU_PATH`（データ repo の `sgbd/prg`）・`EDIABAS_SIM_PATH`（`sgbd/sim`）を渡す。全部回したあと `--recheck` | `public/ecu-data/job-frames.oracle.json` |
 | `gen_smg2_workflows.py` | `SMG2.json` | `public/ecu-data/smg2-workflows.json` |

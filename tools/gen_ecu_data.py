@@ -30,7 +30,7 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 from sgbd import classify, model, specs                      # noqa: E402
 from sgbd.model import ROLE_TEXT, ROLE_UNIT, ROLE_VALUE      # noqa: E402
-from translate import authored, leftover_ratio, translate    # noqa: E402
+from translate import authored, leftover_ratio, tier, translate  # noqa: E402
 import paths                                                # noqa: E402
 
 HERE = os.path.dirname(__file__)
@@ -322,7 +322,11 @@ class TextPool:
         # ここが ECU を知らないと、そのどれもが他モジュールの訳を名乗りうる。
         self.sgbd = sgbd
 
-    def ref(self, de: str | None, ja: str | None = None, en: str | None = None) -> int | None:
+    def ref(self, de: str | None, decompose: bool = False) -> int | None:
+        """原文を intern し、その番号を返す。訳は translate()、出所はその段（translate.tier）。
+
+        `decompose`: 複合語を分解するか（translate() と同じ）。同じ原文は最初の呼び出しの訳と
+        出所のまま——同じ原文に二つの訳は持たない。"""
         de = (de or "").strip()
         if not de:
             return None
@@ -332,8 +336,11 @@ class TextPool:
             return hit
         entry = {
             "de": de,
-            "ja": ja if ja is not None else translate(de, "ja", decompose=False, sgbd=self.sgbd),
-            "en": en if en is not None else translate(de, "en", decompose=False, sgbd=self.sgbd),
+            "ja": translate(de, "ja", decompose=decompose, sgbd=self.sgbd),
+            "en": translate(de, "en", decompose=decompose, sgbd=self.sgbd),
+            # 訳がどの段から来たか（translate.TIERS）。画面はこれで、人の書いた訳だけを
+            # 名前の欄に出す。出所の無い訳を、人の訳の顔で出さないため。
+            "tier": tier(de, decompose=decompose, sgbd=self.sgbd),
         }
         self._index[key] = len(self.items)
         self.items.append(entry)
@@ -385,8 +392,7 @@ def env_fields(dump: model.SgbdDump, pool: TextPool) -> list[dict]:
         # 分解翻訳を使う。フリーズフレームの項目名は文ではなく短い名詞句で、
         # `Kuehlwassertemp.` は KUEHLWASSER + TEMP に割らないと独語のまま出る
         # ——そしてこれは診断画面の見出しとして最前面に出る文字列である。
-        e: dict = {"code": nr, "text": pool.ref(text, translate(text, "ja", sgbd=pool.sgbd),
-                                                translate(text, "en", sgbd=pool.sgbd))}
+        e: dict = {"code": nr, "text": pool.ref(text, decompose=True)}
         unit = (row.get("UW_EINH") or "").strip()
         if unit and unit != "-":
             e["unit"] = unit
@@ -723,7 +729,7 @@ def build(mid: str, m: dict, addrs: dict) -> dict:
             "results": results_out,
         }
         if desc:
-            job["desc"] = pool.ref(desc["de"], desc["ja"], desc["en"])
+            job["desc"] = pool.ref(desc["de"])
         if cross:
             job["crossFieldConstraints"] = cross
         if cls.note:

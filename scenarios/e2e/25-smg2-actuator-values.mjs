@@ -66,7 +66,8 @@ const scenario = {
                     const text = await dialog.innerText();
                     if (!/STELLGL=HYDROPUMPE,STEUERART1=AKTIV,STEUERART2=0/.test(text)) return `始めの呼び出しが無い: ${text.slice(0, 400)}`;
                     if (!/STELLGL=HYDROPUMPE,STEUERART1=INAKTIV,STEUERART2=0/.test(text)) return `止めの呼び出しが無い: ${text.slice(0, 400)}`;
-                    for (const box of await dialog.locator('input[type=checkbox]').all()) await box.check();
+                    // The battery, the standstill and the engine are measured, not ticked (operator, 2026-11-21): only an acknowledgement is a box.
+                    for (const box of await dialog.locator('[data-test="gate-ack"]').all()) await box.check();
                     await page.locator('[data-test="gate-run"]').click();
                     await page.waitForTimeout(2500);
                     const s = await tool(page, 'monitoring_status');

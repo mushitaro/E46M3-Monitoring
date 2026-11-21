@@ -27,6 +27,7 @@ const scenario = {
     title: '部品を動かす（画面）：SMG II の油圧ポンプ — 「練習から」→ PRACTICE で行と値を選んでハブの START → 確認 → 動作中 → STOP → 実車モードで札が消える',
     story:
         '実車モード・停車で SMG II の ACTUATOR を開くと、油圧ポンプの行に「練習から」。PRACTICE にして行と値を選ぶとハブがその START になり、確認に何が動くか・前提・秒数が出る。' +
+        '前提の電圧と停車はアプリが測るので印ではなく、最後に測った値（測っていなければ「押すと測ってから送ります」）が出て、印を付けずに実行できる。' +
         '実行すると「動作中 残り n 秒」と STOP、結果欄に送信と応答。STOP で「止まった」。実車モードに戻ると札が消え、START が押せる。実車では測ってから動き、時間切れで止まる。',
     steps: all([
         // 1. 実車モード・停車で、SMG II の ACTUATOR を開く
@@ -135,6 +136,24 @@ const scenario = {
         },
         {
             check: {
+                desc: '手順 3：アプリが測る前提（電圧・停車）は印ではなく測った値の行で出る。この 1 分に測っていなければ「押すと測ってから送ります」（運営者 2026-11-21）',
+                run: async (page, st) => {
+                    const dialog = page.locator('[role=dialog]').first();
+                    const lines = await dialog.locator('[data-test="gate-measured"]').allInnerTexts();
+                    const boxes = await dialog.locator('[data-test="gate-cond"]').count();
+                    const why = [];
+                    if (boxes > 0) why.push(`前提の印が ${boxes} 個残る`);
+                    if (!lines.some((l) => /電圧/.test(l))) why.push('電圧の行が無い');
+                    if (!lines.some((l) => /停車/.test(l))) why.push('停車の行が無い');
+                    // Nothing has measured the practice car's battery yet: the honest line is that the press measures.
+                    if (!lines.every((l) => /押すと測ってから送ります|前回の測定/.test(l))) why.push(`測った値でも「押すと測ってから」でもない：${lines.join(' / ')}`);
+                    st.measuredLines = lines;
+                    return why.length ? why.join('、') : true;
+                },
+            },
+        },
+        {
+            check: {
                 desc: '手順 3：確認に、止まるまでの秒数（このアプリが自分で止めるまで）が出る',
                 run: async (_page, st) => {
                     const d = st.dialog ?? '';
@@ -156,10 +175,10 @@ const scenario = {
         // 4. 実行
         {
             check: {
-                desc: '手順 4：実行すると、始めの電文が車に届き、動作中になる',
+                desc: '手順 4：印を付けずに実行でき、始めの電文が車に届き、動作中になる（測る前提は送る直前にリンクが測る）',
                 run: async (page, st) => {
-                    const dialog = page.locator('[role=dialog]').first();
-                    for (const box of await dialog.locator('input[type=checkbox]').all()) await box.check();
+                    // No box to tick: the battery and the standstill are measured by the link on the press.
+                    if (await page.locator('[data-test="gate-run"]').isDisabled()) return '印を付けないと RUN が押せない';
                     st.t0 = Date.now();
                     await page.locator('[data-test="gate-run"]').click();
                     await page.waitForTimeout(1200);
@@ -230,7 +249,7 @@ const scenario = {
         // 時間切れ（PRACTICE で確かめる）
         {
             check: {
-                desc: '手順 7（PRACTICE で）：もう一度動かすと、自分で止まり「時間切れで止まった」と出る（合格は 10 秒）',
+                desc: '手順 7（PRACTICE で）：もう一度動かすと（確認は前回測った停車を言う）、自分で止まり「時間切れで止まった」と出る（合格は 10 秒）',
                 run: async (page) => {
                     const r = row(page);
                     await chooseSet(r, PART, SET);
@@ -238,7 +257,10 @@ const scenario = {
                     await start(page).click();
                     const dialog = page.locator('[role=dialog]').first();
                     await dialog.waitFor({ timeout: 3000 });
-                    for (const box of await dialog.locator('input[type=checkbox]').all()) await box.check();
+                    // The first run measured the standstill just before it was sent: shown now as the last measurement.
+                    const lines = (await dialog.locator('[data-test="gate-measured"]').allInnerTexts()).join(' / ');
+                    if (!/停車中（0 km\/h、前回の測定）/.test(lines)) return `停車の行が前回の測定（0 km/h）を言わない：${lines}`;
+                    if (await page.locator('[data-test="gate-run"]').isDisabled()) return '印を付けないと RUN が押せない';
                     const t0 = Date.now();
                     await page.locator('[data-test="gate-run"]').click();
                     let off = null;

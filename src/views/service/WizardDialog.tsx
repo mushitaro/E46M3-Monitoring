@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { AlertTriangle, PlayCircle, Square } from 'lucide-react';
 import { DialogFrame } from '@/components/DialogFrame';
-import { ConfirmDetails, ConfirmSteps, Told } from '@/components/gate/ConfirmBody';
+import { ConfirmDetails, ConfirmSteps, Measured, Told, useMeasureClock } from '@/components/gate/ConfirmBody';
+import { holdsRun, isMeasuredPrereq, lastMeasured, procedureMeasured } from '@/lib/gateChecks';
 import { instructionsIn } from '@/lib/instructions';
 import { formatDuration, procedureMaxSec } from '@/lib/duration';
 import { DialogButton, Field, LABEL, MicroLabel, Provenance, Well, emphasise } from '@/components/ui';
@@ -12,7 +13,7 @@ import type { JobRunResult } from '@/hooks/useDs2Link';
 import type { CatalogJob } from '@tsunagi/monitoring-engine';
 import { useLang } from '@/lib/i18n';
 import { planProcedure, type ProcedureBlockKey } from '@/lib/procedureRun';
-import type { ActuationPermit, Ledger, Motion, NotSent, SendRequirement } from '@tsunagi/monitoring-engine';
+import type { ActuationPermit, Ledger, Motion, NotSent, SendRequirement, VehicleState } from '@tsunagi/monitoring-engine';
 import { notSentLine } from '@/lib/notSentText';
 import type { Smg2Procedure, Smg2Workflows } from '@/lib/smg2Workflows';
 import type { TelegramTable } from '@tsunagi/monitoring-engine';
@@ -53,6 +54,16 @@ import {
  * rather than showing nothing, because "did that finish?" is the question the
  * operator will have and a dialog that vanishes answers it wrongly.
  *
+ * ## What the app measures is shown measured, not ticked (operator, 2026-11-21)
+ *
+ * The start goes with a `run` permit, so the link measures the speed, the battery and the engine state
+ * the procedure asks for immediately before it, and refuses when one fails (`preflightRun`). Those
+ * are lines with their last measurement on the first step (lib/gateChecks), not boxes; the SGBD's
+ * battery sentence, wholly measured, loses its box and keeps its advice (charger) as an instruction.
+ * The SGBD's other sentences mix in what the app cannot measure (neutral, fluid temperature, level
+ * ground) and stay boxes. A last measurement that fails is red and says what makes it pass; taken just
+ * now, it holds START. The measurement on the press decides either way.
+ *
  * ## What the numbers are, and are not
  *
  * The status text, the activity text, the preconditions, the duration and the
@@ -69,6 +80,7 @@ export function WizardDialog({
     telegrams,
     mode,
     gate,
+    measured,
     send,
     assistant,
     why,
@@ -83,11 +95,15 @@ export function WizardDialog({
     mode: 'vehicle' | 'practice';
     /** On a car: the ledger and the car as last measured, for the owner's decision (runGate.mayRunProcedure). */
     gate: { ledger: Ledger; motion: Motion };
+    /** The car as last measured (lib/vehicleState): shown in place of the preconditions the link measures. */
+    measured?: VehicleState | null;
     send: (jobId: string, hex: string, requires?: SendRequirement, permit?: ActuationPermit) => Promise<JobRunResult | null>;
     /**
      * Started by the assistant on the owner's spoken OK (monitoring_procedure, after it read back every
-     * precondition): the word ticks the boxes and START is pressed once — through the same plan and gate
-     * as a press here. Everything else is as on the screen, ABORT included.
+     * precondition): the word ticks the boxes — the preconditions the app cannot measure, and the
+     * safety acknowledgement — and START is pressed once, through the same plan and gate as a press
+     * here; the battery, standstill and engine are measured by the link on that press, as on a person's.
+     * Everything else is as on the screen, ABORT included.
      */
     assistant?: { ownerSaid: string; gear?: number };
     /** Why the last send came back empty (the link's own sentence and shape, read straight after the await). */
@@ -106,17 +122,21 @@ export function WizardDialog({
     // How the run ended, for the result step: a module's refusal is said as one (IJ06).
     const [outcome, setOutcome] = useState<ProcedureOutcome | null>(null);
 
-    // Every precondition the SGBD lists, plus one acknowledgement of the safety
-    // statement. The keys are indices into the procedure's own array rather than
-    // invented names, so a procedure with different preconditions gets different
-    // boxes without this file knowing anything about them.
+    // Every precondition the SGBD lists that the app cannot measure, plus one acknowledgement of the
+    // safety statement. The keys are indices into the procedure's own array rather than invented
+    // names, so a procedure with different preconditions gets different boxes without this file
+    // knowing anything about them. The battery's sentence is measured (lib/gateChecks), not a box.
     const shape: WizardShape = useMemo(
         () => ({
-            prereqChecks: procedure.prereq.map((_, i) => `pre:${i}`),
+            prereqChecks: procedure.prereq.flatMap((p, i) => (isMeasuredPrereq(p) ? [] : [`pre:${i}`])),
             safetyChecks: ['safety'],
         }),
         [procedure],
     );
+    // What the link measures before the start, as last measured; one failing just now holds START.
+    const now = useMeasureClock();
+    const readings = procedureMeasured(procedure.engine).map((p) => ({ p, m: lastMeasured(p, measured, now) }));
+    const failing = readings.filter((r) => holdsRun(r.m));
     const [state, dispatch] = useReducer(
         (s: Parameters<typeof wizardReducer>[0], a: Parameters<typeof wizardReducer>[1]) =>
             wizardReducer(s, a, shape),
@@ -219,6 +239,7 @@ export function WizardDialog({
                     canNext={canAdvance(state, shape)}
                     canBack={canGoBack(state)}
                     blocked={plan.ok ? null : plan.reason}
+                    measuredBad={failing.length > 0}
                     onBack={() => dispatch({ type: 'back' })}
                     onNext={() => dispatch({ type: 'next' })}
                     onStart={startRun}
@@ -232,16 +253,31 @@ export function WizardDialog({
             {state.step === 'prereq' && (
                 <>
                     {/* Where the list comes from, as a provenance tag; its sentence is the tag's title. */}
-                    <Provenance title={t.wiz_prereq_note}>{t.provenance['sgbd-comment']}</Provenance>
-                    <ul className="mt-3 space-y-2">
-                        {procedure.prereq.map((p, i) => (
-                            <Check
-                                key={i}
-                                checked={state.ticked.has(`pre:${i}`)}
-                                onToggle={() => dispatch({ type: 'toggle', key: `pre:${i}` })}
-                                label={pick(p)}
-                            />
+                    {/* What the app measures before the start, as measured; then the SGBD's sentences
+                        it cannot measure, a box each; the battery's advice (charger) without a box. */}
+                    <div className="flex flex-col gap-1.5">
+                        {readings.map(({ p, m }) => (
+                            <Measured key={p} label={t[`precond_${p}`]} p={p} m={m} />
                         ))}
+                    </div>
+                    <div className="mt-3">
+                        <Provenance title={t.wiz_prereq_note}>{t.provenance['sgbd-comment']}</Provenance>
+                    </div>
+                    <ul className="mt-2 space-y-2">
+                        {procedure.prereq.map((p, i) =>
+                            isMeasuredPrereq(p) ? (
+                                <li key={i} className="pl-[22px] text-[11px] leading-relaxed text-slate-300">
+                                    {pick(p)}
+                                </li>
+                            ) : (
+                                <Check
+                                    key={i}
+                                    checked={state.ticked.has(`pre:${i}`)}
+                                    onToggle={() => dispatch({ type: 'toggle', key: `pre:${i}` })}
+                                    label={pick(p)}
+                                />
+                            ),
+                        )}
                     </ul>
                     <div className="mt-4 flex flex-wrap items-baseline gap-x-6 gap-y-2">
                         <Field label={t.proc_duration} value={maxText ?? '—'} />
@@ -295,6 +331,14 @@ export function WizardDialog({
                             label={t.wiz_safety_ack}
                         />
                     </ul>
+                    {/* A last measurement that fails holds START: said here, beside it. */}
+                    {failing.length > 0 && (
+                        <div className="mt-4 flex flex-col gap-1.5">
+                            {failing.map(({ p, m }) => (
+                                <Measured key={p} label={t[`precond_${p}`]} p={p} m={m} />
+                            ))}
+                        </div>
+                    )}
                     {!plan.ok && <Blocked reason={plan.reason} detail={plan.detail} />}
                     {(workflows.safety || procedure.note) && (
                         <ConfirmDetails>
@@ -484,6 +528,7 @@ function Footer({
     canNext,
     canBack,
     blocked,
+    measuredBad,
     onBack,
     onNext,
     onStart,
@@ -495,6 +540,8 @@ function Footer({
     canNext: boolean;
     canBack: boolean;
     blocked: ProcedureBlockKey | null;
+    /** The car's last measurement fails what the start is measured for: START waits. */
+    measuredBad: boolean;
     onBack: () => void;
     onNext: () => void;
     onStart: () => void;
@@ -527,7 +574,7 @@ function Footer({
                 </DialogButton>
             )}
             {step === 'safety' ? (
-                <DialogButton onClick={onStart} disabled={!canNext || blocked !== null} tone="danger" Icon={PlayCircle}>
+                <DialogButton onClick={onStart} disabled={!canNext || blocked !== null || measuredBad} tone="danger" Icon={PlayCircle}>
                     {t.op_start}
                 </DialogButton>
             ) : (

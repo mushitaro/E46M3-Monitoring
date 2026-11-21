@@ -218,7 +218,7 @@ export const en: Localised = {
             : `${hex}'s IDENT does not tell which model this is. Which is this car's? Nothing is driven here until you say (reads go on as before).`,
     variant_ruledOut: (hex, other) => `On this car ${hex} is ${other}: this module's parts are not driven.`,
     gate_what: 'What moves',
-    gate_needs: 'Preconditions (confirm each)',
+    gate_needs: 'Preconditions',
     gate_stopsAfter: (s) => `This app stops it after ${s} s. STOP ends it at any time.`,
     gate_once: 'The module ends it by itself.',
     gate_onPress: (start) => (start ? 'Pressing measures speed, battery and engine, then sends.' : 'Pressing measures speed, battery and engine, then sends it once.'),
@@ -227,8 +227,13 @@ export const en: Localised = {
     conf_runs: (name) => `Runs ${name}.`,
     conf_readOnce: 'Read once, and done.',
     conf_staysOn: 'It stays on. This app cannot switch it off.',
-    conf_measured: (v) => `last ${v}`,
-    conf_measureOnPress: 'measured on press',
+    conf_measured: (p, v, ok, min) =>
+        p === 'voltage_ok' ? (ok ? `Battery ${v} V (last measured)` : `Battery ${v} V (last measured): runs at ${min} V or more`)
+        : p === 'stationary' ? (ok ? `Stationary (${v} km/h, last measured)` : `Moving (${v} km/h, last measured): runs once the car has stopped`)
+        : p === 'engine_off' ? (ok ? `Engine off (${v} rpm, last measured)` : `Engine running (${v} rpm, last measured): stop it first`)
+        : ok ? `Engine running (${v} rpm, last measured)` : `Engine stopped (${v} rpm, last measured): start it first`,
+    conf_measureOnPress: 'measured on press, before sending',
+    conf_remeasureOnPress: 'measured again on press, before sending',
     conf_details: 'Details',
     conf_sgbdNote: "The SGBD's note",
     conf_instructions: 'Keep to this',
@@ -303,6 +308,7 @@ export const en: Localised = {
     precond_voltage_ok: 'Battery 12 V or more',
     precond_stationary: 'Stationary',
     precond_engine_off: 'Engine off',
+    precond_engine_running: 'Engine running',
     module: 'Module',
     faultRef: 'Fault dictionary',
     faultRef_info: 'The SGBD\'s fault-text table (FORTTEXTE). A fault that is read gets its text from here. Search it by code, translation or the German original.',

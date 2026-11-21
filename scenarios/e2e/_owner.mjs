@@ -60,7 +60,11 @@ export async function scanModules(page) {
 export const actuatorRow = (page, job) =>
     page.locator(`xpath=//*[.//*[@data-test="tj-pick"]][.//*[normalize-space(text())="${job}"]]`).last();
 
-/** The confirmation of a run on the screen: every box ticked, then run. False when no confirmation came. */
+/**
+ * The confirmation of a run on the screen: every box there is ticked, then run. False when no
+ * confirmation came. The battery, the standstill and the engine are not boxes (measured, operator
+ * 2026-11-21): what is left is the acknowledgements, and any precondition the app cannot measure.
+ */
 export async function confirmRun(page) {
     const run = page.locator('[data-test="gate-run"]');
     try {
@@ -68,7 +72,7 @@ export async function confirmRun(page) {
     } catch {
         return false;
     }
-    for (const box of await page.locator('[role=dialog] input[type=checkbox]').all()) if (await box.isEnabled()) await box.check();
+    for (const box of await page.locator('[role=dialog] [data-test="gate-ack"], [role=dialog] [data-test="gate-cond"]').all()) if (await box.isEnabled()) await box.check();
     await run.click();
     return true;
 }

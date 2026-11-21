@@ -1,9 +1,12 @@
 'use client';
 
 import { Info } from 'lucide-react';
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Explain, LABEL } from '@/components/ui';
+import type { MeasuredPrecondition, Measurement } from '@/lib/gateChecks';
+import { TEST_ID, tid } from '@/lib/testIds';
 import { useLang } from '@/lib/i18n';
+import { MIN_RUN_VOLTAGE, appNow } from '@tsunagi/monitoring-engine';
 
 /**
  * The body every confirmation in this app reads the same way (docs/UX-DESIGN.md §5,
@@ -39,6 +42,44 @@ export function Told({ lines, indent = false }: { lines: readonly string[]; inde
             ))}
         </>
     );
+}
+
+/**
+ * A precondition the app measures (lib/gateChecks), said as its last measurement instead of a box:
+ * the value, neutral when it would pass, and red with what makes it pass when it would not (with, when
+ * that reading is not from just now, that the press measures again) — or, with nothing measured
+ * lately, that pressing measures it first. Never "OK" by itself: the value is a
+ * reading, and the press measures again. Every confirmation that drives something (the gate, the
+ * procedure's dialog).
+ */
+export function Measured({ label, p, m, indent = false }: { label: string; p: MeasuredPrecondition; m: Measurement; indent?: boolean }) {
+    const { t } = useLang();
+    const value = (n: number) => (p === 'voltage_ok' ? n.toFixed(1) : String(Math.round(n)));
+    return (
+        <p {...tid(TEST_ID.gateMeasured)} className={`text-xs leading-relaxed ${m.kind === 'bad' ? 'text-red-400' : 'text-slate-300'} ${indent ? 'pl-[22px]' : ''}`}>
+            {m.kind === 'unmeasured' ? (
+                <>
+                    {label} <span className="text-slate-500">{t.conf_measureOnPress}</span>
+                </>
+            ) : (
+                <>
+                    {t.conf_measured(p, value(m.value), m.kind === 'ok', MIN_RUN_VOLTAGE)}
+                    {/* Failing, but not just now: the car may have changed since; the press measures again. */}
+                    {m.kind === 'bad' && !m.current && <span className="text-slate-500"> {t.conf_remeasureOnPress}</span>}
+                </>
+            )}
+        </p>
+    );
+}
+
+/** The app's clock, once a second, for how old the last measurement is (lib/gateChecks `lastMeasured`). */
+export function useMeasureClock(): number {
+    const [now, setNow] = useState(() => appNow());
+    useEffect(() => {
+        const id = setInterval(() => setNow(appNow()), 1000);
+        return () => clearInterval(id);
+    }, []);
+    return now;
 }
 
 /**

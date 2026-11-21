@@ -202,7 +202,7 @@ function logBlocks(channels: readonly ChannelId[], withModules: boolean) {
 /** Engine speed (`n`) and battery (`ub`): measured before a job that drives something. */
 const ENGINE_BLOCK = 3;
 /** Below this the engine is not taken as running (an idling S54 is ~900 rpm). */
-const ENGINE_RUNNING_RPM = 400;
+export const ENGINE_RUNNING_RPM = 400;
 
 /** A cable this browser has already been allowed: an FTDI device over WebUSB, or a port over Web Serial. */
 async function hasPermittedCable(): Promise<boolean> {
@@ -1510,7 +1510,7 @@ export class LinkSession {
                                 this.noteVehicle(all);
                                 speed = all;
                             } else if (this.vehicleNow) {
-                                this.vehicleNow = { ...this.vehicleNow, rpm: all['3:n'] ?? null, voltageV: all['3:ub'] ?? null };
+                                this.vehicleNow = { ...this.vehicleNow, rpm: all['3:n'] ?? null, voltageV: all['3:ub'] ?? null, engineAt: appNow() };
                             }
                         }
                     }

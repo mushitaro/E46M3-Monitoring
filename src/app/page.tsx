@@ -1447,6 +1447,7 @@ export default function Home() {
                     telegrams={telegrams}
                     mode={link.mode}
                     gate={procedureGate}
+                    measured={link.vehicleState}
                     send={link.runRead}
                     assistant={wizardAssistant ?? undefined}
                     why={() => ({ error: link.lastError(), notSent: link.lastNotSent() })}

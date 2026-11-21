@@ -257,9 +257,15 @@ export interface Localised {
     conf_runs: (name: string) => string;
     conf_readOnce: string;
     conf_staysOn: string;
-    /** Beside a precondition: the car's state as last measured, or that pressing measures it. */
-    conf_measured: (value: string) => string;
+    /**
+     * A precondition the app measures (lib/gateChecks), said as its last measurement instead of a box:
+     * the value, and — when it would fail the measurement taken on the press — what makes it pass.
+     */
+    conf_measured: (p: 'voltage_ok' | 'stationary' | 'engine_off' | 'engine_running', value: string, ok: boolean, minV: number) => string;
+    /** Beside a measured precondition with nothing measured lately: pressing measures it, then sends. */
     conf_measureOnPress: string;
+    /** After a failing measurement that is not from just now: the press measures again and decides. */
+    conf_remeasureOnPress: string;
     conf_details: string;
     conf_sgbdNote: string;
     /** Over what a caution tells the person to do, where the job has no precondition boxes (lib/instructions). */
@@ -305,6 +311,7 @@ export interface Localised {
     precond_voltage_ok: string;
     precond_stationary: string;
     precond_engine_off: string;
+    precond_engine_running: string;
     module: string;
     faultRef: string;
     faultRef_info: string;

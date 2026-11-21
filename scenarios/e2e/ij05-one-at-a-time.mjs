@@ -74,7 +74,8 @@ const scenario = {
             await page.locator('[data-test="tj-start"]').click();
             const dialog = page.locator('[role=dialog]').first();
             await dialog.waitFor({ timeout: 3000 });
-            for (const box of await dialog.locator('input[type=checkbox]').all()) await box.check();
+            // The battery, the standstill and the engine are measured, not ticked (operator, 2026-11-21): only an acknowledgement is a box.
+            for (const box of await dialog.locator('[data-test="gate-ack"]').all()) await box.check();
             st.t9 = await pageNow(page);
             await page.locator('[data-test="gate-run"]').click();
             await page.waitForTimeout(2000);

@@ -32,8 +32,12 @@
 export const TEST_ID = {
     // --- the gate ---------------------------------------------------------
     gateDialog: 'gate-dialog',
-    /** Every checkbox in the gate. The suites count them and tick them all. */
+    /** A precondition's checkbox in the gate: only what the app cannot measure (lib/gateChecks). */
     gateCond: 'gate-cond',
+    /** An acknowledgement's checkbox: what cannot be undone, what cannot be stopped. */
+    gateAck: 'gate-ack',
+    /** A precondition the app measures, shown as its last measurement, with no box (lib/gateChecks). */
+    gateMeasured: 'gate-measured',
     gateRun: 'gate-run',
     gateCancel: 'gate-cancel',
 

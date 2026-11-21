@@ -117,7 +117,8 @@ const byScreen = async (page, { module, job, values, actuator }) => {
     }
     const run = page.locator('[data-test="gate-run"]');
     await run.waitFor({ timeout: 3000 });
-    for (const box of await page.locator('[role=dialog] input[type=checkbox]').all()) await box.check();
+    // The battery, the standstill and the engine are measured, not ticked (operator, 2026-11-21): only an acknowledgement is a box.
+    for (const box of await page.locator('[role=dialog] [data-test="gate-ack"]').all()) await box.check();
     await run.click();
     await page.waitForTimeout(2500);
     const s = await tool(page, 'monitoring_status');

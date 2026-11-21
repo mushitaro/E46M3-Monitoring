@@ -107,9 +107,9 @@ const scenario = {
             expect: (r) => {
                 const f = r?.faults ?? r;
                 const c = (f?.codes ?? []).find((x) => x.code === '0x08');
-                // A name no person translated: no name, said as such, with the SGBD's German (the screen's 故障（訳なし）).
+                // A name no person translated: the screen's own word for it (故障（訳なし）), no English name, and the SGBD's German.
                 const u = (f?.codes ?? []).find((x) => x.code === '0x01');
-                const plain = u && u.textJa === null && u.text === null && !!u.untranslated && /Zuendung/.test(u.original ?? '');
+                const plain = u && u.textJa === '故障（訳なし）' && u.text === null && u.untranslated === true && /Zuendung/.test(u.original ?? '');
                 return f?.unverified === true && c?.text && plain ? true : JSON.stringify(f).slice(0, 300);
             },
         },

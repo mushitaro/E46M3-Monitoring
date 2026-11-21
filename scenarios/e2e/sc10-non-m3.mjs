@@ -40,7 +40,7 @@ const scenario = {
                 desc: '画面：エンジンは「MS43」、変速機は「GS20」の名前で出る。MSS54・SMG II の名前は出ない',
                 run: async (page) => {
                     const text = await bodyText(page);
-                    const list = text.slice(text.indexOf('全モジュール'), text.indexOf('VISUALIZATION & CONTROLS'));
+                    const list = text.slice(text.indexOf('全モジュール'), text.indexOf('\nVISU\n'));
                     const why = [];
                     if (!/MS43/.test(list)) why.push('MS43 が無い');
                     if (!/GS20/.test(list)) why.push('GS20 が無い');
@@ -109,7 +109,8 @@ const scenario = {
                 run: async (page) => {
                     const text = await bodyText(page);
                     if (!/0x01/.test(text)) return 'コードが無い';
-                    return /実車[^\n]*確かめていません/.test(text) ? true : '実車未確認の注記が無い';
+                    // Since UX-16 the note is the word「実車未確認」under the faults' heading; its sentence is the ⓘ.
+                    return /実車未確認|実車[^\n]*確かめていません/.test(text) ? true : '実車未確認の注記が無い';
                 },
             },
         },

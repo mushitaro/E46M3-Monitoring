@@ -63,7 +63,10 @@ const scenario = {
                 return bySgbd(f) && /b8 29 f1 04 18 02 ff ff 7e/.test(s) ? true : s.slice(0, 400);
             },
         },
-        { screen: { desc: '画面：コード 0x5D90 と SGBD の説明文、送った電文。推定の注記は出ない', has: ['0x5D90', 'b8 29 f1 04 18 02 ff ff 7e'], hasNot: ['MK60 の実車ではまだ確かめていません'] } },
+        { screen: { desc: '画面：コード 0x5D90 と SGBD の説明文。推定の注記は出ない', has: ['0x5D90', 'Drehzahlfuehler', '送った電文'], hasNot: ['MK60 の実車ではまだ確かめていません'] } },
+        // The frames are folded under the faults since UX-16 (読んだ故障が最上段): the owner opens「送った電文」to see them.
+        { ui: 'click', text: '送った電文', settle: 400, means: '送った電文を開く' },
+        { screen: { desc: '画面：送った電文（KWP の形の b8 29 f1 …）が出る', has: ['b8 29 f1 04 18 02 ff ff 7e'] } },
         { shot: 'faults' },
         { car: { speedKmh: 30 }, means: '走り出す' },
         {

@@ -82,6 +82,8 @@ import { StartupView, StartupViz } from '@/views/probe/StartupView';
 import { useProbeSessions } from '@/views/probe/useProbeSessions';
 import { SessionsView, SessionsViz } from '@/views/sessions/SessionsView';
 import { SyncPanel } from '@/views/sessions/SyncPanel';
+import { AssistantSection } from '@/views/sessions/AssistantSection';
+import { MovingOkSection } from '@/views/sessions/MovingOkSection';
 import { useJournal } from '@/views/sessions/useJournal';
 import { useE2EDoor } from '@/lib/e2e';
 import { useFailureNotes, useSessions } from '@/views/sessions/useSessions';
@@ -246,7 +248,7 @@ export default function Home() {
     }, [ecuIndex, ecuId, telegrams]);
     // The verified ledger, for this page's life. Reads that answer on a car measured stationary are
     // recorded into it as facts (`observed-parked`); nothing here promotes a read further — clearing
-    // one for a moving car is the owner's press in SESSION SYNC (`onGrantMovingOk`). Not persisted yet:
+    // one for a moving car is the owner's press on MEMORY (`onGrantMovingOk`). Not persisted yet:
     // the production build stores nothing on the device, and the WORKS build's copy goes with SYNC.
     const [observed, setObserved] = useState<Ledger>(EMPTY_LEDGER);
     const onObserved = useCallback(
@@ -273,7 +275,7 @@ export default function Home() {
             setObserved((l) => recordVehicleRun(l, `${r.moduleId}:${r.jobId}`, { at: r.at, telegram: r.telegram, response: r.response, outcome: r.outcome, ecuIdent: r.ecuIdent })),
         [],
     );
-    // The owner's press in SESSION SYNC → WHILE MOVING, after the confirmation. grantMovingOk refuses
+    // The owner's press on MEMORY → WHILE MOVING, after the confirmation. grantMovingOk refuses
     // anything without enough stationary answers, so a stale screen cannot clear more than it showed.
     const onGrantMovingOk = useCallback(
         (id: string) => setObserved((l) => grantMovingOk(l, id, { who: 'owner', at: new Date().toISOString() }).ledger),
@@ -332,7 +334,7 @@ export default function Home() {
     const journal = useJournal({ enabled: sessionsEnabled, paused: probe.progress !== null, link, ecuId, datalog, failures: failures.notes });
     const sessions = useSessions({
         enabled: sessionsEnabled,
-        active: tab === 'memory',
+        active: tab === 'memory' || syncOpen,
         link,
         ecuId,
         datalog,
@@ -955,7 +957,7 @@ export default function Home() {
                 ownerChose={(address) => choiceFor(variantChoices, car, address)}
             />
         ) : (
-            <DiagnosisView ident={link.ident} faults={link.faults} rawFaults={link.rawFaults} catalog={catalog} />
+            <DiagnosisView ident={link.ident} faults={link.faults} rawFaults={link.rawFaults} catalog={catalog} known={variantOf(ecuId).state === 'ok'} />
         ),
         datalog: <DatalogView datalog={datalog} plan={datalogPlan} />,
         adaptation: (
@@ -1004,7 +1006,21 @@ export default function Home() {
         ),
         // Rendered only where the registry opens it: a production build never mounts it, so it
         // never opens the device store or asks the network for anything.
-        memory: sessionsEnabled ? <SessionsView sessions={sessions} catalog={catalog} ecuId={ecuId} onOpenSync={() => setSyncOpen(true)} /> : null,
+        // ASSISTANT and WHILE MOVING sit under MEMORY's lists, out of SESSION SYNC (UX-33).
+        memory: sessionsEnabled ? (
+            <SessionsView
+                sessions={sessions}
+                catalog={catalog}
+                ecuId={ecuId}
+                onOpenSync={() => setSyncOpen(true)}
+                extra={
+                    <>
+                        <AssistantSection assistant={assistant} />
+                        <MovingOkSection ledger={ledger} motion={link.motion} catalog={catalog} ecuId={ecuId} onGrant={onGrantMovingOk} />
+                    </>
+                }
+            />
+        ) : null,
         // PROBE's two, WORKS only like the rest of PROBE.
         startup: probeEnabled ? <StartupView s={probeSessions} /> : null,
         probe: probeEnabled ? (
@@ -1025,9 +1041,9 @@ export default function Home() {
     };
 
     const vizzes: Record<Tab, React.ReactNode> = {
-        diagnosis: scopeAll ? <ScanViz run={link.scan} progress={link.scanProgress} /> : <DiagnosisViz faults={link.faults} />,
+        diagnosis: scopeAll ? <ScanViz run={link.scan} progress={link.scanProgress} /> : <DiagnosisViz faults={link.faults} rawFaults={link.rawFaults} />,
         datalog: <DatalogViz datalog={datalog} active={tab === 'datalog' && pictureUp} />,
-        adaptation: <AdaptationViz blocks={link.adaptations} />,
+        adaptation: <AdaptationViz blocks={link.adaptations} ecuId={ecuId} />,
         service: (
             <ServiceViz
                 lastRun={link.lastRun}
@@ -1045,7 +1061,7 @@ export default function Home() {
         // module. Same component SERVICE falls back to, because it is the same
         // question and the numbers are about the module, not the tab.
         actuator: <ActuatorViz profile={catalog} arming={arming} workflows={workflows} lastRun={link.lastRun} />,
-        memory: sessionsEnabled ? <SessionsViz count={sessions.local?.length ?? 0} /> : null,
+        memory: sessionsEnabled ? <SessionsViz sessions={sessions} /> : null,
         startup: probeEnabled ? <StartupViz s={probeSessions} /> : null,
         probe: probeEnabled ? <BoardViz s={probeSessions} live={probe.live()} /> : null,
     };
@@ -1053,7 +1069,6 @@ export default function Home() {
     return (
         <div className="flex h-dvh flex-col overflow-hidden bg-slate-950">
             <AppHeader
-                ident={link.ident}
                 state={link.state}
                 mode={link.mode}
                 hasError={!!link.error}
@@ -1119,7 +1134,7 @@ export default function Home() {
                         there is no split to line up across — the footer already names the window. */}
                     <div className={`${BAR} max-[900px]:hidden`}>
                         <span className={`truncate ${LABEL} text-slate-500`}>
-                            {t.pane_visualization}
+                            {t.pane_visu}
                         </span>
                     </div>
 
@@ -1332,6 +1347,8 @@ export default function Home() {
                         onPointerDown={(e) => {
                             e.preventDefault();
                             setMenuOpen(true);
+                            // The sheet's SYNC cell says what MEMORY's does: read the account's side now (UX-25).
+                            if (sessionsEnabled) void sessions.refreshCloud();
                             setMenuDrag({ x: e.clientX, y: e.clientY });
                         }}
                         aria-label={t.menu_open}
@@ -1399,16 +1416,7 @@ export default function Home() {
             )}
 
             {syncOpen && sessionsEnabled && (
-                <SyncPanel
-                    sessions={sessions}
-                    assistant={assistant}
-                    ledger={ledger}
-                    motion={link.motion}
-                    catalog={catalog}
-                    ecuId={ecuId}
-                    onGrantMovingOk={onGrantMovingOk}
-                    onClose={() => setSyncOpen(false)}
-                />
+                <SyncPanel sessions={sessions} onClose={() => setSyncOpen(false)} />
             )}
 
             {firstRun && <DisclaimerDialog preview={preview} onAgree={(dontShowAgain) => agreeToFirstRun(preview, dontShowAgain)} />}

@@ -31,7 +31,8 @@ const scenario = {
                 run: async (page) => {
                     await page.getByRole('button', { name: /menu|メニュー/i }).first().dispatchEvent('pointerdown');
                     await page.waitForTimeout(500);
-                    await page.locator('button:visible:has-text("SYNC")').first().click();
+                    // The cell's word is SYNC's state (lib/sync/status): on this test build, with nowhere to send to, `Local only` (UX-25).
+                    await page.locator('button:visible').filter({ hasText: /^\s*(Sync|Synced|Syncing|Offline|Signed out|Unreachable|Local only)\b/i }).first().click();
                     await page.waitForTimeout(600);
                     const text = await page.evaluate(() => document.body.innerText);
                     return text.includes('SESSION SYNC') ? true : 'SESSION SYNC が開かない';

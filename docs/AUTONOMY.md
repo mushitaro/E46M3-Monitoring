@@ -106,7 +106,7 @@ guide が名乗るツールは `src/lib/bridge/tools.ts` の一覧だけ（`guid
 | モジュールには、そのモジュール自身の SGBD が送るものだけ | `packages/monitoring-engine/src/moduleProtocol.ts`、`link.to(address)` | 済（2026-10-27） |
 | どのモジュールがいるかは IDENT で選ぶ。非 M3 の車に M3 の電文を送らない。変種の分からないアドレスは「?」で IDENT だけ | `packages/monitoring-engine/src/variants.ts`（規則は `tools/sgbd/gen_variants.py`）、`Ds2Link.setSendGuard`、`packages/monitoring-engine/src/probe/scan.ts` | 0x12・0x32 は済（2026-11-10）。0x80（D_0080、KOMBI）は 2026-11-11。ほかのアドレスの規則は未 |
 | 読取は、送る直前に DME の車速が 0 と読めたときだけ。読めなければ出さない | `packages/monitoring-engine/src/link/session.ts` の事前読取（`preflight`）、`packages/monitoring-engine/src/vehicleState.ts` | 済（2026-10-27） |
-| 走行中に送ってよい読取はオーナーが決める。アプリもアシスタントも格上げしない | `packages/monitoring-engine/src/ledger.ts` の `grantMovingOk`。画面は SESSION SYNC の WHILE MOVING（`views/sessions/MovingOkSection.tsx`、確認のあと、走行中は押せない）。`monitoring_ledger` は読むだけ | 済（画面は #9、2026-10-28）。認めた分はページを開いている間だけ |
+| 走行中に送ってよい読取はオーナーが決める。アプリもアシスタントも格上げしない | `packages/monitoring-engine/src/ledger.ts` の `grantMovingOk`。画面は MEMORY の WHILE MOVING（`views/sessions/MovingOkSection.tsx`、2026-11-21 に SESSION SYNC から移した、確認のあと、走行中は押せない）。`monitoring_ledger` は読むだけ | 済（画面は #9、2026-10-28）。認めた分はページを開いている間だけ |
 | 意味的失敗（0xB0 など）は再送しない。再送は transport の失敗だけ | `packages/ds2-core/src/link.ts` | 済（以前から） |
 | 読取以外は、運営者の表（`policy.ts`）の「誰が」に従う。画面の人のものは画面に置くだけ（`monitoring_stage`）。AI に開いたものは、AI が読み返してオーナーの「いいよ」のあと、停車中に、画面の RUN と同じ関門・測定・時間切れで始める（`monitoring_actuate`。SMG II の手順は `monitoring_procedure` が画面の手順のダイアログで最後まで走らせる）。走行中の AI は始めない。止めるは誰でもいつでも（`monitoring_stop_outputs`） | `mayRun`・`mayActuate`、`src/lib/actuation.ts`（`assistantMayStart`・`startActuation`、画面と AI が同じ道） | stage は段 3。AI の口は 2026-11-16（デモテスト S24） |
 | 値を取るジョブ（SMG II の STEUERN_STELLGLIED など）は、選んだ値の組でジョブ自身の SGBD のコードが組む電文が、EdiabasLib が同じ値で組む電文と一致する組だけを送る。画面も AI も、その組の中から組ごと選ぶ（値を一つずつ選ばせない）。オンのまま残る始めは、止める電文（同じ部品で止めの値）も一致しているときだけ、送る前に止めを手元に置く。PRACTICE と記録は部品ごと（`STEUERN_STELLGLIED(HYDROPUMPE)`） | `packages/monitoring-engine/src/sgbd/agreedFrame.ts`（`agreedFrameFrom`・`isAgreedFor`）、`mayRun`・`mayActuate` の `agreed`、`src/lib/agreedChoices.ts`、`startActuation` の `stop`。答えは `job-frames.oracle.json`（`tools/sgbd/gen_job_frames.py`） | 2026-11-17。一致を示すのは電文のバイトまで。部品が動くかは実車で |
@@ -124,7 +124,7 @@ guide が名乗るツールは `src/lib/bridge/tools.ts` の一覧だけ（`guid
 | 0 | 宛先の修正、実測の車両状態、台帳の段階、キルリスト、試験とクラウドの足場 | 人 |
 | 1 | タブの実行器（`src/lib/probe/`）と CO-WORK（TUNER の `notebook/rules.ts` の形）。実行器・判定・委任の規則、端末の保存（`notebook/store.ts`）、PROBE（副操作で開始、ハブで STOP と一行）は済 | 人 |
 | 2 | ポリシーの改訂（成功した読取の送信・中継の catalog）→ D1 → 机の CLI。ポリシーは済（tsunagi-m3 #29）。お知らせ v2、D1（`0002`）、端末の送信（読み取りの記録・調査の記録）、机の Worker と `npm run desk` は作成済み（§8） | 人 |
-| 3 | Matrix MONITORING：ticket・同一オリジンのソケット・hello・19 のツール・SESSION SYNC の ASSISTANT。タブ側は済（代わりの中継で確認）。中継 0.11.0 は作成済み、未配備 | 人 |
+| 3 | Matrix MONITORING：ticket・同一オリジンのソケット・hello・19 のツール・ASSISTANT（MEMORY。2026-11-21 まで SESSION SYNC）。タブ側は済（代わりの中継で確認）。中継 0.11.0 は作成済み、未配備 | 人 |
 | 4 | guide の全トピック、机と自律の Skill、例題と能力の表、自動マージの分類（`.github/autonomy.json`・`scripts/autonomy-class.mjs`・CODEOWNERS・`autonomy.yml`）、配信（`deploy-works.yml`）は済。定期実行は PR #1 が main に入ってから | 分類による |
 | 5 | テレグラムを SGBD の実行トレースで得る（`.prg` をデータ repo へ） | 人 |
 | 6 | 例題 1（DSC 低速カーブ）を一周 | — |
@@ -182,7 +182,7 @@ GitHub のラベル・自動マージ・ブランチ保護は `autonomy.yml` と
 
 1. この変更（起こす口・すぐの配信・机の分け方）のレビュー（人の承認クラス）。
 2. ヘッドユニットで MONITORING WORKS を開き直し（新しいビルド）、お知らせ v2 に同意、ヘッダの AI で ASSISTANT を
-   オン、SESSION SYNC で端末に名前を付ける。走る前に CONNECT、計画があれば PROBE。
+   オン、MEMORY の ASSISTANT で端末に名前を付ける。走る前に CONNECT、計画があれば PROBE。
 3. 頼まれた瞬間に起こす口（`functions/_lib/wake.ts`）。この順に。トークンは会話には貼らない：
    1. PC で `npx wrangler d1 migrations apply tsunagi-m-preview-runs --remote`（`0003`、起こした記録の表）。
    2. claude.ai/code/routines → 「MONITORING 自律ループ」→ Edit → Trigger の「+」→ API → Generate token。

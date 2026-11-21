@@ -130,6 +130,18 @@ export function kindsJa(kinds: readonly string[]): string[] {
     return kinds.map((k) => kindJa(k) ?? k);
 }
 
+/** The Japanese that says only whether the fault is there now: the state tag beside the name says it already. */
+const STATE_ONLY = new Set(['今出ている', '今は出ていない（記録のみ）', '今は出ていない']);
+
+/**
+ * The kinds worth a line under a fault whose row already carries its state tag (現在あり／記録のみ):
+ * every kind in Japanese except the ones that only repeat that tag. What the tag cannot say — 散発,
+ * 警告灯は点かない, まだ記録されていない — stays (UX-21: one statement of the state, not two).
+ */
+export function kindsBesideState(kinds: readonly string[]): string[] {
+    return kindsJa(kinds).filter((k) => !STATE_ONLY.has(k));
+}
+
 /**
  * A fault location's own text that names nothing: the SGBD's placeholder for a number it has no entry
  * for. Said as such ("この場所の名前は SGBD に無い"), not shown as if it were a name.

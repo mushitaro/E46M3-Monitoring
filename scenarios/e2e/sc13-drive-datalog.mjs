@@ -226,7 +226,7 @@ const scenario = {
                 desc: 'HUB に回転と車速が大きく出る',
                 run: async (page) => {
                     const text = await bodyText(page);
-                    const hub = text.slice(text.indexOf('VISUALIZATION & CONTROLS'));
+                    const hub = text.slice(text.indexOf('\nVISU\n') + 1);
                     return /rpm/.test(hub) && /km\/h/.test(hub) ? true : `HUB に回転・車速が無い: ${hub.replace(/\n/g, ' ').slice(0, 160)}`;
                 },
             },
@@ -334,7 +334,7 @@ const scenario = {
                 desc: 'グラフに排気カムの目標線と実測線が出ている（二本とも見える）',
                 run: async (page) => {
                     const text = await bodyText(page);
-                    const viz = text.slice(text.indexOf('VISUALIZATION & CONTROLS'));
+                    const viz = text.slice(text.indexOf('\nVISU\n') + 1);
                     return viz.includes('排気VANOS バンク1 目標角') && viz.includes('排気VANOS バンク1 実角') ? true : `グラフは「${viz.split('\n')[1] ?? ''}」だけ`;
                 },
             },
@@ -481,7 +481,7 @@ const scenario = {
                 desc: '画面に 6 本目のグラフ（SMG の油圧、bar）が出て、実効レートが下がる。ほかの 5 本は止まらない',
                 run: async (page, st) => {
                     const text = await bodyText(page);
-                    const viz = text.slice(text.indexOf('VISUALIZATION & CONTROLS'));
+                    const viz = text.slice(text.indexOf('\nVISU\n') + 1);
                     const lines = await page.evaluate(() => [...document.querySelectorAll('svg polyline')].filter((p) => p.getBoundingClientRect().width > 0).length);
                     const rate = await screenRate(page);
                     const a = await tool(page, 'monitoring_datalog', { max: 0, seconds: 2 });
@@ -630,7 +630,7 @@ const scenario = {
                     await page.locator('[role=tab]:has-text("DATALOG")').first().click();
                     await page.waitForTimeout(600);
                     const text = await bodyText(page);
-                    const viz = text.slice(text.indexOf('VISUALIZATION & CONTROLS'));
+                    const viz = text.slice(text.indexOf('\nVISU\n') + 1);
                     return /油圧/.test(viz) ? true : '画面のグラフに SMG の油圧が無い';
                 },
             },

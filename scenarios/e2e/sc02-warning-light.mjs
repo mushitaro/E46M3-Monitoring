@@ -14,8 +14,14 @@ const CAR = {
     ],
 };
 
-/** 画面の名前（MSS54：車速直接入力、MK60：SGBD の日本語訳）。 */
-const JA = { '0x2A': '車速直接入力', '0x5D8C': 'センサ・Cluster・タイムアウトCAN', '0x5D96': 'センサ・Cluster・CAN・Bus・Off' };
+/**
+ * 画面の名前。MSS54 の 0x2A には読める日本語の名がある。MK60 の二つは表の日本語がドイツ語の混ざった半訳
+ * （「センサ・Cluster・タイムアウトCAN」）なので、名前の位置には「故障（訳なし）」が出て、SGBD のドイツ語がその隣に出る
+ * （UX-22、docs/UX-DESIGN.md §3：推し量った訳を本物の顔で出さない）。
+ */
+const JA = { '0x2A': '車速直接入力' };
+const GERMAN = { '0x5D8C': 'Sensor-Cluster Timeout CAN', '0x5D96': 'Sensor-Cluster CAN Bus-Off' };
+const HALF = /センサ・Cluster|Cluster・/;
 
 const scenario = {
     id: 'SC02',
@@ -88,8 +94,14 @@ const scenario = {
                     await page.waitForTimeout(500);
                     const t = await screenText(page);
                     const why = [];
-                    const shown = Object.entries(JA).filter(([, ja]) => t.includes(ja)).map(([c]) => c);
-                    if (shown.length < 3) why.push(`日本語の名前が出ているのは ${shown.join(', ') || 'なし'}${/Sensor-Cluster/.test(t) ? '（DSC はドイツ語のまま）' : ''}`);
+                    // Each fault reads as what it is: a Japanese name where there is one, else「故障（訳なし）」with the
+                    // SGBD's German beside it — never the half-translation in the name's place.
+                    const named = Object.entries(JA).filter(([, ja]) => t.includes(ja)).map(([c]) => c);
+                    const german = Object.entries(GERMAN).filter(([, de]) => t.includes(de)).map(([c]) => c);
+                    const untranslated = (t.match(/故障（訳なし）/g) ?? []).length;
+                    if (named.length < 1) why.push('0x2A の日本語の名前が無い');
+                    if (german.length < 2 || untranslated < 2) why.push(`DSC の二つが「故障（訳なし）」と SGBD のドイツ語で出ない（ドイツ語 ${german.join(', ') || 'なし'}、訳なし ${untranslated}）`);
+                    if (HALF.test(t)) why.push('半訳（センサ・Cluster…）が名前の位置に出ている');
                     // The conditions each fault's own SGBD recorded with it, as the answer carries them (the DME's
                     // freeze frames; a module's own job's values that have a unit). Each must read on the screen
                     // with its unit. A fault whose SGBD records none (MK60's 0x18 read holds code and status only)

@@ -54,6 +54,12 @@ export function useTabLabels(): Record<Tab, string> {
  * top of LIST would be two ways to one job in one layout (tsunagi-m-ux §11),
  * and LIST gets the 44px back. The comms log that sits at this bar's right goes
  * to the footer's right-hand slot (LogPopover's `openUp`).
+ *
+ * One tab is lit, and it changes in the same frame as the pane under it. There is no colour
+ * transition: with one, the tab being left kept a fading underline for its duration, and a screen
+ * the assistant had just switched showed two underlines over one pane (UX-15, four shots — the
+ * headless browser does not advance a transition until something paints). The pane switches
+ * instantly (Overlaid), so its tab does too.
  */
 export function TabBar({
     tab,
@@ -80,7 +86,7 @@ export function TabBar({
                         aria-selected={tab === id}
                         aria-controls={`pane-${id}`}
                         onClick={() => onChange(id)}
-                        className={`flex h-full shrink-0 items-center whitespace-nowrap border-b-2 ${LABEL} transition-colors ${
+                        className={`flex h-full shrink-0 items-center whitespace-nowrap border-b-2 ${LABEL} ${
                             tab === id
                                 ? 'border-blue-400 text-blue-400'
                                 : 'border-transparent text-slate-500 hover:text-slate-300'

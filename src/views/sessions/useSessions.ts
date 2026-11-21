@@ -140,6 +140,9 @@ export function useSessions(input: {
     const [diagnostics, setDiagnostics] = useState<CloudDiagnosticRow[] | null>(null);
     const [waiting, setWaiting] = useState(0);
     const [gate, setGate] = useState<{ state: GateState; label: string | null } | null>(null);
+    // This build's own API answered 404: there is nowhere to send to (UX-25). Learned from the
+    // account's list or from a send, and kept: it is a fact about the build, not about the moment.
+    const [noDestination, setNoDestination] = useState(false);
     const [busy, setBusy] = useState<string | null>(null);
     const [notice, setNotice] = useState<SessionsNotice | null>(null);
     // A send asked for with no network (IJ18): kept, and made once by itself when the network is back.
@@ -202,6 +205,7 @@ export function useSessions(input: {
     const applyCloud = useCallback(
         (snap: Awaited<ReturnType<typeof readCloud>>) => {
             setGate(snap.gate);
+            if (snap.noDestination) setNoDestination(true);
             setWaiting(snap.waiting);
             if (snap.sessions) setCloud(snap.sessions);
             if (snap.diagnostics) setDiagnostics(snap.diagnostics);
@@ -338,6 +342,7 @@ export function useSessions(input: {
                     continue;
                 }
                 const stopped = sendStoppedBy(r);
+                if (stopped === 'noDestination') setNoDestination(true);
                 setNotice({ text: stopped === 'expired' ? t.sessions_sendExpired : t.sessions_sendFailedAt(r.status), tone: 'error' });
                 if (r.expired) setGate({ state: 'expired', label: gate?.label ?? null });
                 return { sent, stopped, status: r.status, tooLarge };
@@ -443,12 +448,16 @@ export function useSessions(input: {
     const counts = { busy, content, unsaved, pending };
     const saveLook = describeSave(savePhase(counts), t);
     const syncLook = cloudEnabled
-        ? describeSync(syncPhase({ ...counts, online, gate: gate?.state ?? null }), toSend(counts), t)
+        ? describeSync(syncPhase({ ...counts, online, gate: gate?.state ?? null, noDestination }), toSend(counts), t)
         : null;
 
     return {
         enabled,
         cloudEnabled,
+        /** This build has nowhere to send to (its API answered 404): nothing on screen offers a send. */
+        noDestination,
+        /** Reads the account's side now (the menu sheet's SESSION cells, opened before MEMORY was). */
+        refreshCloud,
         local,
         cloud,
         diagnostics,
@@ -533,7 +542,7 @@ export function sendStoppedBy(r: { status: number; expired: boolean }): NonNulla
  * calls beside it only check for themselves.
  */
 async function readCloud() {
-    if (!canSync()) return { gate: null, waiting: 0, sessions: null, diagnostics: null };
+    if (!canSync()) return { gate: null, waiting: 0, sessions: null, diagnostics: null, noDestination: false };
     const [s, d, gate, n] = await Promise.all([listCloudSessions(), listDiagnostics(), gateStatus(), waitingErrorRecords()]);
     let waiting = n;
     if (gate.state === 'active' && n > 0) {
@@ -546,5 +555,6 @@ async function readCloud() {
         waiting,
         sessions: s.ok && s.data ? s.data.sessions : null,
         diagnostics: d.ok && d.data ? d.data.diagnostics : null,
+        noDestination: s.status === 404,
     };
 }

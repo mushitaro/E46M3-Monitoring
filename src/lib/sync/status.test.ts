@@ -59,3 +59,11 @@ describe('SYNC', () => {
         expect(describeSync('signedOut', 1, t).disabled).toBe(true);
     });
 });
+
+describe('SYNC on a build with nowhere to send to', () => {
+    it('says so in grey, whatever else is true, and never Synced or a red failure (UX-25)', () => {
+        expect(syncPhase({ ...idle, ...route, pending: 3, noDestination: true })).toBe('local');
+        expect(syncPhase({ ...idle, unsaved: false, ...route, noDestination: true })).toBe('local');
+        expect(describeSync('local', 0, t)).toMatchObject({ label: t.sync_local, title: t.sync_title.local, disabled: true, tone: 'muted' });
+    });
+});

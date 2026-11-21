@@ -128,7 +128,7 @@ export async function practiceOneOnScreen(page, module) {
     }
     if ((await enabled().count()) === 0) {
         const text = await bodyText(page);
-        const lines = text.slice(text.lastIndexOf('\nACTUATOR\n') + 1, text.indexOf('VISUALIZATION & CONTROLS')).split('\n').map((l) => l.trim()).filter(Boolean);
+        const lines = text.slice(text.lastIndexOf('\nACTUATOR\n') + 1, text.indexOf('\nVISU\n')).split('\n').map((l) => l.trim()).filter(Boolean);
         const pane = lines.filter((l) => !/^ACTUATOR$|件が実行可能|^\d+ \/ \d+$|^実行できるものだけ$/.test(l)).join('\n');
         return { reason: pane.replace(/\n+/g, ' ').slice(0, 300), pane, chose, answered };
     }

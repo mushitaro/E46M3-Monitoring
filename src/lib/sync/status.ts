@@ -29,7 +29,13 @@ export type SyncPhase =
     | 'busy'
     | 'ready'
     /** Everything worth sending is in the account, as it stands. */
-    | 'clean';
+    | 'clean'
+    /**
+     * This build has nowhere to send to: its own API answered 404 (the test build, a dev server).
+     * Not a failure and not "Synced" — nothing was ever sent — so neither red nor the OK step: the
+     * grey of a fact, with the reason in `title` (UX-25).
+     */
+    | 'local';
 
 export type StatusTone = 'ready' | 'busy' | 'done' | 'muted' | 'error';
 
@@ -51,6 +57,7 @@ export interface StatusWords {
     sync_offline: string;
     sync_signedOut: string;
     sync_unreachable: string;
+    sync_local: string;
     save_title: Record<SavePhase, string>;
     sync_title: Record<Exclude<SyncPhase, 'ready'>, string> & { ready: (n: number) => string };
 }
@@ -79,7 +86,10 @@ export function syncPhase(s: {
     content: boolean;
     unsaved: boolean;
     pending: number;
+    /** The build's own API answered 404: there is nowhere to send to. */
+    noDestination?: boolean;
 }): SyncPhase {
+    if (s.noDestination) return 'local';
     if (s.busy === 'sync') return 'busy';
     if (toSend(s) === 0) return 'clean';
     if (!s.online) return 'offline';
@@ -115,6 +125,8 @@ export function describeSync(phase: SyncPhase, n: number, w: StatusWords): Statu
             return { label: `${w.sync} ${n}`, title: w.sync_title.ready(n), disabled: false, tone: 'ready' };
         case 'clean':
             return { label: w.sync_done, title: w.sync_title.clean, disabled: true, tone: 'muted' };
+        case 'local':
+            return { label: w.sync_local, title: w.sync_title.local, disabled: true, tone: 'muted' };
     }
 }
 

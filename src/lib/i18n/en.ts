@@ -25,7 +25,7 @@ export const en: Localised = {
     clearLog: 'Clear',
     exportLog: 'Save comms log',
 
-    faults_none: 'No stored faults',
+    faults_none: 'No faults',
     faults_count: (n: number) => `${n} stored fault${n === 1 ? '' : 's'}`,
     faults_code: 'Code',
     faults_type: 'Type',
@@ -243,7 +243,7 @@ export const en: Localised = {
     precond_stationary: 'Stationary',
     precond_engine_off: 'Engine off',
     module: 'Module',
-    faultRef: 'Fault text reference',
+    faultRef: 'Fault dictionary',
     faultRef_info: 'The SGBD\'s fault-text table (FORTTEXTE). A fault that is read gets its text from here. Search it by code, translation or the German original.',
     catalog_jobs: (n: number) => `${n} job${n === 1 ? '' : 's'}`,
     cancel: 'Cancel',
@@ -285,7 +285,7 @@ export const en: Localised = {
     scan_title: 'All modules',
     scan_note: (time) => `Read at ${time}`,
     scan_info:
-        "One address after another, each is sent its own SGBD's fault read. For the engine (0x12) and the gearbox (0x32) the common IDENT is asked first, and its answer chooses the variant the way EDIABAS's group file does: the fault read goes only when it chose an SGBD this app carries. On a car whose engine answered as the MSS54 (an M3), the other addresses are read as the M3's equipment, each sent its own IDENT first. On any other car an address whose variant is not known stays '?' and is sent nothing but its IDENT. Where several SGBDs use one address, only the frames all of them carry are sent. The engine (MSS54) is decoded by its own decoder; most other modules' answers are read by their own SGBD's fault-read code, the same reading INPA gives, and the location texts are the SGBD's own (German). An answer that cannot be read that way is shown as the bytes that came back. No answer means the equipment is not fitted, is asleep, or is not on this line.",
+        "One address after another, each is sent its own SGBD's fault read. For the engine (0x12) and the gearbox (0x32) the common IDENT is asked first, and its answer chooses the variant the way EDIABAS's group file does: the fault read goes only when it chose an SGBD this app carries. On a car whose engine answered as the MSS54 (an M3), the other addresses are read as the M3's equipment, each sent its own IDENT first. On any other car an address whose variant is not known stays '?' and is sent nothing but its IDENT. Where several SGBDs use one address, only the frames all of them carry are sent. The engine (MSS54) is decoded by its own decoder; most other modules' answers are read by their own SGBD's fault-read code, the same reading INPA gives, and the location texts are the SGBD's own (German). An answer that cannot be read that way is shown as the bytes that came back. No answer means the equipment is not fitted, is asleep, or is not on this line. A '?' row is an address whose IDENT does not tell which module it is: it is named by what its candidates share, and opening it lists them. Which one is fitted is chosen on MODULE, then opened.",
     scan_outcome: {
         faults: (n) => `${n} fault${n === 1 ? '' : 's'}`,
         partial: (n) => (n > 0 ? `${n} fault${n === 1 ? '' : 's'}, read part way` : 'Read part way'),
@@ -300,9 +300,10 @@ export const en: Localised = {
         noFaultRead: 'No fault read in its SGBD',
         skipped: 'Not reached',
     },
-    scan_shared: 'Which one is fitted is chosen on MODULE, then opened.',
     scan_summary: (m, f) => `${m} module${m === 1 ? '' : 's'}, ${f} fault${f === 1 ? '' : 's'}`,
-    scan_undecided: (names, byYear) => `? (${names.join(' or ')}${byYear ? '; it depends on the model year, which its IDENT does not tell' : '; its IDENT does not tell which'})`,
+    scan_candidates: (n) => `${n} candidates`,
+    scan_candidateList: (names, byYear) => `Candidates: ${names.join(', ')}${byYear ? ' (it depends on the model year)' : ''}`,
+    scan_either: (a, b) => `${a} or ${b}`,
     scan_partial: 'Read only part of the way: what was read is shown, and the list may be short.',
     scan_reason: (r) => (/^answered \d+ of \d+ frames/.test(r) ? null : undefined),
     start_hint: 'Not connected. To practise, tick PRACTICE and press CONNECT; on a car, plug in the cable and press CONNECT.',
@@ -315,7 +316,7 @@ export const en: Localised = {
               : `Variant ${sgbd}: this app does not carry its SGBD yet, so nothing but the IDENT was sent.`,
     scan_progress: (d, n) => `Scanning ${d} / ${n}`,
     awaiting_scan: 'AWAITING SCAN…',
-    viz_scanAnswered: 'modules answered',
+    viz_scanAnsweredOf: (a, n) => `${a} of ${n} modules answered`,
     faults_notEstablished:
         'This module’s SGBD carries no short identity or fault-read frame, so there is nothing the app can say is safe to send. Nothing is read.',
     datalog_noDecoder:
@@ -755,6 +756,7 @@ export const en: Localised = {
         busy: 'Sending to your account.',
         ready: (n) => `Save, then send the ${n} not yet sent to your account. The copy on the device stays.`,
         clean: 'Everything is in your account.',
+        local: 'This build has nowhere to send to. Sessions are kept on this device only.',
     },
     sessions_nothing: 'Nothing to save yet.',
     sessions_onDevice: 'On this device',
@@ -763,6 +765,8 @@ export const en: Localised = {
         'Every read is recorded on this device as it happens and listed in episodes, such as from connecting to disconnecting. Only what SAVE keeps is sent by SYNC. An episode not kept leaves this device after 7 days. JOIN joins one to the episode before it.',
     sessions_emptyUnkept: 'No episodes waiting to be kept.',
     sessions_timeUnsure: 'time not yet certain (recorded before the device clock was set)',
+    sessions_timeUnsureShort: 'Time not yet certain',
+    sessions_noLink: 'Not connected.',
     sessions_undated: (days) => (days === null ? 'Date uncertain (not deleted yet)' : `Date uncertain · ${Math.max(0, days)} days left`),
     sessions_expiresIn: (days) => (days <= 0 ? 'Going soon' : `${days} days left`),
     sessions_inAccount: 'In your account',
@@ -783,7 +787,7 @@ export const en: Localised = {
         status === 0
             ? 'Could not send: no answer from where it goes. It is saved on this device — SYNC again where there is signal.'
             : status === 404
-              ? 'Could not send: this build has nowhere to send to (HTTP 404). It is saved on this device.'
+              ? 'Could not send: this build has nowhere to send to. It is saved on this device.'
               : `Could not send: it was not taken (HTTP ${status}). It is saved on this device.`,
     sessions_sendExpired: 'Could not send: your sign-in has expired. It is saved on this device.',
     sessions_tooLarge: (label) => `${label} is too large to send (1.9 MB per session). It is saved on this device.`,
@@ -832,12 +836,10 @@ export const en: Localised = {
     install_dismissed: 'Install was declined — reload to be asked again',
     install_unavailable: 'This browser has not offered to install the app',
     viewer_faults: 'Fault memory',
-    viewer_noFaultsRead: 'The fault memory was not read in this session.',
     viewer_datalog: 'Datalog',
     viewer_rows: (shown, total) => (shown < total ? `First ${shown} of ${total} rows` : `${total} rows`),
     viewer_failures: 'Failures, and the comms log before each',
-    viewer_noFailures: 'Nothing failed in this session.',
-    viz_sessions: 'Saved on device',
+    viz_noRecord: 'No record open',
 
     mode_probeLocked: 'PROBE is the assistant’s mode. Turn AI on in the header to choose it.',
     startup_sessions: 'PROBE sessions',
@@ -878,11 +880,14 @@ export const en: Localised = {
     readout_min: 'min',
     readout_mean: 'mean',
     graph_noValue: 'No reading of this value in the run yet.',
-    faults_layout_unverified: 'Codes read where this module’s own SGBD reads them (checked against EDIABAS in simulation) — not yet confirmed on a car. The bytes above are the answer.',
+    faults_layout_unverified: 'Codes read where this module’s own SGBD reads them (checked against EDIABAS in simulation) — not yet confirmed on a car. The bytes under ‘Frames sent’ are the answer.',
     fault_present_now: 'present now',
     fault_stored: 'stored',
     fault_unnamed: 'its SGBD has no name for this location',
-    faults_kwp_estimated: 'Codes read as ISO 14230 lays out the answer — not yet confirmed on a MK60. The bytes above are the answer.',
+    fault_untranslated: 'Fault (untranslated)',
+    faults_tag: { sgbd: 'SGBD text', unverified: 'Not confirmed on a car', estimated: 'Estimated', bytes: 'Bytes as read' },
+    faults_sentFrames: 'Frames sent',
+    faults_kwp_estimated: 'Codes read as ISO 14230 lays out the answer — not yet confirmed on a MK60. The bytes under ‘Frames sent’ are the answer.',
     door_wifi: 'Head unit Wi-Fi settings',
     door_datetime: 'Head unit date and time settings',
     board_up: 'Up',

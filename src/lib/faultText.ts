@@ -7,7 +7,7 @@
  * assistant name a fault the same way (U3). Nothing here reads a byte the module's own tables do not
  * describe: a code the table lacks has no name, said as such, not a guessed one.
  */
-import { hexCode, text as resolveText, type EcuProfile, type HumanName } from '@tsunagi/monitoring-engine';
+import { hexCode, text as resolveText, type EcuProfile, type HumanName, type TextRef } from '@tsunagi/monitoring-engine';
 import { normCode } from '@/lib/faultCode';
 
 type Lang = 'ja' | 'en';
@@ -45,6 +45,73 @@ export function faultName(profile: EcuProfile | null, code: number | string | nu
     if (!known || !profile) return null;
     const t = resolveText(profile, known.text, lang);
     return t.original || t.text ? t : null;
+}
+
+/**
+ * Whether a Japanese name from a module's own table still carries the SGBD's German — a
+ * half-translation (`Drehzahlfuehler・前左・elektrisch・故障`) or the source left as it was
+ * (`Getriebetemperatur`).
+ *
+ * The catalogues keep no mark of where each name came from (tools/translate.py: the reviewed phrase
+ * tables, then the token dictionary, then the German as it was). What the generator does leave is
+ * its shape, and this reads it the way the repository's own check does
+ * (tools/verify_translation_quality.py `has_leftover_german`): a run of three or more Latin letters
+ * in mixed case is German left in, unless it is an identifier (all capitals), a hex literal, a
+ * quoted value, a K-/I-/D-Bus, or one of the few names and units that check allows. A name with no
+ * Japanese at all is the source text. Checked against every fault name the catalogues ship
+ * (2026-11-21): the two agree on all 1,531 distinct names, of which 188 carry German.
+ *
+ * It decides only what goes in the NAME slot (UX-22, docs/UX-DESIGN.md §3): a fault whose name is
+ * not Japanese a person can read is named by what it is — a fault, untranslated — and the German
+ * goes in the identifier slot. Nothing is translated here; nothing is guessed.
+ */
+export function hasSourceLeft(ja: string | null | undefined): boolean {
+    const t = (ja ?? '').trim();
+    if (!t || !JAPANESE.test(t)) return true;
+    const quoted = [...t.matchAll(QUOTED)].map((m) => [m.index + 1, m.index + 1 + m[1].length] as const);
+    const hex = [...t.matchAll(HEX_LITERAL)].map((m) => m[0]);
+    for (const m of t.matchAll(LATIN_RUN)) {
+        const w = m[0];
+        if (IDENTIFIER.test(w) || KEPT_WORDS.has(w.toUpperCase())) continue;
+        if (hex.some((h) => h.includes(w))) continue;
+        if (quoted.some(([a, b]) => a <= m.index && m.index + w.length <= b)) continue;
+        if (w === 'Bus' && /[KID]-$/.test(t.slice(0, m.index))) continue;
+        return true;
+    }
+    return false;
+}
+
+const JAPANESE = /[\u3040-\u30ff\u3400-\u9fff]/;
+const LATIN_RUN = /[A-Za-zÄÖÜäöüß]{3,}/g;
+const IDENTIFIER = /^[A-Z][A-Z0-9_]*$/;
+const HEX_LITERAL = /0[xX][0-9a-fA-F]+/g;
+const QUOTED = /['"‘’“”]([^'"‘’“”]{1,40})['"‘’“”]/g;
+/** Mixed-case words the repository's check keeps as they are (names, units): the ones the fault tables hold. */
+const KEPT_WORDS = new Set(['BOSCH', 'HIGH', 'FETRAWE', 'SPORT', 'SEC', 'MIN', 'MSEC', 'BAR', 'MBAR', 'PPM', 'RPM', 'HZ', 'KMH', 'INK']);
+
+/**
+ * A name for the name slot, from a module's own table: the reader's language where the Japanese is
+ * readable (`text`), null where it is not (`hasSourceLeft`), and the SGBD's German always.
+ */
+export interface FaultLabel {
+    text: HumanName | null;
+    original: string;
+}
+
+/** An interned text as a name: see `FaultLabel`. */
+export function textLabel(profile: EcuProfile, ref: TextRef | undefined, lang: Lang): FaultLabel {
+    const t = ref === undefined ? undefined : profile.texts[ref];
+    if (!t) return { text: null, original: '' };
+    if (hasSourceLeft(t.ja)) return { text: null, original: t.de };
+    return { text: resolveText(profile, ref, lang).text, original: t.de };
+}
+
+/** A fault's name from its module's own table, for the name slot. Null: the table has no such code. */
+export function faultLabel(profile: EcuProfile | null, code: number | string | null, lang: Lang): FaultLabel | null {
+    const known = catalogFault(profile, code);
+    if (!known || !profile) return null;
+    const l = textLabel(profile, known.text, lang);
+    return l.text || l.original ? l : null;
 }
 
 /** One condition a freeze frame recorded, named and with its unit. */

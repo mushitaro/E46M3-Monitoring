@@ -41,7 +41,8 @@ const scenario = {
                 return f?.unverified === true && f?.codes?.some((c) => c.code === '0x01' && c.present === true) ? true : JSON.stringify(f).slice(0, 400);
             },
         },
-        { screen: { desc: '画面：コード 0x01、「現在あり」、実車未確認の注記', has: ['0x01', '現在あり', '実車ではまだ確かめていません'] } },
+        // The note under the heading is a word since UX-16 (実車未確認); its sentence is the heading's ⓘ.
+        { screen: { desc: '画面：コード 0x01、「現在あり」、実車未確認の注記', has: ['0x01', '現在あり', '実車未確認'] } },
         { shot: 'non-m3-faults' },
         ...scanAndWait,
         {

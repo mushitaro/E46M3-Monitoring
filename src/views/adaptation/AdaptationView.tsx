@@ -161,8 +161,11 @@ export const AdaptationView = memo(function AdaptationView({
  * into "everything is fine", so the denominator stays visible and the colour
  * changes the moment the two disagree.
  */
-export function AdaptationViz({ blocks }: { blocks: AdaptationRead[] | null }) {
+export function AdaptationViz({ blocks, ecuId }: { blocks: AdaptationRead[] | null; ecuId: string }) {
     const { t } = useLang();
+    // A module whose learned values nothing here reads: MAIN says so, and VISU does not wait for a read
+    // that cannot come (UX-17).
+    if (!hasDecoder(ecuId)) return null;
     if (blocks === null) return <Awaiting icon={ListChecks} label={t.awaiting_read} />;
     const ok = blocks.filter((b) => !b.error && !b.short).length;
     return (

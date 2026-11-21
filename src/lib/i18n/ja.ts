@@ -25,7 +25,7 @@ export const ja: Localised = {
     clearLog: 'クリア',
     exportLog: '通信ログを保存',
 
-    faults_none: '故障コードはありません',
+    faults_none: '故障なし',
     faults_count: (n: number) => `${n} 件の故障コード`,
     faults_code: 'コード',
     faults_type: '種別',
@@ -244,7 +244,7 @@ export const ja: Localised = {
     // beside it. The chrome tokens of this panel are one vocabulary; a lone
     // katakana word in that row read as a different app's control.
     module: 'MODULE',
-    faultRef: '故障本文リファレンス',
+    faultRef: '故障の辞書',
     faultRef_info: 'SGBD の故障本文表（FORTTEXTE）です。読み取った故障には、ここの本文が付きます。コード・訳文・独語原文で引けます。',
     catalog_jobs: (n: number) => `${n} 件`,
     cancel: 'キャンセル',
@@ -284,7 +284,7 @@ export const ja: Localised = {
     scan_title: '全モジュール',
     scan_note: (time) => `${time} に読取`,
     scan_info:
-        'アドレスを一つずつ、そのモジュール自身の SGBD の故障読取を送ります。エンジン（0x12）と変速機（0x32）は、まず共通の IDENT を訊き、その答えから EDIABAS のグループファイルと同じ選び方で変種を選び、このアプリが載せている SGBD に当たったときだけ故障読取を送ります。エンジンが MSS54（M3）と答えた車では、ほかのアドレスは M3 の装備として、それぞれ自分の IDENT を先に送ってから読みます。M3 でない車では、変種の分からないアドレスは「?」のまま、IDENT のほかは送りません。同じアドレスを複数の SGBD が使うときは、全員の表にあるフレームだけを送ります。エンジン（MSS54）は専用の解読器で、ほかの多くのモジュールはそのモジュール自身の SGBD の故障読取のコードで中身を読みます（INPA と同じ読み方。故障の場所の文は SGBD のままのドイツ語）。そう読めない答えは、返ったバイトのままです。応答なしは、その装備が無いか、眠っているか、この線から届かないかです。',
+        'アドレスを一つずつ、そのモジュール自身の SGBD の故障読取を送ります。エンジン（0x12）と変速機（0x32）は、まず共通の IDENT を訊き、その答えから EDIABAS のグループファイルと同じ選び方で変種を選び、このアプリが載せている SGBD に当たったときだけ故障読取を送ります。エンジンが MSS54（M3）と答えた車では、ほかのアドレスは M3 の装備として、それぞれ自分の IDENT を先に送ってから読みます。M3 でない車では、変種の分からないアドレスは「?」のまま、IDENT のほかは送りません。同じアドレスを複数の SGBD が使うときは、全員の表にあるフレームだけを送ります。エンジン（MSS54）は専用の解読器で、ほかの多くのモジュールはそのモジュール自身の SGBD の故障読取のコードで中身を読みます（INPA と同じ読み方。故障の場所の文は SGBD のままのドイツ語）。そう読めない答えは、返ったバイトのままです。応答なしは、その装備が無いか、眠っているか、この線から届かないかです。「?」の行は、名乗り（IDENT）からは機種を決められないアドレスで、候補に共通の名前で並び、候補は行を開くと出ます。どれが付いているかは、MODULE で選んで開きます。',
     scan_outcome: {
         faults: (n) => `故障 ${n}`,
         partial: (n) => (n > 0 ? `故障 ${n}・途中まで` : '途中まで'),
@@ -299,10 +299,10 @@ export const ja: Localised = {
         noFaultRead: '故障読取なし（SGBD に無い）',
         skipped: '未実施',
     },
-    scan_shared: 'どれが付いているかは、MODULE で選んで開きます。',
     scan_summary: (m, f) => `${m} モジュール、故障 ${f} 件`,
-    scan_undecided: (names, byYear) =>
-        `?（${names.length === 2 ? names.join(' か ') : `${names.join('、')} のどれか`}${byYear ? '。年式で決まり、名乗りからは決められません' : '。名乗りからは決められません'}）`,
+    scan_candidates: (n) => `候補 ${n}`,
+    scan_candidateList: (names, byYear) => `候補：${names.join('、')}${byYear ? '（年式で決まります）' : ''}`,
+    scan_either: (a, b) => `${a} か ${b}`,
     scan_partial: '途中までしか読めませんでした。読めたところまでを出しています（一覧は短いかもしれません）。',
     scan_reason: (r) =>
         /no fault-read frame is common/.test(r)
@@ -328,7 +328,7 @@ export const ja: Localised = {
               : `変種 ${sgbd}：この SGBD はまだ載せていないので、IDENT のほかは送っていません。`,
     scan_progress: (d, n) => `読取中 ${d} / ${n}`,
     awaiting_scan: '全モジュール読取待機中…',
-    viz_scanAnswered: '応答したモジュール',
+    viz_scanAnsweredOf: (a, n) => `${a} / ${n} モジュールが応答`,
     faults_notEstablished:
         'このモジュールの SGBD には、識別と故障読取の短いフレームがありません。送ってよいと言えるものが無いので、読取はしません。',
     datalog_noDecoder:
@@ -755,6 +755,7 @@ export const ja: Localised = {
         busy: 'アカウントへ送っています。',
         ready: (n) => `保存したうえで、まだ送っていない ${n} 件をアカウントへ送ります。送ったあとも端末の分は残ります。`,
         clean: 'すべてアカウントへ送ってあります。',
+        local: 'この版には送り先がありません。セッションはこの端末にだけ保存されます。',
     },
     sessions_nothing: '保存するものはまだありません。',
     sessions_onDevice: 'この端末',
@@ -763,6 +764,8 @@ export const ja: Localised = {
         '読み取りは操作のたびに端末に記録され、接続から切断までなどのまとまりで並びます。SAVE で残したものだけが SYNC で送られます。残さないまとまりは 7 日で端末から消えます。JOIN で一つ前のまとまりとつなげます。',
     sessions_emptyUnkept: '残していないまとまりはありません。',
     sessions_timeUnsure: '時刻未確定（端末の時計が合う前の記録）',
+    sessions_timeUnsureShort: '時刻未確定',
+    sessions_noLink: '接続していません。',
     sessions_undated: (days) => (days === null ? '日付が確かでない（まだ消しません）' : `日付が確かでない・あと ${Math.max(0, days)} 日`),
     sessions_expiresIn: (days) => (days <= 0 ? 'まもなく消えます' : `あと ${days} 日`),
     sessions_inAccount: 'アカウント',
@@ -783,7 +786,7 @@ export const ja: Localised = {
         status === 0
             ? '送れませんでした（送り先から応答がありません）。端末には保存してあります。電波のある所でもう一度 SYNC してください。'
             : status === 404
-              ? '送れませんでした。この版には送り先がありません（HTTP 404）。端末には保存してあります。'
+              ? '送れませんでした。この版には送り先がありません。端末には保存してあります。'
               : `送れませんでした。送り先が受け取りませんでした（HTTP ${status}）。端末には保存してあります。`,
     sessions_sendExpired: 'サインインの期限が切れているため送れませんでした。端末には保存してあります。',
     sessions_tooLarge: (label) => `${label} は大きすぎて送れません（1 件 1.9 MB まで）。端末には保存してあります。`,
@@ -832,12 +835,10 @@ export const ja: Localised = {
     install_dismissed: 'インストールは断られました。再読み込みすると、もう一度訊かれます',
     install_unavailable: 'このブラウザはインストールを申し出ていません',
     viewer_faults: '故障メモリ',
-    viewer_noFaultsRead: 'このセッションでは故障メモリを読んでいません。',
     viewer_datalog: 'データログ',
     viewer_rows: (shown, total) => (shown < total ? `先頭 ${shown} 行 / 全 ${total} 行` : `${total} 行`),
     viewer_failures: '失敗と直前の通信ログ',
-    viewer_noFailures: 'このセッションで失敗した操作はありません。',
-    viz_sessions: '端末に保存',
+    viz_noRecord: '記録未選択',
 
     mode_probeLocked: 'PROBE は AI のモードです。ヘッダの AI をオンにすると選べます。',
     startup_sessions: 'PROBE のセッション',
@@ -878,11 +879,14 @@ export const ja: Localised = {
     readout_min: '最小',
     readout_mean: '平均',
     graph_noValue: 'この回にはまだこの値の読み取りがありません。',
-    faults_layout_unverified: '故障コードは、このモジュール自身の SGBD が読むのと同じ場所から読みました（EDIABAS の模擬で確かめた読み方）。実車ではまだ確かめていません。上のバイトが答えそのものです。',
+    faults_layout_unverified: '故障コードは、このモジュール自身の SGBD が読むのと同じ場所から読みました（EDIABAS の模擬で確かめた読み方）。実車ではまだ確かめていません。「送った電文」のバイトが答えそのものです。',
     fault_present_now: '現在あり',
     fault_stored: '記録のみ',
     fault_unnamed: 'この場所の名前は SGBD に無い',
-    faults_kwp_estimated: '故障コードは ISO 14230 の答えの形として読んだ推定です。MK60 の実車ではまだ確かめていません。上のバイトが答えそのものです。',
+    fault_untranslated: '故障（訳なし）',
+    faults_tag: { sgbd: 'SGBD の文', unverified: '実車未確認', estimated: '推定', bytes: 'バイトのまま' },
+    faults_sentFrames: '送った電文',
+    faults_kwp_estimated: '故障コードは ISO 14230 の答えの形として読んだ推定です。MK60 の実車ではまだ確かめていません。「送った電文」のバイトが答えそのものです。',
     door_wifi: 'ナビの Wi-Fi 設定',
     door_datetime: 'ナビの日付と時刻の設定',
     board_up: '上へ',

@@ -27,12 +27,15 @@ export function CountReadout({
     tone,
     suffix,
     caption,
+    note,
 }: {
     value: number;
     tone: string;
     /** The denominator, dimmer than the value. `4` of `/12` read together. */
     suffix?: string;
     caption: string;
+    /** A smaller fact under the caption (ALL MODULES: how many answered, of how many asked). */
+    note?: string;
 }) {
     return (
         <div className="flex h-full flex-col items-center justify-center">
@@ -41,6 +44,7 @@ export function CountReadout({
                 {suffix && <span className="text-slate-600">{suffix}</span>}
             </div>
             <div className={`mt-2 ${LABEL} text-slate-500`}>{caption}</div>
+            {note && <div className="mt-1 font-mono text-[10px] text-slate-600">{note}</div>}
         </div>
     );
 }

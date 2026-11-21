@@ -420,6 +420,60 @@ export function Explain({ id, children }: { id?: string; children: React.ReactNo
     );
 }
 
+/**
+ * A block kept closed until asked for: its title and count on one line, its body only once pressed.
+ *
+ * For what a screen holds but the owner reads only sometimes — the module's whole fault dictionary,
+ * the IDENT bytes, the frames a read sent (UX-16). On the screen it is one line, so what the screen
+ * is about (the faults read) is the first thing in it; the rest is one press away rather than 226
+ * rows below. The ▸ is a glyph, not an icon: it turns to say open, and the title stays the press.
+ * Like `Section`, no outer margin; opening it moves what is below, because the reader asked.
+ */
+export function Fold({
+    title,
+    count,
+    note,
+    children,
+}: {
+    title: React.ReactNode;
+    count?: number;
+    /** One line under the title, drawn once it is open: a fact about what it holds. */
+    note?: React.ReactNode;
+    children: React.ReactNode;
+}) {
+    const [open, setOpen] = useState(false);
+    const id = useId();
+    return (
+        <section>
+            <button
+                type="button"
+                onClick={() => setOpen((v) => !v)}
+                aria-expanded={open}
+                aria-controls={id}
+                className="group -my-2 flex min-h-[20px] w-full items-baseline justify-between gap-3 py-2 text-left"
+            >
+                <span className="flex min-w-0 items-baseline gap-1.5">
+                    <span className={`truncate ${LABEL} text-slate-500 transition-colors group-hover:text-slate-300`}>{title}</span>
+                    <span aria-hidden="true" className={`inline-block text-[10px] text-slate-600 ${open ? 'rotate-90' : ''}`}>
+                        ▸
+                    </span>
+                </span>
+                {count !== undefined && <span className="shrink-0 font-mono text-[11px] tabular-nums text-slate-600">{count}</span>}
+            </button>
+            {open && (
+                <div id={id}>
+                    {note && (
+                        <p className="mt-1 truncate text-[11px] text-slate-500" title={typeof note === 'string' ? note : undefined}>
+                            {note}
+                        </p>
+                    )}
+                    <div className="mt-1.5">{children}</div>
+                </div>
+            )}
+        </section>
+    );
+}
+
 const DIALOG_TONE = {
     neutral: 'text-slate-400 hover:text-slate-200',
     primary: 'bg-blue-500/15 text-blue-300 hover:bg-blue-500/25',

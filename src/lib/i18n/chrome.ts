@@ -64,7 +64,6 @@ export const CHROME = {
     hub_record: 'Record',
     hub_stop: 'Stop',
     hub_recording: 'Recording',
-    pane_visualization: 'VISUALIZATION & CONTROLS',
     // This app's labels for MAIN and MULTI, the two windows the footer turns over below 900px (HUB
     // is always up). A label says what the window shows and is the app's own — TUNER's are MAP and
     // GRAPH — not the development names MAIN / MULTI / HUB (tsunagi-m-design §5.12). Only HUB is
@@ -139,6 +138,8 @@ export const CHROME = {
     sync_offline: 'Offline',
     sync_signedOut: 'Signed out',
     sync_unreachable: 'Unreachable',
+    // A build with nowhere to send to (UX-25): a fact about the build, said in grey, never a failure.
+    sync_local: 'Local only',
     // The assistant bridge's switch (hooks/useAssistantBridge). TUNER's word for it too.
     assistant: 'ASSISTANT',
     // The owner allowing a read while the car moves (lib/ledger `grantMovingOk`), and its button.

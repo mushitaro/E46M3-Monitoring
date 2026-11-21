@@ -1,16 +1,17 @@
 'use client';
 
 import { memo, useState } from 'react';
-import { ArrowLeft, CloudUpload, Database, Eye, Link2, Trash2 } from 'lucide-react';
+import { ArrowLeft, CloudUpload, Database, Eye, FolderOpen, Link2, Trash2 } from 'lucide-react';
 import { formatErrorCode } from '@tsunagi/ds2-mss54';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { DataList, DataRow, Field, Pane, Pill, Section, TextButton, Well, humanName } from '@/components/ui';
-import { normCode } from '@/lib/faultCode';
+import { DataList, DataRow, Field, Fold, Pane, Pill, Section, TextButton, Well, humanName } from '@/components/ui';
+import { faultLabel } from '@/lib/faultText';
 import { useLang } from '@/lib/i18n';
-import { text as resolveText, type EcuProfile } from '@tsunagi/monitoring-engine';
+import type { EcuProfile } from '@tsunagi/monitoring-engine';
 import { KEEP_MS, expiresAt, type Episode, type JournalEvent } from '@tsunagi/monitoring-engine';
 import { mss54Present, needsSync, parseCsv, savedScanFaults, sessionFaultCount, sessionLabel, summarise, type SavedSession } from '@tsunagi/monitoring-engine';
 import { SAVE_TONE, SYNC_TONE } from '@/lib/sync/status';
+import { Awaiting } from '@/views/shared/Awaiting';
 import { CountReadout } from '@/views/shared/CountReadout';
 import { StatusButton } from './StatusButton';
 import type { Sessions } from './useSessions';
@@ -33,8 +34,13 @@ const when = (ms: number) => new Date(ms).toLocaleString();
  * MEMORY — MANUAL's records: what this connection holds and SAVE, the records on this device, and
  * the door to SESSION SYNC (SyncPanel). A read-only viewer opens a saved record in place of the
  * list. The last tab (operator, 2026-11-02): MANUAL is tried first and kept afterwards. Behind
- * SYNC, as TUNER has it: the account, its copies, the error records, ASSISTANT and the reads
- * cleared for a moving car.
+ * SYNC: the send and the account, nothing else (UX-33). Below the lists, `extra`: ASSISTANT's state
+ * and this device's name, and the reads cleared for a moving car — they were the SYNC dialog's,
+ * where a send is the one thing a reader came for.
+ *
+ * SAVE once (UX-32): with nothing connected, what SAVE would keep is the newest row of "not kept
+ * yet", whose own SAVE is beside it — so the heading's SAVE steps aside rather than be a second door
+ * to the same press, and "this connection" says there is none.
  *
  * Preview only (lib/features.ts `sessionSync`).
  */
@@ -43,8 +49,11 @@ export const SessionsView = memo(function SessionsView({
     catalog,
     ecuId,
     onOpenSync,
+    extra,
 }: {
     sessions: Sessions;
+    /** Sections under the lists (ASSISTANT, WHILE MOVING): the shell's, as SESSION SYNC's were. */
+    extra?: React.ReactNode;
     /** Opens SESSION SYNC (SyncPanel), which the shell owns so the menu sheet opens the same one. */
     onOpenSync: () => void;
     /** The loaded module's catalogue, used to name a saved fault when the session is for the same module. */
@@ -58,6 +67,8 @@ export const SessionsView = memo(function SessionsView({
     const [confirm, setConfirm] = useState<Confirm | null>(null);
     const viewed = viewing ? (s.local ?? []).find((x) => x.id === viewing) : undefined;
     const busy = s.busy !== null;
+    // Nothing connected, and what SAVE keeps is a row below with its own SAVE (UX-32).
+    const inRow = s.episodeNow !== null && s.unkept.includes(s.episodeNow);
 
     const dialog = confirm && (
         <ConfirmDialog
@@ -98,7 +109,7 @@ export const SessionsView = memo(function SessionsView({
                     // TUNER's door beside NEW SESSION. Labels, sentences and tones from
                     // lib/sync/status, so the two places cannot disagree.
                     <span className="hidden items-baseline gap-4 min-[900px]:flex">
-                        <StatusButton look={s.saveLook} tones={SAVE_TONE} Icon={Database} busy={busy} onClick={() => void s.save()} />
+                        {!inRow && <StatusButton look={s.saveLook} tones={SAVE_TONE} Icon={Database} busy={busy} onClick={() => void s.save()} />}
                         {s.syncLook && (
                             <StatusButton look={{ ...s.syncLook, disabled: false }} tones={SYNC_TONE} Icon={CloudUpload} busy={false} onClick={onOpenSync} />
                         )}
@@ -106,8 +117,16 @@ export const SessionsView = memo(function SessionsView({
                 }
             >
                 <div className="flex flex-col gap-1.5">
-                    <p className="text-xs text-slate-300">
-                        {s.content ? <CurrentCounts s={s} /> : <span className="text-slate-500">{t.sessions_nothing}</span>}
+                    {/* One statement at a time: just saved, the notice says so and "nothing to save" does not
+                        say the opposite beside it (UX-32). Reserved, so the lists do not move. */}
+                    <p className="min-h-[18px] text-xs text-slate-300">
+                        {inRow ? (
+                            <span className="text-slate-500">{t.sessions_noLink}</span>
+                        ) : s.content ? (
+                            <CurrentCounts s={s} />
+                        ) : s.notice ? null : (
+                            <span className="text-slate-500">{t.sessions_nothing}</span>
+                        )}
                     </p>
                     {/* Reserved: the outcome of the last SAVE or SYNC appears here without moving
                         the lists below it. */}
@@ -127,7 +146,8 @@ export const SessionsView = memo(function SessionsView({
                         {s.unkept.map((ep, i) => (
                             <DataRow
                                 key={ep.start}
-                                name={humanName(sessionLabel(ep.start, ep.ecu ?? ecuId, ep.mock))}
+                                // A time not yet certain is not shown as if it were (UX-32, SC11).
+                                name={humanName(ep.undated ? `${t.sessions_timeUnsureShort} ${(ep.ecu ?? ecuId).toUpperCase()}` : sessionLabel(ep.start, ep.ecu ?? ecuId, ep.mock))}
                                 trailing={
                                     <span className="flex shrink-0 items-baseline gap-3">
                                         {ep.mock && <Pill tone="secondary">{t.practice}</Pill>}
@@ -173,7 +193,8 @@ export const SessionsView = memo(function SessionsView({
                                     key={x.id}
                                     name={humanName(x.label)}
                                     leading={
-                                        s.cloudEnabled ? (
+                                        // On every row of a build with nowhere to send to, LOCAL says nothing (UX-25).
+                                        s.cloudEnabled && !s.noDestination ? (
                                             <Pill tone={pending ? 'neutral' : 'ok'}>{pending ? t.pill_local : t.pill_synced}</Pill>
                                         ) : undefined
                                     }
@@ -207,6 +228,8 @@ export const SessionsView = memo(function SessionsView({
                     </DataList>
                 )}
             </Section>
+
+            {extra}
 
             {dialog}
         </Pane>
@@ -280,7 +303,6 @@ function SessionViewer({
     onBack: () => void;
 }) {
     const { lang, t } = useLang();
-    const faultText = new Map((catalog?.faultText ?? []).map((f) => [normCode(f.code), f]));
     const csv = session.datalog ? parseCsv(session.datalog.csv) : null;
 
     return (
@@ -299,14 +321,6 @@ function SessionViewer({
                     {session.mock && <Pill tone="secondary">{t.practice}</Pill>}
                 </div>
             </Section>
-
-            {session.ident && (
-                <Section title="IDENT" note={t.ident_note(session.ident.length)}>
-                    <Well className="max-w-[60ch]">
-                        <p className="break-all font-mono text-xs text-slate-300">{session.ident.hex}</p>
-                    </Well>
-                </Section>
-            )}
 
             {/* Every module's faults as the session's scan read them (SC02: kept before a clear). */}
             {session.scan && (
@@ -336,40 +350,42 @@ function SessionViewer({
                 </Section>
             )}
 
-            <Section title={t.viewer_faults} count={session.faults?.length}>
-                {session.faults === null ? (
-                    <p className="py-2 text-xs text-slate-500">{t.viewer_noFaultsRead}</p>
-                ) : session.faults.length === 0 ? (
-                    <p className="py-2 text-xs text-emerald-400">{t.faults_none}</p>
-                ) : (
-                    <DataList>
-                        {session.faults.map((f) => {
-                            const code = formatErrorCode(f.errorCode);
-                            const known = faultText.get(normCode(code));
-                            const meaning = known && catalog ? resolveText(catalog, known.text, lang) : null;
-                            return (
-                                <DataRow
-                                    key={`${f.number}-${f.errorCode}`}
-                                    code={code}
-                                    codeTone="danger"
-                                    name={meaning?.text ?? humanName('')}
-                                    trailing={
-                                        <span className="shrink-0 font-mono text-[10px] text-slate-600">
-                                            {mss54Present(f.errorType) ? t.fault_present_now : t.fault_stored} {formatErrorCode(f.errorType)}
-                                        </span>
-                                    }
-                                    detail={
-                                        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-                                            <Field label={t.faults_frequency} value={f.frequencyCounter} />
-                                            <Field label={t.faults_logistics} value={f.logisticsCounter} />
-                                        </div>
-                                    }
-                                />
-                            );
-                        })}
-                    </DataList>
-                )}
-            </Section>
+            {/* A section only where the record holds something for it (UX-32): an empty heading is a
+                question with no answer. */}
+            {session.faults !== null && (
+                <Section title={t.viewer_faults} count={session.faults.length}>
+                    {session.faults.length === 0 ? (
+                        <p className="py-2 text-xs text-slate-400">{t.faults_none}</p>
+                    ) : (
+                        <DataList>
+                            {session.faults.map((f) => {
+                                const code = formatErrorCode(f.errorCode);
+                                const label = faultLabel(catalog, code, lang);
+                                return (
+                                    <DataRow
+                                        key={`${f.number}-${f.errorCode}`}
+                                        code={code}
+                                        codeTone="danger"
+                                        name={label?.text ?? (label?.original ? humanName(t.fault_untranslated) : humanName(''))}
+                                        ident={label && !label.text ? label.original : undefined}
+                                        trailing={
+                                            <span className="shrink-0 font-mono text-[10px] text-slate-600">
+                                                {mss54Present(f.errorType) ? t.fault_present_now : t.fault_stored} {formatErrorCode(f.errorType)}
+                                            </span>
+                                        }
+                                        detail={
+                                            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                                                <Field label={t.faults_frequency} value={f.frequencyCounter} />
+                                                <Field label={t.faults_logistics} value={f.logisticsCounter} />
+                                            </div>
+                                        }
+                                    />
+                                );
+                            })}
+                        </DataList>
+                    )}
+                </Section>
+            )}
 
             {csv && session.datalog && (
                 <Section
@@ -406,10 +422,8 @@ function SessionViewer({
                 </Section>
             )}
 
-            <Section title={t.viewer_failures} count={session.failures.length}>
-                {session.failures.length === 0 ? (
-                    <p className="py-2 text-xs text-slate-500">{t.viewer_noFailures}</p>
-                ) : (
+            {session.failures.length > 0 && (
+                <Section title={t.viewer_failures} count={session.failures.length}>
                     <div className="flex flex-col gap-3">
                         {session.failures.map((f, i) => (
                             <div key={i} className="flex flex-col gap-1">
@@ -429,14 +443,32 @@ function SessionViewer({
                             </div>
                         ))}
                     </div>
-                )}
-            </Section>
+                </Section>
+            )}
+
+            {/* What IDENT answered, as in DIAGNOSIS: one press away (UX-32). */}
+            {session.ident && (
+                <Fold title="IDENT" count={session.ident.length} note={t.ident_note(session.ident.length)}>
+                    <Well className="max-w-[60ch]">
+                        <p className="break-all font-mono text-xs text-slate-300">{session.ident.hex}</p>
+                    </Well>
+                </Fold>
+            )}
         </Pane>
     );
 }
 
-/** The right column on MEMORY: how many sessions this device holds. */
-export function SessionsViz({ count }: { count: number }) {
+/**
+ * The right column on MEMORY: what the record open on the left holds — its faults, or with none
+ * read its samples — and which record it is (UX-32). It was how many records this device holds,
+ * a number the list beside it already counts.
+ */
+export function SessionsViz({ sessions: s }: { sessions: Sessions }) {
     const { t } = useLang();
-    return <CountReadout value={count} tone="text-slate-200" caption={t.viz_sessions} />;
+    const open = s.viewing ? (s.local ?? []).find((x) => x.id === s.viewing) : undefined;
+    if (!open) return <Awaiting icon={FolderOpen} label={t.viz_noRecord} />;
+    const sum = summarise(open);
+    if (sum.faultCount !== null)
+        return <CountReadout value={sum.faultCount} tone={sum.faultCount > 0 ? 'text-red-400' : 'text-slate-300'} caption={sum.faultCount > 0 ? t.viz_faults : t.viz_clean} note={open.label} />;
+    return <CountReadout value={sum.sampleCount} tone="text-slate-300" caption={t.viewer_datalog} note={open.label} />;
 }

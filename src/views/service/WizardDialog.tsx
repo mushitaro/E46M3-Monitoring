@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { AlertTriangle, PlayCircle, Square } from 'lucide-react';
 import { DialogFrame } from '@/components/DialogFrame';
-import { ConfirmDetails, ConfirmSteps } from '@/components/gate/ConfirmBody';
+import { ConfirmDetails, ConfirmSteps, Told } from '@/components/gate/ConfirmBody';
+import { instructionsIn } from '@/lib/instructions';
 import { formatDuration, procedureMaxSec } from '@/lib/duration';
 import { DialogButton, Field, LABEL, MicroLabel, Provenance, Well, emphasise } from '@/components/ui';
 import { useProcedureRun, type ProcedureOutcome } from '@/hooks/useProcedureRun';
@@ -169,6 +170,12 @@ export function WizardDialog({
         onClose();
     }, [onClose, run]);
 
+    // What the module-wide safety text and the procedure's note tell the person to do: said on the
+    // 何が起きるか step itself, not under 詳細 (docs/UX-DESIGN.md §5). The texts whole stay there.
+    const told = [
+        ...instructionsIn(workflows.safety ? pick(workflows.safety) : null, lang),
+        ...instructionsIn(procedure.note ? pick(procedure.note) : null, lang),
+    ];
     const live = isRunning(state) || run.live;
     // The SGBD's longest run, in seconds and minutes rather than its `sek` and `3,0 min` (UX-12).
     const maxSec = procedureMaxSec(procedure);
@@ -249,9 +256,18 @@ export function WizardDialog({
 
             {state.step === 'safety' && (
                 <>
-                    {/* What happens → until when → what pressing does (docs/UX-DESIGN.md §5). The
-                        module-wide safety text and the procedure's note are under 詳細. */}
+                    {/* What happens → until when → what pressing does (docs/UX-DESIGN.md §5); then what the
+                        texts tell the person to do. The module-wide safety text and the procedure's note,
+                        whole, are under 詳細. */}
                     <ConfirmSteps what={pick(procedure.desc)} until={t.wiz_until(maxText)} press={t.wiz_press} />
+                    {told.length > 0 && (
+                        <>
+                            <MicroLabel className="mt-4">{t.conf_instructions}</MicroLabel>
+                            <div className="mt-1 flex flex-col gap-1.5">
+                                <Told lines={told} />
+                            </div>
+                        </>
+                    )}
                     {procedure.auswahl && (
                         <div className="mt-4">
                             <MicroLabel>{t.wiz_gear}</MicroLabel>

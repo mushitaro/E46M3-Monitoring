@@ -3,7 +3,7 @@ import { PUMP_OFF, PUMP_ON, always, armedOnScreen, check, measure, onModule, pag
 
 /** The STEUERN_STELLGLIED row's tag (札) on ACTUATOR: the reason it cannot run now, in a word. */
 const rowTag = async (page) => {
-    const row = page.getByText('STEUERN_STELLGLIED', { exact: true }).first().locator('xpath=ancestor::*[.//*[@data-test="tj-start"]][1]');
+    const row = page.getByText('STEUERN_STELLGLIED', { exact: true }).first().locator('xpath=ancestor::*[.//*[@data-test="tj-pick"]][1]');
     return (await row.count()) ? row.innerText() : '';
 };
 

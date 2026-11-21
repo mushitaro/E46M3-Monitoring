@@ -88,10 +88,12 @@ const scenario = {
             check: {
                 desc: '手順 2：一件ずつ開くと、日本語の名前と、その故障の SGBD が記録した条件（回転・負荷・車速・電圧など）が単位つきで読める',
                 run: async (page, st) => {
-                    await page.getByText('故障 1', { exact: true }).first().click();
-                    await page.waitForTimeout(500);
-                    await page.getByText('故障 2', { exact: true }).first().click();
-                    await page.waitForTimeout(500);
+                    // Each row opens by its chevron, beside the address (UX-23: the name puts the module on
+                    // the screen instead). The two rows with faults: the DME (0x12) and DSC MK60 (0xB8).
+                    for (const address of ['0x12', '0xB8']) {
+                        await page.locator('button[aria-expanded]', { hasText: address }).first().click();
+                        await page.waitForTimeout(500);
+                    }
                     const t = await screenText(page);
                     const why = [];
                     // Each fault reads as what it is: a Japanese name where there is one, else「故障（訳なし）」with the
@@ -122,6 +124,27 @@ const scenario = {
             },
         },
         { shot: 's02-detail' },
+        {
+            check: {
+                desc: '手順 2：AI の答えも画面と同じ名前で言う（D3-4）：MK60 の二つは「故障（訳なし）」と訳なしの印、SGBD のドイツ語。半訳を名前として渡さない',
+                run: async (_page, st) => {
+                    const mk60 = (st.faults?.faults?.scan?.modules ?? st.faults?.scan?.modules ?? []).find((m) => m.address === '0xB8')?.sgbdRead?.faults ?? [];
+                    const why = [];
+                    for (const [code, de] of Object.entries(GERMAN)) {
+                        const f = mk60.find((x) => x.code === code || x.code?.toUpperCase?.() === code.toUpperCase());
+                        if (!f) {
+                            why.push(`${code} が答えに無い`);
+                            continue;
+                        }
+                        if (f.textJa !== '故障（訳なし）' || f.untranslated !== true) why.push(`${code} の名前：${f.textJa}（untranslated ${f.untranslated}）`);
+                        if (!String(f.original ?? '').includes(de)) why.push(`${code} の原文：${f.original}`);
+                    }
+                    const all = JSON.stringify(st.faults ?? null);
+                    if (HALF.test(all)) why.push('半訳が答えに残る');
+                    return why.length ? why.join('、') : true;
+                },
+            },
+        },
         // 3. 走行中に「消して」
         { say: '消して' },
         {

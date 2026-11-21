@@ -1,7 +1,8 @@
 'use client';
 
 import { useId, useState } from 'react';
-import { Info, type LucideIcon } from 'lucide-react';
+import { ChevronRight, Info, type LucideIcon } from 'lucide-react';
+import { tid, type TestId } from '@/lib/testIds';
 import { useLang } from '@/lib/i18n';
 import { humanName, type HumanName } from '@tsunagi/monitoring-engine';
 
@@ -638,6 +639,8 @@ const CODE_TONE = {
 export function DataRow({
     selected = false,
     onSelect,
+    press = 'row',
+    expand,
     leading,
     name,
     ident,
@@ -645,9 +648,22 @@ export function DataRow({
     codeTone = 'neutral',
     trailing,
     detail,
+    pressTestId,
+    pressTitle,
 }: {
     selected?: boolean;
     onSelect?: () => void;
+    /**
+     * Where a press lands. `row` (the default): the whole row is the one button. `name`: the leading
+     * slot, the name and the ident are the button, and `trailing` stands outside it — for a row whose
+     * trailing holds a control of its own (ACTUATOR's value picker), which a button may not contain.
+     */
+    press?: 'row' | 'name';
+    /**
+     * A row that opens to show `detail`, apart from what pressing its name does: a chevron in the code
+     * column opens and closes it (ALL MODULES, where the name opens the module). Implies `press: 'name'`.
+     */
+    expand?: { open: boolean; onToggle: () => void; label: string };
     /** Pill or checkbox. Baseline-aligned with the name. */
     leading?: React.ReactNode;
     /**
@@ -664,34 +680,93 @@ export function DataRow({
     trailing?: React.ReactNode;
     /** Extra lines under the row. */
     detail?: React.ReactNode;
+    /** The test hook on the name's button, where the row is split (`press: 'name'`). */
+    pressTestId?: TestId;
+    /** What pressing the name does, where it is not what the row is (ALL MODULES: put the module on the screen). */
+    pressTitle?: string;
 }) {
     // No human name exists for this row — some SGBD results genuinely have no
     // comment. Promote the identifier, but keep it looking like what it is.
     // A blank primary slot would read as "this thing has no name", which is a
     // different claim from "nobody has written one".
     const nameless = !name;
+    // The selected row, the one way the system says it (tsunagi-m-design §4): a blue ground, the name lighter.
+    const nameText = (
+        <>
+            <span
+                className={`min-w-0 flex-auto truncate text-xs ${
+                    nameless ? 'font-mono text-slate-400' : selected ? 'text-blue-200' : 'text-slate-200'
+                }`}
+            >
+                {nameless ? ident : name}
+            </span>
+            {ident !== undefined && !nameless && (
+                <span className="min-w-0 shrink-[999] truncate font-mono text-[11px] text-slate-500">{ident}</span>
+            )}
+        </>
+    );
+    const codeCell = code !== undefined && (
+        <span className={`w-10 shrink-0 text-right font-mono text-[11px] tabular-nums ${CODE_TONE[codeTone]}`}>
+            {code}
+        </span>
+    );
+    const ground = selected ? 'bg-blue-900/40' : onSelect || expand ? 'hover:bg-slate-800/40' : '';
+
+    // Split: the name is one button, the chevron (in the code column) another, and the trailing slot is
+    // neither — each press does one thing, and a control in the trailing slot is not inside a button.
+    if (press === 'name' || expand) {
+        return (
+            <li className={`px-2 py-2 transition-colors ${ground}`}>
+                <div className="flex items-baseline gap-x-3">
+                    {expand ? (
+                        <button
+                            type="button"
+                            onClick={expand.onToggle}
+                            aria-expanded={expand.open}
+                            aria-label={expand.label}
+                            title={expand.label}
+                            className={`inline-flex w-10 shrink-0 items-center justify-end gap-0.5 font-mono text-[11px] tabular-nums ${CODE_TONE[codeTone]}`}
+                        >
+                            <ChevronRight className={`size-3 shrink-0 text-slate-500 transition-transform ${expand.open ? 'rotate-90' : ''}`} />
+                            {code}
+                        </button>
+                    ) : null}
+                    {onSelect ? (
+                        <button
+                            type="button"
+                            onClick={onSelect}
+                            aria-pressed={selected}
+                            {...(pressTestId ? tid(pressTestId) : {})}
+                            title={pressTitle}
+                            className="flex min-w-0 flex-auto items-baseline gap-x-3 text-left"
+                        >
+                            {leading}
+                            {!expand && codeCell}
+                            {nameText}
+                        </button>
+                    ) : (
+                        <span className="flex min-w-0 flex-auto items-baseline gap-x-3">
+                            {leading}
+                            {!expand && codeCell}
+                            {nameText}
+                        </span>
+                    )}
+                    {trailing}
+                </div>
+                {detail && <div className="mt-1 space-y-1">{detail}</div>}
+            </li>
+        );
+    }
+
     const body = (
         <>
             <div className="flex items-baseline gap-x-3">
                 {leading}
-                {code !== undefined && (
-                    <span className={`w-10 shrink-0 text-right font-mono text-[11px] tabular-nums ${CODE_TONE[codeTone]}`}>
-                        {code}
-                    </span>
-                )}
+                {codeCell}
                 {/* `flex-auto` (basis auto), not `flex-1` (basis 0): with a zero basis the name was the
                     first thing squeezed — 「アクチュ…」 beside a whole job id (UX-27). Now the ident gives
                     way first, as the hierarchy says. */}
-                <span
-                    className={`min-w-0 flex-auto truncate text-xs ${
-                        nameless ? 'font-mono text-slate-400' : selected ? 'text-blue-300' : 'text-slate-200'
-                    }`}
-                >
-                    {nameless ? ident : name}
-                </span>
-                {ident !== undefined && !nameless && (
-                    <span className="min-w-0 shrink-[999] truncate font-mono text-[11px] text-slate-500">{ident}</span>
-                )}
+                {nameText}
                 {trailing}
             </div>
             {detail && <div className="mt-1 space-y-1">{detail}</div>}
@@ -705,9 +780,7 @@ export function DataRow({
                 type="button"
                 onClick={onSelect}
                 aria-pressed={selected}
-                className={`w-full px-2 py-2 text-left transition-colors ${
-                    selected ? 'bg-blue-500/10' : 'hover:bg-slate-800/40'
-                }`}
+                className={`w-full px-2 py-2 text-left transition-colors ${ground}`}
             >
                 {body}
             </button>

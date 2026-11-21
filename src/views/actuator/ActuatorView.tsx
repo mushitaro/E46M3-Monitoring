@@ -1,9 +1,9 @@
 'use client';
 
-import { Play } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { GateDialog } from '@/components/gate/GateDialog';
 import { DataList, DataRow, LABEL, ListControls, Pill, Section, TextButton, humanName } from '@/components/ui';
+import type { ActuatorRing } from '@/lib/viewHub';
 import type { Arming } from '@/hooks/useActuatorArming';
 import { decisionFor, mayActuate, telegramOfAgreed, type ActuationMode, type ActuationPermit } from '@tsunagi/monitoring-engine';
 import { startActuation } from '@/lib/actuation';
@@ -17,7 +17,7 @@ import { cautionFor, type JobTextTable } from '@/lib/jobText';
 import { isOn } from '@/lib/jobSurface';
 import type { Ledger } from '@tsunagi/monitoring-engine';
 import type { RunBlockKey, RunVerdict, SendRequirement } from '@tsunagi/monitoring-engine';
-import { TEST_ID, tid } from '@/lib/testIds';
+import { TEST_ID } from '@/lib/testIds';
 import { bestTelegram, type TelegramTable } from '@tsunagi/monitoring-engine';
 import type { Motion } from '@tsunagi/monitoring-engine';
 import { ReasonGlossary, ReasonTag, sharedReason } from '@/views/shared/RunReason';
@@ -50,6 +50,15 @@ type PartTable = ReadonlyMap<string, { ja: string; en: string }>;
  * chooses one set, listed under the part's own name (油圧ポンプ, not HYDROPUMPE
  * alone); the gate is asked with that set and its frame.
  *
+ * ## The ring is the chosen row's START or RUN
+ *
+ * Pressing a row's name chooses it (the selected row's blue); the hub's ring is then its action — START
+ * for a part held on, RUN for one sent once — through exactly the handler, gate and confirmation the
+ * row's own button used, which is gone: one entrance (UX-01). A row its gate refuses is not offered;
+ * the ring is disabled and the notice line says why, conclusion first. The value picker stays on the
+ * row, outside the name's button. The ring is derived here, from the row's verdict, on every render,
+ * and handed up (`onRing`): the hub renders it and decides nothing.
+ *
  * ## STOP is the hub's ring
  *
  * While an output is on, the ring is its STOP on every tab (lib/hub tier 0) — one
@@ -75,6 +84,7 @@ export function ActuatorView({
     onRun,
     measured,
     lineLost = false,
+    onRing,
 }: {
     profile: EcuProfile;
     telegrams: TelegramTable | null;
@@ -100,11 +110,15 @@ export function ActuatorView({
     measured?: VehicleState | null;
     /** The line is lost: what is on waits for it (the ECU's own time-out stops it), not counted down here. */
     lineLost?: boolean;
+    /** The chosen row's action, for the hub's ring; null when no row is chosen. */
+    onRing?: (ring: ActuatorRing | null) => void;
 }) {
     const { lang, t } = useLang();
     const [query, setQuery] = useState('');
     const [onlyRunnable, setOnlyRunnable] = useState(false);
     const [pending, setPending] = useState<{ job: CatalogJob; phase: Phase; verdict: Extract<RunVerdict, { allowed: true }>; choice?: AgreedChoice } | null>(null);
+    // The chosen row, by module and job: another module's choice never stands for this one's.
+    const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
     // The jobs this tab is about: the ones that can leave an output energised.
     // Same function SERVICE asks, so the two lists partition the catalogue
@@ -143,6 +157,8 @@ export function ActuatorView({
         const list = choices.get(pick.jobId);
         const i = pick.args && list ? list.findIndex((c) => c.start.args.length === pick.args!.length && c.start.args.every((x, k) => x === pick.args![k])) : -1;
         if (i >= 0) setChosen((m) => new Map(m).set(`${profile.id}:${pick.jobId}`, i));
+        // Its row is the chosen one too: the ring is what the assistant was asked to run.
+        setSelectedKey(`${profile.id}:${pick.jobId}`);
     }
 
     const choiceOf = (jobId: string): AgreedChoice | undefined => {
@@ -232,6 +248,35 @@ export function ActuatorView({
         if (r.sent && !r.armed) onSentOnce(profile.id, p.job.id, p.choice?.start.args ?? null);
     };
 
+    // The chosen row and what the ring does with it: START for a part held on, RUN for one sent once, and
+    // — where it may not go — the notice's words, from the very verdict the row's press asks.
+    const selected = selectedKey ? jobs.find((j) => `${profile.id}:${j.id}` === selectedKey) : undefined;
+    const ringPhase: 'start' | 'pulse' | null = selected ? (execStyleOf(operationFor(selected)) === 'hold' ? 'start' : 'pulse') : null;
+    const ringWhy = (() => {
+        if (!selected) return null;
+        if (variant.state !== 'ok') return t.hub_variantFirst;
+        if (arming.anyArmed && !arming.armed.has(selected.id)) return t.hub_wontSend(t.actuator_armed);
+        const refused = refusalOf(selected, verdicts.get(selected.id) ?? null, motion);
+        if (!refused) return null;
+        // Waiting for values is not a refusal: what it waits for, as the picker beside it says.
+        if (refused === 'run_block_needsArgs' && choices.has(selected.id)) return t.runBlockShort.run_block_needsArgs;
+        return t.hub_wontSend(t.runBlockShort[refused]);
+    })();
+    const ringRisk = selected?.risk === 'high' ? 'high' : selected?.risk === 'medium' ? 'medium' : 'low';
+    // The press, always the latest: the row, its phase and its chosen set as they are now.
+    const pressRef = useRef<() => void>(() => {});
+    useEffect(() => {
+        pressRef.current = selected && ringPhase ? () => open(selected, ringPhase) : () => {};
+    });
+    const ringKey = selected && ringPhase ? `${selected.id}|${ringPhase}|${ringRisk}|${ringWhy ?? ''}` : '';
+    useEffect(() => {
+        if (!onRing) return;
+        onRing(ringKey && ringPhase ? { phase: ringPhase, risk: ringRisk, why: ringWhy, press: () => pressRef.current() } : null);
+        // The key is the ring: a new object only when what it shows changes.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ringKey, onRing]);
+    useEffect(() => () => onRing?.(null), [onRing]);
+
     const partOf = (args: readonly string[] | undefined) => {
         const part = args?.[0];
         if (!part) return null;
@@ -299,26 +344,26 @@ export function ActuatorView({
                                 job={job}
                                 verdict={verdicts.get(job.id) ?? null}
                                 motion={motion}
-                                variantOk={variant.state === 'ok'}
                                 armed={!!entry}
                                 lineLost={lineLost}
                                 part={namedPartOf(entry?.args ?? c?.start.args)}
                                 sharedReason={shared?.reason ?? null}
-                                otherOn={arming.anyArmed && !arming.armed.has(job.id)}
                                 choices={choices.get(job.id)}
                                 parts={parts}
                                 chosen={chosen.get(`${profile.id}:${job.id}`)}
-                                onChoose={(i) =>
+                                onChoose={(i) => {
+                                    // Choosing a set on a row chooses the row: the ring is what was just set up.
+                                    setSelectedKey(`${profile.id}:${job.id}`);
                                     setChosen((m) => {
                                         const n = new Map(m);
                                         if (i === undefined) n.delete(`${profile.id}:${job.id}`);
                                         else n.set(`${profile.id}:${job.id}`, i);
                                         return n;
-                                    })
-                                }
+                                    });
+                                }}
                                 lang={lang}
-                                onStart={() => open(job, 'start')}
-                                onRunOnce={() => open(job, 'pulse')}
+                                selected={selectedKey === `${profile.id}:${job.id}`}
+                                onSelect={() => setSelectedKey(`${profile.id}:${job.id}`)}
                             />
                         );
                     })}
@@ -370,28 +415,34 @@ function VariantRow({ variant, onConfirm }: { variant: Exclude<VariantState, { s
     );
 }
 
+/**
+ * Why a row cannot run, as its tag and the ring say it: the gate's reason, except that a car measured
+ * moving is the reason before any other that a choice could clear (IJ F09).
+ */
+function refusalOf(job: CatalogJob, verdict: RunVerdict | null, motion: Motion): RunBlockKey | null {
+    if (!verdict || verdict.allowed) return null;
+    return motion === 'moving' && job.class !== 'read' && verdict.reason === 'run_block_needsArgs' ? 'run_block_moving' : verdict.reason;
+}
+
 function Row({
     job,
     verdict,
     motion,
-    variantOk,
     armed,
     lineLost,
     part,
     sharedReason,
-    otherOn,
     choices,
     parts,
     chosen,
     onChoose,
     lang,
-    onStart,
-    onRunOnce,
+    selected,
+    onSelect,
 }: {
     job: CatalogJob;
     verdict: RunVerdict | null;
     motion: Motion;
-    variantOk: boolean;
     armed: boolean;
     /** The line is lost while it is on: it waits for the line, not counted down. */
     lineLost: boolean;
@@ -399,23 +450,19 @@ function Row({
     part: string | null;
     /** The reason the list's note already says for (nearly) every row: not repeated here. */
     sharedReason: RunBlockKey | null;
-    /** Another output is on: one at a time. */
-    otherOn: boolean;
     /** For a job that takes values: the agreed sets, and the one chosen. */
     choices?: AgreedChoice[];
     parts: PartTable;
     chosen?: number;
     onChoose: (i: number | undefined) => void;
     lang: 'ja' | 'en';
-    onStart: () => void;
-    onRunOnce: () => void;
+    /** The chosen row: the hub's ring is its START or RUN. */
+    selected: boolean;
+    onSelect: () => void;
 }) {
     const { t } = useLang();
     const style = execStyleOf(operationFor(job));
-    const allowed = verdict?.allowed === true && !otherOn && variantOk;
-    // A car measured moving is the row's reason before any other that a choice could clear (IJ F09).
-    const drives = job.class !== 'read';
-    const refused = verdict && !verdict.allowed ? (motion === 'moving' && drives && verdict.reason === 'run_block_needsArgs' ? 'run_block_moving' : verdict.reason) : null;
+    const refused = refusalOf(job, verdict, motion);
     // Not the word the value picker already says (its first line is 「値を選ぶ」), nor the list's shared one.
     const reason = refused === 'run_block_needsArgs' && choices ? null : refused === sharedReason ? null : refused;
     // The part it drives, where one is chosen: that is what moves (油圧ポンプ), not the kind of job.
@@ -423,6 +470,10 @@ function Row({
 
     return (
         <DataRow
+            press="name"
+            selected={selected}
+            onSelect={onSelect}
+            pressTestId={TEST_ID.actuatorPick}
             leading={
                 <>
                     <Pill tone={job.risk === 'high' ? 'danger' : job.risk === 'medium' ? 'caution' : 'neutral'}>
@@ -446,32 +497,11 @@ function Row({
             ident={job.id}
             trailing={
                 <span className="flex shrink-0 items-center gap-3">
-                    {/* Why it cannot run, in a word, beside the control it disables; touching the word
-                        says the sentence (views/shared/RunReason). */}
+                    {/* Why it cannot run, in a word; touching the word says the sentence
+                        (views/shared/RunReason). The ring says it too, once the row is chosen. */}
                     {reason && <ReasonTag reason={reason} />}
                     {choices && (
                         <ChoiceSelect choices={choices} parts={parts} lang={lang} modes={t.actuator_mode} chosen={chosen} onChoose={onChoose} disabled={armed} label={t.actuator_values} />
-                    )}
-                    {style === 'hold' ? (
-                        <>
-                            <TextButton
-                                onClick={onStart}
-                                disabled={!allowed || armed}
-                                Icon={Play}
-                                {...tid(TEST_ID.actuatorStart)}
-                            >
-                                {t.op_start}
-                            </TextButton>
-                        </>
-                    ) : (
-                        <TextButton
-                            onClick={onRunOnce}
-                            disabled={!allowed}
-                            Icon={Play}
-                            {...tid(TEST_ID.actuatorRun)}
-                        >
-                            {t.op_run}
-                        </TextButton>
                     )}
                 </span>
             }

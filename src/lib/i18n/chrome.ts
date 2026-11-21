@@ -33,7 +33,6 @@ export const CHROME = {
     // The module select's first choice on DIAGNOSIS: every module's fault memory, one after another.
     module_all: 'ALL MODULES',
     // The sub-action under the scan: put the chosen module on the screen.
-    open_module: 'Open',
     practice: 'PRACTICE',
     // PRACTICE's simulated engine, on the module row while connected: what an engine-off or engine-on job is practised against.
     practice_engine: 'ENGINE',

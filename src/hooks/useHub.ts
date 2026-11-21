@@ -10,10 +10,10 @@ import { variantRefusalLine } from '@/lib/notSentText';
 import { jobRiskOf, type CatalogJob } from '@tsunagi/monitoring-engine';
 import { useLang } from '@/lib/i18n';
 import { operationFor } from '@tsunagi/monitoring-engine';
-import type { RunVerdict } from '@tsunagi/monitoring-engine';
+import type { RunBlockKey, RunVerdict } from '@tsunagi/monitoring-engine';
 import { TEST_ID } from '@/lib/testIds';
 import type { Tab } from '@/lib/tabs';
-import { viewHubFor } from '@/lib/viewHub';
+import { viewHubFor, type ActuatorRing } from '@/lib/viewHub';
 import { hasDecoder } from '@/views/adaptation/AdaptationView';
 import type { Datalog } from '@/views/datalog/useDatalog';
 
@@ -44,6 +44,10 @@ export function useHub(input: {
     catalogError: string | null;
     /** Present when the selected job is an SMG II procedure. Opens its wizard. */
     openProcedure?: () => void;
+    /** That procedure's own gate (`mayRunProcedure` on a car), null when it may run. */
+    procedureRefusal?: RunBlockKey | null;
+    /** ACTUATOR's chosen row, as its ring presses it (views/actuator/ActuatorView). */
+    actuator?: ActuatorRing | null;
     /** A job that drives something: confirmed on the screen first (the owner's rule), then sent with its permit. */
     confirmRun?: () => void;
     /** Present while a PROBE plan runs (hooks/useProbe). */
@@ -93,15 +97,16 @@ export function useHub(input: {
                 op_start: t.op_start,
                 samples: t.samples,
                 hub_pickRow: t.hub_pickRow,
-                hub_actuatorRows: t.hub_actuatorRows,
                 hub_noReadFrame: t.hub_noReadFrame,
                 hub_dmeOnly: t.hub_dmeOnly,
                 next_session: t.next_session,
                 probe_notRunnable: t.probe_notRunnable,
-                runBlock: (reason) => t.runBlock[reason],
+                // The notice line's form: the conclusion, then the reason in a word (UX-30, docs/UX-DESIGN.md §2).
+                runBlock: (reason) => t.hub_wontSend(t.runBlockShort[reason]),
             },
             icons: { read: Zap, record: Radio, stop: Square, idle: CircleDot, run: Play, start: PlayCircle, probe: Radar, next: SkipForward, save: Database },
             probeRun: input.probeRun,
+            actuator: input.actuator ?? null,
             startup: input.startup,
             memory: input.memory,
             probe: input.probe
@@ -148,6 +153,7 @@ export function useHub(input: {
                     : null,
                 verdict: runVerdict,
                 openProcedure: input.openProcedure,
+                procedureRefusal: input.procedureRefusal ?? null,
                 run: () => {
                     // The gate's answer, used — not re-derived. `mayRun` decided
                     // this once, and the hub and the panel read the same object.

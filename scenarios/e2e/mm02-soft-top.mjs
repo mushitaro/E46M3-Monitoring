@@ -129,13 +129,16 @@ const scenario = {
         },
         {
             check: {
-                desc: '画面にもロールバーを出すボタンは無い（ACTUATOR に STEUERN_BUEGEL の RUN が無い）',
+                desc: '画面にもロールバーを出すボタンは無い（ACTUATOR に STEUERN_BUEGEL の行が無く、ハブの RUN にもならない）',
                 run: async (page) => {
                     await page.locator('[role=tab]:has-text("ACTUATOR")').first().click();
                     await page.waitForTimeout(800);
                     const row = actuatorRow(page, 'STEUERN_BUEGEL');
                     if ((await row.count()) === 0) return true;
-                    const run = row.locator('[data-test="tj-run"], [data-test="tj-start"]');
+                    // The row chosen, the ring is its RUN or START (UX-01): say whether that would go.
+                    await row.locator('[data-test="tj-pick"]').first().click();
+                    await page.waitForTimeout(200);
+                    const run = page.locator('[data-test="tj-run"], [data-test="tj-start"]');
                     return `ACTUATOR に STEUERN_BUEGEL の行と ${(await run.first().isEnabled()) ? '押せる' : '押せない'} RUN がある（行の札：${(await row.innerText()).replace(/\n/g, ' ').slice(0, 80)}）`;
                 },
             },

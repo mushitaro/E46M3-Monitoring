@@ -56,9 +56,9 @@ export async function scanModules(page) {
     return f?.faults?.scan?.modules ?? f?.scan?.modules ?? `no modules: ${JSON.stringify(f).slice(0, 200)}`;
 }
 
-/** The innermost element holding a job's name and its RUN or START: its ACTUATOR row. */
+/** The innermost element holding a job's name and its name's button: its ACTUATOR row. */
 export const actuatorRow = (page, job) =>
-    page.locator(`xpath=//*[.//*[@data-test="tj-run" or @data-test="tj-start"]][.//*[normalize-space(text())="${job}"]]`).last();
+    page.locator(`xpath=//*[.//*[@data-test="tj-pick"]][.//*[normalize-space(text())="${job}"]]`).last();
 
 /** The confirmation of a run on the screen: every box ticked, then run. False when no confirmation came. */
 export async function confirmRun(page) {
@@ -110,9 +110,22 @@ export async function practiceOneOnScreen(page, module) {
             await page.waitForTimeout(400);
         }
     }
-    const enabled = () => page.locator('[data-test="tj-run"]:not([disabled]), [data-test="tj-start"]:not([disabled])');
+    // The ring is the chosen row's RUN or START (UX-01): a row is tried by pressing its name. The first
+    // whose ring is pressable is the one, as a person going down the list would find it.
+    const ring = () => page.locator('[data-test="tj-run"]:not([disabled]), [data-test="tj-start"]:not([disabled])');
+    const picks = page.locator('[data-test="tj-pick"]');
+    const tryRows = async () => {
+        const n = await picks.count();
+        for (let i = 0; i < n; i++) {
+            await picks.nth(i).click();
+            await page.waitForTimeout(60);
+            if ((await ring().count()) > 0) return picks.nth(i);
+        }
+        return null;
+    };
+    let picked = await tryRows();
     let chose = false;
-    if ((await enabled().count()) === 0) {
+    if (!picked) {
         // A job that takes values: choose its first set.
         // Not the header's module select.
         const selects = page.locator('select:visible:not(:has(option[value="mss54"]))').filter({ has: page.locator('option:nth-child(2)') });
@@ -124,19 +137,22 @@ export async function practiceOneOnScreen(page, module) {
             if (at > 0) await sel.selectOption({ index: at });
             chose = true;
             await page.waitForTimeout(400);
+            // Choosing a set chooses its row.
+            if ((await ring().count()) > 0) picked = sel;
         }
     }
-    if ((await enabled().count()) === 0) {
+    if (!picked) {
         const text = await bodyText(page);
         const lines = text.slice(text.lastIndexOf('\nACTUATOR\n') + 1, text.indexOf('\nVISU\n')).split('\n').map((l) => l.trim()).filter(Boolean);
         const pane = lines.filter((l) => !/^ACTUATOR$|件が実行可能|^\d+ \/ \d+$|^実行できるものだけ$/.test(l)).join('\n');
         return { reason: pane.replace(/\n+/g, ' ').slice(0, 300), pane, chose, answered };
     }
-    const button = enabled().first();
-    const job = await button.evaluate((b) => {
+    const button = ring().first();
+    const job = await picked.evaluate((b) => {
         let el = b;
         for (let i = 0; i < 8 && el; i++, el = el.parentElement) {
-            const m = /\b(STEUERN_[A-Z0-9_]+|[A-Z][A-Z0-9_]{3,})\b/.exec(el.innerText ?? '');
+            // The job's SGBD name (with an underscore) before any capitals in the part's name (VANOS).
+            const m = /\b([A-Z][A-Z0-9]*_[A-Z0-9_]+)\b/.exec(el.innerText ?? '') ?? /\b([A-Z][A-Z0-9_]{3,})\b/.exec(el.innerText ?? '');
             if (m) return m[1];
         }
         return '?';

@@ -26,17 +26,43 @@ export function ConfirmSteps({ what, until, press }: { what: React.ReactNode; un
 }
 
 /**
+ * What a caution tells the person to do, as lines among the preconditions: aligned with the boxes'
+ * labels where there are boxes, so they read as part of one list. Every confirmation that has them (the gate, the procedure's dialog).
+ */
+export function Told({ lines, indent = false }: { lines: readonly string[]; indent?: boolean }) {
+    return (
+        <>
+            {lines.map((l) => (
+                <p key={l} className={`text-xs leading-relaxed text-slate-200 ${indent ? 'pl-[22px]' : ''}`}>
+                    {l}
+                </p>
+            ))}
+        </>
+    );
+}
+
+/**
  * 詳細 ⓘ: the SGBD's own words, the frames and the job names, drawn only when asked for — the
  * dialog's equivalent of a `Section`'s info. The label and the glyph are one control, so a thumb
  * on a head unit does not have to find a 12px icon. Opening it moves what is below; the reader
  * asked for that, and the answers stay where they are (they are the frame's, not the body's).
  */
-export function ConfirmDetails({ children, label }: { children: React.ReactNode; /** Where the details are one thing (送る電文), its name; else 詳細. */ label?: string }) {
+export function ConfirmDetails({
+    children,
+    label,
+    className = 'mt-4',
+}: {
+    children: React.ReactNode;
+    /** Where the details are one thing (送る電文), its name; else 詳細. */
+    label?: string;
+    /** Its space above: a dialog's section gap, or a row's line (ADAPTATION). */
+    className?: string;
+}) {
     const { t } = useLang();
     const [open, setOpen] = useState(false);
     const id = useId();
     return (
-        <div className="mt-4">
+        <div className={className}>
             <button
                 type="button"
                 onClick={() => setOpen((v) => !v)}

@@ -18,7 +18,7 @@ import { getBoard, putBoard } from '@/lib/probe/boardStore';
 import { listRuns } from '@/lib/probe/runStore';
 import { probeKept } from '@/lib/probeKept';
 import { MSS54_PRESENT_SOURCE, mss54Present, mss54Sporadic, presentFromKinds, readCutShort, scanCounts, scanSummary, type ScanRun, type SgbdFault } from '@tsunagi/monitoring-engine';
-import { codeText, faultName, freezeFrameConditions } from '@/lib/faultText';
+import { codeText, faultName, faultNameAsShown, freezeFrameConditions } from '@/lib/faultText';
 import { isUnnamedLocation, kindsJa } from '@/lib/faultKinds';
 import type { RunBlockKey } from '@tsunagi/monitoring-engine';
 import { mayRun, mayRunProtocolRead, telegramBytes } from '@tsunagi/monitoring-engine';
@@ -89,6 +89,13 @@ const KINDS: Record<string, readonly JobClass[]> = {
 const GEAR_NOTE =
     "83:gang is the DME's own calculated gear (block 83), read beside the channels once a second; a moment's gear is the last read at most 1.5 s before it (`readS` says how long), null when none was.";
 
+/** A fault's Japanese name as the screen says it (lib/faultText `faultNameAsShown`): fields only added. */
+const jaFault = (profile: EcuProfile | null, code: number | string | null) => faultNameAsShown(profile, code, ja.fault_untranslated);
+
+/** Said with fault lists the assistant reads: what `untranslated` means. */
+const UNTRANSLATED_NOTE =
+    "untranslated: true means the module's own table has no Japanese name a person can read for this fault; the screen shows 故障（訳なし） (textJa) with the SGBD's German (original). Say it that way. Do not give a translation of your own as its name.";
+
 /**
  * MSS54 entries as the assistant reads them: the code, its name from the SGBD's own table (English, the
  * Japanese the screen shows, and the German original), whether it is there now, how often, and the
@@ -99,14 +106,14 @@ function describeEntries(entries: readonly ErrorMemoryEntry[], profile: EcuProfi
     return entries.map((f) => {
         const code = formatErrorCode(f.errorCode);
         const known = byCode.get(normCode(code));
-        const ja = faultName(profile, code, 'ja');
+        const name = faultName(profile, code, 'ja');
         const present = mss54Present(f.errorType);
         return {
             code,
             type: formatErrorCode(f.errorType),
             text: known && profile ? resolveText(profile, known.text, 'en').text : null,
-            textJa: ja?.text ?? null,
-            original: ja?.original ?? null,
+            original: name?.original ?? null,
+            ...jaFault(profile, code),
             inTable: !!known,
             present,
             state: present ? 'present now' : 'stored, not present now',
@@ -130,15 +137,19 @@ function describeEntries(entries: readonly ErrorMemoryEntry[], profile: EcuProfi
  */
 function describeSgbdFaults(faults: readonly SgbdFault[], profile: EcuProfile | null) {
     return faults.map((f) => {
-        const ja = faultName(profile, f.code, 'ja');
+        const named = faultName(profile, f.code, 'ja');
         const en = faultName(profile, f.code, 'en');
-        const unnamed = !ja && isUnnamedLocation(f.text);
+        const unnamed = !named && isUnnamedLocation(f.text);
         const present = presentFromKinds(f.kinds);
+        // The screen's own rule for this name slot (views/diagnosis ScanView `shown`): the table's name
+        // where it reads as Japanese; else 「故障（訳なし）」 with the German — the table's, or the job's own text.
+        const jaName = jaFault(profile, f.code);
+        const ownGerman = !named && !unnamed && f.text ? { textJa: ja.fault_untranslated, untranslated: true as const, original: f.text } : null;
         return {
             location: f.code,
             code: codeText(profile, f.code),
             text: unnamed ? null : f.text,
-            textJa: ja?.text ?? (unnamed ? 'この場所の名前は SGBD に無い' : null),
+            ...(unnamed ? { textJa: ja.fault_unnamed } : (ownGerman ?? jaName)),
             textEn: en?.text ?? null,
             ...(unnamed ? { unnamed: 'Its SGBD has no name for this location.' } : {}),
             present,
@@ -233,7 +244,7 @@ export function useMonitoringFacade(input: {
         }
         const decoded = (fresh?.faults as ErrorMemoryEntry[] | null | undefined) ?? (fresh ? null : link.faults);
         const raw = fresh?.raw ?? (fresh ? null : link.rawFaults);
-        if (decoded !== null) return { module: ecuId, read: true, decoded: true, faults: describeEntries(decoded, catalog) };
+        if (decoded !== null) return { module: ecuId, read: true, decoded: true, faults: describeEntries(decoded, catalog), names: UNTRANSLATED_NOTE };
         if (raw !== null) {
             // DSC MK60 (lib/kwpOnDs2): the codes as ISO 14230 lays a $58 answer out, with the SGBD's
             // text — estimated, not yet confirmed on a MK60; the bytes stay the answer.
@@ -247,7 +258,7 @@ export function useMonitoringFacade(input: {
                         code: d.code,
                         status: `0x${d.status.toString(16).padStart(2, '0')}`,
                         text: known && catalog ? resolveText(catalog, known.text, 'en').text : null,
-                        textJa: faultName(catalog, d.code, 'ja')?.text ?? null,
+                        ...jaFault(catalog, d.code),
                     };
                 });
                 return { module: ecuId, read: true, decoded: false, estimated: true, note: 'Codes read as ISO 14230 lays out a $58 answer; not yet confirmed on a MK60. The bytes are the answer.', codes, raw };
@@ -263,6 +274,7 @@ export function useMonitoringFacade(input: {
                         complete: job.status === 'OKAY' && job.stopped === null,
                         faults: describeSgbdFaults(job.faults, catalog),
                         note: "Read by the module's own SGBD fault-read job, run in the app against the car. text is the SGBD's own German; textJa is the screen's Japanese from the module's own fault-text table.",
+                        names: UNTRANSLATED_NOTE,
                     },
                     raw,
                 };
@@ -285,7 +297,7 @@ export function useMonitoringFacade(input: {
             return {
                 code: f.code,
                 text: known && profile ? resolveText(profile, known.text, 'en').text : null,
-                textJa: faultName(profile, f.code, 'ja')?.text ?? null,
+                ...jaFault(profile, f.code),
                 count: f.count,
                 present: f.present,
             };
@@ -309,7 +321,7 @@ export function useMonitoringFacade(input: {
                     code: d.code,
                     status: `0x${d.status.toString(16).padStart(2, '0')}`,
                     text: known && kwpCatalog ? resolveText(kwpCatalog, known.text, 'en').text : null,
-                    textJa: faultName(kwpCatalog, d.code, 'ja')?.text ?? null,
+                    ...jaFault(kwpCatalog, d.code),
                 };
             });
         // The catalogue of each module whose codes were read from its own layout, for their text.
@@ -324,6 +336,7 @@ export function useMonitoringFacade(input: {
             at: new Date(r.endedAt).toISOString(),
             practice: link.mode === 'practice',
             counts: scanCounts(r.results),
+            names: UNTRANSLATED_NOTE,
             // What the screen's ALL MODULES line says: answered modules and the faults their reads hold.
             summary: { modules: summary.modules, faults: summary.faults, ...(summary.cutShort ? { readPartWay: summary.cutShort } : {}) },
             modules: r.results.map((x) => ({

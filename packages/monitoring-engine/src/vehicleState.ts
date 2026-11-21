@@ -25,6 +25,13 @@ export interface VehicleState {
     voltageV: number | null;
     /** `Date.now()` when the speed was read. */
     at: number;
+    /**
+     * When `rpm` and `voltageV` were read (block 3), by the same clock as `at`. They are carried over
+     * from an earlier reading when only the speed was read, so their age is their own, not the speed's:
+     * a screen that shows the last measured battery says how old that measurement is from this. Absent
+     * or null: not known when, so not shown as recent.
+     */
+    engineAt?: number | null;
 }
 
 /** A reading older than this says nothing about now. */
@@ -66,11 +73,13 @@ export function vehicleStateFrom(values: LiveValues, at: number, prior: VehicleS
     const speedKmh = num('19:v');
     const speedCanKmh = num('19:v_asc');
     if (speedKmh === null && speedCanKmh === null) return null;
+    const engineRead = num('3:n') !== null || num('3:ub') !== null;
     return {
         speedKmh,
         speedCanKmh,
         rpm: num('3:n') ?? prior?.rpm ?? null,
         voltageV: num('3:ub') ?? prior?.voltageV ?? null,
         at,
+        engineAt: engineRead ? at : (prior?.engineAt ?? null),
     };
 }

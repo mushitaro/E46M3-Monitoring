@@ -217,7 +217,7 @@ export const ja: Localised = {
             : `${hex} の機種は、名乗り（IDENT）からは決められません。この車はどれですか？ 決めるまで、ここで部品は動かしません（読むのはこれまでどおり）。`,
     variant_ruledOut: (hex, other) => `この車の ${hex} は ${other} です。このモジュールの部品は動かしません。`,
     gate_what: '何が動くか',
-    gate_needs: '前提（すべて確認）',
+    gate_needs: '前提',
     gate_stopsAfter: (s) => `${s} 秒でこのアプリが止めます。STOP でいつでも止まります。`,
     gate_once: 'モジュールが自分で終えます。',
     gate_onPress: (start) => (start ? '押すと、車速・電圧・エンジンの状態を測ってから送ります。' : '押すと、車速・電圧・エンジンの状態を測ってから一度送ります。'),
@@ -226,8 +226,13 @@ export const ja: Localised = {
     conf_runs: (name) => `${name}を実行します。`,
     conf_readOnce: '一度読んで終わります。',
     conf_staysOn: '動いたまま残ります。このアプリからは止められません。',
-    conf_measured: (v) => `前回 ${v}`,
-    conf_measureOnPress: '押すと測ります',
+    conf_measured: (p, v, ok, min) =>
+        p === 'voltage_ok' ? (ok ? `電圧 ${v} V（前回の測定）` : `電圧 ${v} V（前回の測定）：${min} V 以上で動かせます`)
+        : p === 'stationary' ? (ok ? `停車中（${v} km/h、前回の測定）` : `走行中（${v} km/h、前回の測定）：止まってから動かせます`)
+        : p === 'engine_off' ? (ok ? `エンジン停止（${v} rpm、前回の測定）` : `エンジンが回っています（${v} rpm、前回の測定）：止めてから動かせます`)
+        : ok ? `エンジン始動（${v} rpm、前回の測定）` : `エンジンが止まっています（${v} rpm、前回の測定）：かけてから動かせます`,
+    conf_measureOnPress: '押すと測ってから送ります',
+    conf_remeasureOnPress: '押すと測り直してから送ります',
     conf_details: '詳細',
     conf_sgbdNote: 'SGBD の注記',
     conf_instructions: '守ること',
@@ -301,6 +306,7 @@ export const ja: Localised = {
     precond_voltage_ok: '電圧 12 V 以上',
     precond_stationary: '停車している',
     precond_engine_off: 'エンジン停止',
+    precond_engine_running: 'エンジン始動',
     // English in BOTH languages, like DIAGNOSIS / DATALOG / SERVICE / PRACTICE
     // beside it. The chrome tokens of this panel are one vocabulary; a lone
     // katakana word in that row read as a different app's control.

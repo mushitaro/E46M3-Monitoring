@@ -15,8 +15,9 @@ import {
     loadEcuIndex,
     loadJobFramesOracle,
     loadTelegrams,
-    mayRun,
+    mayActuate,
     telegramOfAgreed,
+    type ActuationMode,
     type CatalogJob,
     type EcuProfile,
     type Ledger,
@@ -40,13 +41,18 @@ export type AdjustmentStatus =
 
 const hex2 = (n: number) => n.toString(16).padStart(2, '0');
 
-export async function adjustmentStatus(moduleId: string, address: number, job: CatalogJob, ledger: Ledger, motion: Motion): Promise<AdjustmentStatus> {
+/**
+ * `mode` is the link's: on the practice car the answer is the one SERVICE's hub gives there
+ * (`mayActuate` in PRACTICE), so the row does not say 「PRACTICE で一度実行してください」 to someone
+ * who is in PRACTICE (UX-31). On a vehicle `mayActuate` is `mayRun`, unchanged.
+ */
+export async function adjustmentStatus(moduleId: string, address: number, job: CatalogJob, ledger: Ledger, motion: Motion, mode: ActuationMode = 'vehicle'): Promise<AdjustmentStatus> {
     const r = await agreedFrame(moduleId, address, job.id, []);
     if (r.ok) {
         // Only an identification read: that is all EdiabasLib saw it send, which is not the adjustment.
         const frames = r.frame.sequence ?? [r.frame.hex];
         if (frames.every((h) => /^(\S+ \S+ 00|b8 \S+ f1 \S+ 1a)/.test(h))) return { kind: 'sendsNothing' };
-        return { kind: 'gate', verdict: mayRun(job, telegramOfAgreed(r.frame), ledger, { moduleId, motion }) };
+        return { kind: 'gate', verdict: mayActuate(job, telegramOfAgreed(r.frame), ledger, { moduleId, mode, motion }) };
     }
     const oracle = await loadJobFramesOracle();
     const sends = oracle?.jobs[`${moduleId}:${job.id}`]?.cases.find((c) => c.args.length === 0)?.sends ?? [];

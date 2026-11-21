@@ -170,6 +170,43 @@ const scenario = {
                 },
             },
         },
+        {
+            check: {
+                desc: '手順 4：停車中、画面の CLEAR FAULTS を押すと確認が出る。題は消えるもの（そのモジュールの故障）、本文は 消えるもの → 戻せない → 押すと の順（UX-13）',
+                run: async (page, st) => {
+                    await ask(page, st, 'monitoring_display', { show: 'diagnosis', pane: 'list' });
+                    await page.waitForTimeout(800);
+                    const clear = page.locator('button:visible:has-text("CLEAR FAULTS")').last();
+                    if ((await clear.count()) === 0) return 'CLEAR FAULTS が無い';
+                    if (await clear.isDisabled()) return '停車しているのに押せない';
+                    await clear.click();
+                    const d = page.locator('[role=dialog]').first();
+                    await d.waitFor({ timeout: 3000 });
+                    // Past the dialog's 200 ms fade-in, so the capture below is of the settled dialog.
+                    await page.waitForTimeout(400);
+                    const text = await d.innerText();
+                    const title = text.split('\n')[0] ?? '';
+                    const why = [];
+                    if (!/故障/.test(title)) why.push(`題が消えるものの名前でない：「${title}」`);
+                    const what = text.indexOf('消えます');
+                    const back = text.indexOf('戻せません');
+                    const press = text.indexOf('押すと');
+                    if (!(what >= 0 && back > what && press > back)) why.push(`消えるもの → 戻せない → 押すと の順でない：${text.replace(/\n/g, ' / ').slice(0, 200)}`);
+                    return why.length ? why.join('、') : true;
+                },
+            },
+        },
+        { shot: 's04-clear-confirm' },
+        {
+            check: {
+                desc: '手順 4：確認はキャンセルで閉じる（消すのは手順 5、オーナーの「いいよ」のあと）',
+                run: async (page) => {
+                    await page.locator('[role=dialog] button:has-text("キャンセル")').first().click();
+                    await page.waitForTimeout(400);
+                    return (await page.locator('[role=dialog]').count()) === 0 ? true : 'ダイアログが残る';
+                },
+            },
+        },
         { say: '消して' },
         {
             check: {

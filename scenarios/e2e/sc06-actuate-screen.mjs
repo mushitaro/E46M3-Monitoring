@@ -1,4 +1,5 @@
 import { all, ask, pressAndTime, rowOf, rowText, screenText, wire } from './_sc01-07.mjs';
+import { chooseSet, setsOf } from './_lib.mjs';
 
 /**
  * SC06 部品を動かす（画面）— SMG II の油圧ポンプ。docs/VIRTUAL-CAR-TESTS.md M1。
@@ -7,7 +8,9 @@ import { all, ask, pressAndTime, rowOf, rowText, screenText, wire } from './_sc0
  * 時間切れで止まるところは、PRACTICE で確かめる。
  */
 const JOB = 'STEUERN_STELLGLIED';
-const SET = 'HYDROPUMPE · AKTIV · 0';
+/** HYDROPUMPE · AKTIV · 0, as the row lists it: 「オン · 0」 under 「— 油圧ポンプ」 (UX-27). */
+const PART = '油圧ポンプ';
+const SET = 'オン · 0';
 const START_FRAME = /^32 07 0c 05 01 00 3d$/;
 const STOP_FRAME = /^32 07 0c 05 00 00 3c$/;
 
@@ -29,7 +32,7 @@ const scenario = {
                 run: async (page) => {
                     const r = row(page);
                     for (let i = 0; i < 20 && (await r.locator('select').count()) === 0; i++) await page.waitForTimeout(250);
-                    await r.locator('select').selectOption({ label: SET });
+                    await chooseSet(r, PART, SET);
                     await page.waitForTimeout(400);
                     const t = await rowText(r);
                     const disabled = await r.locator('[data-test="tj-start"]').isDisabled();
@@ -72,7 +75,7 @@ const scenario = {
                 desc: '手順 2：選べるものが部品の名前で並ぶ（番号ではない）',
                 run: async (page) => {
                     const labels = await row(page).locator('select option').allTextContents();
-                    if (!labels.includes(SET)) return `「${SET}」が無い`;
+                    if (!(await setsOf(row(page))).includes(`${PART} › ${SET}`)) return `「${PART} › ${SET}」が無い`;
                     return labels.some((l) => /0x[0-9A-F]{2}/i.test(l)) ? 'PIN の番号が混じる' : true;
                 },
             },
@@ -93,7 +96,7 @@ const scenario = {
                 desc: '手順 3：値を選んで START、1 秒以内に確認が出る（U1）',
                 run: async (page, st) => {
                     const r = row(page);
-                    await r.locator('select').selectOption({ label: SET });
+                    await chooseSet(r, PART, SET);
                     await page.waitForTimeout(300);
                     const ms = await pressAndTime(page, r.locator('[data-test="tj-start"]'));
                     await page.locator('[role=dialog]').first().waitFor({ timeout: 3000 });
@@ -214,7 +217,7 @@ const scenario = {
                 desc: '手順 7（PRACTICE で）：もう一度動かすと、自分で止まり「時間切れで止まった」と出る（合格は 10 秒）',
                 run: async (page) => {
                     const r = row(page);
-                    await r.locator('select').selectOption({ label: SET });
+                    await chooseSet(r, PART, SET);
                     await r.locator('[data-test="tj-start"]').click();
                     const dialog = page.locator('[role=dialog]').first();
                     await dialog.waitFor({ timeout: 3000 });
@@ -250,7 +253,7 @@ const scenario = {
                 desc: '手順 6：実車モードで同じ行の「練習から」の札が消える',
                 run: async (page) => {
                     const r = row(page);
-                    await r.locator('select').selectOption({ label: SET });
+                    await chooseSet(r, PART, SET);
                     await page.waitForTimeout(400);
                     const t = await rowText(r);
                     return t.includes('練習から') ? `札が残る：${t.replace(/\n/g, ' / ')}` : true;

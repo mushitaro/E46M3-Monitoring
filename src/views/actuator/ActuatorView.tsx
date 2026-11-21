@@ -16,11 +16,13 @@ import { useLang } from '@/lib/i18n';
 import { cautionFor, type JobTextTable } from '@/lib/jobText';
 import { isOn } from '@/lib/jobSurface';
 import type { Ledger } from '@tsunagi/monitoring-engine';
-import type { RunVerdict, SendRequirement } from '@tsunagi/monitoring-engine';
+import type { RunBlockKey, RunVerdict, SendRequirement } from '@tsunagi/monitoring-engine';
 import { TEST_ID, tid } from '@/lib/testIds';
 import { bestTelegram, type TelegramTable } from '@tsunagi/monitoring-engine';
 import type { Motion } from '@tsunagi/monitoring-engine';
-import { ReasonGlossary, ReasonTag } from '@/views/shared/RunReason';
+import { ReasonGlossary, ReasonTag, sharedReason } from '@/views/shared/RunReason';
+import { headline } from '@/lib/jobName';
+import type { VehicleState } from '@tsunagi/monitoring-engine';
 import { useNow } from '@/hooks/useNow';
 import { decidedByYear, type VariantState } from '@/lib/variantChoice';
 
@@ -72,6 +74,7 @@ export function ActuatorView({
     onConfirmVariant,
     onSentOnce,
     onRun,
+    measured,
 }: {
     profile: EcuProfile;
     telegrams: TelegramTable | null;
@@ -93,6 +96,8 @@ export function ActuatorView({
     onSentOnce: (moduleId: string, jobId: string, args: readonly string[] | null) => void;
     /** Send a job's frame. The caller owns the busy lock and the log. */
     onRun: (jobId: string, hex: string, requires?: SendRequirement, permit?: ActuationPermit) => Promise<unknown>;
+    /** The car as last measured, shown beside the confirmation's preconditions. */
+    measured?: VehicleState | null;
 }) {
     const { lang, t } = useLang();
     const [query, setQuery] = useState('');
@@ -174,6 +179,9 @@ export function ActuatorView({
         () => [...verdicts.values()].filter((v) => v.allowed).length,
         [verdicts],
     );
+    // A reason (nearly) every row carries is the list's fact, said once in the note; the rows carry
+    // only the exceptions (UX-28: 85 rows of 「練習から」 under a note that already counted them).
+    const shared = useMemo(() => sharedReason(jobs.map((j) => verdicts.get(j.id))), [jobs, verdicts]);
 
     const shown = useMemo(() => {
         const q = query.trim().toLowerCase();
@@ -230,12 +238,27 @@ export function ActuatorView({
         const n = parts.get(part);
         return n ? (lang === 'ja' ? n.ja : n.en) : part;
     };
+    // Only a name the module's data gives goes where a name goes; a bare value (an identifier) does not.
+    const namedPartOf = (args: readonly string[] | undefined) => {
+        const n = args?.[0] ? parts.get(args[0]) : undefined;
+        return n ? (lang === 'ja' ? n.ja : n.en) : null;
+    };
+
+    // Nothing listed: the sentence below says why, and a count of nothing says nothing (UX-29). A
+    // reason every row shares is said here once (UX-28); the count of runnable rows stays beside it
+    // unless no row can run, which 「85 件とも練習から」 already says.
+    const sharedText = shared ? t.list_shared(shared.count, jobs.length, t.runBlockShort[shared.reason]) : null;
+    const note =
+        jobs.length === 0 ? undefined
+        : sharedText && shared?.count === jobs.length ? sharedText
+        : sharedText ? `${t.actuator_runnable(runnableCount, jobs.length)} · ${sharedText}`
+        : t.actuator_runnable(runnableCount, jobs.length);
 
     return (
         <>
             <Section
                 title={t.tab_actuator}
-                note={t.actuator_runnable(runnableCount, jobs.length)}
+                note={note}
                 info={<ReasonGlossary lead={t.actuator_info} reasons={jobs.map((j) => verdicts.get(j.id))} />}
             >
                 {variant.state !== 'ok' && <VariantRow variant={variant} onConfirm={onConfirmVariant} />}
@@ -245,23 +268,26 @@ export function ActuatorView({
                         {drivers.length === 0 ? t.actuator_noneInSgbd : t.actuator_noneOwnerOff(drivers.length)}
                     </p>
                 )}
-                <ListControls
-                    query={query}
-                    onQuery={setQuery}
-                    placeholder={t.search}
-                    shown={shown.length}
-                    total={jobs.length}
-                >
-                    <label className={`flex cursor-pointer items-center gap-1.5 ${LABEL} text-slate-500`}>
-                        <input
-                            type="checkbox"
-                            checked={onlyRunnable}
-                            onChange={() => setOnlyRunnable((v) => !v)}
-                            className="size-3 accent-blue-500"
-                        />
-                        {t.actuator_onlyRunnable}
-                    </label>
-                </ListControls>
+                {/* A search and a filter over nothing are two controls that do nothing (UX-29). */}
+                {jobs.length > 0 && (
+                    <ListControls
+                        query={query}
+                        onQuery={setQuery}
+                        placeholder={t.search}
+                        shown={shown.length}
+                        total={jobs.length}
+                    >
+                        <label className={`flex cursor-pointer items-center gap-1.5 ${LABEL} text-slate-500`}>
+                            <input
+                                type="checkbox"
+                                checked={onlyRunnable}
+                                onChange={() => setOnlyRunnable((v) => !v)}
+                                className="size-3 accent-blue-500"
+                            />
+                            {t.actuator_onlyRunnable}
+                        </label>
+                    </ListControls>
+                )}
 
                 <DataList>
                     {shown.map((job) => {
@@ -277,7 +303,8 @@ export function ActuatorView({
                                 variantOk={variant.state === 'ok'}
                                 armed={!!entry}
                                 secondsLeft={left}
-                                part={partOf(entry?.args ?? c?.start.args)}
+                                part={namedPartOf(entry?.args ?? c?.start.args)}
+                                sharedReason={shared?.reason ?? null}
                                 otherOn={arming.anyArmed && !arming.armed.has(job.id)}
                                 choices={choices.get(job.id)}
                                 parts={parts}
@@ -311,6 +338,7 @@ export function ActuatorView({
                     argValues={pending.choice?.values ?? {}}
                     part={partOf(pending.choice?.start.args) ?? undefined}
                     caution={cautionFor(jobText, pending.job.id, lang) ?? undefined}
+                    measured={measured}
                     onRun={() => void confirm()}
                     onCancel={() => setPending(null)}
                 />
@@ -352,6 +380,7 @@ function Row({
     armed,
     secondsLeft,
     part,
+    sharedReason,
     otherOn,
     choices,
     parts,
@@ -369,8 +398,10 @@ function Row({
     armed: boolean;
     /** Seconds until it stops by itself, while it is on. */
     secondsLeft: number | null;
-    /** The part it drives (the chosen set's, in the owner's words), or null. */
+    /** The part it drives (the chosen set's, as the module's data names it), or null. */
     part: string | null;
+    /** The reason the list's note already says for (nearly) every row: not repeated here. */
+    sharedReason: RunBlockKey | null;
     /** Another output is on: one at a time. */
     otherOn: boolean;
     /** For a job that takes values: the agreed sets, and the one chosen. */
@@ -388,8 +419,11 @@ function Row({
     const allowed = verdict?.allowed === true && !otherOn && variantOk;
     // A car measured moving is the row's reason before any other that a choice could clear (IJ F09).
     const drives = job.class !== 'read';
-    const reason = verdict && !verdict.allowed ? (motion === 'moving' && drives && verdict.reason === 'run_block_needsArgs' ? 'run_block_moving' : verdict.reason) : null;
-    const name = lang === 'ja' ? job.ja : job.en;
+    const refused = verdict && !verdict.allowed ? (motion === 'moving' && drives && verdict.reason === 'run_block_needsArgs' ? 'run_block_moving' : verdict.reason) : null;
+    // Not the word the value picker already says (its first line is 「値を選ぶ」), nor the list's shared one.
+    const reason = refused === 'run_block_needsArgs' && choices ? null : refused === sharedReason ? null : refused;
+    // The part it drives, where one is chosen: that is what moves (油圧ポンプ), not the kind of job.
+    const name = part ?? headline(lang === 'ja' ? job.ja : job.en || job.ja);
 
     return (
         <DataRow
@@ -409,7 +443,7 @@ function Row({
                     )}
                 </>
             }
-            name={humanName(part ? `${name} · ${part}` : name)}
+            name={humanName(name)}
             ident={job.id}
             trailing={
                 <span className="flex shrink-0 items-center gap-3">
@@ -417,7 +451,7 @@ function Row({
                         says the sentence (views/shared/RunReason). */}
                     {reason && <ReasonTag reason={reason} />}
                     {choices && (
-                        <ChoiceSelect choices={choices} parts={parts} lang={lang} chosen={chosen} onChoose={onChoose} disabled={armed} label={t.actuator_values} />
+                        <ChoiceSelect choices={choices} parts={parts} lang={lang} modes={t.actuator_mode} chosen={chosen} onChoose={onChoose} disabled={armed} label={t.actuator_values} />
                     )}
                     {style === 'hold' ? (
                         <>
@@ -467,6 +501,7 @@ function ChoiceSelect({
     choices,
     parts,
     lang,
+    modes,
     chosen,
     onChoose,
     disabled,
@@ -475,6 +510,8 @@ function ChoiceSelect({
     choices: AgreedChoice[];
     parts: PartTable;
     lang: 'ja' | 'en';
+    /** The values that name a state, in the owner's words (AKTIV → オン). Others stand as they are. */
+    modes: Readonly<Record<string, string>>;
     chosen?: number;
     onChoose: (i: number | undefined) => void;
     disabled: boolean;
@@ -485,12 +522,19 @@ function ChoiceSelect({
         const k = c.start.args[0] ?? '';
         groups.set(k, [...(groups.get(k) ?? []), { i, c }]);
     });
-    const heading = (part: string) => {
+    const partName = (part: string) => {
         const n = parts.get(part);
-        return n ? `— ${lang === 'ja' ? n.ja : n.en}（${part}）` : `— ${part}`;
+        return n ? (lang === 'ja' ? n.ja : n.en) : part;
     };
+    // Under its part's heading, a set says the rest of its values: 「オン · 0」 under 「— 油圧ポンプ」.
+    // A set of one value is the part itself.
+    const optionLabel = (c: AgreedChoice) =>
+        c.start.args.length <= 1 ? partName(c.start.args[0] ?? '') : c.start.args.slice(1).map((v) => modes[v] ?? v).join(' · ');
     return (
-        <span className="max-w-[15rem] rounded bg-slate-800 px-1.5 py-0.5">
+        // A fixed, narrow chip: the closed picker says one short set (「オン · 0」), and the open list is the
+        // browser's own and as wide as it needs. Sized by its longest line, it took the row from the part's
+        // name on a head unit (UX-27).
+        <span className="inline-block w-28 shrink-0 rounded bg-slate-800 px-1.5 py-0.5">
             <select
                 aria-label={label}
                 title={label}
@@ -505,11 +549,11 @@ function ChoiceSelect({
                 {[...groups].flatMap(([part, rows]) => [
                     // A heading, in a line of its own: an optgroup's label is not read by every head unit's picker.
                     <option key={`h:${part}`} disabled className="bg-slate-900 text-slate-400">
-                        {heading(part)}
+                        {`— ${partName(part)}`}
                     </option>,
                     ...rows.map(({ i, c }) => (
                         <option key={i} value={i} className="bg-slate-900">
-                            {c.label}
+                            {optionLabel(c)}
                         </option>
                     )),
                 ])}

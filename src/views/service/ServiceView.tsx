@@ -19,6 +19,7 @@ import type { Smg2Procedure, Smg2Workflows } from '@/lib/smg2Workflows';
 import { bestTelegram, type TelegramTable } from '@tsunagi/monitoring-engine';
 import { Awaiting } from '@/views/shared/Awaiting';
 import { JobFrameViz } from './JobFrameViz';
+import { formatDuration, procedureMaxSec } from '@/lib/duration';
 
 /**
  * SERVICE — the module's catalogue, and the one surface that sends a job to a
@@ -116,23 +117,27 @@ export function ServiceViz({
 }) {
     const { t } = useLang();
     if (selectedJob && catalog) {
+        const procedure = procedureForJob(selectedJob, workflows);
         return (
-            // One scroller, and the order is the point: the frame and the
-            // verdict are above the fold, the reference reading is what you
-            // scroll to. It used to be the other way round.
+            // One scroller, read in the order a person asks: the name, what it
+            // does, what it needs, then whether it goes and the frame (under
+            // 送る電文 ⓘ); the reference reading is what you scroll to (UX-30).
             <div className="flex h-full flex-col gap-4 overflow-y-auto pr-1">
-                <JobFrameViz
-                    job={selectedJob}
-                    telegram={bestTelegram(telegrams, selectedJob.id)}
-                    verdict={runVerdict}
-                />
                 <JobDetail
                     profile={catalog}
                     job={selectedJob}
                     jobText={jobText}
                     workflows={workflows}
-                    procedure={procedureForJob(selectedJob, workflows)}
+                    procedure={procedure}
                     lastRun={lastRun?.jobId === selectedJob.id ? lastRun : null}
+                    // A procedure's frames are the procedure's run's (lib/procedureRun), built when it
+                    // starts: the adapted row has no frame of its own, and 「送りません」 beside a
+                    // START that runs it said the opposite of the hub (UX-30, SC08).
+                    frame={
+                        procedure ? undefined : (
+                            <JobFrameViz job={selectedJob} telegram={bestTelegram(telegrams, selectedJob.id)} verdict={runVerdict} />
+                        )
+                    }
                 />
             </div>
         );
@@ -171,10 +176,17 @@ function ProcedureSection({
     const { lang, t } = useLang();
     if (ecuId !== 'smg2') return null;
     if (!workflows) return null;
+    // Most run with the engine off: that is the list's fact, said once; a row says only the exception
+    // (UX-28: 「停止」 on thirteen rows of fourteen).
+    const engineOff = workflows.procedures.filter((p) => p.engine !== 'run').length;
 
     return (
         <Pane>
-            <Section title={t.proc_title} count={workflows.procedures.length}>
+            <Section
+                title={t.proc_title}
+                count={workflows.procedures.length}
+                note={engineOff > 0 ? t.proc_engineOffNote(engineOff, workflows.procedures.length) : undefined}
+            >
                 <DataList>
                     {workflows.procedures.map((p) => {
                         const job = procedureAsJob(p);
@@ -192,16 +204,15 @@ function ProcedureSection({
                                 name={humanName(lang === 'en' ? p.name.en : p.name.ja)}
                                 trailing={
                                     <>
-                                        <span className="shrink-0 font-mono text-[10px] text-slate-500">
-                                            {p.durMax}
-                                        </span>
-                                        <span
-                                            className={`shrink-0 ${LABEL} ${
-                                                p.engine === 'run' ? 'text-amber-400' : 'text-slate-600'
-                                            }`}
-                                        >
-                                            {p.engine === 'run' ? t.proc_engineRun : t.proc_engineOff}
-                                        </span>
+                                        {/* 「10 秒」「3 分」, not the SGBD's 「10 sek」「3,0 min」 (UX-12). */}
+                                        {procedureMaxSec(p) !== null && (
+                                            <span className="shrink-0 font-mono text-[10px] text-slate-500">
+                                                {formatDuration(procedureMaxSec(p)!, t)}
+                                            </span>
+                                        )}
+                                        {p.engine === 'run' && (
+                                            <span className={`shrink-0 ${LABEL} text-amber-400`}>{t.proc_engineRunTag}</span>
+                                        )}
                                     </>
                                 }
                                 detail={

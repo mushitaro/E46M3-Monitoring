@@ -53,3 +53,47 @@ export const plan = (body) => ({
         },
     },
 });
+
+/**
+ * Chooses a whole set of values on an ACTUATOR row: the option `label` (「オン · 0」) under the part's
+ * heading (「— 油圧ポンプ」), the way a person reads the list (UX-27). Returns whether it was there.
+ */
+export async function chooseSet(row, part, label) {
+    const select = row.locator('select').first();
+    const value = await select.evaluate(
+        (s, [p, l]) => {
+            let under = null;
+            for (const o of s.options) {
+                if (o.disabled && o.text.startsWith('— ')) under = o.text.slice(2);
+                else if (under === p && o.text === l) return o.value;
+            }
+            return null;
+        },
+        [part, label],
+    );
+    if (value === null) return false;
+    await select.selectOption({ value });
+    return true;
+}
+
+/** The sets an ACTUATOR row offers, as 「部品 › 値」 (「油圧ポンプ › オン · 0」), headings resolved. */
+export async function setsOf(row) {
+    return row
+        .locator('select')
+        .first()
+        .evaluate((s) => {
+            let under = null;
+            const out = [];
+            for (const o of s.options) {
+                if (o.disabled && o.text.startsWith('— ')) under = o.text.slice(2);
+                else if (o.value !== '') out.push(`${under} › ${o.text}`);
+            }
+            return out;
+        });
+}
+
+/** Opens a dialog's 詳細 ⓘ (or another details toggle by its label), where the SGBD's words and the frames are. */
+export async function openDetails(page, label = '詳細') {
+    const toggle = page.locator('[role=dialog] button[aria-controls]', { hasText: label }).first();
+    if ((await toggle.count()) && (await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+}

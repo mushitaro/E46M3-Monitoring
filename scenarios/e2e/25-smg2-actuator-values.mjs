@@ -1,4 +1,4 @@
-import { tool } from './_lib.mjs';
+import { chooseSet, openDetails, setsOf, tool } from './_lib.mjs';
 
 /** The row of a job: the nearest ancestor of its name that holds the given control. */
 const rowOf = (page, job, testId) => page.getByText(job, { exact: true }).first().locator(`xpath=ancestor::*[.//*[@data-test="${testId}"]][1]`);
@@ -35,27 +35,32 @@ const scenario = {
         },
         {
             check: {
-                desc: '値の組は名前で並び、PIN（0x05 など）は無く、止め（INAKTIV）は始めとして出ない',
+                desc: '値の組は部品の名前の下に人の語で並び（油圧ポンプ › オン · 0）、PIN（0x05 など）も SGBD の独語も無く、止め（INAKTIV＝オフ）は始めとして出ない',
                 run: async (page) => {
-                    const labels = await rowOf(page, 'STEUERN_STELLGLIED', 'tj-start').locator('select option').allTextContents();
-                    if (!labels.some((l) => l === 'HYDROPUMPE · AKTIV · 0')) return `HYDROPUMPE · AKTIV · 0 が無い: ${labels.slice(0, 8).join(' | ')}`;
+                    const row = rowOf(page, 'STEUERN_STELLGLIED', 'tj-start');
+                    const labels = await row.locator('select option').allTextContents();
+                    const sets = await setsOf(row);
+                    if (!sets.includes('油圧ポンプ › オン · 0')) return `油圧ポンプ › オン · 0 が無い: ${sets.slice(0, 8).join(' | ')}`;
                     if (labels.some((l) => /0x[0-9A-F]{2}/.test(l))) return 'PIN が混じっている';
-                    if (labels.some((l) => / · INAKTIV · /.test(l))) return 'INAKTIV が始めとして出ている';
+                    if (labels.some((l) => /HYDROPUMPE|AKTIV/.test(l))) return `SGBD の独語が残っている: ${labels.filter((l) => /HYDROPUMPE|AKTIV/.test(l)).slice(0, 3).join(' | ')}`;
+                    if (sets.some((l) => / › オフ( · |$)/.test(l))) return 'INAKTIV（オフ）が始めとして出ている';
                     return true;
                 },
             },
         },
         {
             check: {
-                desc: 'HYDROPUMPE · AKTIV · 0 を選んで START、確認に始めと止めの呼び出しが出て、実行すると送られて止めが置かれる',
+                desc: '油圧ポンプ › オン · 0（HYDROPUMPE · AKTIV · 0）を選んで START、確認の詳細に始めと止めの呼び出しが出て、実行すると送られて止めが置かれる',
                 run: async (page) => {
                     const row = rowOf(page, 'STEUERN_STELLGLIED', 'tj-start');
-                    await row.locator('select').selectOption({ label: 'HYDROPUMPE · AKTIV · 0' });
+                    if (!(await chooseSet(row, '油圧ポンプ', 'オン · 0'))) return '油圧ポンプ › オン · 0 が選べない';
                     const start = row.locator('[data-test="tj-start"]');
                     if (await start.isDisabled()) return `選んでも START が押せない: ${(await row.innerText()).slice(0, 200)}`;
                     await start.click();
                     const dialog = page.locator('[role=dialog]').first();
                     await dialog.waitFor({ timeout: 3000 });
+                    // The call lines are the confirmation's, under its 詳細 (UX-11): opened, they are on the dialog.
+                    await openDetails(page);
                     const text = await dialog.innerText();
                     if (!/STELLGL=HYDROPUMPE,STEUERART1=AKTIV,STEUERART2=0/.test(text)) return `始めの呼び出しが無い: ${text.slice(0, 400)}`;
                     if (!/STELLGL=HYDROPUMPE,STEUERART1=INAKTIV,STEUERART2=0/.test(text)) return `止めの呼び出しが無い: ${text.slice(0, 400)}`;

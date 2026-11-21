@@ -1,6 +1,7 @@
 'use client';
 
-import { Field, LABEL, MicroLabel, Pill } from '@/components/ui';
+import { ConfirmDetails } from '@/components/gate/ConfirmBody';
+import { Field, LABEL, Pill } from '@/components/ui';
 import type { CatalogJob } from '@tsunagi/monitoring-engine';
 import { useLang } from '@/lib/i18n';
 import { telegramBytes, type RunVerdict } from '@tsunagi/monitoring-engine';
@@ -45,33 +46,7 @@ export function JobFrameViz({
 
     return (
         <div className="flex flex-col gap-3">
-            <div>
-                <div className="flex items-baseline justify-between gap-2">
-                    <MicroLabel>{t.plan_telegram}</MicroLabel>
-                    {telegram && (
-                        <Pill tone={certain ? 'ok' : 'caution'} title={t.confidenceNote[telegram.confidence]}>
-                            {t.confidence[telegram.confidence]}
-                        </Pill>
-                    )}
-                </div>
-
-                {bytes ? (
-                    <div className="mt-1.5 flex flex-wrap gap-1">
-                        {[...bytes].map((b, i) => (
-                            <ByteCell
-                                key={i}
-                                value={b}
-                                role={roleOf(i, bytes.length, job)}
-                                tone={toneOf(i, bytes.length, certain)}
-                            />
-                        ))}
-                    </div>
-                ) : (
-                    <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">{t.plan_noTelegram}</p>
-                )}
-            </div>
-
-            {/* The verdict, where the eye lands — not eight sections down. */}
+            {/* Whether it goes, where the eye lands; the frame itself is under 送る電文 (UX-30). */}
             {verdict && (
                 <div
                     className={`border-l-2 pl-2.5 ${
@@ -95,6 +70,28 @@ export function JobFrameViz({
                     <Field label={t.det_args} value={job.args.length} tone="text-amber-400" />
                 )}
             </div>
+
+            <ConfirmDetails label={t.plan_telegram}>
+                {telegram && (
+                    <Pill tone={certain ? 'ok' : 'caution'} title={t.confidenceNote[telegram.confidence]}>
+                        {t.confidence[telegram.confidence]}
+                    </Pill>
+                )}
+                {bytes ? (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                        {[...bytes].map((b, i) => (
+                            <ByteCell
+                                key={i}
+                                value={b}
+                                role={roleOf(i, bytes.length, job)}
+                                tone={toneOf(i, bytes.length, certain)}
+                            />
+                        ))}
+                    </div>
+                ) : (
+                    <p className="mt-1.5">{t.plan_noTelegram}</p>
+                )}
+            </ConfirmDetails>
         </div>
     );
 }

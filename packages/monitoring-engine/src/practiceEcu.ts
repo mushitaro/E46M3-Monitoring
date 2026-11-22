@@ -25,7 +25,22 @@ import {
 import { SimulatedSerialPort, type ExchangeBehavior, type SerialOptions, type SerialPortLike, type SimulatedEcuOptions } from '@tsunagi/ds2-core';
 import { KWP_FORMAT, KWP_TESTER, xorOf } from './kwpOnDs2.ts';
 import type { JobFramesOracle } from './sgbd/agreedFrame.ts';
-import { cleanAnswer, clusterVinAnswer, driveNow, ds2IdentData, practiceCar, practiceSpeed, smg2PhydBytes, type PracticeInjection } from './practiceCar.ts';
+import {
+    cleanAnswer,
+    clearPracticeAdaptations,
+    clearPracticeSmg2Adaptations,
+    clusterVinAnswer,
+    driveNow,
+    finishPracticeSmg2Program,
+    ds2IdentData,
+    perCylinder,
+    practiceAdaptation,
+    practiceCar,
+    practiceSmg2AdaptAnswer,
+    practiceSpeed,
+    smg2PhydBytes,
+    type PracticeInjection,
+} from './practiceCar.ts';
 
 const START = Date.now();
 
@@ -34,8 +49,10 @@ function engine() {
     const t = (Date.now() - START) / 1000;
     const v = practiceSpeed();
     const drive = driveNow();
+    // A healthy idle wanders about 15 rpm; a sick one as far as the scenario says (practiceCar `symptoms`).
+    const swing = practiceCar.symptoms?.idleRpmSwing ?? 15;
     return {
-        rpm: drive ? Math.round(drive.rpm) : practiceCar.engineRunning || v > 0 ? Math.round((v > 0 ? 1200 + v * 35 : 820) + 15 * Math.sin(t * 1.3)) : 0,
+        rpm: drive ? Math.round(drive.rpm) : practiceCar.engineRunning || v > 0 ? Math.round((v > 0 ? 1200 + v * 35 : 820) + swing * Math.sin(t * 1.3)) : 0,
         coolantC: Math.min(92, 22 + 70 * (1 - Math.exp(-t / 90))),
         oilC: Math.min(98, 22 + 76 * (1 - Math.exp(-t / 130))),
         battV: practiceCar.batteryV ?? (practiceCar.engineRunning || v > 0 ? 13.9 + 0.12 * Math.sin(t / 2.5) : 12.5),
@@ -55,6 +72,8 @@ function blockPayload(block: LiveValueBlock): Uint8Array {
     );
     const buf = new Uint8Array(Math.max(need, block.expectedLength));
     const e = engine();
+    const rough = perCylinder(practiceCar.symptoms?.roughness, 0);
+    let sym: RegExpExecArray | null;
 
     for (const f of block.fields) {
         // Choose a raw value that decodes to something sane for this field.
@@ -65,6 +84,10 @@ function blockPayload(block: LiveValueBlock): Uint8Array {
         else if (d && f.symbol === 'gang') target = d.gear;
         else if (d && f.unit === '%' && /^(pwg|wdk)/.test(f.symbol)) target = d.pedal;
         else if (f.symbol === 'n') target = e.rpm;
+        // The symptoms a scenario gave the engine (practiceCar `symptoms`); healthy values otherwise.
+        else if ((sym = /^la_f_regler([12])$/.exec(f.symbol))) target = practiceCar.symptoms?.lambdaFactor?.[Number(sym[1]) - 1] ?? 1;
+        else if ((sym = /^ll_abw([1-6])$/.exec(f.symbol))) target = rough[Number(sym[1]) - 1];
+        else if ((sym = /^lu\[([0-5])\]$/.exec(f.symbol))) target = rough[Number(sym[1])];
         else if (f.symbol === 'tmot') target = e.coolantC;
         // The battery: the DME's `ub` (block 3, main relay) and the UUB fields. Other volts are sensors.
         else if (f.unit === 'V') target = f.symbol.startsWith('UUB') || f.symbol === 'ub' ? e.battV : 2.5;
@@ -86,15 +109,20 @@ function blockPayload(block: LiveValueBlock): Uint8Array {
 
 function writeRaw(buf: Uint8Array, offset: number, format: string, raw: number): void {
     const clamp = (v: number, hi: number) => Math.max(0, Math.min(hi, v));
+    // The signed formats (as ds2-core's readRaw sign-extends them) in two's complement, so a learned
+    // offset or a rough cylinder below zero reads back below zero instead of as 0.
+    const signed = (v: number, bits: number) => Math.max(-(2 ** (bits - 1)), Math.min(2 ** (bits - 1) - 1, v)) & (2 ** bits - 1);
     switch (format) {
-        case 'uint8':
         case 'int7':
+            if (offset < buf.length) buf[offset] = signed(raw, 8);
+            break;
+        case 'uint8':
             if (offset < buf.length) buf[offset] = clamp(raw, 0xff);
             break;
         case 'uint10':
         case 'uint16':
         case 'int15': {
-            const v = clamp(raw, 0xffff);
+            const v = format === 'int15' ? signed(raw, 16) : clamp(raw, 0xffff);
             if (offset + 1 < buf.length) {
                 buf[offset] = (v >> 8) & 0xff;
                 buf[offset + 1] = v & 0xff;
@@ -211,6 +239,15 @@ function practiceModule(address: number): SimulatedEcuOptions {
             // reads as the zero of its own scale, which nobody can take for a car's. Before,
             // SMG II's STATUS_IO_LESEN (selection 3) came back as the DME's block 3, and a
             // selection the DME has no block for (SMG II's 5) was refused.
+            // SMG II's learned values (ADAPTIONSWERTE_LESEN, `40 <group>`), as the practice car holds them.
+            if (address === 0x32 && request.controlOrStatus === 0x40 && request.payload.length === 1) {
+                return { payload: practiceSmg2AdaptAnswer(request.payload[0], PRACTICE_MODULE_BLOCK) };
+            }
+            // ADAPTIONSWERTE_LOESCHEN (`43 <n>`): the clutch back to its defaults, or the gearbox data to zero.
+            if (address === 0x32 && request.controlOrStatus === 0x43 && request.payload.length === 1) {
+                clearPracticeSmg2Adaptations(request.payload[0]);
+                return practiceAnswerFor(address, request.controlOrStatus, request.payload) ?? { payload: new Uint8Array(0) };
+            }
             if (request.controlOrStatus === Ds2Control.READ_IO_STATUS || request.controlOrStatus === 0x40) {
                 const out = new Uint8Array(PRACTICE_MODULE_BLOCK);
                 // SMG II's STATUS_IO_LESEN, as the scenario set it (practiceCar `smg2Status`).
@@ -279,9 +316,17 @@ export function practiceEcu(): SimulatedEcuOptions {
                     // adaptation reads as its own zero point rather than as an
                     // invented "typical" value. A learned value is exactly the
                     // kind of number nobody should be able to mistake for real.
+                    //
+                    // A value a scenario set (practiceCar `mss54Adapt`, or the misfires its symptoms
+                    // imply) goes through the field's own scale; the rest stay zero.
                     const adaptation = MSS54_ADAPTATION_BLOCKS.find((b) => b.selection === arg);
                     if (adaptation) {
-                        return { payload: new Uint8Array(adaptationBlockMinLength(adaptation)) };
+                        const buf = new Uint8Array(adaptationBlockMinLength(adaptation));
+                        for (const f of adaptation.fields) {
+                            const value = practiceAdaptation(f.symbol);
+                            if (value !== null) writeRaw(buf, f.offset, f.format, Math.round((value - f.add) / (f.scale || 1)));
+                        }
+                        return { payload: buf };
                     }
                     // A selection EdiabasLib was run with (a VANOS test reads block 5 first): as its simulation answered.
                     return practiceAnswerFor(request.address, request.controlOrStatus, request.payload) ?? { status: Ds2Status.PARAMETER_ERROR };
@@ -358,9 +403,19 @@ export function practiceEcu(): SimulatedEcuOptions {
                 // prints the raw bytes beside the decode for exactly that reason.
                 case 0x32: // TESTPRG_STARTEN
                     testprgPolls++;
+                    // The poll that finds the program finished is when SMG II has learnt what it teaches.
+                    if (request.address === 0x32 && testprgPolls === SIM_TESTPRG_POLLS) finishPracticeSmg2Program(arg);
                     return {
                         payload: new Uint8Array([testprgPolls >= SIM_TESTPRG_POLLS ? 0x02 : 0x01, 0x00]),
                     };
+
+                // ADAPT_LOESCHEN (`43 FF 00`, and ADAPT_SELEKTIV_LOESCHEN with every bit set, which is the
+                // same frame): the learned values go back to zero, and a symptom a learned value caused
+                // goes with them. Another selection's bits name groups this app has no table for, so
+                // nothing is cleared, rather than guessing which; the answer is EdiabasLib's either way.
+                case 0x43:
+                    if (arg === 0xff && request.payload[1] === 0x00) clearPracticeAdaptations();
+                    return practiceAnswerFor(request.address, request.controlOrStatus, request.payload) ?? { payload: new Uint8Array(0) };
 
                 case Ds2Control.SET_IO_STATUS:
                 case Ds2Control.KEEP_ALIVE:

@@ -146,6 +146,86 @@ export interface PracticeCar {
     mss54Adapt: Record<string, number>;
     /** How many times the DME has been told to clear all its learned values (`43 FF 00`). */
     mss54AdaptClears: number;
+    /**
+     * SMG II's learned values: the answer to ADAPTIONSWERTE_LESEN (`40 <n>`), byte by offset, for each of
+     * the job's three groups — 0 the clutch's adaptations, 1 the gearbox's, 2 the gearbox data (its
+     * counters). A byte not listed is zero. Which byte its own code reads as which value: `SMG2_ADAPT_BYTES`.
+     */
+    smg2Adapt: Record<Smg2AdaptGroup, Record<number, number>>;
+    /**
+     * What SMG II learns when one of its test programs finishes (TESTPRG_STARTEN, by program number):
+     * the bytes it then holds, by group. Set by a scenario — PRACTICE does not know what a real clutch or
+     * gearbox would learn, so a program absent here changes nothing.
+     */
+    smg2Relearn: Record<number, Partial<Record<Smg2AdaptGroup, Record<number, number>>>>;
+    /** Each ADAPTIONSWERTE_LOESCHEN SMG II was sent, by its argument (0 clutch curve, 1 gearbox data), in order. */
+    smg2AdaptClears: number[];
+    /** The test programs SMG II ran to their end, by program number, in order. */
+    smg2ProgramsFinished: number[];
+}
+
+/** ADAPTIONSWERTE_LESEN's argument: 0 clutch adaptations, 1 gearbox adaptations, 2 gearbox data. */
+export type Smg2AdaptGroup = 0 | 1 | 2;
+
+/**
+ * Where SMG II's own ADAPTIONSWERTE_LESEN code reads some of its values in each group's answer (found by
+ * running that code on answers with one byte set; practiceSmg2Adapt.test.ts pins them). Big-endian words
+ * where a value takes two bytes. Not every value: the rest are reached by offset.
+ */
+export const SMG2_ADAPT_BYTES = {
+    /**
+     * Clutch: the touch point, one byte (`KUPPL_SCHLEIF_PKT_WERT` as it is; in increments,
+     * `KUPPL_SCHLEIF_PKT_INK_WERT`, about 2.56 a step with the disengaged position's byte added: 99 reads 97).
+     */
+    touchPoint: { group: 0, offset: 0 },
+    /** Clutch: the valve's zero current, mA at 2 a step from 1002. */
+    valveZeroCurrent: { group: 0, offset: 1 },
+    /** Clutch: engaged and disengaged positions, increments at 2 a step from 830 and 400. */
+    engagedPosition: { group: 0, offset: 3 },
+    /** (A signed byte: 200 reads 288.) */
+    disengagedPosition: { group: 0, offset: 4 },
+    /** Clutch: how many times it was overloaded. */
+    overloads: { group: 0, offset: 6 },
+    /** Gearbox: the select-angle current offset (`OFF_I_WW_WERT`, mA), a word. */
+    selectCurrentOffset: { group: 1, offset: 2 },
+    /** Gearbox: shift-travel neutral position (`POS_SW_N_WERT`), a word. */
+    shiftNeutral: { group: 1, offset: 14 },
+    /** Gearbox data: race starts (`ANZ_RENNSTART_WERT`), one byte. */
+    raceStarts: { group: 2, offset: 0 },
+} as const;
+
+/**
+ * The clutch group as ADAPTIONSWERTE_LOESCHEN(0) leaves it: "Kupplungswerte werden auf Defaultwerte
+ * zurueckgesetzt", and these are the bytes SMG II's own code reads as the defaults its own comments give
+ * (touch point 97 increments, valve zero current 1002 mA, positions 830 and 400, overlap 0).
+ */
+export const SMG2_CLUTCH_DEFAULT_BYTES: Readonly<Record<number, number>> = { 0: 99 };
+
+/**
+ * ADAPTIONSWERTE_LOESCHEN, as its own SGBD says it works: argument 0 puts the clutch values back to their
+ * defaults; argument 1 sets the gearbox data ("Getriebedaten", the name ADAPTIONSWERTE_LESEN gives its
+ * group 2) to zero. The gearbox's adaptations (group 1) are not named by either, so they stay.
+ */
+export function clearPracticeSmg2Adaptations(arg: number): void {
+    practiceCar.smg2AdaptClears.push(arg);
+    if (arg === 0) practiceCar.smg2Adapt[0] = { ...SMG2_CLUTCH_DEFAULT_BYTES };
+    else if (arg === 1) practiceCar.smg2Adapt[2] = {};
+}
+
+/** A test program ran to its end: SMG II now holds what the scenario says that program teaches it. */
+export function finishPracticeSmg2Program(program: number): void {
+    practiceCar.smg2ProgramsFinished.push(program);
+    const learnt = practiceCar.smg2Relearn[program];
+    if (!learnt) return;
+    for (const g of [0, 1, 2] as const) if (learnt[g]) practiceCar.smg2Adapt[g] = { ...practiceCar.smg2Adapt[g], ...learnt[g] };
+}
+
+/** SMG II's answer to ADAPTIONSWERTE_LESEN for one group, `length` bytes long. */
+export function practiceSmg2AdaptAnswer(group: number, length: number): Uint8Array {
+    const out = new Uint8Array(length);
+    const bytes = practiceCar.smg2Adapt[group as Smg2AdaptGroup] ?? {};
+    for (const [k, v] of Object.entries(bytes)) if (Number(k) < length) out[Number(k)] = v & 0xff;
+    return out;
 }
 
 /**
@@ -332,6 +412,10 @@ function defaults(): PracticeCar {
         symptoms: null,
         mss54Adapt: {},
         mss54AdaptClears: 0,
+        smg2Adapt: { 0: {}, 1: {}, 2: {} },
+        smg2Relearn: {},
+        smg2AdaptClears: [],
+        smg2ProgramsFinished: [],
     };
 }
 

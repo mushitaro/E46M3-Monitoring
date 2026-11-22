@@ -28,12 +28,15 @@ import type { JobFramesOracle } from './sgbd/agreedFrame.ts';
 import {
     cleanAnswer,
     clearPracticeAdaptations,
+    clearPracticeSmg2Adaptations,
     clusterVinAnswer,
     driveNow,
+    finishPracticeSmg2Program,
     ds2IdentData,
     perCylinder,
     practiceAdaptation,
     practiceCar,
+    practiceSmg2AdaptAnswer,
     practiceSpeed,
     smg2PhydBytes,
     type PracticeInjection,
@@ -236,6 +239,15 @@ function practiceModule(address: number): SimulatedEcuOptions {
             // reads as the zero of its own scale, which nobody can take for a car's. Before,
             // SMG II's STATUS_IO_LESEN (selection 3) came back as the DME's block 3, and a
             // selection the DME has no block for (SMG II's 5) was refused.
+            // SMG II's learned values (ADAPTIONSWERTE_LESEN, `40 <group>`), as the practice car holds them.
+            if (address === 0x32 && request.controlOrStatus === 0x40 && request.payload.length === 1) {
+                return { payload: practiceSmg2AdaptAnswer(request.payload[0], PRACTICE_MODULE_BLOCK) };
+            }
+            // ADAPTIONSWERTE_LOESCHEN (`43 <n>`): the clutch back to its defaults, or the gearbox data to zero.
+            if (address === 0x32 && request.controlOrStatus === 0x43 && request.payload.length === 1) {
+                clearPracticeSmg2Adaptations(request.payload[0]);
+                return practiceAnswerFor(address, request.controlOrStatus, request.payload) ?? { payload: new Uint8Array(0) };
+            }
             if (request.controlOrStatus === Ds2Control.READ_IO_STATUS || request.controlOrStatus === 0x40) {
                 const out = new Uint8Array(PRACTICE_MODULE_BLOCK);
                 // SMG II's STATUS_IO_LESEN, as the scenario set it (practiceCar `smg2Status`).
@@ -391,6 +403,8 @@ export function practiceEcu(): SimulatedEcuOptions {
                 // prints the raw bytes beside the decode for exactly that reason.
                 case 0x32: // TESTPRG_STARTEN
                     testprgPolls++;
+                    // The poll that finds the program finished is when SMG II has learnt what it teaches.
+                    if (request.address === 0x32 && testprgPolls === SIM_TESTPRG_POLLS) finishPracticeSmg2Program(arg);
                     return {
                         payload: new Uint8Array([testprgPolls >= SIM_TESTPRG_POLLS ? 0x02 : 0x01, 0x00]),
                     };

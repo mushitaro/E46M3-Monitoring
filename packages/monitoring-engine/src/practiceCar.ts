@@ -64,6 +64,40 @@ export const NON_M3_IDENTS: Readonly<Record<number, PracticeIdent>> = {
     0x80: { data: kombiIdentData(0x50) },
 };
 
+/**
+ * An E46 318i with the M43 (DS2): BMS46 (`61`/`10`, D_0012 → BMS46DS0) and the early cluster (0x50,
+ * D_0080 → KOMBI46). Its gearbox is left out: what a 318i's 0x32 answers is not known here, so it answers
+ * the `00`/`00` nothing maps.
+ */
+export const BMS46_IDENTS: Readonly<Record<number, PracticeIdent>> = {
+    0x12: { hw: '61', diag: '10' },
+    0x80: { data: kombiIdentData(0x50) },
+};
+
+/**
+ * Where a DME that is not the MSS54 keeps one fault record in its fault-read answer (`12 05 04 01`): the
+ * record's length, the code's and the frequency's offsets, and the "present now" bit — as its own SGBD's
+ * FS_LESEN reads them (fault-layouts.json; practiceDme.test.ts holds this table to it). The answer is one
+ * byte, then the records; the quick test's first byte (`12 05 04 00`) is their count.
+ */
+export const PRACTICE_DME_RECORDS: Readonly<Record<string, { length: number; code: number; frequency: number; present: { at: number; mask: number } }>> = {
+    ms430ds0: { length: 10, code: 0, frequency: 2, present: { at: 1, mask: 0x40 } },
+    bms46ds0: { length: 19, code: 0, frequency: 2, present: { at: 1, mask: 0x40 } },
+    bms46ds1: { length: 20, code: 0, frequency: 3, present: { at: 1, mask: 0x40 } },
+};
+
+/**
+ * Which of `PRACTICE_DME_RECORDS` a DME's IDENT selects, as D_0012 chooses (practiceDme.test.ts runs the
+ * group's own rule on the same answer): `19` MS43, `61` BMS46 (`61A7` its DS1). Null: none of these.
+ */
+export function practiceDmeOf(ident: PracticeIdent | undefined): string | null {
+    if (!ident || 'data' in ident) return null;
+    const hw = ident.hw.toUpperCase();
+    if (hw === '19') return 'ms430ds0';
+    if (hw === '61') return ident.diag.toUpperCase() === 'A7' ? 'bms46ds1' : 'bms46ds0';
+    return null;
+}
+
 /** The part number every practice module answers with: seven digits no group file lists. */
 export const PRACTICE_PART_NUMBER = '9999999';
 
@@ -106,9 +140,15 @@ export interface PracticeCar {
      */
     smg2Status: { phydBar?: number; bytes?: Record<number, number> } | null;
     /**
-     * A DME that is an MS43 (a non-M3 E46; the IDENT is `idents[0x12]`): its fault memory, answered in the
-     * MS43's own layout (fault-layouts.json `ms430ds0`: the count in the quick test, then 10-byte records —
-     * code, type bits with 0x40 "present now", frequency). Null: the DME answers as the M3's MSS54.
+     * A DME that is not the MSS54 (a non-M3 E46: MS43, BMS46; the IDENT is `idents[0x12]`): its fault
+     * memory, answered in the layout of the DME that IDENT selects (`practiceDmeOf`, `PRACTICE_DME_RECORDS`:
+     * the count in the quick test, then records with the code, 0x40 "present now", the frequency). Null: the
+     * DME answers as the M3's MSS54.
+     */
+    nonM3DmeFaults: { code: number; present: boolean; count: number }[] | null;
+    /**
+     * @deprecated The name `nonM3DmeFaults` had before the BMS46 joined it (scenarios written for the MS43,
+     * GREN BLUE SUITE's among them). Read only where `nonM3DmeFaults` is null; a clear empties both.
      */
     ms43Faults: { code: number; present: boolean; count: number }[] | null;
     /**
@@ -402,6 +442,7 @@ function defaults(): PracticeCar {
         // A pressure a working SMG II holds (its accumulator: roughly 40-80 bar), stated as practice's,
         // so a reading of it is not the zero answer's 65524 bar.
         smg2Status: { phydBar: 60 },
+        nonM3DmeFaults: null,
         ms43Faults: null,
         idents: { ...M3_IDENTS },
         clusterVin: PRACTICE_VIN_SHORT,

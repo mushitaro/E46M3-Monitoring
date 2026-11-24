@@ -309,11 +309,16 @@ def trace(sgbd: str, addr: int, kwp: bool, job: str, args: list[str]) -> dict:
 
 def jobs_of(mid: str) -> tuple[dict, list[dict]]:
     cat = json.load(open(os.path.join(OUT, f"{mid}.jobs.json"), encoding="utf-8"))
-    jobs = [j for j in cat["jobs"] if j.get("class") in DRIVE_CLASSES and not WRITES.search(j["id"])]
+    # Compare native telemetry in the same simulator as the other jobs. A shared
+    # scraped telegram cannot identify which MS43 status block to read.
+    jobs = [j for j in cat["jobs"] if not WRITES.search(j["id"]) and (
+        j.get("class") in DRIVE_CLASSES or
+        (j.get("class") == "read" and j["id"].startswith("STATUS_") and not j.get("args"))
+    )]
     return cat, jobs
 
 
-def main(only: set[str]) -> None:
+def main(only: set[str], selected: set[str]) -> None:
     idx = index()
     dest = os.path.join(OUT, "job-frames.oracle.json")
     data = json.load(open(dest, encoding="utf-8")) if os.path.exists(dest) else {"schema": 2, "jobs": {}}
@@ -330,6 +335,8 @@ def main(only: set[str]) -> None:
         cat, jobs = jobs_of(mid)
         tables = dump_tables(m["sgbd"])
         for j in jobs:
+            if selected and j["id"] not in selected:
+                continue
             tried = [values_of(cat, a, tables) for a in j["args"]]
             kinds = [k for k, _ in tried]
             values = [v for _, v in tried]
@@ -481,4 +488,4 @@ if __name__ == "__main__":
     elif sys.argv[1:] == ["--discover"]:
         discover()
     else:
-        main({a for a in sys.argv[1:] if not a.startswith("--")})
+        main({a for a in sys.argv[1:] if not a.startswith("--")}, {a[6:] for a in sys.argv[1:] if a.startswith("--job=")})

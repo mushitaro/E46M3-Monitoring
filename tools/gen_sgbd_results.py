@@ -222,7 +222,7 @@ def all_jobs():
             continue
         mid = f[: -len(".jobs.json")]
         tel_path = os.path.join(OUT, f"{mid}.telegrams.json")
-        if mid in skip or not os.path.exists(tel_path):
+        if not os.path.exists(tel_path):
             continue
         tel = json.load(open(tel_path, encoding="utf-8"))
         if tel.get("framing") == "kwp-ds2":

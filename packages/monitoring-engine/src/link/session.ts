@@ -1385,9 +1385,10 @@ export class LinkSession {
         const link = this.link;
         if (!link || this.polling) return;
         let to: Ds2Target;
+        const mss54 = this.target.decoder === 'mss54';
         try {
             const s = this.session(link);
-            if (s.target.decoder !== 'mss54') refuse(`${s.target.moduleId}: no live-block layout; nothing is recorded.`);
+            if (!mss54 && (channels.length || !modules?.reads.length)) refuse(`${s.target.moduleId}: select this car's identified module channels.`);
             to = s.to;
         } catch (e) {
             this.failWith(e);
@@ -1395,8 +1396,8 @@ export class LinkSession {
         }
         let ledgerOf = modules?.ledger ?? null;
         let moduleReads = [...(modules?.reads ?? [])];
-        let tuned = logBlocks(channels, moduleReads.length > 0);
-        if (tuned.blocks.length === 0) return;
+        let tuned = logBlocks(channels, mss54 && moduleReads.length > 0);
+        if (!tuned.blocks.length && !moduleReads.length) return;
         const gearBlock = blockBySelection(GEAR_BLOCK);
 
         this.polling = true;
@@ -1477,7 +1478,7 @@ export class LinkSession {
                         if (tune.ledger) ledgerOf = tune.ledger;
                         await clearReads(reads);
                         moduleReads = reads;
-                        tuned = logBlocks(tune.channels, moduleReads.length > 0);
+                        tuned = logBlocks(tune.channels, mss54 && moduleReads.length > 0);
                         this.append('info', `Recording now ${tune.channels.length} channel(s) across ${tuned.blocks.length} block(s)${moduleReads.length ? ` and ${moduleReads.length} module read(s)` : ''}; the run goes on.`);
                         options?.onRetune?.({ time: elapsed(), channels: [...tune.channels], blocks: tuned.blocks.length });
                     }
@@ -1516,7 +1517,7 @@ export class LinkSession {
                     }
                     // The gear, once a second, when the channels do not carry it: measured by the DME
                     // in this sample, never carried over from an earlier one.
-                    if (!incomplete && gearBlock && !wanted.has(GEAR_CHANNEL) && elapsed() - gearAt >= GEAR_EVERY_S) {
+                    if (mss54 && !incomplete && gearBlock && !wanted.has(GEAR_CHANNEL) && elapsed() - gearAt >= GEAR_EVERY_S) {
                         const frame = await readBlock(GEAR_BLOCK);
                         if (frame) {
                             gearAt = elapsed();
@@ -1560,6 +1561,7 @@ export class LinkSession {
                             Object.assign(values, moduleLogValues(read, bytes, frame));
                         }
                     }
+                    if (!mss54 && !moduleReads.length) throw new Error('No identified module can supply the selected values.');
                     if (!incomplete) onSample({ time: elapsed(), values });
                     await yieldToEventLoop();
                 }
@@ -1598,7 +1600,9 @@ export class LinkSession {
         modules?: { reads: readonly ModuleLogRead[]; ledger: () => Ledger },
     ): boolean => {
         if (!this.polling || !this.logging) return false;
-        if (logBlocks(channels, (modules?.reads.length ?? 0) > 0).blocks.length === 0) return false;
+        const hasModules = Boolean(modules?.reads.length);
+        if (this.target.decoder !== 'mss54' && channels.length) return false;
+        if (!planBlockReads(channels).blocks.length && !hasModules) return false;
         this.logTune = { channels: [...channels], reads: [...(modules?.reads ?? [])], ledger: modules?.ledger ?? null };
         return true;
     };
@@ -1768,8 +1772,15 @@ export class LinkSession {
             for (const a of addresses) {
                 if (id.identOk.has(a)) await this.identify(link, a).catch((e) => this.append('warn', `IDENT ${hex2(a)}: ${e instanceof Error ? e.message : String(e)}`));
             }
+            const mss54 = isM3(this.fitmentNow);
+            if (!mss54 && modulesOf(plan.steps).includes('mss54')) throw new Error('This plan requires an identified MSS54.');
+            for (const module of modulesOf(plan.steps)) {
+                const protocol = deps.module(module)?.protocol;
+                if (protocol) await this.clearFor(protocol.address, module);
+            }
             const run = await runProbe(plan, {
                 ...deps,
+                mss54,
                 // The run reads the speed block when a cycle decides on it and at least every
                 // `SPEED_REFRESH_MS` (executor): the car's state is kept from it, as a recording keeps
                 // it, so the status and the read records say how fast the car is while a plan runs

@@ -7,6 +7,10 @@ import type { TelegramTable } from '../telegrams.ts';
 import { HAVE_SHIPPED_DATA, readShipped } from '../testing/shipped.ts';
 import type { EcuProfile } from '../ecuCatalog.ts';
 import { mayActuate } from '../actuationGate.ts';
+import { loadProbeModules } from '../probe/modules.ts';
+import { moduleLogReads } from '../sgbd/logChannels.ts';
+import { telemetryValues, answerFrame, type SgbdResultsTable } from '../sgbd/results.ts';
+import type { ChannelId } from '@tsunagi/ds2-mss54';
 import { EMPTY_LEDGER } from '../ledger.ts';
 import { decisionFor } from '../policy.ts';
 import { permitFor } from '../runGate.ts';
@@ -67,6 +71,49 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('a LinkSession on the practice car', () => {
         const ident = await s.readIdent();
         expect(ident?.length).toBeGreaterThan(0);
         expect(s.getSnapshot().fitment.get(0x12)?.moduleId).toBe('mss54');
+    });
+
+    it.each([
+        ['mss54', '1B', '90'], ['ms430ds0', '19', '10'], ['ms420ds0', '15', '10'],
+        ['bms43ds0', '60', '10'], ['bms46ds0', '61', '10'], ['bms46ds1', '61', 'A7'],
+    ])('%s logs the identified ECU and judges its native RPM in PROBE', async (id, hw, diag) => {
+        const mss54 = id === 'mss54';
+        const channel = mss54 ? '3:n' : `${id}:STATUS_MOTORDREHZAHL:STAT_MOTORDREHZAHL_WERT`;
+        practiceCar.idents = { 0x12: { hw, diag } };
+        practiceCar.engineRunning = true;
+        const s = sessionFor(id);
+        await s.connect('practice');
+        await s.readIdent();
+        expect(s.getSnapshot().fitment.get(0x12)?.moduleId).toBe(id);
+        const { reads, unknown } = await moduleLogReads(mss54 ? [] : [channel], () => 0x12);
+        expect(unknown).toEqual([]);
+        const samples: number[] = [];
+        await new Promise<void>((resolve, reject) => {
+            s.startLog(mss54 ? [channel as ChannelId] : [], sample => {
+                const value = (sample.values as Record<string, number>)[channel];
+                if (typeof value === 'number') samples.push(value);
+                s.stopLog();
+            }, failure => failure ? reject(new Error(failure)) : resolve(), { reads, ledger: () => EMPTY_LEDGER });
+            if (s.getSnapshot().state !== 'logging') reject(new Error(s.lastError() ?? 'not logging'));
+        });
+        expect(samples).toHaveLength(1);
+        expect(samples[0]).toBeGreaterThan(750);
+        expect(samples[0]).toBeLessThan(900);
+        const steps = [{ n: 1, kind: 'sample' as const, do: 'RPM', channels: [channel] }];
+        const modules = await loadProbeModules(steps, index);
+        const run = await s.startProbe({ id: 'rpm', v: 1, steps, judge: [{ id: 'rpm', channel, stat: 'mean', op: '>', value: 750, provenance: 'authored' }] },
+            { module: m => modules.get(m) ?? null, ledger: () => EMPTY_LEDGER, maxSamples: 3 });
+        expect(run?.samples.length, s.lastError() ?? '').toBe(3);
+        expect(run?.judges[0]).toMatchObject({ pass: true, n: 3 });
+        if (!mss54) {
+            expect(run!.samples.every(sample => Object.keys(sample.values).every(c => c.startsWith(id + ':')))).toBe(true);
+            const incompatible = await s.startProbe({ id: 'wrong', v: 1, steps: [{ ...steps[0], channels: ['3:n'] }] },
+                { module: () => null, ledger: () => EMPTY_LEDGER, maxSamples: 1 });
+            expect(incompatible).toBeNull();
+            const table = readShipped<SgbdResultsTable>(`${id}.results.json`);
+            expect(telemetryValues(table, 'STATUS_MOTORDREHZAHL', reads[0].telegram!.hex,
+                answerFrame(0x12, 0xa0, new Uint8Array([4])))).toEqual([]);
+        }
     });
 
     it('reads the DME fault memory, decoded', async () => {

@@ -313,6 +313,19 @@ export function practiceEcu(): SimulatedEcuOptions {
                 }
 
                 case Ds2Control.READ_IO_STATUS: {
+                    const dme = practiceDmeOf(practiceCar.idents[0x12]);
+                    if (dme) {
+                        // These practice RPM bytes are decoded by each variant's STATUS_MOTORDREHZAHL.
+                        // Other blocks need their own fixture; an MSS54 reply would give a false reading.
+                        if (arg !== 3) return { status: Ds2Status.PARAMETER_ERROR };
+                        const payload = new Uint8Array(32);
+                        const rpm = engine().rpm;
+                        if (dme === 'bms43ds0') payload[0] = Math.round(rpm / 40);
+                        else new DataView(payload.buffer).setUint16(0, Math.round(dme.startsWith('bms46') ? rpm / 0.15625 : rpm));
+                        return { payload };
+                    }
+                    const ident = practiceCar.idents[0x12];
+                    if (!ident || !('hw' in ident) || ident.hw.toUpperCase() !== '1B') return { status: Ds2Status.PARAMETER_ERROR };
                     const block = blockBySelection(arg);
                     if (block) return { payload: blockPayload(block) };
 

@@ -93,6 +93,8 @@ export const PRACTICE_DME_RECORDS: Readonly<Record<string, { length: number; cod
 export function practiceDmeOf(ident: PracticeIdent | undefined): string | null {
     if (!ident || 'data' in ident) return null;
     const hw = ident.hw.toUpperCase();
+    if (hw === '15') return 'ms420ds0';
+    if (hw === '60') return 'bms43ds0';
     if (hw === '19') return 'ms430ds0';
     if (hw === '61') return ident.diag.toUpperCase() === 'A7' ? 'bms46ds1' : 'bms46ds0';
     return null;

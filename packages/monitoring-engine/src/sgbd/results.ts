@@ -101,6 +101,19 @@ export function decodeRead(table: SgbdResultsTable | null, jobId: string, reques
     return { ...foldResults(run.results), stopped: run.stopped, provenance: 'sgbd-job' };
 }
 
+/** Telemetry must not count the checksum as data. Some status jobs take their final
+ * value byte straight from the next position, without validating the answer length.
+ * Run the decoder on the payload boundary as well and accept only matching numeric
+ * results. Neither input is sent; the first is the exact wire response. */
+export function telemetryValues(table: SgbdResultsTable, jobId: string, sent: string, answer: Uint8Array): ReadValue[] {
+    const read = decodeRead(table, jobId, sent, answer);
+    if (!read || read.stopped || (read.status !== null && read.status !== 'OKAY')) return [];
+    const bounded = decodeRead(table, jobId, sent, answer.subarray(0, -1));
+    if (!bounded || bounded.stopped || bounded.status !== read.status) return [];
+    return read.values.filter(v => typeof v.value === 'number' && Number.isFinite(v.value) &&
+        bounded.values.some(b => b.name === v.name && b.value === v.value && b.unit === v.unit));
+}
+
 /** One fault-memory entry as the module's own FS_LESEN reports it: one result set. */
 export interface SgbdFault {
     /** `F_ORT_NR`: the fault location's number in the module's own table. */

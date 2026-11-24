@@ -8,9 +8,18 @@ export { ActuatorPanel, type ActuatorRequest } from '../../src/views/actuator/Ac
 export { partTable } from '../../src/lib/partName';
 export { AdaptationView, AdaptationViz } from '../../src/views/adaptation/AdaptationView';
 export { ComparePanel, type ComparedValues } from '../../src/views/probe/ComparePanel';
+export { ProbeGraph } from '../../src/views/probe/ProbeGraph';
 export { BoardLayout, type BoardSection } from '../../src/views/probe/BoardLayout';
 export { ValueCards } from '../../src/views/probe/ValueCards';
 export { StartupSeries } from '../../src/views/probe/StartupSeries';
+export { SyncCopies, type SyncCopiesState } from '../../src/views/sessions/SyncCopies';
+export { DialogFrame } from '../../src/components/DialogFrame';
+export { ConfirmDialog } from '../../src/components/ConfirmDialog';
+export { SessionsView, type MemoryViewState } from '../../src/views/sessions/SessionsView';
+export { useJournal } from '../../src/views/sessions/useJournal';
+export { sessionStore } from '../../src/lib/sync/sessionStore';
+export { describeSave, describeSync, savePhase, syncPhase } from '../../src/lib/sync/status';
+export { useLang as useInstrumentLanguage } from '../../src/lib/i18n';
 export { SavedValues, VIEWER_ROWS } from '../../src/views/sessions/SavedValues';
 export { StartupView } from '../../src/views/probe/StartupList';
 export { ServiceView, ServiceViz } from '../../src/views/service/ServiceView';

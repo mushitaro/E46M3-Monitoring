@@ -22,9 +22,9 @@ export const RUNS = 'runs';
 export const JOURNAL = 'journal';
 export const JOURNAL_META = 'journalMeta';
 
-export function openDb(): Promise<IDBDatabase> {
+export function openDb(name = DB): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
-        const req = indexedDB.open(DB, VERSION);
+        const req = indexedDB.open(name, VERSION);
         req.onupgradeneeded = () => {
             const db = req.result;
             if (!db.objectStoreNames.contains(SESSIONS)) db.createObjectStore(SESSIONS, { keyPath: 'id' });
@@ -48,8 +48,9 @@ export async function inTransaction<T>(
     store: string,
     mode: IDBTransactionMode,
     op: (s: IDBObjectStore, done: (value: T) => void, fail: (reason: Error) => void) => void,
+    name = DB,
 ): Promise<T> {
-    const db = await openDb();
+    const db = await openDb(name);
     try {
         return await new Promise<T>((resolve, reject) => {
             const tx = db.transaction(store, mode);

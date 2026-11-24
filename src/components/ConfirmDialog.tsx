@@ -20,9 +20,9 @@
  */
 
 import { AlertTriangle } from 'lucide-react';
-import { DialogFrame } from '@/components/DialogFrame';
-import { DialogButton } from '@/components/ui';
-import { useLang } from '@/lib/i18n';
+import { DialogFrame } from './DialogFrame';
+import { DialogButton } from './ui';
+import { useLang } from '../lib/i18n';
 
 export function ConfirmDialog({
     title,

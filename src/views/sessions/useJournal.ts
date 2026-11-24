@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
-import type { LinkMode, LinkState } from '@/hooks/useDs2Link';
+import type { LinkMode, LinkState } from '../../hooks/useDs2Link';
 import { KEEP_MS, episodes, expired, rebaseMeta, toSavedScan, unfound, type Episode, type JournalEvent, type ScanRun } from '@tsunagi/monitoring-engine';
 import type { FailureNote, SavedSession } from '@tsunagi/monitoring-engine';
-import { appendEvent, deleteEvents, getMeta, listEvents, putMeta, rebaseEvents, type JournalMeta } from '@/lib/sync/journalStore';
+import { journalStore, type JournalMeta } from '../../lib/sync/journalStore';
 import { appNow, isAnchored, onAnchor } from '@tsunagi/monitoring-engine';
 
 /**
@@ -38,8 +38,8 @@ function createJournalCache() {
 }
 
 /** Store keys of the events this page recorded before it heard the server's time, and the step it took then. */
-const pageLoose: number[] = [];
-const anchorStep: { value: number | null } = { value: null };
+
+
 
 /** The clock MEMORY reads, a minute at a time: enough to move an episode out of "in progress" and
  *  to count its days down, without reading the clock during render. */
@@ -80,6 +80,7 @@ const minuteClock = (() => {
  * WORKS only (`enabled`), like every store under lib/sync.
  */
 export function useJournal(input: {
+    database?: string;
     enabled: boolean;
     paused: boolean;
     link: {
@@ -105,6 +106,9 @@ export function useJournal(input: {
     failures: readonly FailureNote[];
 }) {
     const { enabled, paused, link, ecuId, datalog, failures } = input;
+    const { appendEvent, deleteEvents, getMeta, listEvents, putMeta, rebaseEvents } = useMemo(() => journalStore(input.database), [input.database]);
+    const [pageLoose] = useState<number[]>([]);
+    const [anchorStep] = useState<{ value: number | null }>({ value: null });
     const [cache] = useState(createJournalCache);
     const { events, meta } = useSyncExternalStore(cache.subscribe, cache.snapshot, cache.snapshot);
     const now = useSyncExternalStore(minuteClock.subscribe, minuteClock.snapshot, () => 0);

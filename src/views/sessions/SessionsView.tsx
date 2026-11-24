@@ -3,15 +3,15 @@
 import { memo, useState } from 'react';
 import { ArrowLeft, CloudUpload, Database, Eye, Link2, Trash2 } from 'lucide-react';
 import { formatErrorCode } from '@tsunagi/ds2-mss54';
-import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { DataList, DataRow, Field, Pane, Pill, Section, TextButton, Well, humanName } from '@/components/ui';
-import { normCode } from '@/lib/faultCode';
-import { useLang } from '@/lib/i18n';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { DataList, DataRow, Field, Pane, Pill, Section, TextButton, Well, humanName } from '../../components/ui';
+import { normCode } from '../../lib/faultCode';
+import { useLang } from '../../lib/i18n';
 import { text as resolveText, type EcuProfile } from '@tsunagi/monitoring-engine';
 import { KEEP_MS, expiresAt, type Episode, type JournalEvent } from '@tsunagi/monitoring-engine';
 import { mss54Present, needsSync, parseCsv, savedScanFaults, sessionFaultCount, sessionLabel, summarise, type SavedSession } from '@tsunagi/monitoring-engine';
-import { SAVE_TONE, SYNC_TONE } from '@/lib/sync/status';
-import { CountReadout } from '@/views/shared/CountReadout';
+import { SAVE_TONE, SYNC_TONE } from '../../lib/sync/status';
+import { CountReadout } from '../shared/CountReadout';
 import { StatusButton } from './StatusButton';
 import type { Sessions } from './useSessions';
 
@@ -23,6 +23,12 @@ const NOTICE_TONE = {
     warn: 'text-amber-400',
     error: 'text-red-400',
 } as const;
+
+export type MemoryViewState = Pick<Sessions,
+    'viewing' | 'view' | 'local' | 'busy' | 'saveLook' | 'syncLook' | 'current' | 'content' | 'notice' |
+    'unkept' | 'now' | 'undatedExpiry' | 'episodeNow' | 'cloudEnabled'> & {
+    save(): unknown; keep(start: number): unknown; join(ep: Episode): unknown; removeLocal(id: string): unknown;
+};
 
 type Confirm = { id: string; label: string; synced: boolean };
 
@@ -43,7 +49,7 @@ export const SessionsView = memo(function SessionsView({
     ecuId,
     onOpenSync,
 }: {
-    sessions: Sessions;
+    sessions: MemoryViewState;
     /** Opens SESSION SYNC (SyncPanel), which the shell owns so the menu sheet opens the same one. */
     onOpenSync: () => void;
     /** The loaded module's catalogue, used to name a saved fault when the session is for the same module. */
@@ -250,7 +256,7 @@ function lastFaultCount(ep: Episode): number | null {
     return sessionFaultCount({ faults: faults?.faults ?? null, faultsAt: faults?.t, scan: last('scan')?.scan ?? null });
 }
 
-function CurrentCounts({ s }: { s: Sessions }) {
+function CurrentCounts({ s }: { s: MemoryViewState }) {
     const { t } = useLang();
     const ep = s.episodeNow;
     // When it was recorded: the time, or that the time is not yet certain (a head unit's clock that woke

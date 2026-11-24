@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { EmbeddedLanguage, STRINGS } from '../../src/lib/i18n';
 
 export { AdaptationView, AdaptationViz } from '../../src/views/adaptation/AdaptationView';
-export { StartupView } from '../../src/views/probe/StartupView';
+export { StartupView } from '../../src/views/probe/StartupList';
 export { ServiceView, ServiceViz } from '../../src/views/service/ServiceView';
 export { loadSmg2Workflows, type Smg2Workflows } from '../../src/lib/smg2Workflows';
 export { loadJobText, type JobTextTable } from '../../src/lib/jobText';

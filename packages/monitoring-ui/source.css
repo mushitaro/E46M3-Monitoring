@@ -1,4 +1,4 @@
-@source "../../src/views/probe/StartupView.tsx";
+@source "../../src/views/probe/StartupList.tsx";
 @source "../../src/views/service/ServiceView.tsx";
 @source "../../src/views/service/JobFrameViz.tsx";
 @source "../../src/components/ServicePane.tsx";

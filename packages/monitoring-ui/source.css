@@ -1,9 +1,19 @@
 @source "./index.tsx";
 @source "./instruments.tsx";
-@source "../../src/views/datalog/DatalogView.tsx";
+@source "../../src/views/datalog/DatalogViz.tsx";
 @source "../../src/components/LogPopover.tsx";
 @source "../../src/components/ui.tsx";
 @source "../../src/views/diagnosis/ScanView.tsx";
 @source "../../src/views/shared/Awaiting.tsx";
 @source "../../src/views/shared/CountReadout.tsx";
 @source "../../src/views/shared/FreezeFrame.tsx";
+
+.monitoring-instrument {
+  --color-series-primary: #0A9BDB;
+  --color-series-heat: #F87A7F;
+  --color-series-feedback: #B9A6EE;
+  --color-series-feedback-2: #CBBCF2;
+  --color-series-derived: #9B84E8;
+  --color-series-neutral: #9A9AA8;
+  --color-series-neutral-2: #70707E;
+}

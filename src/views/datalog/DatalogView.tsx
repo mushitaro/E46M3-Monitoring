@@ -99,7 +99,7 @@ export function DatalogView({
         {/* Reserved: the gear line and the export note keep their height
                     whether or not they have anything to say. */}
         <p className="mt-2 min-h-[16px] truncate text-[11px] leading-relaxed text-slate-500">
-          {showGear ? t.datalog_gearNote : ""}
+          {mss54 && showGear ? t.datalog_gearNote : ""}
         </p>
         {/* The export describes the RUN. Once the selection has moved on
                     from it, say so — otherwise the file and the list above

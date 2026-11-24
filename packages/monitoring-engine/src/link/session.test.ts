@@ -57,6 +57,24 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('a LinkSession on the practice car', () => {
         resetPracticeCar();
     });
 
+    it.each(['ms450ds0','me9k_ng4','me9n45','mev9n46','mev9n46l','d50m47a','d50m57a1','d50m57e1'])(
+        'identifies %s on the practice link and samples its own RPM for a PROBE verdict', async id => {
+            practiceCar.rpmProgram = id;
+            practiceCar.idents = { ...practiceCar.idents, 0x12: { hw: '00', diag: '00' } };
+            const s = sessionFor('mss54');
+            await s.connect('practice');
+            await s.readIdent();
+            expect(s.getSnapshot().fitment.get(0x12)?.moduleId, JSON.stringify(s.getSnapshot().log.slice(-8))).toBe(id);
+            const channel = id + ':STATUS_MOTORDREHZAHL:STAT_MOTORDREHZAHL_WERT';
+            const steps = [{ n: 1, kind: 'sample' as const, do: 'RPM', channels: [channel] }];
+            const modules = await loadProbeModules(steps, index);
+            let count = 0;
+            const run = await s.startProbe({ id: 'practice', v: 1, steps, judge: [{ id: 'rotation', channel, stat: 'max', op: '>', value: 0, provenance: 'authored' }] },
+                { module: m => modules.get(m) ?? null, ledger: () => EMPTY_LEDGER, onSample: () => { if (++count === 4) s.stopLog(); } });
+            expect(run?.judges[0], s.lastError() ?? '').toMatchObject({ pass: true, n: 4 });
+        }
+    );
+
     it('connects, says so in its snapshot and to subscribers, and identifies the DME through the loader it was given', async () => {
         const s = sessionFor('mss54');
         const seen: LinkSnapshot['state'][] = [];

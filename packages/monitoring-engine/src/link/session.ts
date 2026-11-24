@@ -541,23 +541,7 @@ export class LinkSession {
             this.noteRead(to, hex2(address), 'IDENT', 0x00, new Uint8Array(0), { error: e });
             if (isDs2Error(e) && e.code === 'NOT_SENT') throw e;
         }
-        let f = fittedFrom(id.rules, id.modules, address, answer);
-        if (address === DME_ADDRESS && !f.sgbd && id.rules.kwpEngine && this.transport) {
-            const data = Uint8Array.of(0x1a,0x80);
-            const request = toHex(kwpRequest(address,data));
-            try {
-                const transport = this.transport;
-                const reply = await link.withGate(() => kwpExchange(transport,{target:address,data,hex:request,source:'D_MOTOR IDENT'}));
-                if (reply.data[0] === 0x5a && reply.data[1] === 0x80 && reply.data.length >= 14) {
-                    const key = [...reply.data.slice(10,14)].map(b => b.toString(16).padStart(2,'0')).join('');
-                    const name = id.rules.kwpEngine[key];
-                    const entry = name && id.modules.find(m => m.sgbd.replace(/\.prg$/i,'').toUpperCase() === name);
-                    if (entry) f = { address, sgbd: name, moduleId: entry.id, answer: toHex(reply.bytes), identRequest: request };
-                }
-            } catch (e) {
-                this.append('warn', 'D_MOTOR IDENT: ' + (e instanceof Error ? e.message : String(e)));
-            }
-        }
+        const f = await this.resolveFitted(link, address, answer);
         if (f.answer !== null) {
             this.fitmentNow = new Map(this.fitmentNow).set(address, f);
             this.update({ fitment: this.fitmentNow });
@@ -568,6 +552,31 @@ export class LinkSession {
                 ? `${hex2(address)}: no answer to its IDENT`
                 : `${hex2(address)} is ${f.sgbd ?? '?'}${f.sgbd && !f.moduleId ? ' (its SGBD is not carried: IDENT only)' : ''}${f.moduleId ? ` → ${f.moduleId}` : ''}`,
         );
+        return f;
+    }
+
+    private async resolveFitted(link: Ds2Link, address: number, answer: Uint8Array | null): Promise<Fitted> {
+        const id = this.identity;
+        let f = fittedFrom(id.rules, id.modules, address, answer);
+        if (address === DME_ADDRESS && !f.sgbd && id.rules.kwpEngine && this.transport) {
+            const data = Uint8Array.of(0x1a,0x80);
+            const request = toHex(kwpRequest(address,data));
+            try {
+                const transport = this.transport;
+                this.append('tx', 'D_MOTOR IDENT ' + request);
+                const reply = await link.withGate(() => kwpExchange(transport,{target:address,data,hex:request,source:'D_MOTOR IDENT'}));
+                this.append('rx', toHex(reply.bytes));
+                if (reply.data[0] === 0x5a && reply.data[1] === 0x80 && reply.data.length >= 14) {
+                    const key = [...reply.data.slice(10,14)].map(b => b.toString(16).padStart(2,'0')).join('');
+                    const name = id.rules.kwpEngine[key];
+                    const entry = name && id.modules.find(m => m.sgbd.replace(/\.prg$/i,'').toUpperCase() === name);
+                    if (entry) f = { address, sgbd: name, moduleId: entry.id, answer: toHex(reply.bytes), identRequest: request };
+                }
+            } catch (e) {
+                this.append('warn', 'D_MOTOR IDENT: ' + (e instanceof Error ? e.message : String(e)));
+            }
+        }
+        if (this.link !== link) throw new Error('The identified connection has changed.');
         return f;
     }
 
@@ -1002,7 +1011,7 @@ export class LinkSession {
             // about which module this is counts as much as the scan's.
             if (isCommonIdent(buildDs2Frame(to.address, ident.control, ident.payload))) {
                 const answer = Uint8Array.from([frame.address, frame.length, frame.controlOrStatus, ...frame.payload, frame.checksum]);
-                const f = fittedFrom(this.identity.rules, this.identity.modules, to.address, answer);
+                const f = await this.resolveFitted(link, to.address, answer);
                 this.fitmentNow = new Map(this.fitmentNow).set(to.address, f);
                 this.update({ fitment: this.fitmentNow });
             }

@@ -20,3 +20,12 @@
 @source "../../src/views/shared/Awaiting.tsx";
 @source "../../src/views/shared/CountReadout.tsx";
 @source "../../src/views/shared/FreezeFrame.tsx";
+@source "../../src/components/MobileMenu.tsx";
+@source "../../src/components/CreditsDialog.tsx";
+@source "../../src/components/DialogFrame.tsx";
+@source "../../src/components/ConfirmDialog.tsx";
+@source "../../src/views/sessions/SessionsView.tsx";
+@source "../../src/views/sessions/SyncCopies.tsx";
+@source "../../src/views/probe/StartupSeries.tsx";
+@source "../../src/views/probe/ProbeGraph.tsx";
+@source "../../src/views/probe/ValueCards.tsx";

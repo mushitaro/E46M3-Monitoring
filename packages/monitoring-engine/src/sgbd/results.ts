@@ -13,6 +13,7 @@ import { readEcuData } from '../ecuData.ts';
 import { runSgbdJob, type SgbdResult, type SgbdTables } from './vm.ts';
 
 export interface SgbdResultsTable {
+    rawResultNames?: Record<string, string[]>;
     practiceLearned?: { module: string; speedBlock: number; speedOffset: number; idleBlock: number; payload: number[]; expectedIdle: { value: number; unit: string } };
     practiceRpm?: { ident: number[] | null; service: number[]; replies: number[][] };
     nativeRpm?: import('./nativeMeasurement.ts').NativeEncoding;
@@ -33,6 +34,8 @@ export interface ReadValue {
 }
 
 export interface DecodedRead {
+    /** Original program results published as bytes. Never treated as a numeric measurement. */
+    rawValues?: Array<{ name: string; hex: string }>;
     /** Values, in the order the job reports them; units folded in, `JOB_STATUS` and the raw answer left out. */
     values: ReadValue[];
     /** The job's own verdict on the answer (`OKAY`, or why not). */
@@ -103,7 +106,13 @@ export function decodeRead(table: SgbdResultsTable | null, jobId: string, reques
         { code: fromBase64(job.code), base: job.base },
         { sent: bytesOf(request), answer, tables: table.tables as SgbdTables },
     );
-    return { ...foldResults(run.results), stopped: run.stopped, provenance: 'sgbd-job' };
+    const folded = foldResults(run.results);
+    const names = table.rawResultNames?.[jobId];
+    const rawValues = !run.stopped && folded.status === 'OKAY' && names
+        ? run.results.flatMap(r => r.value.kind === 'bytes' && r.value.value.length && names.includes(r.name)
+            ? [{ name: r.name, hex: Array.from(r.value.value, b => b.toString(16).padStart(2, '0')).join(' ') }] : [])
+        : [];
+    return { ...folded, ...(rawValues.length ? { rawValues } : {}), stopped: run.stopped, provenance: 'sgbd-job' };
 }
 
 /** Telemetry must not count the checksum as data. Some status jobs take their final

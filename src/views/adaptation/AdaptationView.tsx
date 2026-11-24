@@ -187,13 +187,15 @@ function NativeReadings({ profile, native }: {
         if (!job || job.catalogOnly || job.class !== 'read' || job.args.length) return null;
         const answer = answers[id];
         const decoded = answer?.decoded;
-        const complete = decoded && !decoded.stopped && decoded.status === 'OKAY' && decoded.values.length > 0;
+        const complete = decoded && !decoded.stopped && decoded.status === 'OKAY';
         const values = answer === undefined ? native.retained?.[id] : complete ? decoded.values : undefined;
+        const raw = complete ? decoded.rawValues : undefined;
         return <DataRow key={id} ident={id} name={label(job, lang)}
             onSelect={native.ready && !pending ? () => void read(id) : undefined}
             detail={pending === id ? <p role="status">{t.awaiting_read}</p> : answer === undefined && !values ? undefined :
                 <div role="status" className="text-xs text-slate-300">
-                    {values ? values.map(v => <p key={v.name} className="font-mono">{v.name} · {v.value} {v.unit}</p>)
+                    {values?.length ? values.map(v => <p key={v.name} className="font-mono">{v.name} · {v.value} {v.unit}</p>)
+                        : raw?.length ? raw.map(r => <p key={r.name} className="font-mono">{r.name} ({lang === 'ja' ? '生データ' : 'raw bytes'}) · {r.hex}</p>)
                         : <p>{lang === 'ja' ? '測定値を確認できません' : 'No confirmed reading'}</p>}
                     {answer && <p className="font-mono text-slate-500">{answer.response}</p>}
                 </div>} />;

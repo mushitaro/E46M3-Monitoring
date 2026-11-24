@@ -95,6 +95,23 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('a LinkSession on the practice car', () => {
         expect(s.getSnapshot().fitment.get(0x12)?.moduleId).toBe('mss54');
     });
 
+    it('reads all four GS20 learned memory blocks as raw data from the identified gearbox', async () => {
+        practiceCar.idents = { 0x12: { hw: '19', diag: '10' }, 0x32: { hw: '29', diag: '00' } };
+        const session = sessionFor('ms430ds0');
+        await session.connect('practice');
+        const targets = (await loadScanTargets(index)).filter(t => t.address === 0x12 || t.address === 0x32);
+        const scan = await session.scanAll(targets, () => EMPTY_LEDGER);
+        expect(scan?.results.find(r => Number(r.address) === 0x32)?.variant?.moduleId).toBe('gs20');
+        for (const block of ['80', '81', '82', '83']) {
+            const job = 'ADAPTIONSWERTE_' + block + '_LESEN';
+            const read = await session.readFittedJob('gs20', 0x32, job, () => EMPTY_LEDGER);
+            expect(read?.decoded, session.lastError() ?? job).toMatchObject({
+                stopped: null, status: 'OKAY', rawValues: [{ name: 'DATEN', hex: '00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f' }],
+            });
+            expect(read?.decoded?.values).toEqual([]);
+        }
+    });
+
     it.each([
         ['ms420ds0', '15', '10'], ['ms430ds0', '19', '10'],
         ['bms46ds0', '61', '10'], ['bms46ds1', '61', 'A7'],

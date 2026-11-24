@@ -252,6 +252,12 @@ function practiceModule(address: number): SimulatedEcuOptions {
                 clearPracticeSmg2Adaptations(request.payload[0]);
                 return practiceAnswerFor(address, request.controlOrStatus, request.payload) ?? { payload: new Uint8Array(0) };
             }
+            const ident = practiceCar.idents[address];
+            if (address === 0x32 && ident && 'hw' in ident && ident.hw === '29' &&
+                request.controlOrStatus === Ds2Control.READ_IO_STATUS && request.payload.length === 1 &&
+                request.payload[0] >= 0x80 && request.payload[0] <= 0x83) {
+                return { payload: Uint8Array.from({ length: 16 }, (_, i) => i) };
+            }
             if (request.controlOrStatus === Ds2Control.READ_IO_STATUS || request.controlOrStatus === 0x40) {
                 const out = new Uint8Array(PRACTICE_MODULE_BLOCK);
                 // SMG II's STATUS_IO_LESEN, as the scenario set it (practiceCar `smg2Status`).

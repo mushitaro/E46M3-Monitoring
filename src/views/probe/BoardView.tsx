@@ -1,10 +1,10 @@
 'use client';
 
-import { ChevronDown, ChevronUp, ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
+import { BoardLayout } from './BoardLayout';
 import { MSS54_CHANNELS, formatErrorCode, type ChannelId, type ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
 import type { RawFaultRead } from '@/hooks/useDs2Link';
 import type { ProbeProgress } from '@/hooks/useProbe';
-import { DataList, DataRow, Field, Pane, Pill, Provenance, Section, TextButton, humanName } from '@/components/ui';
+import { DataList, DataRow, Field, Pane, Pill, Provenance, Section, humanName } from '@/components/ui';
 import { text as resolveText, type EcuProfile } from '@tsunagi/monitoring-engine';
 import { normCode } from '@/lib/faultCode';
 import { useLang } from '@/lib/i18n';
@@ -78,48 +78,10 @@ export function BoardView({ s, data }: { s: ProbeSessions; data: BoardData }) {
             </Pane>
         );
     }
-    return (
-        <Pane>
-            {parts.map((p, i) => (
-                <Section
-                    key={p.id}
-                    title={KIND_LABEL[p.kind](t)}
-                    note={p.title}
-                    actions={
-                        <span className="flex items-baseline gap-2">
-                            <TextButton tone="neutral" Icon={ChevronUp} disabled={i === 0} onClick={() => s.move(p.id, -1)} aria-label={t.board_up} title={t.board_up} className="-my-2 px-1 py-2">
-                                {null}
-                            </TextButton>
-                            <TextButton
-                                tone="neutral"
-                                Icon={ChevronDown}
-                                disabled={i === parts.length - 1}
-                                onClick={() => s.move(p.id, 1)}
-                                aria-label={t.board_down}
-                                title={t.board_down}
-                                className="-my-2 px-1 py-2"
-                            >
-                                {null}
-                            </TextButton>
-                            <TextButton
-                                tone="neutral"
-                                Icon={p.open ? ChevronsDownUp : ChevronsUpDown}
-                                onClick={() => s.toggle(p.id)}
-                                aria-expanded={p.open}
-                                aria-label={p.open ? t.board_close : t.board_open}
-                                title={p.open ? t.board_close : t.board_open}
-                                className="-my-2 px-1 py-2"
-                            >
-                                {null}
-                            </TextButton>
-                        </span>
-                    }
-                >
-                    {p.open ? <PartBody part={p} s={s} data={data} /> : null}
-                </Section>
-            ))}
-        </Pane>
-    );
+    return <BoardLayout parts={parts.map(p => ({
+        id: p.id, title: KIND_LABEL[p.kind](t), note: p.title, open: p.open,
+        body: () => <PartBody part={p} s={s} data={data} />,
+    }))} onMove={s.move} onToggle={s.toggle} />;
 }
 
 function Empty({ children }: { children: React.ReactNode }) {

@@ -88,6 +88,7 @@ MODULES = {
     # M3 でない E46 の DME（DS2 の世代、〜2002 年ごろ）。0x12 に何がいるかは IDENT が D_0012 の選び方で決める
     # （variants.json。EdiabasLib にグループファイルを走らせて食い違い 0）。同じ 0x12 の MS420DS1・MS43_SP2 は
     # D_0012 が選ばないので載せない（tools/sgbd/fitment.py）。アドレスは dump_modules.py の実送信 IDENT `12 04 00`。
+    "dde30ds0": M("DDE30DS0", "DDE 3.0 (M47 ディーゼル)", "DDE 3.0 (M47 diesel)", 0x12, "engine", "nonm3"),
     "ms420ds0": M("MS420DS0", "MS42 (M52TU エンジン)",          "MS42 (M52TU engine)",         0x12, "engine", "nonm3",
                   "ECU の名乗りは「MS 42.0 fuer M52 mit EWS 3」", "The ECU calls itself \"MS 42.0 fuer M52 mit EWS 3\""),
     "ms430ds0": M("MS430DS0", "MS43 (M54 エンジン)",            "MS43 (M54 engine)",           0x12, "engine", "nonm3",

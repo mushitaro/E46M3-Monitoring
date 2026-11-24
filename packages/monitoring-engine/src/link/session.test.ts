@@ -75,7 +75,7 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('a LinkSession on the practice car', () => {
 
     it.each([
         ['mss54', '1B', '90'], ['ms430ds0', '19', '10'], ['ms420ds0', '15', '10'],
-        ['bms43ds0', '60', '10'], ['bms46ds0', '61', '10'], ['bms46ds1', '61', 'A7'],
+        ['dde30ds0', '52', '10'], ['bms43ds0', '60', '10'], ['bms46ds0', '61', '10'], ['bms46ds1', '61', 'A7'],
     ])('%s logs the identified ECU and judges its native RPM in PROBE', async (id, hw, diag) => {
         const mss54 = id === 'mss54';
         const channel = mss54 ? '3:n' : `${id}:STATUS_MOTORDREHZAHL:STAT_MOTORDREHZAHL_WERT`;

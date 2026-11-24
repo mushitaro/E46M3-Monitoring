@@ -10,18 +10,18 @@ import {
     Pane,
     Section,
     humanName,
-} from '@/components/ui';
-import type { AdaptationRead } from '@/hooks/useDs2Link';
-import { resetJobsFor } from '@/lib/adaptationReset';
+} from '../../components/ui';
+import type { AdaptationRead } from '@tsunagi/monitoring-engine';
+import { resetJobsFor } from '../../lib/adaptationReset';
 import { jobIndex, label, type EcuProfile } from '@tsunagi/monitoring-engine';
-import { useLang } from '@/lib/i18n';
+import { useLang } from '../../lib/i18n';
 import type { Ledger } from '@tsunagi/monitoring-engine';
 import { mayRun } from '@tsunagi/monitoring-engine';
 import { bestTelegram, type TelegramTable } from '@tsunagi/monitoring-engine';
-import { Awaiting } from '@/views/shared/Awaiting';
-import { CountReadout } from '@/views/shared/CountReadout';
+import { Awaiting } from '../shared/Awaiting';
+import { CountReadout } from '../shared/CountReadout';
 import type { Motion } from '@tsunagi/monitoring-engine';
-import { ReasonGlossary, ReasonTag } from '@/views/shared/RunReason';
+import { ReasonGlossary, ReasonTag } from '../shared/RunReason';
 import { Adjustments } from './Adjustments';
 
 /**

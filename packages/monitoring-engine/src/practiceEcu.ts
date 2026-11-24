@@ -316,6 +316,14 @@ export function practiceEcu(): SimulatedEcuOptions {
 
                 case Ds2Control.READ_IO_STATUS: {
                     const dme = practiceDmeOf(practiceCar.idents[0x12]);
+                    if (dme === 'dde30ds0') {
+                        if (request.payload.length !== 3 || arg !== 0x10 || request.payload[1] !== 0x0f || request.payload[2] !== 0x10) {
+                            return { status: Ds2Status.PARAMETER_ERROR };
+                        }
+                        const payload = new Uint8Array(4);
+                        new DataView(payload.buffer).setUint16(2, Math.round(engine().rpm));
+                        return { payload };
+                    }
                     if (dme) {
                         // These practice RPM bytes are decoded by each variant's STATUS_MOTORDREHZAHL.
                         // Other blocks need their own fixture; an MSS54 reply would give a false reading.

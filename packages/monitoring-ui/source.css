@@ -1,3 +1,6 @@
+@source "../../src/views/shared/RunReason.tsx";
+@source "../../src/views/adaptation/Adjustments.tsx";
+@source "../../src/views/adaptation/AdaptationView.tsx";
 @source "./index.tsx";
 @source "./instruments.tsx";
 @source "../../src/views/datalog/DatalogViz.tsx";

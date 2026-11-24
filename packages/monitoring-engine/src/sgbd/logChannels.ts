@@ -47,7 +47,7 @@ export function moduleLogData(module: string, address: number): Promise<ModuleDa
     let hit = data.get(key);
     if (!hit) {
         hit = Promise.all([loadEcuCatalog(module).catch(() => null), loadTelegrams(module), loadSgbdResults(module)]).then(([profile, telegrams, results]) =>
-            profile?.address === address && profile.id === module && results?.module === module ? { address, profile, jobs: jobIndex(profile), telegrams, results } : null,
+            profile?.address === address && profile.id === module && telegrams?.module === module && telegrams.address === address && results?.module === module ? { address, profile, jobs: jobIndex(profile), telegrams, results } : null,
         );
         data.set(key, hit);
     }

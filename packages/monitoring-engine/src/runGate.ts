@@ -349,7 +349,6 @@ export function mayRun(
     ledger: Ledger,
     ctx: RunContext,
 ): RunVerdict {
-    if (job.catalogOnly) return { allowed: false, reason: 'run_block_noTelegram' };
     // The owner's decision for this job (policy.ts, 2026-11-15): when, how far, who.
     const decision = decisionFor(ctx.moduleId, job, ctx.group, ctx.args);
     if (decision.how === 'off') {
@@ -358,6 +357,7 @@ export function mayRun(
         if (job.class === 'identity') return { allowed: false, reason: 'run_block_identity' };
         return { allowed: false, reason: 'run_block_policyOff' };
     }
+    if (job.catalogOnly) return { allowed: false, reason: 'run_block_noTelegram' };
     if (!isReadNature(decision.nature)) return mayDrive(job, telegram, ledger, ctx, decision);
 
     // PRACTICE is NOT a reason to refuse.

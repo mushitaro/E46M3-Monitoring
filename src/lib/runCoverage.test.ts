@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { EcuIndex, EcuProfile, JobFramesOracle, SgbdResultsTable, TelegramTable } from '@tsunagi/monitoring-engine';
+import type { Choice, VariantRules, EcuIndex, EcuProfile, JobFramesOracle, SgbdResultsTable, TelegramTable } from '@tsunagi/monitoring-engine';
 import { hasFaultRead, hasIdent, moduleChannels, moduleProtocol, withAgreedFrames } from '@tsunagi/monitoring-engine';
 import { MSS54_CHANNELS } from '@tsunagi/ds2-mss54';
 import { isOn } from './jobSurface';
@@ -33,6 +33,16 @@ function coverage(): CoverageItem[] {
 }
 
 function moduleInventory(items: CoverageItem[]): string {
+    const variants = read<VariantRules>('variants.json');
+    const namesIn = (choice: Choice): string[] => {
+        if (!choice) return [];
+        if (typeof choice === 'string') return [choice.toLowerCase()];
+        const branches = 'rows' in choice ? choice.rows.map(r => r[1]) :
+            'ranges' in choice ? choice.ranges.map(r => r[2]) : [choice.then];
+        return branches.concat(choice.else).flatMap(namesIn);
+    };
+    const groupNames = new Map(variants.groups.map(g => [g.address, new Set(namesIn(g.choose))]));
+    const nativeEngines = new Set(Object.values(variants.kwpEngine ?? {}).map(name => name.toLowerCase()));
     const lines = [
         '# E46 診断機器別の収録範囲', '',
         '識別と故障は電文・読取定義の有無。測定は画面が列挙できる数値項目数。サービスと作動は一覧の分類で、確認・実行・停止の実車試験は別途必要。', '',
@@ -53,7 +63,7 @@ function moduleInventory(items: CoverageItem[]): string {
         const eligible = items.filter(i => i.module === id && i.status === 'runs').length;
         const faultJob = results?.jobs.FS_LESEN && !profile.jobs.find(j => j.id === 'FS_LESEN')?.catalogOnly;
         const inventory = profile.jobs.filter(j => j.catalogOnly).length;
-        lines.push(`| ${id} | ${group} | ${hasIdent(protocol) ? 'あり' : '—'} | ${hasFaultRead(protocol) || faultJob ? 'あり' : '—'} | ${channels} | ${service} | ${actuator} | ${eligible} | ${inventory} |`);
+        lines.push(`| ${id} | ${group} | ${hasIdent(protocol) ? 'あり' : (groupNames.get(address)?.has(profile.sgbd.replace(/\.prg$/i, '').toLowerCase()) || (address === 0x12 && nativeEngines.has(id))) ? '識別表' : '—'} | ${hasFaultRead(protocol) || faultJob ? 'あり' : '—'} | ${channels} | ${service} | ${actuator} | ${eligible} | ${inventory} |`);
     }
     return lines.join('\n') + '\n';
 }

@@ -9,6 +9,7 @@ export { ServiceView, ServiceViz } from '../../src/views/service/ServiceView';
 export { loadSmg2Workflows, type Smg2Workflows } from '../../src/lib/smg2Workflows';
 export { loadJobText, type JobTextTable } from '../../src/lib/jobText';
 export { loadDscHydraulics, type DscHydraulics } from '../../src/lib/dscHydraulics';
+export { SelectedDiagnosis } from '../../src/views/diagnosis/SelectedDiagnosis';
 export { ScanList, ScanViz } from '../../src/views/diagnosis/ScanView';
 export { DatalogViz, type DatalogPlot } from '../../src/views/datalog/DatalogViz';
 export { LogPopover } from '../../src/components/LogPopover';

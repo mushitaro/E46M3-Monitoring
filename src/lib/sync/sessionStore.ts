@@ -38,7 +38,35 @@ export function sessionStore(name?: string) {
     async function deleteLocal(id: string): Promise<void> {
         await run('readwrite', (s) => s.delete(id));
     }
-    return { listLocal, getLocal, putLocal, deleteLocal };
+    /** A network acknowledgement can arrive after a local edit or deletion in another tab. */
+    function acknowledge(id: string, revision: number): Promise<void> {
+        return inTransaction<void>(SESSIONS, 'readwrite', (store, done) => {
+            const req = store.get(id);
+            req.onsuccess = () => {
+                const latest = req.result as SavedSession | undefined;
+                if (latest && latest.updatedAt >= revision && (latest.syncedAt ?? 0) < revision) {
+                    store.put({ ...latest, syncedAt: revision });
+                }
+                done(undefined);
+            };
+        });
+    }
+
+    function restoreCopy(copy: SavedSession): Promise<boolean> {
+        return inTransaction<boolean>(SESSIONS, 'readwrite', (store, done) => {
+            const req = store.get(copy.id);
+            req.onsuccess = () => {
+                const latest = req.result as SavedSession | undefined;
+                if (latest && (latest.updatedAt > copy.updatedAt || (latest.syncedAt ?? 0) < latest.updatedAt)) {
+                    done(false);
+                    return;
+                }
+                store.put({ ...copy, syncedAt: copy.updatedAt });
+                done(true);
+            };
+        });
+    }
+    return { listLocal, getLocal, putLocal, deleteLocal, acknowledge, restoreCopy };
 }
 
 export const { listLocal, getLocal, putLocal, deleteLocal } = sessionStore();

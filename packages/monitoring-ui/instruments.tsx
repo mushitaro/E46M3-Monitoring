@@ -13,6 +13,10 @@ export { BoardLayout, type BoardSection } from '../../src/views/probe/BoardLayou
 export { ValueCards } from '../../src/views/probe/ValueCards';
 export { StartupSeries } from '../../src/views/probe/StartupSeries';
 export { SyncCopies, type SyncCopiesState } from '../../src/views/sessions/SyncCopies';
+export { MobileMenu } from '../../src/components/MobileMenu';
+export { MarkIcon } from '../../src/components/MarkIcon';
+export { CreditsDialog } from '../../src/components/CreditsDialog';
+export { useInstallPrompt } from '../../src/hooks/useInstallPrompt';
 export { DialogFrame } from '../../src/components/DialogFrame';
 export { ConfirmDialog } from '../../src/components/ConfirmDialog';
 export { SessionsView, type MemoryViewState } from '../../src/views/sessions/SessionsView';

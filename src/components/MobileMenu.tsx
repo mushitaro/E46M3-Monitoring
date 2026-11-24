@@ -3,15 +3,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { CloudUpload, Database, Download, Github, Medal, RefreshCw, Shield, X } from 'lucide-react';
 import { Field, LABEL } from './ui';
-import type { LinkMode, LinkState } from '@/hooks/useDs2Link';
-import type { InstallState } from '@/hooks/useInstallPrompt';
-import { useShortLandscape } from '@/hooks/useWideLayout';
-import { useBuildId } from '@/lib/build-variant';
-import { useLang } from '@/lib/i18n';
-import { REPOSITORY } from '@/lib/links';
-import { SAVE_TONE, SYNC_TONE, type StatusLook } from '@/lib/sync/status';
-import type { Tab } from '@/lib/tabs';
-import { APP_VERSION } from '@/lib/version';
+import type { LinkMode, LinkState } from '@tsunagi/monitoring-engine';
+import type { InstallState } from '../hooks/useInstallPrompt';
+import { useShortLandscape } from '../hooks/useWideLayout';
+import { useBuildId } from '../lib/build-variant';
+import { useLang } from '../lib/i18n';
+import { REPOSITORY } from '../lib/links';
+import { SAVE_TONE, SYNC_TONE, type StatusLook } from '../lib/sync/status';
+import type { Tab } from '../lib/tabs';
+import { APP_VERSION } from '../lib/version';
 
 /**
  * The M menu: what this app keeps behind the footer's M button below 900px.

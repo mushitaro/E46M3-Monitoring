@@ -17,7 +17,7 @@ const modules = index.modules.map((m) => ({
 }));
 
 describe('every job belongs to exactly one tab', () => {
-    it('lands on one surface, across all 59 modules', () => {
+    it('lands on one surface, across the full installed catalogue', () => {
         // The property that makes this a partition rather than two filters that
         // happen to agree. Two surfaces run a job through DIFFERENT gates —
         // SERVICE via mayRun, ACTUATOR via mayActuate, which is wider in
@@ -33,8 +33,9 @@ describe('every job belongs to exactly one tab', () => {
         }
         // 1524 across 51; 64 more with DSC MK60 (2026-11-10).
         // 1588 until the non-M3 DMEs and GS20 arrived (2026-11-11).
-        expect(modules.length).toBe(59);
-        expect(counted).toBe(2474);
+        const rpmOnly = modules.filter(({profile}) => profile.jobs.length === 1 && profile.jobs[0].id === 'STATUS_MOTORDREHZAHL');
+        expect(modules.length - rpmOnly.length).toBe(59);
+        expect(counted - rpmOnly.length).toBe(2474);
         const diesel = modules.find(m => m.id === 'dde30ds0')!;
         expect(diesel.profile.jobs.filter(j => !j.catalogOnly).map(j => j.id).sort()).toEqual(
             ['IDENT', 'STATUS_GESCHWINDIGKEIT', 'STATUS_MOTORDREHZAHL'],

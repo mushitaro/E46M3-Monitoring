@@ -30,7 +30,7 @@
  * The whole MEMORY surface is under it, the on-device store included: a production build has no
  * MEMORY tab, writes nothing to IndexedDB and makes no request of its own.
  */
-import type { Tab } from '@/lib/tabs';
+import type { Tab } from './tabs';
 
 export type FeatureStage = 'stable' | 'experimental' | 'preview-only';
 

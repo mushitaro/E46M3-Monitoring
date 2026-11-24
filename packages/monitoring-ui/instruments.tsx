@@ -3,6 +3,8 @@
 import type { ReactNode } from 'react';
 import { EmbeddedLanguage, STRINGS } from '../../src/lib/i18n';
 
+export { ActuatorPanel, type ActuatorRequest } from '../../src/views/actuator/ActuatorView';
+export { partTable } from '../../src/lib/partName';
 export { AdaptationView, AdaptationViz } from '../../src/views/adaptation/AdaptationView';
 export { BoardLayout, type BoardSection } from '../../src/views/probe/BoardLayout';
 export { StartupView } from '../../src/views/probe/StartupList';

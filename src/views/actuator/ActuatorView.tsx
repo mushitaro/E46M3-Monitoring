@@ -2,27 +2,27 @@
 
 import { Play, Square } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { GateDialog } from '@/components/gate/GateDialog';
-import { DataList, DataRow, LABEL, ListControls, Pill, Section, TextButton, humanName } from '@/components/ui';
-import type { Arming } from '@/hooks/useActuatorArming';
+import { GateDialog } from '../../components/gate/GateDialog';
+import { DataList, DataRow, LABEL, ListControls, Pill, Section, TextButton, humanName } from '../../components/ui';
+import type { Arming } from '../../hooks/useActuatorArming';
 import { decisionFor, mayActuate, telegramOfAgreed, type ActuationMode, type ActuationPermit } from '@tsunagi/monitoring-engine';
-import { startActuation } from '@/lib/actuation';
-import { loadChoices, type AgreedChoice } from '@/lib/agreedChoices';
+import { startActuation } from '../../lib/actuation';
+import { loadChoices, type AgreedChoice } from '../../lib/agreedChoices';
 import { operationFor } from '@tsunagi/monitoring-engine';
-import type { Phase } from '@/lib/actuatorArgs';
+import type { Phase } from '../../lib/actuatorArgs';
 import type { CatalogJob, EcuProfile } from '@tsunagi/monitoring-engine';
-import { execStyleOf } from '@/lib/execStyle';
-import { useLang } from '@/lib/i18n';
-import { cautionFor, type JobTextTable } from '@/lib/jobText';
-import { isOn } from '@/lib/jobSurface';
+import { execStyleOf } from '../../lib/execStyle';
+import { useLang } from '../../lib/i18n';
+import { cautionFor, type JobTextTable } from '../../lib/jobText';
+import { isOn } from '../../lib/jobSurface';
 import type { Ledger } from '@tsunagi/monitoring-engine';
 import type { RunVerdict, SendRequirement } from '@tsunagi/monitoring-engine';
-import { TEST_ID, tid } from '@/lib/testIds';
+import { TEST_ID, tid } from '../../lib/testIds';
 import { bestTelegram, type TelegramTable } from '@tsunagi/monitoring-engine';
 import type { Motion } from '@tsunagi/monitoring-engine';
-import { ReasonGlossary, ReasonTag } from '@/views/shared/RunReason';
-import { useNow } from '@/hooks/useNow';
-import { decidedByYear, type VariantState } from '@/lib/variantChoice';
+import { ReasonGlossary, ReasonTag } from '../shared/RunReason';
+import { useNow } from '../../hooks/useNow';
+import { decidedByYear, type VariantState } from '../../lib/variantChoice';
 
 /** The parts a module's own data names (lib/partName `partTable`), by the value that selects them. */
 type PartTable = ReadonlyMap<string, { ja: string; en: string }>;
@@ -58,21 +58,29 @@ type PartTable = ReadonlyMap<string, { ja: string; en: string }>;
  * that as `stopIsPressable`, whose signature has nothing to condition on. While it
  * is on, the row says what it drives and the seconds left until it stops by itself.
  */
-export function ActuatorView({
-    profile,
-    telegrams,
-    ledger,
-    motion,
-    jobText,
-    mode,
-    arming,
-    parts,
-    pick,
-    variant,
-    onConfirmVariant,
-    onSentOnce,
-    onRun,
-}: {
+export interface ActuatorRequest {
+    job: CatalogJob;
+    phase: Exclude<Phase, 'stop'>;
+    verdict: Extract<RunVerdict, { allowed: true }>;
+    choice?: AgreedChoice;
+}
+
+export function ActuatorView(props: Omit<ActuatorPanelProps, 'execute' | 'arming'> & {
+    arming: Arming;
+    onSentOnce(module: string, job: string, args: readonly string[] | null): void;
+    onRun(job: string, hex: string, requires?: SendRequirement, permit?: ActuationPermit): Promise<unknown>;
+}) {
+    return <ActuatorPanel {...props} execute={async p => {
+        const r = await startActuation({
+            moduleId: props.profile.id, job: p.job, phase: p.phase, verdict: p.verdict,
+            telegrams: props.telegrams, args: p.choice?.start.args, stop: p.choice?.stop,
+            send: props.onRun, arm: props.arming.arm, now: Date.now(),
+        });
+        if (r.sent && !r.armed) props.onSentOnce(props.profile.id, p.job.id, p.choice?.start.args ?? null);
+    }} />;
+}
+
+interface ActuatorPanelProps {
     profile: EcuProfile;
     telegrams: TelegramTable | null;
     ledger: Ledger;
@@ -80,7 +88,7 @@ export function ActuatorView({
     motion: Motion;
     jobText: JobTextTable | null;
     mode: ActuationMode;
-    arming: Arming;
+    arming: { anyArmed: boolean; armed: ReadonlyMap<string, { at: number; timeoutS?: number; args?: readonly string[] }>; stop(jobId: string): void };
     /** The parts this module's own data names. */
     parts: PartTable;
     /** A set the assistant chose for a row (its monitoring_actuate), shown on that row. */
@@ -89,11 +97,12 @@ export function ActuatorView({
     variant: VariantState;
     /** The owner says which module answers at this address (once per car). */
     onConfirmVariant: (address: number, moduleId: string) => void;
-    /** A job sent once (not left on): the screen says it went and was answered. */
-    onSentOnce: (moduleId: string, jobId: string, args: readonly string[] | null) => void;
-    /** Send a job's frame. The caller owns the busy lock and the log. */
-    onRun: (jobId: string, hex: string, requires?: SendRequirement, permit?: ActuationPermit) => Promise<unknown>;
-}) {
+    execute(request: ActuatorRequest): Promise<void>;
+}
+
+export function ActuatorPanel({
+    profile, telegrams, ledger, motion, jobText, mode, arming, parts, pick, variant, onConfirmVariant, execute,
+}: ActuatorPanelProps) {
     const { lang, t } = useLang();
     const [query, setQuery] = useState('');
     const [onlyRunnable, setOnlyRunnable] = useState(false);
@@ -206,22 +215,7 @@ export function ActuatorView({
         if (!p) return;
         setPending(null);
         if (p.phase === 'stop') return;
-        // The same path the assistant's monitoring_actuate takes (lib/actuation): the permit for
-        // exactly these bytes, the link's measurement, and the stop resolved before anything is armed.
-        const r = await startActuation({
-            moduleId: profile.id,
-            job: p.job,
-            phase: p.phase,
-            verdict: p.verdict,
-            telegrams,
-            args: p.choice?.start.args,
-            stop: p.choice?.stop,
-            send: onRun,
-            arm: arming.arm,
-            now: Date.now(),
-        });
-        // Sent once and not left on: said on the notice line, as a stop is.
-        if (r.sent && !r.armed) onSentOnce(profile.id, p.job.id, p.choice?.start.args ?? null);
+        await execute({ ...p, phase: p.phase });
     };
 
     const partOf = (args: readonly string[] | undefined) => {
@@ -293,7 +287,7 @@ export function ActuatorView({
                                 lang={lang}
                                 onStart={() => open(job, 'start')}
                                 onRunOnce={() => open(job, 'pulse')}
-                                onStop={() => void arming.stop(job.id, 'stop')}
+                                onStop={() => void arming.stop(job.id)}
                             />
                         );
                     })}

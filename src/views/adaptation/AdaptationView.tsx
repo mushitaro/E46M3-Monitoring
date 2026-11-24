@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useMemo } from 'react';
+import { memo, useMemo, useRef, useState } from 'react';
 import { ListChecks } from 'lucide-react';
 import {
     DataList,
@@ -11,7 +11,7 @@ import {
     Section,
     humanName,
 } from '../../components/ui';
-import type { AdaptationRead } from '@tsunagi/monitoring-engine';
+import type { AdaptationRead, JobRunResult } from '@tsunagi/monitoring-engine';
 import { resetJobsFor } from '../../lib/adaptationReset';
 import { jobIndex, label, type EcuProfile } from '@tsunagi/monitoring-engine';
 import { useLang } from '../../lib/i18n';
@@ -46,9 +46,11 @@ export const AdaptationView = memo(function AdaptationView({
     telegrams,
     ledger,
     motion,
+    native,
 }: {
     /** What the ECU answered, or null before anyone asked. */
     blocks: AdaptationRead[] | null;
+    native?: { scope: string; ready: boolean; read: (job: string) => Promise<JobRunResult | null> };
     catalog: EcuProfile | null;
     ecuId: string;
     telegrams: TelegramTable | null;
@@ -58,24 +60,27 @@ export const AdaptationView = memo(function AdaptationView({
 }) {
     const { t, lang } = useLang();
 
-    const known = resetJobsFor(ecuId);
+    const definition = catalog?.id === ecuId ? catalog.learnedValues : undefined;
+    const known = definition ? { known: true, ids: definition.reset } : resetJobsFor(ecuId);
     const resets = useMemo(() => {
         if (!catalog) return [];
         const index = jobIndex(catalog);
-        return resetJobsFor(ecuId).ids.flatMap((id) => {
+        return (definition?.reset ?? resetJobsFor(ecuId).ids).flatMap((id) => {
             const job = index.get(id);
-            if (!job) return [];
+            if (!job || job.class === 'read') return [];
             return [{ job, verdict: mayRun(job, bestTelegram(telegrams, id), ledger, { moduleId: ecuId, motion }) }];
         });
-    }, [catalog, telegrams, ledger, ecuId, motion]);
+    }, [catalog, telegrams, ledger, ecuId, motion, definition]);
 
     return (
         <Pane>
             <Section
                 title={t.adaptations}
-                info={hasDecoder(ecuId) ? t.adaptations_info : t.adaptations_noDecoderInfo}
+                info={definition?.read.length ? undefined : hasDecoder(ecuId) ? t.adaptations_info : t.adaptations_noDecoderInfo}
             >
-                {!hasDecoder(ecuId) ? (
+                {definition?.read.length && catalog && native ? (
+                    <NativeReadings key={ecuId + '/' + native.scope} profile={catalog} native={native} />
+                ) : !hasDecoder(ecuId) ? (
                     <p className="py-2 text-xs text-slate-500">{t.adaptations_noDecoder}</p>
                 ) : blocks === null ? (
                     <p className="py-2 font-mono text-xs uppercase text-slate-600">{t.awaiting_read}</p>
@@ -152,6 +157,41 @@ export const AdaptationView = memo(function AdaptationView({
         </Pane>
     );
 });
+
+function NativeReadings({ profile, native }: {
+    profile: EcuProfile;
+    native: { ready: boolean; read: (job: string) => Promise<JobRunResult | null> };
+}) {
+    const { lang, t } = useLang();
+    const waiting = useRef(false);
+    const [pending, setPending] = useState<string | null>(null);
+    const [answers, setAnswers] = useState<Record<string, JobRunResult | null>>({});
+    const index = jobIndex(profile);
+    async function read(id: string) {
+        if (!native.ready || waiting.current) return;
+        waiting.current = true;
+        setPending(id);
+        const answer = await native.read(id).catch(() => null);
+        setAnswers(prev => ({ ...prev, [id]: answer }));
+        waiting.current = false;
+        setPending(null);
+    }
+    return <DataList>{profile.learnedValues!.read.map(id => {
+        const job = index.get(id);
+        if (!job || job.catalogOnly || job.class !== 'read' || job.args.length) return null;
+        const answer = answers[id];
+        const decoded = answer?.decoded;
+        const complete = decoded && !decoded.stopped && decoded.status === 'OKAY' && decoded.values.length > 0;
+        return <DataRow key={id} ident={id} name={label(job, lang)}
+            onSelect={native.ready && !pending ? () => void read(id) : undefined}
+            detail={pending === id ? <p role="status">{t.awaiting_read}</p> : answer === undefined ? undefined :
+                <div role="status" className="text-xs text-slate-300">
+                    {complete ? decoded.values.map(v => <p key={v.name} className="font-mono">{v.name} · {v.value} {v.unit}</p>)
+                        : <p>{lang === 'ja' ? '測定値を確認できません' : 'No confirmed reading'}</p>}
+                    {answer && <p className="font-mono text-slate-500">{answer.response}</p>}
+                </div>} />;
+    })}</DataList>;
+}
 
 /**
  * How many of the ECU's answers actually decoded.

@@ -59,6 +59,26 @@ describe('the adaptation-erase table matches the catalogue', () => {
     });
 });
 
+describe('reviewed learned-value jobs in the expanded ECU catalogue', () => {
+    it.each(['ms420ds0', 'ms430ds0', 'bms43ds0', 'bms46ds0', 'bms46ds1', 'gs20'])('%s separates reads from resets', module => {
+        const p = JSON.parse(readFileSync(path.join(DATA, module + '.jobs.json'), 'utf8'));
+        expect(p.id).toBe(module);
+        const read = p.learnedValues?.read as string[];
+        const reset = p.learnedValues?.reset as string[];
+        expect(Array.isArray(read)).toBe(true);
+        expect(reset.length).toBeGreaterThan(0);
+        for (const id of read) {
+            expect(p.jobs.find((j: { id: string }) => j.id === id)).toMatchObject({ class: 'read', args: [] });
+            expect(reset).not.toContain(id);
+        }
+        for (const id of reset) {
+            const job = p.jobs.find((j: { id: string }) => j.id === id);
+            expect(job).toBeDefined();
+            expect(job.class).not.toBe('read');
+        }
+    });
+});
+
 describe('an unlisted module is unknown, not empty', () => {
     it('distinguishes "checked, none" from "never looked"', () => {
         expect(resetJobsFor('dsc_e46')).toEqual({ known: true, ids: [] });

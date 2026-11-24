@@ -55,6 +55,8 @@ type Datalog = DatalogInstrument;
 export interface DatalogPlan {
   /** When it was written (`appNow()`): a capture counts from then. */
   at: number;
+  /** The first row owned by this selection when a host keeps multiple plan versions in a recording. */
+  firstRow?: number;
   steps: readonly ProbeStep[];
 }
 
@@ -205,12 +207,20 @@ function Segments({ datalog }: { datalog: Datalog }) {
  * whether the recording has passed through its condition since the plan was written (待っている →
  * 取った). The steps PROBE alone runs (fault reads, learned values) say so.
  */
-export function PlanSteps({ plan, datalog }: { plan: DatalogPlan; datalog: Datalog }) {
+type PlanRecording = Pick<DatalogInstrument, 'engineRpm' | 'running'> & {
+  recorded: string[];
+  samples: { time: number; values: Partial<Record<string, number | null>> }[];
+  segments: readonly { at: number }[];
+  moduleInfo(id: string): { name: string; ja: string; unit: string | null } | null;
+};
+
+export function PlanSteps({ plan, datalog }: { plan: DatalogPlan; datalog: PlanRecording }) {
   const { t } = useLang();
   const startedAt = datalog.segments[0]?.at ?? null;
   // Captures count from when the plan was written: seconds into this run.
   const sinceS = startedAt === null ? Infinity : (plan.at - startedAt) / 1000;
   const look = useLook(datalog);
+  const selectedRows = useMemo(() => plan.firstRow ? datalog.samples.slice(plan.firstRow) : datalog.samples, [datalog.samples, plan.firstRow]);
   return (
     <Section title={t.datalog_plan} count={plan.steps.length}>
       <DataList>
@@ -218,7 +228,7 @@ export function PlanSteps({ plan, datalog }: { plan: DatalogPlan; datalog: Datal
           let state: string;
           let windows: Array<{ from: number; to: number; hit: number }> = [];
           if (s.kind === "capture") {
-            windows = captureWindows(datalog.samples, s.condition, s.preS, s.postS, sinceS);
+            windows = captureWindows(selectedRows, s.condition, s.preS, s.postS, sinceS);
             const caught = windows.length;
             state = caught > 0 ? t.datalog_planCaught(caught) : t.datalog_planWaiting;
           } else if (s.kind === "sample") {
@@ -236,7 +246,7 @@ export function PlanSteps({ plan, datalog }: { plan: DatalogPlan; datalog: Datal
                 <span className={`shrink-0 ${LABEL} text-slate-400`}>{state}</span>
               </div>
               {s.kind === "capture" && windows.length > 0 && (
-                <Compare datalog={datalog} windows={windows.slice(-2)} look={look} />
+                <Compare datalog={{ ...datalog, samples: selectedRows }} windows={windows.slice(-2)} look={look} />
               )}
             </li>
           );
@@ -264,7 +274,7 @@ function Compare({
   windows,
   look,
 }: {
-  datalog: Datalog;
+  datalog: PlanRecording;
   windows: Array<{ from: number; to: number }>;
   look: (id: string) => ChannelLook;
 }) {

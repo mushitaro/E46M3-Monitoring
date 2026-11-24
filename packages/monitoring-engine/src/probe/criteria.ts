@@ -54,28 +54,35 @@ export interface JudgeResult {
 }
 
 export function judge(j: Judge, samples: readonly ProbeSample[]): JudgeResult {
-    const xs: number[] = [];
+    let n = 0;
+    let sum = 0;
+    let min = Infinity;
+    let max = -Infinity;
     for (const s of samples) {
         if (j.where && !holds(j.where, s.values)) continue;
         const v = s.values[j.channel];
-        if (typeof v === 'number' && Number.isFinite(v)) xs.push(v);
+        if (typeof v !== 'number' || !Number.isFinite(v)) continue;
+        n++;
+        sum += v;
+        min = Math.min(min, v);
+        max = Math.max(max, v);
     }
-    const base = { id: j.id, hypothesis: j.hypothesis, n: xs.length, provenance: j.provenance };
-    if (j.stat === 'count') return { ...base, value: xs.length, pass: compare(xs.length, j.op, j.value) };
-    if (xs.length === 0) return { ...base, value: null, pass: null };
+    const base = { id: j.id, hypothesis: j.hypothesis, n, provenance: j.provenance };
+    if (j.stat === 'count') return { ...base, value: n, pass: compare(n, j.op, j.value) };
+    if (n === 0) return { ...base, value: null, pass: null };
     let value: number;
     switch (j.stat) {
         case 'max':
-            value = Math.max(...xs);
+            value = max;
             break;
         case 'min':
-            value = Math.min(...xs);
+            value = min;
             break;
         case 'mean':
-            value = xs.reduce((a, b) => a + b, 0) / xs.length;
+            value = sum / n;
             break;
         case 'spread':
-            value = Math.max(...xs) - Math.min(...xs);
+            value = max - min;
             break;
     }
     return { ...base, value, pass: compare(value, j.op, j.value) };

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { EcuIndex, EcuProfile } from '@tsunagi/monitoring-engine';
@@ -33,9 +33,12 @@ describe('every job belongs to exactly one tab', () => {
         }
         // 1524 across 51; 64 more with DSC MK60 (2026-11-10).
         // 1588 until the non-M3 DMEs and GS20 arrived (2026-11-11).
-        const rpmOnly = modules.filter(({profile}) => profile.jobs.length === 1 && profile.jobs[0].id === 'STATUS_MOTORDREHZAHL');
-        expect(modules.length - rpmOnly.length).toBe(59);
-        expect(counted - rpmOnly.length).toBe(2474);
+        const nativeProfiles = modules.filter(({ id }) => {
+            const file = path.join(DATA, id + '.results.json');
+            return existsSync(file) && Boolean(read<{ nativeRpm?: unknown }>(id + '.results.json').nativeRpm);
+        });
+        expect(modules.length - nativeProfiles.length).toBe(59);
+        expect(counted - nativeProfiles.reduce((n, m) => n + m.profile.jobs.length, 0)).toBe(2474);
         const diesel = modules.find(m => m.id === 'dde30ds0')!;
         expect(diesel.profile.jobs.filter(j => !j.catalogOnly).map(j => j.id).sort()).toEqual(
             ['IDENT', 'STATUS_GESCHWINDIGKEIT', 'STATUS_MOTORDREHZAHL'],

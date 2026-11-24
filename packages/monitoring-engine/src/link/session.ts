@@ -80,10 +80,10 @@ import { EMPTY_IDENTITY, loadIdentity, type Identity } from '../identity.ts';
 import { NO_FAULT_LAYOUTS, decodeByLayout, loadFaultLayouts, type FaultLayouts } from '../faultLayouts.ts';
 import { answerFrame, decodeFaultRead, decodeRead, telemetryValues, loadSgbdResults, type DecodedRead, type SgbdFaultRead } from '../sgbd/results.ts';
 import { hasFaultJob, readFaultsByJob, type JobFaultRead } from '../sgbd/faultRead.ts';
-import { decisionFor as rpmPolicy } from '../policy.ts';
-import type { CatalogJob as RpmJob } from '../ecuCatalog.ts';
-import { mayReadWhileMoving as movingRpm, withdrawn as rpmWithdrawn } from '../ledger.ts';
-import { exchangeRpm, RPM_JOB, RPM_RESULT, validRpm, type NativeRpm } from '../sgbd/nativeRpm.ts';
+import { decisionFor } from '../policy.ts';
+import type { CatalogJob } from '../ecuCatalog.ts';
+import { mayReadWhileMoving, withdrawn } from '../ledger.ts';
+import { exchangeMeasurement, nativeMeasurement, validMeasurement, type NativeMeasurement } from '../sgbd/nativeMeasurement.ts';
 import { moduleLogGate, moduleLogValues, type ModuleLogRead } from '../sgbd/logChannels.ts';
 import { DME_ADDRESS, commonIdent, fittedFrom, frameVerdict, isCommonIdent, isM3, mayModuleBeSent, ruleFor, type Fitment, type Fitted } from '../variants.ts';
 import type { Ledger } from '../ledger.ts';
@@ -742,6 +742,26 @@ export class LinkSession {
         if (engine === 'run' && (rpm === null || rpm < ENGINE_RUNNING_RPM)) throw notSent('engine', `its SGBD asks for the engine running, and it reads ${rpm ?? '—'} rpm`, measured);
     }
 
+    private async readEngineMeasurement(link: Ds2Link, module: string, spec: NativeMeasurement, ledger: Ledger, job: CatalogJob) {
+        if (!validMeasurement(spec, module, job.id)) throw new Error('Invalid measurement definition');
+        if (withdrawn(ledger, module + ':' + job.id)) throw new Error('This measurement was withdrawn');
+        if (job.class !== 'read' || job.args.length || job.catalogOnly) throw new Error('Invalid measurement job');
+        const decision = decisionFor(module, job, 'engine');
+        if (decision.how !== 'run') throw new Error('Measurement is disabled');
+        const port = this.transport ?? refuse('No open transport.');
+        await this.clearFor(DME_ADDRESS, module);
+        await this.preflight(link, job.id, decision.when === 'moving' || mayReadWhileMoving(ledger, module + ':' + job.id) ? 'none' : 'parked');
+        const reading = await link.withGate(() => {
+            if (this.link !== link || this.transport !== port || this.snap.lineLost || this.fitmentNow.get(DME_ADDRESS)?.moduleId !== module) {
+                throw new Error('The identified engine connection has changed.');
+            }
+            return exchangeMeasurement(port, spec, this.modeNow === 'practice');
+        });
+        this.append('tx', reading.request);
+        this.append('rx', reading.response);
+        return reading;
+    }
+
     /**
      * One KWP-on-DS2 read (kwpOnDs2; DSC MK60). Its identity and fault read go while the car moves,
      * as every module's own do (operator, 2026-11-12: 「MK60 の読み取りは、走行中も取れるように」; the first
@@ -752,26 +772,6 @@ export class LinkSession {
      * module is cleared here as `readFrame` clears every DS2 frame: on a car not identified as an M3,
      * which DSC is fitted is not known, and nothing is sent.
      */
-    private async engineRpm(link: Ds2Link, module: string, spec: NativeRpm, ledger: Ledger, job: RpmJob) {
-        if (!validRpm(spec,module)) throw new Error('Invalid RPM definition');
-        if (rpmWithdrawn(ledger,module + ':' + RPM_JOB)) throw new Error('This RPM read was withdrawn');
-        if (job.id !== RPM_JOB || job.class !== 'read' || job.args.length || job.catalogOnly) throw new Error('Invalid measurement job');
-        const decision = rpmPolicy(module,job,'engine');
-        if (decision.how === 'off') throw new Error('RPM read is disabled');
-        const port = this.transport ?? refuse('No open transport.');
-        await this.clearFor(DME_ADDRESS, module);
-        await this.preflight(link, RPM_JOB, decision.when === 'moving' || movingRpm(ledger, module + ':' + RPM_JOB) ? 'none' : 'parked');
-        const reading = await link.withGate(() => {
-            if (this.link !== link || this.transport !== port || this.snap.lineLost || this.fitmentNow.get(DME_ADDRESS)?.moduleId !== module) {
-                throw new Error('The identified engine connection has changed.');
-            }
-            return exchangeRpm(port, spec, this.modeNow === 'practice');
-        });
-        this.append('tx', reading.request);
-        this.append('rx', reading.response);
-        return reading;
-    }
-
     private async kwpRead(link: Ds2Link, address: number, moduleId: string, job: string, frame: KwpFrame, requires: SendRequirement = 'none') {
         await this.clearFor(address, moduleId);
         await this.preflight(link, `${moduleId} ${job}`, requires);
@@ -1650,9 +1650,10 @@ export class LinkSession {
                         const motion = speed ? motionOf(vehicleStateFrom(speed, now), now) : 'unknown';
                         for (const read of [...moduleReads]) {
                             for (const r of read.wanted) values[`${read.module}:${read.job.id}:${r}` as ChannelId] = null;
-                            if (read.job.id === RPM_JOB && validRpm(read.results.nativeRpm, read.module)) {
-                                const channel = [read.module, RPM_JOB, RPM_RESULT].join(':');
-                                const result = await this.engineRpm(link, read.module, read.results.nativeRpm, ledgerOf(), read.job);
+                            const spec = nativeMeasurement(read.results, read.module, read.job.id);
+                            if (spec) {
+                                const channel = [read.module, read.job.id, spec.result].join(':');
+                                const result = await this.readEngineMeasurement(link, read.module, spec, ledgerOf(), read.job);
                                 (values as Record<string, number | null>)[channel] = result.value;
                                 continue;
                             }
@@ -1906,7 +1907,7 @@ export class LinkSession {
             const run = await runProbe(plan, {
                 ...deps,
                 mss54,
-                rpmExchange: (module, spec, job) => this.engineRpm(link, module, spec, deps.ledger(), job),
+                measurementExchange: (module, spec, job) => this.readEngineMeasurement(link, module, spec, deps.ledger(), job),
                 // The run reads the speed block when a cycle decides on it and at least every
                 // `SPEED_REFRESH_MS` (executor): the car's state is kept from it, as a recording keeps
                 // it, so the status and the read records say how fast the car is while a plan runs

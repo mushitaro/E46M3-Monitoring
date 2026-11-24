@@ -24,7 +24,7 @@ import {
 } from '@tsunagi/ds2-mss54';
 import { SimulatedSerialPort, type ExchangeBehavior, type SerialOptions, type SerialPortLike, type SimulatedEcuOptions } from '@tsunagi/ds2-core';
 import { loadSgbdResults, type SgbdResultsTable } from './sgbd/results.ts';
-import { fastFrame } from './sgbd/nativeRpm.ts';
+import { fastFrame } from './sgbd/nativeMeasurement.ts';
 import { KWP_FORMAT, KWP_TESTER, xorOf } from './kwpOnDs2.ts';
 import type { JobFramesOracle } from './sgbd/agreedFrame.ts';
 import {
@@ -587,18 +587,27 @@ export class PracticePort implements SerialPortLike {
         return this._writable;
     }
 
-    private sampleNo = 0;
+    private readonly sampleNumbers = new Map<string, number>();
     private async engineAnswer(chunk: Uint8Array): Promise<Uint8Array[] | null> {
         if (!practiceCar.rpmProgram || chunk[1] !== 0x12 || chunk[2] !== KWP_TESTER) return null;
         const star = chunk[0] === KWP_FORMAT;
         if (!star && (chunk[0] & 0xc0) !== 0x80) return null;
-        const fixture = (await loadSgbdResults(practiceCar.rpmProgram))?.practiceRpm;
+        const table = await loadSgbdResults(practiceCar.rpmProgram);
+        const fixture = table?.practiceRpm;
         if (!fixture || practiceCar.lineDown) return [];
         const payload = [...chunk.slice(star ? 4 : 3, -1)];
         const correct = star ? xorOf(chunk.slice(0,-1)) : chunk.slice(0,-1).reduce((a,b) => a+b,0) & 255;
         if (correct !== chunk.at(-1) || (star ? chunk[3] : chunk[0]&63) !== payload.length) return [];
-        const response = payload.join(',') === '26,128' ? fixture.ident
-            : payload.join(',') === fixture.service.join(',') ? fixture.replies[this.sampleNo++ % fixture.replies.length] : null;
+        const service = payload.join(',');
+        let response = service === '26,128' ? fixture.ident : null;
+        if (service !== '26,128') {
+            const deck = [fixture, ...(table?.practiceMeasurements ?? [])].find(f => f.service.join(',') === service);
+            if (deck?.replies.length) {
+                const index = this.sampleNumbers.get(service) ?? 0;
+                response = deck.replies[index % deck.replies.length];
+                this.sampleNumbers.set(service, index + 1);
+            }
+        }
         if (!response) return [chunk];
         if (!star) return [chunk,fastFrame(KWP_TESTER,0x12,response)];
         const raw = Uint8Array.from([KWP_FORMAT,KWP_TESTER,0x12,response.length,...response]);

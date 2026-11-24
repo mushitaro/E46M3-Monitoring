@@ -58,7 +58,7 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('a LinkSession on the practice car', () => {
     });
 
     it.each(['ms450ds0','me9k_ng4','me9n45','mev9n46','mev9n46l','dde50k47','d50m47a','d50m47b1','d50m57a1','d50m57e1'])(
-        'identifies %s on the practice link and samples its own RPM for a PROBE verdict', async id => {
+        'identifies %s and judges its own engine speed and temperature for the same PROBE run', async id => {
             practiceCar.rpmProgram = id;
             practiceCar.idents = { ...practiceCar.idents, 0x12: { hw: '00', diag: '00' } };
             const s = sessionFor('mss54');
@@ -66,12 +66,16 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('a LinkSession on the practice car', () => {
             await s.readIdent();
             expect(s.getSnapshot().fitment.get(0x12)?.moduleId, JSON.stringify(s.getSnapshot().log.slice(-8))).toBe(id);
             const channel = id + ':STATUS_MOTORDREHZAHL:STAT_MOTORDREHZAHL_WERT';
-            const steps = [{ n: 1, kind: 'sample' as const, do: 'RPM', channels: [channel] }];
+            const temperature = id + ':STATUS_MOTORTEMPERATUR:STAT_MOTORTEMPERATUR_WERT';
+            const steps = [{ n: 1, kind: 'sample' as const, do: 'Engine readings', channels: [channel, temperature] }];
             const modules = await loadProbeModules(steps, index);
             let count = 0;
-            const run = await s.startProbe({ id: 'practice', v: 1, steps, judge: [{ id: 'rotation', channel, stat: 'max', op: '>', value: 0, provenance: 'authored' }] },
+            const run = await s.startProbe({ id: 'practice', v: 1, steps, judge: [
+                { id: 'rotation', channel, stat: 'max', op: '>', value: 0, provenance: 'authored' },
+                { id: 'warm', channel: temperature, stat: 'max', op: '>', value: 100, provenance: 'authored' },
+            ] },
                 { module: m => modules.get(m) ?? null, ledger: () => EMPTY_LEDGER, onSample: () => { if (++count === 4) s.stopLog(); } });
-            expect(run?.judges[0], s.lastError() ?? '').toMatchObject({ pass: true, n: 4 });
+            expect(run?.judges, s.lastError() ?? '').toMatchObject([{ pass: true, n: 4 }, { pass: true, n: 4 }]);
         }
     );
 

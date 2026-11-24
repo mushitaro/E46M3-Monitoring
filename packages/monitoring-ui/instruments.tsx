@@ -12,6 +12,8 @@ export { loadJobText, type JobTextTable } from '../../src/lib/jobText';
 export { loadDscHydraulics, type DscHydraulics } from '../../src/lib/dscHydraulics';
 export { SelectedDiagnosis } from '../../src/views/diagnosis/SelectedDiagnosis';
 export { ScanList, ScanViz } from '../../src/views/diagnosis/ScanView';
+export { DatalogView, type DatalogInstrument } from '../../src/views/datalog/DatalogView';
+export { PART_S, segmentStats, type DatalogSegment } from '../../src/lib/datalogRun';
 export { DatalogViz, type DatalogPlot } from '../../src/views/datalog/DatalogViz';
 export { LogPopover } from '../../src/components/LogPopover';
 export { exportCommsLog } from '../../src/lib/download';

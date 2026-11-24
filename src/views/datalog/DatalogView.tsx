@@ -30,7 +30,12 @@ import {
   segmentStats,
 } from "../../lib/datalogRun";
 import { Awaiting } from "../../views/shared/Awaiting";
-import type { Datalog } from "./useDatalog";
+import type { Datalog as WorksDatalog } from "./useDatalog";
+
+export type DatalogInstrument = Pick<WorksDatalog,
+  'costNotice' | 'latest' | 'moduleInfo' | 'moduleInfos' | 'rateHz' | 'recorded' |
+  'running' | 'samples' | 'segments' | 'selected' | 'selectionDrifted' | 'toggle'>;
+type Datalog = DatalogInstrument;
 
 /** The plan the open CO-WORK record holds, as DATALOG shows it beside a recording. */
 export interface DatalogPlan {
@@ -52,9 +57,11 @@ export { DatalogViz, clockOf, formatValue } from './DatalogViz';
 export function DatalogView({
   datalog,
   plan = null,
+  mss54 = true,
 }: {
   datalog: Datalog;
   plan?: DatalogPlan | null;
+  mss54?: boolean;
 }) {
   const { t } = useLang();
   const look = useLook(datalog);
@@ -137,10 +144,10 @@ export function DatalogView({
         </DataList>
       </Section>
 
-      <ChannelPicker
+      {mss54 && <ChannelPicker
         selected={datalog.selected}
         onToggle={datalog.toggle}
-      />
+      />}
       {datalog.moduleInfos.length > 0 && <OtherModules datalog={datalog} />}
     </Pane>
   );

@@ -1,6 +1,6 @@
-import { readEcuData } from '@tsunagi/monitoring-engine';
-
 'use client';
+
+import { readEcuData } from '@tsunagi/monitoring-engine';
 
 /**
  * SMG II guided procedures — the one place in this app where the ECU runs a

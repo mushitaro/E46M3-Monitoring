@@ -1,6 +1,6 @@
-import { readEcuData } from '@tsunagi/monitoring-engine';
-
 'use client';
+
+import { readEcuData } from '@tsunagi/monitoring-engine';
 
 /**
  * The DSC brake-hydraulic control surface.

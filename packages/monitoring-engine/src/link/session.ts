@@ -769,7 +769,7 @@ export class LinkSession {
         }
         this.readsOf = this.target.moduleId;
         this.clearError();
-        this.update({ state: 'connecting' });
+        this.update({ state: 'connecting', scan: null });
         try {
             // PRACTICE deliberately does not go through createDs2Transport: it wraps the
             // simulated port in a REAL WebSerialTransport, so the simulator drives the actual

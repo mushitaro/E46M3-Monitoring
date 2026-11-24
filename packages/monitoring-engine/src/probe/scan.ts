@@ -317,7 +317,8 @@ export async function runScan(targets: readonly ScanTarget[], deps: ScanDeps): P
         // that answers and each has its own (0x32: SMG II or GS20): its IDENT is asked first, below. On an
         // M3, a candidate's own job may still read it (`jobRead`); it is refused below if none does.
         const rule = ruleFor(id.rules, t.address);
-        const chosenByRule = !!rule && t.modules.every((m) => (t.byModule[m] ?? []).length > 0);
+        // An identification-only variant at the same address must not prevent other variants being read.
+        const chosenByRule = !!rule && id.identOk.has(t.address);
         const noFrameReason =
             t.modules.length > 1
                 ? `no fault-read frame is common to ${t.modules.join(', ')}; which one is fitted is chosen on the screen, then read`
@@ -403,7 +404,7 @@ export async function runScan(targets: readonly ScanTarget[], deps: ScanDeps): P
         if (toSend.length === 0) {
             push({
                 ...base,
-                outcome: 'refused',
+                outcome: verdict.basis === 'identified' ? 'identified' : 'refused',
                 exchanges,
                 variant,
                 reason: verdict.basis === 'identified' ? `${chosen}: its SGBD carries no short fault-read frame` : noFrameReason,

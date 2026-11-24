@@ -7,7 +7,7 @@ import type { TelegramTable } from '../telegrams.ts';
 import { HAVE_SHIPPED_DATA, readShipped } from '../testing/shipped.ts';
 import type { EcuProfile } from '../ecuCatalog.ts';
 import { mayActuate } from '../actuationGate.ts';
-import { loadProbeModules } from '../probe/modules.ts';
+import { loadScanTargets, loadProbeModules } from '../probe/modules.ts';
 import { moduleLogReads } from '../sgbd/logChannels.ts';
 import { telemetryValues, answerFrame, type SgbdResultsTable } from '../sgbd/results.ts';
 import type { ChannelId } from '@tsunagi/ds2-mss54';
@@ -71,6 +71,31 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('a LinkSession on the practice car', () => {
         const ident = await s.readIdent();
         expect(ident?.length).toBeGreaterThan(0);
         expect(s.getSnapshot().fitment.get(0x12)?.moduleId).toBe('mss54');
+    });
+
+    it('runs a SERVICE read only for the module found by a scan of this connection', async () => {
+        const s = sessionFor('mss54');
+        await s.connect('practice');
+        const read = (module: string, job = 'STATUS_DIGITAL') => s.readFittedJob(module, 0x12, job, () => EMPTY_LEDGER);
+        expect(await read('mss54')).toBeNull();
+        const targets = (await loadScanTargets(index)).filter(t => t.address === 0x12);
+        await s.scanAll(targets, () => EMPTY_LEDGER);
+        expect(await read('ms430ds0')).toBeNull();
+        expect(await read('mss54', 'FS_LOESCHEN')).toBeNull();
+        expect(await read('mss54')).toMatchObject({ jobId: 'STATUS_DIGITAL', error: null });
+        await s.disconnect();
+        await s.connect('practice');
+        expect(await read('mss54')).toBeNull();
+    });
+
+    it('keeps DDE3 identification when this ECU has no released fault reader', async () => {
+        practiceCar.idents = { 0x12: { hw: '52', diag: '10' } };
+        const s = sessionFor('dde30ds0');
+        await s.connect('practice');
+        const targets = (await loadScanTargets(index)).filter(t => t.address === 0x12);
+        const scan = await s.scanAll(targets, () => EMPTY_LEDGER);
+        expect(scan?.results[0]).toMatchObject({ outcome: 'identified', variant: { moduleId: 'dde30ds0' } });
+        expect(scan?.results[0]?.faults).toBeUndefined();
     });
 
     it.each([

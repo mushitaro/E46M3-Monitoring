@@ -57,7 +57,7 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('a LinkSession on the practice car', () => {
         resetPracticeCar();
     });
 
-    it.each(['ms450ds0','me9k_ng4','me9n45','mev9n46','mev9n46l','d50m47a','d50m57a1','d50m57e1'])(
+    it.each(['ms450ds0','me9k_ng4','me9n45','mev9n46','mev9n46l','dde50k47','d50m47a','d50m47b1','d50m57a1','d50m57e1'])(
         'identifies %s on the practice link and samples its own RPM for a PROBE verdict', async id => {
             practiceCar.rpmProgram = id;
             practiceCar.idents = { ...practiceCar.idents, 0x12: { hw: '00', diag: '00' } };

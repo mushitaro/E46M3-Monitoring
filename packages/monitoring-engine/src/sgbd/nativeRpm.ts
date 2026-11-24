@@ -23,7 +23,7 @@ export function validRpm(spec: NativeRpm | undefined, module: string): spec is N
     const [sid, local] = spec.service;
     return (spec.format === 'kwp-star' || spec.format === 'bmw-fast') &&
         ((sid === 0x22 && spec.service.length === 3 && local === 0x40 && spec.service[2] === 0) || (sid === 0x2c && local === 0x10 && spec.service.length === 4 &&
-            ((spec.service[2] === 0 && [0x91, 0x9e, 0x2d].includes(spec.service[3])) || (spec.service[2] === 0x0f && spec.service[3] === 0x10))));
+            ((spec.service[2] === 0 && [0x91, 0x9e, 0x2d, 0x0c].includes(spec.service[3])) || (spec.service[2] === 0x0f && spec.service[3] === 0x10))));
 }
 
 export function rpmValue(spec: NativeRpm, data: Uint8Array): number | null {

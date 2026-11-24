@@ -58,7 +58,7 @@ import {
     type ErrorMemoryQuickTest,
 } from '@tsunagi/ds2-mss54';
 import { appNow, monoNow } from '../clock.ts';
-import { kwpExchange, kwpFrameOf, parseDtcsByStatus, type KwpFrame } from '../kwpOnDs2.ts';
+import { kwpRequest, kwpExchange, kwpFrameOf, parseDtcsByStatus, type KwpFrame } from '../kwpOnDs2.ts';
 import { finishFrame, initialShm } from '../sgbd/jobFrame.ts';
 import { runSgbdJobLive, type SgbdTables } from '../sgbd/vm.ts';
 import { whyNotSendable } from '../actuationGate.ts';
@@ -77,6 +77,10 @@ import { EMPTY_IDENTITY, loadIdentity, type Identity } from '../identity.ts';
 import { NO_FAULT_LAYOUTS, decodeByLayout, loadFaultLayouts, type FaultLayouts } from '../faultLayouts.ts';
 import { answerFrame, decodeFaultRead, decodeRead, loadSgbdResults, type DecodedRead, type SgbdFaultRead } from '../sgbd/results.ts';
 import { hasFaultJob, readFaultsByJob, type JobFaultRead } from '../sgbd/faultRead.ts';
+import { decisionFor as rpmPolicy } from '../policy.ts';
+import type { CatalogJob as RpmJob } from '../ecuCatalog.ts';
+import { mayReadWhileMoving as movingRpm, withdrawn as rpmWithdrawn } from '../ledger.ts';
+import { exchangeRpm, RPM_JOB, RPM_RESULT, validRpm, type NativeRpm } from '../sgbd/nativeRpm.ts';
 import { moduleLogGate, moduleLogValues, type ModuleLogRead } from '../sgbd/logChannels.ts';
 import { DME_ADDRESS, commonIdent, fittedFrom, frameVerdict, isCommonIdent, isM3, mayModuleBeSent, ruleFor, type Fitment, type Fitted } from '../variants.ts';
 import type { Ledger } from '../ledger.ts';
@@ -537,7 +541,23 @@ export class LinkSession {
             this.noteRead(to, hex2(address), 'IDENT', 0x00, new Uint8Array(0), { error: e });
             if (isDs2Error(e) && e.code === 'NOT_SENT') throw e;
         }
-        const f = fittedFrom(id.rules, id.modules, address, answer);
+        let f = fittedFrom(id.rules, id.modules, address, answer);
+        if (address === DME_ADDRESS && !f.moduleId && id.rules.kwpEngine && this.transport) {
+            const data = Uint8Array.of(0x1a,0x80);
+            const request = toHex(kwpRequest(address,data));
+            try {
+                const transport = this.transport;
+                const reply = await link.withGate(() => kwpExchange(transport,{target:address,data,hex:request,source:'D_MOTOR IDENT'}));
+                if (reply.data[0] === 0x5a && reply.data[1] === 0x80 && reply.data.length >= 14) {
+                    const key = [...reply.data.slice(10,14)].map(b => b.toString(16).padStart(2,'0')).join('');
+                    const name = id.rules.kwpEngine[key];
+                    const entry = name && id.modules.find(m => m.sgbd.replace(/\.prg$/i,'').toUpperCase() === name);
+                    if (entry) f = { address, sgbd: name, moduleId: entry.id, answer: toHex(reply.bytes), identRequest: request };
+                }
+            } catch (e) {
+                this.append('warn', 'D_MOTOR IDENT: ' + (e instanceof Error ? e.message : String(e)));
+            }
+        }
         if (f.answer !== null) {
             this.fitmentNow = new Map(this.fitmentNow).set(address, f);
             this.update({ fitment: this.fitmentNow });
@@ -702,6 +722,21 @@ export class LinkSession {
      * module is cleared here as `readFrame` clears every DS2 frame: on a car not identified as an M3,
      * which DSC is fitted is not known, and nothing is sent.
      */
+    private async engineRpm(link: Ds2Link, module: string, spec: NativeRpm, ledger: Ledger, job: RpmJob) {
+        if (!validRpm(spec,module)) throw new Error('Invalid RPM definition');
+        if (rpmWithdrawn(ledger,module + ':' + RPM_JOB)) throw new Error('This RPM read was withdrawn');
+        if (job.id !== RPM_JOB || job.class !== 'read' || job.args.length || job.catalogOnly) throw new Error('Invalid measurement job');
+        const decision = rpmPolicy(module,job,'engine');
+        if (decision.how === 'off') throw new Error('RPM read is disabled');
+        await this.clearFor(DME_ADDRESS,module);
+        await this.preflight(link,RPM_JOB,decision.when === 'moving' || movingRpm(ledger,module + ':' + RPM_JOB) ? 'none' : 'parked');
+        const port = this.transport ?? refuse('No open transport.');
+        const reading = await link.withGate(() => exchangeRpm(port,spec,this.modeNow === 'practice'));
+        this.append('tx', reading.request);
+        this.append('rx', reading.response);
+        return reading;
+    }
+
     private async kwpRead(link: Ds2Link, address: number, moduleId: string, job: string, frame: KwpFrame, requires: SendRequirement = 'none') {
         await this.clearFor(address, moduleId);
         await this.preflight(link, `${moduleId} ${job}`, requires);
@@ -1562,6 +1597,12 @@ export class LinkSession {
                         const motion = speed ? motionOf(vehicleStateFrom(speed, now), now) : 'unknown';
                         for (const read of [...moduleReads]) {
                             for (const r of read.wanted) values[`${read.module}:${read.job.id}:${r}` as ChannelId] = null;
+                            if (read.job.id === RPM_JOB && validRpm(read.results.nativeRpm, read.module)) {
+                                const channel = [read.module, RPM_JOB, RPM_RESULT].join(':');
+                                const result = await this.engineRpm(link, read.module, read.results.nativeRpm, ledgerOf(), read.job);
+                                (values as Record<string, number | null>)[channel] = result.value;
+                                continue;
+                            }
                             const gate = moduleLogGate(read, ledgerOf(), motion);
                             if ('refused' in gate) {
                                 moduleReads.splice(moduleReads.indexOf(read), 1);
@@ -1812,6 +1853,7 @@ export class LinkSession {
             const run = await runProbe(plan, {
                 ...deps,
                 mss54,
+                rpmExchange: (module, spec, job) => this.engineRpm(link, module, spec, deps.ledger(), job),
                 // The run reads the speed block when a cycle decides on it and at least every
                 // `SPEED_REFRESH_MS` (executor): the car's state is kept from it, as a recording keeps
                 // it, so the status and the read records say how fast the car is while a plan runs

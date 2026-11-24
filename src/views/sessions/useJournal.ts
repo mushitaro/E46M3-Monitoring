@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
-import type { LinkMode, LinkState } from '../../hooks/useDs2Link';
+import type { LinkMode, LinkState } from '@tsunagi/monitoring-engine';
 import { KEEP_MS, episodes, expired, rebaseMeta, toSavedScan, unfound, type Episode, type JournalEvent, type ScanRun } from '@tsunagi/monitoring-engine';
 import type { FailureNote, SavedSession } from '@tsunagi/monitoring-engine';
 import { journalStore, type JournalMeta } from '../../lib/sync/journalStore';

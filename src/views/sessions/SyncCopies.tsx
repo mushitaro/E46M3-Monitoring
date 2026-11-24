@@ -5,7 +5,7 @@ import { DataList, DataRow, Pill, Section, TextButton, humanName } from '../../c
 import { useLang } from '../../lib/i18n';
 import { SYNC_TONE } from '../../lib/sync/status';
 import { StatusButton } from './StatusButton';
-import type { Sessions } from './useSessions';
+import type { MemoryViewState } from './SessionsView';
 
 const NOTICE_TONE = {
   info: "text-slate-400",
@@ -16,9 +16,12 @@ const NOTICE_TONE = {
 const when = (ms: number) => new Date(ms).toLocaleString();
 const kb = (bytes: number) => (bytes / 1024).toFixed(bytes < 10240 ? 1 : 0) + ' KB';
 
-export type SyncCopiesState = Pick<Sessions,'syncLook'|'cloudEnabled'|'waiting'|'cloud'|'notice'> & {
+export interface SyncCopiesState extends Pick<MemoryViewState,'syncLook'|'cloudEnabled'|'notice'> {
+  waiting: number;
+  cloud: { id: string; label: string; created_at: number; synced_at: number; ecu: string | null; mock: number;
+    fault_count: number | null; sample_count: number; failure_count: number; session_bytes: number }[] | null;
   sync(): unknown; restore(id: string): unknown;
-};
+}
 
 export function SyncCopies({ s, account, busy, remove }: {
   s: SyncCopiesState; account: string | null; busy: boolean; remove(id: string, label: string): void;

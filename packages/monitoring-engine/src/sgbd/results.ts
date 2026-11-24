@@ -13,6 +13,8 @@ import { readEcuData } from '../ecuData.ts';
 import { runSgbdJob, type SgbdResult, type SgbdTables } from './vm.ts';
 
 export interface SgbdResultsTable {
+    practiceRpm?: { ident: number[] | null; service: number[]; replies: number[][] };
+    nativeRpm?: import('./nativeRpm.ts').NativeRpm;
     module: string;
     sgbd: string;
     source: string;

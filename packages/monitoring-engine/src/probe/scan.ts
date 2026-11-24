@@ -336,7 +336,7 @@ export async function runScan(targets: readonly ScanTarget[], deps: ScanDeps): P
                 continue;
             }
             const f = await id.identify(t.address);
-            exchanges.push({ request: hexOf(commonIdent(t.address)), response: f.answer });
+            exchanges.push({ request: f.identRequest ?? hexOf(commonIdent(t.address)), response: f.answer });
             variant = { sgbd: f.sgbd, moduleId: f.moduleId };
             if (f.answer === null) {
                 lostInARow++;

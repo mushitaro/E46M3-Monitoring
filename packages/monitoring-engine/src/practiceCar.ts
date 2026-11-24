@@ -118,6 +118,8 @@ export function ds2IdentData(ident: PracticeIdent): number[] {
 }
 
 export interface PracticeCar {
+    /** Which private simulated controller is on the practice cable. */
+    rpmProgram?: string | null;
     /** Road speed the DME reports (blocks' km/h fields). 0 = parked. */
     speedKmh: number;
     /** Whether the engine runs (idles when parked). The battery and engine preflight read it. */

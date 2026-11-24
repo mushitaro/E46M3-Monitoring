@@ -45,6 +45,7 @@ import type { CatalogJob } from '../ecuCatalog.ts';
 import type { Ledger } from '../ledger.ts';
 import type { ModuleProtocol } from '../moduleProtocol.ts';
 import { isReadOnlyControl, mayRun, mayRunProtocolRead, telegramBytes, type RunBlockKey } from '../runGate.ts';
+import { RPM_JOB, RPM_RESULT, validRpm, type NativeRpm } from '../sgbd/nativeRpm.ts';
 import { answerFrame, decodeFaultRead, decodeRead, telemetryValues, foldResults, type ReadValue, type SgbdFaultRead, type SgbdResultsTable } from '../sgbd/results.ts';
 import { parseDtcsByStatus, type KwpFrame } from '../kwpOnDs2.ts';
 import { runSgbdJob } from '../sgbd/vm.ts';
@@ -97,6 +98,7 @@ export interface ProbePlan {
 }
 
 export interface ProbeDeps {
+    rpmExchange?(module: string, spec: NativeRpm, job: CatalogJob): Promise<{ value: number | null; request: string; response: string }>;
     /** Whether the connected engine supports MSS54 blocks. LinkSession supplies the identified fitment. */
     mss54?: boolean;
     link: Ds2Link;
@@ -556,6 +558,23 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
         if (!mod) return drop('refused', 'unknown module');
         const hit = mod.job(lane.job);
         if (!hit || hit.job.class !== 'read' || hit.job.args.length || lane.job.startsWith('FS_')) return drop('refused', 'not an argument-free telemetry read');
+        if (what === RPM_JOB && validRpm(mod.results?.nativeRpm,lane.module)) {
+            if (!deps.rpmExchange) return drop('refused','This link cannot read the native measurement');
+            try {
+                const r = await deps.rpmExchange(lane.module,mod.results.nativeRpm,hit.job);
+                record({ step: 0, module: lane.module, what, request: r.request, response: r.response,
+                    outcome: r.value === null ? 'rejected' : 'ok', motion });
+                values[[lane.module,what,RPM_RESULT].join(':')] = r.value;
+                lane.failures = 0;
+                return 'ok';
+            } catch (e) {
+                if (gateHeld(e)) return 'held';
+                const reason = e instanceof Error ? e.message : String(e);
+                record({ step: 0, module: lane.module, what, request: null, response: null, outcome: 'failed', reason, motion });
+                if (++lane.failures >= LINK_LOST_AFTER) lane.dropped = reason;
+                return 'skipped';
+            }
+        }
         if (!mod.results?.jobs[lane.job]) return drop('refused', 'no SGBD code ships to read this answer (tools/gen_sgbd_results.py)');
         const verdict = mayRun(hit.job, hit.telegram, deps.ledger(), { moduleId: lane.module, motion });
         // Moving, or not measured parked: this sample goes without it; it is read when it may be.

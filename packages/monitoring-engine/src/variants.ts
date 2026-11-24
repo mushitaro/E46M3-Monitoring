@@ -79,6 +79,8 @@ export interface GroupRule {
 }
 
 export interface VariantRules {
+    /** D_MOTOR's exact diagnostic/variant byte pairs at engine address 0x12. */
+    kwpEngine?: Readonly<Record<string,string>>;
     schema: 1;
     generatedAt: string;
     groups: readonly GroupRule[];
@@ -140,6 +142,7 @@ export function ruleFor(rules: VariantRules, address: number): GroupRule | null 
 
 /** What one address said to its IDENT this session. */
 export interface Fitted {
+    identRequest?: string;
     address: number;
     /** The whole answer frame, hex, or null when it did not answer. */
     answer: string | null;

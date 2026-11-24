@@ -8,6 +8,7 @@
  * read that may go only parked is empty while the car moves.
  */
 
+import { RPM_JOB, RPM_RESULT, validRpm } from './nativeRpm.ts';
 import type { Ds2Frame } from '@tsunagi/ds2-core';
 import { jobIndex, loadEcuCatalog, text, type CatalogJob, type EcuProfile } from '../ecuCatalog.ts';
 import type { Ledger } from '../ledger.ts';
@@ -59,6 +60,10 @@ export function moduleLogData(module: string, address: number): Promise<ModuleDa
 /** Every channel a module offers DATALOG: each numeric result of each argument-free job whose code ships. */
 export function moduleChannels(module: string, d: ModuleData): ModuleChannelInfo[] {
     const out: ModuleChannelInfo[] = [];
+    if (validRpm(d.results.nativeRpm, module) && d.jobs.get(RPM_JOB)?.class === 'read') {
+        out.push({ channel: [module,RPM_JOB,RPM_RESULT].join(':'), module, job: RPM_JOB, result: RPM_RESULT,
+            name: 'Engine speed', ja: 'エンジン回転数', unit: d.results.nativeRpm.unit });
+    }
     for (const jobId of Object.keys(d.results.jobs)) {
         // The fault read is conducted by its own job (sgbd/faultRead), not sampled.
         if (jobId.startsWith('FS_')) continue;
@@ -110,7 +115,8 @@ export async function moduleLogReads(channels: readonly string[], addressOf: (mo
         const address = addressOf(module);
         const d = address === null ? null : await moduleLogData(module, address);
         const job = d?.jobs.get(jobId);
-        if (!d || !job || job.class !== 'read' || jobId.startsWith('FS_') || job.args.length > 0 || !d.results.jobs[jobId] || !job.results.some((r) => r.name === result)) {
+        const native = validRpm(d?.results.nativeRpm,module) && jobId === RPM_JOB && result === RPM_RESULT;
+        if (!d || !job || job.class !== 'read' || jobId.startsWith('FS_') || job.args.length > 0 || (!native && !d.results.jobs[jobId]) || !job.results.some((r) => r.name === result)) {
             unknown.push(c);
             continue;
         }

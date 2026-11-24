@@ -13,7 +13,7 @@ import { mss54Present, needsSync, parseCsv, savedScanFaults, sessionFaultCount, 
 import { SAVE_TONE, SYNC_TONE } from '../../lib/sync/status';
 import { CountReadout } from '../shared/CountReadout';
 import { StatusButton } from './StatusButton';
-import type { Sessions } from './useSessions';
+import type { StatusLook } from '../../lib/sync/status';
 
 import { SavedValues } from './SavedValues';
 
@@ -24,11 +24,13 @@ const NOTICE_TONE = {
     error: 'text-red-400',
 } as const;
 
-export type MemoryViewState = Pick<Sessions,
-    'viewing' | 'view' | 'local' | 'busy' | 'saveLook' | 'syncLook' | 'current' | 'content' | 'notice' |
-    'unkept' | 'now' | 'undatedExpiry' | 'episodeNow' | 'cloudEnabled'> & {
+export interface MemoryViewState {
+    viewing: string | null; view(id: string | null): void; local: SavedSession[] | null; busy: string | null;
+    saveLook: StatusLook; syncLook: StatusLook | null; current: { faults: number | null; samples: number; failures: number };
+    content: boolean; notice: { tone: 'error'|'ok'|'warn'|'info'; text: string } | null;
+    unkept: Episode[]; now: number; undatedExpiry(ep: Episode): number | null; episodeNow: Episode | null; cloudEnabled: boolean;
     save(): unknown; keep(start: number): unknown; join(ep: Episode): unknown; removeLocal(id: string): unknown;
-};
+}
 
 type Confirm = { id: string; label: string; synced: boolean };
 

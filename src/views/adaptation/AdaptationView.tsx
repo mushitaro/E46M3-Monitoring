@@ -43,6 +43,7 @@ interface NativeLearnedReader {
     ready: boolean;
     read(job: string): Promise<JobRunResult | null>;
     retained?: Record<string, readonly ReadValue[]>;
+    retainedRaw?: Record<string, readonly { name: string; hex: string }[]>;
 }
 
 export const AdaptationView = memo(function AdaptationView({
@@ -189,10 +190,10 @@ function NativeReadings({ profile, native }: {
         const decoded = answer?.decoded;
         const complete = decoded && !decoded.stopped && decoded.status === 'OKAY';
         const values = answer === undefined ? native.retained?.[id] : complete ? decoded.values : undefined;
-        const raw = complete ? decoded.rawValues : undefined;
+        const raw = answer === undefined ? native.retainedRaw?.[id] : complete ? decoded.rawValues : undefined;
         return <DataRow key={id} ident={id} name={label(job, lang)}
             onSelect={native.ready && !pending ? () => void read(id) : undefined}
-            detail={pending === id ? <p role="status">{t.awaiting_read}</p> : answer === undefined && !values ? undefined :
+            detail={pending === id ? <p role="status">{t.awaiting_read}</p> : answer === undefined && !values?.length && !raw?.length ? undefined :
                 <div role="status" className="text-xs text-slate-300">
                     {values?.length ? values.map(v => <p key={v.name} className="font-mono">{v.name} · {v.value} {v.unit}</p>)
                         : raw?.length ? raw.map(r => <p key={r.name} className="font-mono">{r.name} ({lang === 'ja' ? '生データ' : 'raw bytes'}) · {r.hex}</p>)

@@ -34,12 +34,13 @@ const SERIES = { value: '#B9A6EE', target: '#0A9BDB' };
  * a band), the window's value and target as two lines, and the context values small. `large` is the
  * MULTI pane's, for a driver's glance; the board draws it compact.
  */
-export function ProbeGraph({ part: p, samples, run, live = false, large = false, describe }: {
+export function ProbeGraph({ part: p, samples, run, live = false, large = false, describe, stats }: {
     part: Pick<Part, 'channels' | 'context' | 'seconds' | 'band' | 'show'>;
     samples: ProbeSample[];
     run: number;
     live?: boolean;
     large?: boolean;
+    stats?: { min: number; max: number; mean: number };
     describe?: (id: string) => { name: string; unit: string };
 }) {
     const { t, lang } = useLang();
@@ -69,7 +70,7 @@ export function ProbeGraph({ part: p, samples, run, live = false, large = false,
     const dev = g.latest.deviation;
     // The numbers drawn large, in the order asked; a target and difference not among them stay small beside.
     const show = p.show ?? defaultReadouts(p.channels);
-    const big = readoutsOf(g, show.some((r) => r === 'max' || r === 'min' || r === 'mean') ? channelStats({ samples }).get(value) : undefined, show);
+    const big = readoutsOf(g, show.some((r) => r === 'max' || r === 'min' || r === 'mean') ? stats ?? channelStats({ samples }).get(value) : undefined, show);
     const small = target ? (['target', 'delta'] as const).filter((r) => !show.includes(r)) : [];
     const size = large ? (big.length > 3 ? 'text-5xl' : 'text-6xl') : big.length > 3 ? 'text-2xl' : 'text-3xl';
     return (

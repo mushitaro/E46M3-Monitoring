@@ -101,14 +101,15 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('a LinkSession on the practice car', () => {
         expect(samples[0]).toBeLessThan(900);
         const steps = [{ n: 1, kind: 'sample' as const, do: 'RPM', channels: [channel] }];
         const modules = await loadProbeModules(steps, index);
+        let measured = 0;
         const run = await s.startProbe({ id: 'rpm', v: 1, steps, judge: [{ id: 'rpm', channel, stat: 'mean', op: '>', value: 750, provenance: 'authored' }] },
-            { module: m => modules.get(m) ?? null, ledger: () => EMPTY_LEDGER, maxSamples: 3 });
+            { module: m => modules.get(m) ?? null, ledger: () => EMPTY_LEDGER, onSample: () => { if (++measured === 3) s.stopLog(); } });
         expect(run?.samples.length, s.lastError() ?? '').toBe(3);
         expect(run?.judges[0]).toMatchObject({ pass: true, n: 3 });
         if (!mss54) {
             expect(run!.samples.every(sample => Object.keys(sample.values).every(c => c.startsWith(id + ':')))).toBe(true);
             const incompatible = await s.startProbe({ id: 'wrong', v: 1, steps: [{ ...steps[0], channels: ['3:n'] }] },
-                { module: () => null, ledger: () => EMPTY_LEDGER, maxSamples: 1 });
+                { module: () => null, ledger: () => EMPTY_LEDGER, onSample: () => s.stopLog() });
             expect(incompatible).toBeNull();
             const table = readShipped<SgbdResultsTable>(`${id}.results.json`);
             expect(telemetryValues(table, 'STATUS_MOTORDREHZAHL', reads[0].telegram!.hex,

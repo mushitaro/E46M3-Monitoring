@@ -63,7 +63,9 @@ import { finishFrame, initialShm } from '../sgbd/jobFrame.ts';
 import { runSgbdJobLive, type SgbdTables } from '../sgbd/vm.ts';
 import { whyNotSendable } from '../actuationGate.ts';
 import type { ReadRecord } from '../investigation/readRecord.ts';
-import type { ModuleProtocol } from '../moduleProtocol.ts';
+import { moduleProtocol, type ModuleProtocol } from '../moduleProtocol.ts';
+import { loadEcuCatalog } from '../ecuCatalog.ts';
+import { bestTelegram, loadTelegrams } from '../telegrams.ts';
 import { PracticePort, setPracticeAnswers } from '../practiceEcu.ts';
 import { loadJobFramesOracle } from '../sgbd/agreedFrame.ts';
 import { practiceCar } from '../practiceCar.ts';
@@ -78,8 +80,8 @@ import { hasFaultJob, readFaultsByJob, type JobFaultRead } from '../sgbd/faultRe
 import { moduleLogGate, moduleLogValues, type ModuleLogRead } from '../sgbd/logChannels.ts';
 import { DME_ADDRESS, commonIdent, fittedFrom, frameVerdict, isCommonIdent, isM3, mayModuleBeSent, ruleFor, type Fitment, type Fitted } from '../variants.ts';
 import type { Ledger } from '../ledger.ts';
-import { clearFaultsCommand, isReadOnlyControl, permitCovers, telegramBytes, type ActuationPermit, type SendRequirement } from '../runGate.ts';
-import { MIN_RUN_VOLTAGE } from '../policy.ts';
+import { mayRun, clearFaultsCommand, isReadOnlyControl, permitCovers, telegramBytes, type ActuationPermit, type SendRequirement } from '../runGate.ts';
+import { isReadNature, natureOf, MIN_RUN_VOLTAGE } from '../policy.ts';
 import { NotSentError, notSentOf, type NotSent } from './notSent.ts';
 import {
     VEHICLE_STATE_MAX_AGE_MS,
@@ -763,7 +765,7 @@ export class LinkSession {
         // What was read belongs to the module it was read from. Another module's link must not
         // show the previous one's faults as its own (a DSC switch showed the DME's 0x2C).
         if (this.readsOf !== null && this.readsOf !== this.target.moduleId) {
-            this.update({ ident: null, faults: null, quickTest: null, rawFaults: null, adaptations: null, lastRun: null });
+            this.update({ ident: null, faults: null, quickTest: null, rawFaults: null, adaptations: null, lastRun: null, scan: null });
         }
         this.readsOf = this.target.moduleId;
         this.clearError();
@@ -1138,95 +1140,118 @@ export class LinkSession {
      * "somebody upstream checked" on trust.
      */
     readonly runRead = (jobId: string, hex: string, requires: SendRequirement = 'parked', permit?: ActuationPermit) =>
-        this.run(`Run ${jobId}`, async (link) => {
-            const { target, to } = this.session(link);
-            // A job that sends several frames, and anything that drives a KWP-on-DS2 module, runs as
-            // its own code runs (`runByCode`): each frame it builds goes only if the permit names it.
-            if (permit && (target.kwp || (permit.sequence?.length ?? 0) > 1)) return this.runByCode(link, jobId, hex, permit);
-            // Otherwise a KWP-on-DS2 module is sent its identity and its fault read, and nothing else:
-            // the catalogue path builds DS2 frames, which this module would read as something else.
-            if (target.kwp) refuse(`${jobId}: ${target.moduleId} speaks KWP2000-shaped frames; only its identity, its fault read and what the owner's table opens are built for it.`);
-            const bytes = telegramBytes(hex);
-            if (!bytes) {
-                // A plain Error on purpose: this is the APP refusing, not
-                // the link failing, and the electrical-fault dialog must not
-                // claim a wiring problem for a bug in our own data.
-                throw new Error(`${jobId}: telegram is not a well-formed frame: ${hex}`);
-            }
-            // The frame names its module in its first byte, and it goes to that module or nowhere.
-            // The link used to strip the byte and send the rest to the DME.
-            if (bytes[0] !== target.address) {
-                throw new Error(
-                    `${jobId}: the telegram is addressed to ${hex2(bytes[0])}, the link is talking to ${target.moduleId} at ${hex2(target.address)}`,
-                );
-            }
-            const control = bytes[2];
-            // Belt and braces. If this fires on a vehicle, the gate above it
-            // has a hole and the car is one line away from being written to.
-            //
-            // PRACTICE is the one thing that widens it, and it widens ONLY
-            // here — `mayActuate` still hands a vehicle whatever `mayRun`
-            // said, unchanged. The simulated ECU is where the actuator send
-            // path gets to execute before an M3 is the first thing it
-            // executes against.
-            // A frame that drives something goes with the gate's permit for exactly these bytes.
-            const permitted = permit !== undefined && permitCovers(permit, target.moduleId, jobId, hex, Date.now());
-            if (permit && !permitted) throw new NotSentError(jobId, 'permission', 'the permit does not cover this frame');
-            const refusal = whyNotSendable(control, this.modeNow, target.moduleId, permitted);
-            if (refusal) throw new Error(`${jobId}: ${refusal}`);
-            const payload = bytes.slice(3, bytes.length - 1);
-            // A read the owner has not cleared for a moving car goes only when the DME says
-            // 0 km/h in this same call. A run that drives something is measured further (battery,
-            // engine); its stop is never held back by a measurement.
-            const measured = permit && permit.kind !== 'run' ? null : await this.preflight(link, jobId, permit ? 'parked' : requires);
-            if (permit?.kind === 'run') await this.preflightRun(link, jobId, permit.engine);
-            this.append('tx', `${jobId}: ${hex}`);
-            const drives = permitted || !isReadOnlyControl(control, target.moduleId);
-            const frame = await this.readFrame(to, target.moduleId, jobId, control, payload)
-                .then((f) => {
-                    link.assertPositive(f, jobId);
-                    return f;
-                })
-                .catch((e: unknown) => {
-                    if (drives) this.noteRun(target.moduleId, jobId, permit?.kind ?? 'run', hex, null, isDs2Error(e) && e.code === 'NEGATIVE_RESPONSE' ? 'rejected' : 'failed', e);
-                    throw e;
-                });
-            if (drives) this.noteRun(target.moduleId, jobId, permit?.kind ?? 'run', hex, toHex(frame.payload), 'ok', null);
-            // Read by the job's own code where it ships. A failure to read is not a failure of
-            // the read: the bytes stand either way.
-            let decoded: DecodedRead | null = null;
-            try {
-                decoded = decodeRead(await loadSgbdResults(target.moduleId), jobId, hex, answerFrame(frame.address, frame.controlOrStatus, frame.payload));
-            } catch {
-                decoded = null;
-            }
-            const result: JobRunResult = {
-                jobId,
-                request: hex,
-                response: toHex(frame.payload),
-                payloadLength: frame.payload.length,
-                at: appNow(),
-                error: null,
-                decoded,
-            };
-            this.append('rx', `${frame.payload.length} bytes`);
-            this.update({ lastRun: result });
-            if (measured === 'parked' && this.modeNow === 'vehicle') {
-                try {
-                    this.handlers.onObserved?.({
-                        moduleId: target.moduleId,
-                        jobId,
-                        telegram: hex,
-                        response: result.response,
-                        at: new Date(result.at).toISOString(),
-                        ecuIdent: this.identNow?.hex,
-                    });
-                } catch {
-                    /* recording a fact must never fail the read it is about */
-                }
-            }
-            return result;
+        this.run(`Run ${jobId}`, (link) => this.sendJob(link, this.session(link).target, jobId, hex, requires, permit));
+
+    /** Read a catalogued job on the module this link actually scanned, without reopening the cable. */
+    readonly readFittedJob = (moduleId: string, address: number, jobId: string, ledger: () => Ledger) =>
+        this.run(`Read ${jobId}`, async link => {
+            const scan = this.snap.scan;
+            const result = scan?.results.find(r => Number(r.address) === address);
+            const fitted = this.fitmentNow.get(address)?.moduleId ?? result?.variant?.moduleId;
+            const single = result?.modules.length === 1 && result.modules[0] === moduleId;
+            if (!result || !['identified', 'answered'].includes(result.outcome) ||
+                (fitted ? fitted !== moduleId : result.variant !== undefined || !single || result.ident?.outcome !== 'answered')) throw new Error('この接続で対象モジュールを確認できません');
+            const [profile, table] = await Promise.all([loadEcuCatalog(moduleId), loadTelegrams(moduleId)]);
+            const job = profile.jobs.find(j => j.id === jobId);
+            if (profile.id !== moduleId || profile.address !== address || table?.module !== moduleId ||
+                table.address !== address || !job || !isReadNature(natureOf(moduleId, job)) || job.args.length)
+                throw new Error('このモジュールの読み取り項目を確認できません');
+            const frame = bestTelegram(table, jobId);
+            const verdict = mayRun(job, frame, ledger(), { moduleId, motion: this.snap.motion, group: profile.group });
+            if (!verdict.allowed || !frame || this.link !== link || this.snap.scan !== scan || this.snap.lineLost)
+                throw new Error('この接続で実行できる読み取りではありません');
+            return this.sendJob(link, moduleProtocol(moduleId, address, table), jobId, frame.hex, verdict.requires);
         });
+
+    private async sendJob(link: Ds2Link, target: ModuleProtocol, jobId: string, hex: string, requires: SendRequirement, permit?: ActuationPermit) {
+        const to = link.to(target.address);
+        // A job that sends several frames, and anything that drives a KWP-on-DS2 module, runs as
+        // its own code runs (`runByCode`): each frame it builds goes only if the permit names it.
+        if (permit && (target.kwp || (permit.sequence?.length ?? 0) > 1)) return this.runByCode(link, jobId, hex, permit);
+        // Otherwise a KWP-on-DS2 module is sent its identity and its fault read, and nothing else:
+        // the catalogue path builds DS2 frames, which this module would read as something else.
+        if (target.kwp) refuse(`${jobId}: ${target.moduleId} speaks KWP2000-shaped frames; only its identity, its fault read and what the owner's table opens are built for it.`);
+        const bytes = telegramBytes(hex);
+        if (!bytes) {
+            // A plain Error on purpose: this is the APP refusing, not
+            // the link failing, and the electrical-fault dialog must not
+            // claim a wiring problem for a bug in our own data.
+            throw new Error(`${jobId}: telegram is not a well-formed frame: ${hex}`);
+        }
+        // The frame names its module in its first byte, and it goes to that module or nowhere.
+        // The link used to strip the byte and send the rest to the DME.
+        if (bytes[0] !== target.address) {
+            throw new Error(
+                `${jobId}: the telegram is addressed to ${hex2(bytes[0])}, the link is talking to ${target.moduleId} at ${hex2(target.address)}`,
+            );
+        }
+        const control = bytes[2];
+        // Belt and braces. If this fires on a vehicle, the gate above it
+        // has a hole and the car is one line away from being written to.
+        //
+        // PRACTICE is the one thing that widens it, and it widens ONLY
+        // here — `mayActuate` still hands a vehicle whatever `mayRun`
+        // said, unchanged. The simulated ECU is where the actuator send
+        // path gets to execute before an M3 is the first thing it
+        // executes against.
+        // A frame that drives something goes with the gate's permit for exactly these bytes.
+        const permitted = permit !== undefined && permitCovers(permit, target.moduleId, jobId, hex, Date.now());
+        if (permit && !permitted) throw new NotSentError(jobId, 'permission', 'the permit does not cover this frame');
+        const refusal = whyNotSendable(control, this.modeNow, target.moduleId, permitted);
+        if (refusal) throw new Error(`${jobId}: ${refusal}`);
+        const payload = bytes.slice(3, bytes.length - 1);
+        // A read the owner has not cleared for a moving car goes only when the DME says
+        // 0 km/h in this same call. A run that drives something is measured further (battery,
+        // engine); its stop is never held back by a measurement.
+        const measured = permit && permit.kind !== 'run' ? null : await this.preflight(link, jobId, permit ? 'parked' : requires);
+        if (permit?.kind === 'run') await this.preflightRun(link, jobId, permit.engine);
+        this.append('tx', `${jobId}: ${hex}`);
+        const drives = permitted || !isReadOnlyControl(control, target.moduleId);
+        const frame = await this.readFrame(to, target.moduleId, jobId, control, payload)
+            .then((f) => {
+                link.assertPositive(f, jobId);
+                return f;
+            })
+            .catch((e: unknown) => {
+                if (drives) this.noteRun(target.moduleId, jobId, permit?.kind ?? 'run', hex, null, isDs2Error(e) && e.code === 'NEGATIVE_RESPONSE' ? 'rejected' : 'failed', e);
+                throw e;
+            });
+        if (drives) this.noteRun(target.moduleId, jobId, permit?.kind ?? 'run', hex, toHex(frame.payload), 'ok', null);
+        // Read by the job's own code where it ships. A failure to read is not a failure of
+        // the read: the bytes stand either way.
+        let decoded: DecodedRead | null = null;
+        try {
+            decoded = decodeRead(await loadSgbdResults(target.moduleId), jobId, hex, answerFrame(frame.address, frame.controlOrStatus, frame.payload));
+        } catch {
+            decoded = null;
+        }
+        const result: JobRunResult = {
+            jobId,
+            request: hex,
+            response: toHex(frame.payload),
+            payloadLength: frame.payload.length,
+            at: appNow(),
+            error: null,
+            decoded,
+        };
+        this.append('rx', `${frame.payload.length} bytes`);
+        this.update({ lastRun: result });
+        if (measured === 'parked' && this.modeNow === 'vehicle') {
+            try {
+                this.handlers.onObserved?.({
+                    moduleId: target.moduleId,
+                    jobId,
+                    telegram: hex,
+                    response: result.response,
+                    at: new Date(result.at).toISOString(),
+                    ecuIdent: this.target.moduleId === target.moduleId && this.target.address === target.address ? this.identNow?.hex : undefined,
+                });
+            } catch {
+                /* recording a fact must never fail the read it is about */
+            }
+        }
+        return result;
+    }
 
     /**
      * A job that drives something, run as its own SGBD code runs (sgbd/vm `runSgbdJobLive`): the job

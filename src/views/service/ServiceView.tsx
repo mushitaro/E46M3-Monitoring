@@ -2,22 +2,22 @@
 
 import { memo } from 'react';
 import { MousePointerClick } from 'lucide-react';
-import { DscHydraulicsPane } from '@/components/DscHydraulics';
-import { JobDetail, SequenceView } from '@/components/JobDetail';
-import { ServicePane } from '@/components/ServicePane';
-import { DataList, DataRow, LABEL, Pane, Pill, Section, humanName } from '@/components/ui';
-import type { JobRunResult } from '@/hooks/useDs2Link';
-import type { DscHydraulics } from '@/lib/dscHydraulics';
+import { DscHydraulicsPane } from '../../components/DscHydraulics';
+import { JobDetail, SequenceView } from '../../components/JobDetail';
+import { ServicePane } from '../../components/ServicePane';
+import { DataList, DataRow, LABEL, Pane, Pill, Section, humanName } from '../../components/ui';
+import type { JobRunResult } from '../../hooks/useDs2Link';
+import type { DscHydraulics } from '../../lib/dscHydraulics';
 import { jobIndex, type CatalogJob, type EcuProfile } from '@tsunagi/monitoring-engine';
-import { useLang } from '@/lib/i18n';
-import type { JobTextTable } from '@/lib/jobText';
+import { useLang } from '../../lib/i18n';
+import type { JobTextTable } from '../../lib/jobText';
 import { PROCEDURE_OP, PROCEDURE_PREFIX } from '@tsunagi/monitoring-engine';
 import type { Ledger } from '@tsunagi/monitoring-engine';
 import type { Motion } from '@tsunagi/monitoring-engine';
 import type { RunVerdict } from '@tsunagi/monitoring-engine';
-import type { Smg2Procedure, Smg2Workflows } from '@/lib/smg2Workflows';
+import type { Smg2Procedure, Smg2Workflows } from '../../lib/smg2Workflows';
 import { bestTelegram, type TelegramTable } from '@tsunagi/monitoring-engine';
-import { Awaiting } from '@/views/shared/Awaiting';
+import { Awaiting } from '../shared/Awaiting';
 import { JobFrameViz } from './JobFrameViz';
 
 /**

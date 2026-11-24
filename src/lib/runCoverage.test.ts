@@ -31,6 +31,7 @@ function coverage(): CoverageItem[] {
 function report(items: CoverageItem[]): string {
     const by = (s: CoverageItem['status']) => items.filter((i) => i.status === s);
     const fit = new Map(read<EcuIndex>('index.json').modules.map((m) => [m.id, m.fit ?? 'm3']));
+    const inventoryOnly = [...fit.keys()].flatMap(id => read<EcuProfile>(id + '.jobs.json').jobs.filter(job => job.catalogOnly).map(job => id + '.' + job.id));
     const line = (i: CoverageItem) => `| ${i.module} | ${i.job} | ${i.nature} | ${i.who === 'ai' ? 'AI も' : '画面の人'} | ${i.sets ?? ''} | ${(i.why ?? '').replace(/\|/g, '/')} |`;
     const head = '| モジュール | ジョブ | 性質 | 誰が | 値の組 | 理由 |\n|---|---|---|---|---|---|';
     const count = (pred: (i: CoverageItem) => boolean) => items.filter(pred).length;
@@ -45,9 +46,15 @@ function report(items: CoverageItem[]): string {
         `| E46 M3 | ${count((i) => fit.get(i.module) !== 'nonm3' && i.status === 'runs')} | ${count((i) => fit.get(i.module) !== 'nonm3' && i.status === 'external')} | ${count((i) => fit.get(i.module) !== 'nonm3' && i.status === 'open')} |`,
         `| M3 以外の E46 | ${count((i) => fit.get(i.module) === 'nonm3' && i.status === 'runs')} | ${count((i) => fit.get(i.module) === 'nonm3' && i.status === 'external')} | ${count((i) => fit.get(i.module) === 'nonm3' && i.status === 'open')} |`,
         '',
+        `定義は収録済みで実行照合待ちの項目は ${inventoryOnly.length} 件。下表の実行件数には含まない。`,
+        '',
         '## 未完了',
         '',
         by('open').length ? [head, ...by('open').map(line)].join('\n') : 'なし。',
+        '',
+        '## 定義収録・実行照合待ち',
+        '',
+        ...inventoryOnly.map(id => '- ' + id),
         '',
         '## 外の理由で動かないもの',
         '',

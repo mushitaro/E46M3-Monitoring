@@ -28,6 +28,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
+from sgbd.read_stage import DDE3_READS
 from sgbd import classify, model, specs                      # noqa: E402
 from sgbd.model import ROLE_TEXT, ROLE_UNIT, ROLE_VALUE      # noqa: E402
 from translate import authored, leftover_ratio, translate    # noqa: E402
@@ -729,6 +730,8 @@ def build(mid: str, m: dict, addrs: dict) -> dict:
             job["crossFieldConstraints"] = cross
         if cls.note:
             job["note"] = cls.note
+        if mid == "dde30ds0" and job["id"] not in DDE3_READS:
+            job["catalogOnly"] = True
         jobs_out.append(job)
 
     if len(jobs_out) != d.job_count:

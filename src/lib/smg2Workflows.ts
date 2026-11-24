@@ -1,3 +1,5 @@
+import { readEcuData } from '@tsunagi/monitoring-engine';
+
 'use client';
 
 /**
@@ -142,7 +144,7 @@ let cached: Smg2Workflows | null | undefined;
 export async function loadSmg2Workflows(): Promise<Smg2Workflows | null> {
     if (cached !== undefined) return cached;
     try {
-        const res = await fetch('./ecu-data/smg2-workflows.json', { cache: 'no-store' });
+        const res = await readEcuData('smg2-workflows.json');
         cached = res.ok ? ((await res.json()) as Smg2Workflows) : null;
     } catch {
         cached = null;

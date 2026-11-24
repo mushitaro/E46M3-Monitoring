@@ -50,6 +50,8 @@ export function moduleLogData(module: string, address: number): Promise<ModuleDa
             profile?.address === address && profile.id === module && telegrams?.module === module && telegrams.address === address && results?.module === module ? { address, profile, jobs: jobIndex(profile), telegrams, results } : null,
         );
         data.set(key, hit);
+        void hit.then(value => { if (!value && data.get(key) === hit) data.delete(key); },
+            () => { if (data.get(key) === hit) data.delete(key); });
     }
     return hit;
 }
@@ -62,7 +64,7 @@ export function moduleChannels(module: string, d: ModuleData): ModuleChannelInfo
         if (jobId.startsWith('FS_')) continue;
         const job = d.jobs.get(jobId);
         const tel = bestTelegram(d.telegrams, jobId);
-        if (!job || job.class !== 'read' || job.args.length > 0 || !tel || !telegramIsCertain(tel)) continue;
+        if (!job || job.catalogOnly || job.class !== 'read' || job.args.length > 0 || !tel || !telegramIsCertain(tel)) continue;
         // The units are constants in the job's own code (`…_EINH`): read them by running it once on
         // an answer of zeros long enough for every value. Nothing is sent. A job whose code would
         // send another frame than the table's, or a second one, cannot be read from one answer:

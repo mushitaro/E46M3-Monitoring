@@ -311,6 +311,8 @@ export interface JobOperationData {
 }
 
 export interface CatalogJob {
+    /** Present in the source inventory, but no verified execution contract is available. */
+    catalogOnly?: boolean;
     id: string;
     ja: string;
     en: string;

@@ -261,6 +261,11 @@ def all_jobs():
         sg, names = out.get(mid, (tel["sgbd"], []))
         out[mid] = (sg, names + [n for n in drive if n not in names])
         DRIVE[mid] = set(drive) - set(names)
+    # Catalog-only operations have no result program in the application data.
+    if "dde30ds0" in out:
+        from sgbd.read_stage import DDE3_READS
+        sgbd, names = out["dde30ds0"]
+        out["dde30ds0"] = (sgbd, [name for name in names if name in DDE3_READS])
     return out
 
 

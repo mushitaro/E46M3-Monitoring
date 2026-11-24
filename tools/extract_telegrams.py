@@ -29,6 +29,7 @@ import sys
 
 ECU_DIR = os.environ.get("EDIABAS_ECU_DIR", r"C:\EDIABAS\ECU")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from sgbd.read_stage import DDE3_READS
 import paths                                                # noqa: E402
 
 # **アプリが読む場所に直接書く。**
@@ -517,6 +518,8 @@ if __name__ == "__main__":
             kwp = mid in KWP_ON_DS2
             table = kwp_table(mid, prg, addr) if kwp else None
             data = table["jobs"] if kwp else extract(path, addr, arg_counts(prg), mid in FIRST_SEND)
+            if mid == "dde30ds0":
+                data = {name: entries for name, entries in data.items() if name in DDE3_READS}
             dest = os.path.join(OUT, f"{mid}.telegrams.json")
             tmp = dest + ".tmp"
             with open(tmp, "w", encoding="utf-8") as f:

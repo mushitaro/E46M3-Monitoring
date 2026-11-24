@@ -1,3 +1,5 @@
+import { readEcuData } from '@tsunagi/monitoring-engine';
+
 'use client';
 
 /**
@@ -85,7 +87,7 @@ export async function loadDscHydraulics(moduleId: string): Promise<DscHydraulics
     const hit = cache.get(moduleId);
     if (hit !== undefined) return hit;
     try {
-        const res = await fetch(`./ecu-data/${moduleId}.hydraulics.json`, { cache: 'no-store' });
+        const res = await readEcuData(`${moduleId}.hydraulics.json`);
         const doc = res.ok ? ((await res.json()) as DscHydraulics) : null;
         cache.set(moduleId, doc);
         return doc;

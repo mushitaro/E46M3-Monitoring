@@ -149,3 +149,5 @@ const japanese = { lang: 'ja' as const, t: { ...STRINGS.ja, ...shopChrome, modul
 export function JapaneseInstruments({ children }: { children: ReactNode }) {
     return <EmbeddedLanguage.Provider value={japanese}>{children}</EmbeddedLanguage.Provider>;
 }
+
+export { emptyBoard, place as placeBoardParts, setShow as setBoardReadouts, boardLine, partProblem, type Board as InstrumentBoard, type Part as InstrumentPart } from '../../src/lib/probe/board';

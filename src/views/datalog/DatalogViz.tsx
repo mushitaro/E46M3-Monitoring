@@ -85,7 +85,7 @@ export function groupChannels<C extends string>(channels: readonly C[]): C[][] {
   return out;
 }
 
-/** The colour a quantity is drawn in, by its role (globals.css: the datalog series). */
+/** The colour a quantity is drawn in, by its role (the shared WORKS palette). */
 function seriesOf(unit: string, second: boolean): string {
   if (unit === "rpm") return "var(--color-series-primary)";
   if (unit === "°C") return "var(--color-series-heat)";

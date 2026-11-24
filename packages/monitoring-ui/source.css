@@ -1,3 +1,6 @@
+@import "./palette.css";
+@source "../../src/views/probe/BoardLayout.tsx";
+@source "../../src/views/diagnosis/SelectedDiagnosis.tsx";
 @source "../../src/views/probe/StartupList.tsx";
 @source "../../src/views/service/ServiceView.tsx";
 @source "../../src/views/service/JobFrameViz.tsx";
@@ -17,13 +20,3 @@
 @source "../../src/views/shared/Awaiting.tsx";
 @source "../../src/views/shared/CountReadout.tsx";
 @source "../../src/views/shared/FreezeFrame.tsx";
-
-.monitoring-instrument {
-  --color-series-primary: #0A9BDB;
-  --color-series-heat: #F87A7F;
-  --color-series-feedback: #B9A6EE;
-  --color-series-feedback-2: #CBBCF2;
-  --color-series-derived: #9B84E8;
-  --color-series-neutral: #9A9AA8;
-  --color-series-neutral-2: #70707E;
-}

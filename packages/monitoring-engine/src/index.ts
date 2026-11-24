@@ -33,6 +33,7 @@ export * from './investigation/readRecord.ts';
 export * from './investigation/redact.ts';
 export * from './probe/plan.ts';
 export * from './probe/criteria.ts';
+export * from './probe/captureWindows.ts';
 export * from './probe/executor.ts';
 export * from './probe/scan.ts';
 export * from './probe/modules.ts';

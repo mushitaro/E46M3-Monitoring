@@ -7,6 +7,7 @@
   "description": "E46M3 /// MONITORING's diagnosis engine without its screens: the link session over DS2 (send guard, stationary preflight, module identification), the telegram tables and the run gate, the all-module scan and fault reads, the record shapes, the practice car. Read-only to the car but for the one confirmed fault clear. TypeScript, no build step.",
   "exports": {
     ".": "./src/index.ts",
+    "./capture": "./src/probe/captureWindows.ts",
     "./react": "./src/react.ts",
     "./testing/*": "./src/testing/*.ts"
   },

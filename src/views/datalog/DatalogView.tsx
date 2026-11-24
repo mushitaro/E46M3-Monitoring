@@ -34,6 +34,8 @@ import type { LiveSample, ModuleChannelInfo } from '@tsunagi/monitoring-engine';
 import type { DatalogSegment } from '../../lib/datalogRun';
 
 export interface DatalogInstrument {
+  /** The identified non-M DME’s engine speed channel for a capture comparison. */
+  engineRpm?: string;
   selected: ChannelId[];
   recorded: ChannelId[];
   samples: LiveSample[];
@@ -203,7 +205,7 @@ function Segments({ datalog }: { datalog: Datalog }) {
  * whether the recording has passed through its condition since the plan was written (待っている →
  * 取った). The steps PROBE alone runs (fault reads, learned values) say so.
  */
-function PlanSteps({ plan, datalog }: { plan: DatalogPlan; datalog: Datalog }) {
+export function PlanSteps({ plan, datalog }: { plan: DatalogPlan; datalog: Datalog }) {
   const { t } = useLang();
   const startedAt = datalog.segments[0]?.at ?? null;
   // Captures count from when the plan was written: seconds into this run.
@@ -216,8 +218,8 @@ function PlanSteps({ plan, datalog }: { plan: DatalogPlan; datalog: Datalog }) {
           let state: string;
           let windows: Array<{ from: number; to: number; hit: number }> = [];
           if (s.kind === "capture") {
-            windows = captureWindows(datalog.samples, s.condition, s.preS, s.postS);
-            const caught = windows.filter((w) => w.hit >= sinceS).length;
+            windows = captureWindows(datalog.samples, s.condition, s.preS, s.postS, sinceS);
+            const caught = windows.length;
             state = caught > 0 ? t.datalog_planCaught(caught) : t.datalog_planWaiting;
           } else if (s.kind === "sample") {
             state = datalog.running ? t.datalog_planRecording : "—";
@@ -245,8 +247,8 @@ function PlanSteps({ plan, datalog }: { plan: DatalogPlan; datalog: Datalog }) {
 }
 
 /** The engine speed in a sample, from whichever block read it. */
-function rpmOf(values: Partial<Record<string, number | null>>): number | null {
-  for (const c of sameQuantity("3:n")) {
+function rpmOf(values: Partial<Record<string, number | null>>, channels: readonly string[]): number | null {
+  for (const c of channels) {
     const v = values[c];
     if (typeof v === "number") return v;
   }
@@ -272,10 +274,11 @@ function Compare({
     const inWindow = windows.map((w) =>
       datalog.samples.filter((s) => s.time >= w.from && s.time <= w.to),
     );
+    const rpmChannels = datalog.engineRpm ? [datalog.engineRpm] : sameQuantity("3:n");
     const common = datalog.recorded.filter(
       (c) =>
         c !== GEAR_CHANNEL &&
-        MSS54_CHANNELS.get(c)?.field.symbol !== "n" &&
+        !rpmChannels.includes(c) &&
         inWindow.every((xs) => xs.some((s) => typeof s.values[c] === "number")),
     );
     const groups = groupChannels(common).slice(0, 3);
@@ -283,11 +286,11 @@ function Compare({
     let hi = -Infinity;
     for (const xs of inWindow)
       for (const s of xs) {
-        const r = rpmOf(s.values);
+        const r = rpmOf(s.values, rpmChannels);
         if (r !== null) [lo, hi] = [Math.min(lo, r), Math.max(hi, r)];
       }
-    return { inWindow, groups, lo, hi };
-  }, [datalog.samples, datalog.recorded, windows]);
+    return { inWindow, groups, lo, hi, rpmChannels };
+  }, [datalog.samples, datalog.recorded, datalog.engineRpm, windows]);
   if (panels.groups.length === 0 || !Number.isFinite(panels.lo)) return null;
   const span = panels.hi - panels.lo || 1;
   const COLORS = ["var(--color-series-neutral)", "var(--color-series-primary)"];
@@ -325,7 +328,7 @@ function Compare({
               {panels.inWindow.map((xs, k) =>
                 g.map((c, j) => {
                   const pts = xs
-                    .map((s) => [rpmOf(s.values), s.values[c as ChannelId]] as const)
+                    .map((s) => [rpmOf(s.values, panels.rpmChannels), s.values[c as ChannelId]] as const)
                     .filter((p): p is readonly [number, number] => typeof p[0] === "number" && typeof p[1] === "number")
                     .sort((a, b) => a[0] - b[0])
                     .map(([r, v]) => `${((r - panels.lo) / span) * 100},${40 - ((v - min) / vspan) * 40}`)

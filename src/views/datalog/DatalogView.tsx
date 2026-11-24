@@ -30,11 +30,23 @@ import {
   segmentStats,
 } from "../../lib/datalogRun";
 import { Awaiting } from "../../views/shared/Awaiting";
-import type { Datalog as WorksDatalog } from "./useDatalog";
+import type { LiveSample, ModuleChannelInfo } from '@tsunagi/monitoring-engine';
+import type { DatalogSegment } from '../../lib/datalogRun';
 
-export type DatalogInstrument = Pick<WorksDatalog,
-  'costNotice' | 'latest' | 'moduleInfo' | 'moduleInfos' | 'rateHz' | 'recorded' |
-  'running' | 'samples' | 'segments' | 'selected' | 'selectionDrifted' | 'toggle'>;
+export interface DatalogInstrument {
+  selected: ChannelId[];
+  recorded: ChannelId[];
+  samples: LiveSample[];
+  segments: DatalogSegment[];
+  latest: LiveSample['values'];
+  rateHz: number | null;
+  running: boolean;
+  selectionDrifted: boolean;
+  costNotice: string;
+  toggle(id: ChannelId, on: boolean): void;
+  moduleInfo(id: string): ModuleChannelInfo | null;
+  moduleInfos: ModuleChannelInfo[];
+}
 type Datalog = DatalogInstrument;
 
 /** The plan the open CO-WORK record holds, as DATALOG shows it beside a recording. */
@@ -252,7 +264,7 @@ function Compare({
 }: {
   datalog: Datalog;
   windows: Array<{ from: number; to: number }>;
-  look: (id: ChannelId) => ChannelLook;
+  look: (id: string) => ChannelLook;
 }) {
   const { t } = useLang();
   const panels = useMemo(() => {
@@ -299,7 +311,7 @@ function Compare({
         for (const xs of panels.inWindow)
           for (const s of xs)
             for (const c of g) {
-              const v = s.values[c];
+              const v = s.values[c as ChannelId];
               if (typeof v === "number") [min, max] = [Math.min(min, v), Math.max(max, v)];
             }
         const vspan = max - min || 1;
@@ -313,7 +325,7 @@ function Compare({
               {panels.inWindow.map((xs, k) =>
                 g.map((c, j) => {
                   const pts = xs
-                    .map((s) => [rpmOf(s.values), s.values[c]] as const)
+                    .map((s) => [rpmOf(s.values), s.values[c as ChannelId]] as const)
                     .filter((p): p is readonly [number, number] => typeof p[0] === "number" && typeof p[1] === "number")
                     .sort((a, b) => a[0] - b[0])
                     .map(([r, v]) => `${((r - panels.lo) / span) * 100},${40 - ((v - min) / vspan) * 40}`)

@@ -3,17 +3,17 @@
 import { memo, useEffect, useMemo, useState } from 'react';
 import { ScanLine } from 'lucide-react';
 import { formatErrorCode, type ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
-import { DataList, DataRow, LABEL, Section, humanName } from '@/components/ui';
-import { codeText, faultName } from '@/lib/faultText';
-import { isUnnamedLocation, kindsJa } from '@/lib/faultKinds';
-import { useLang } from '@/lib/i18n';
+import { DataList, DataRow, LABEL, Section, humanName } from '../../components/ui';
+import { codeText, faultName } from '../../lib/faultText';
+import { isUnnamedLocation, kindsJa } from '../../lib/faultKinds';
+import { useLang } from '../../lib/i18n';
 import { loadEcuCatalog, mss54Present, presentFromKinds, readCutShort, scanSummary, type EcuIndex, type EcuProfile } from '@tsunagi/monitoring-engine';
 import type { ScanResult, ScanRun } from '@tsunagi/monitoring-engine';
 import type { SgbdFault } from '@tsunagi/monitoring-engine';
 import type { RunBlockKey } from '@tsunagi/monitoring-engine';
-import { Awaiting } from '@/views/shared/Awaiting';
-import { CountReadout } from '@/views/shared/CountReadout';
-import { FreezeFrame } from '@/views/shared/FreezeFrame';
+import { Awaiting } from '../shared/Awaiting';
+import { CountReadout } from '../shared/CountReadout';
+import { FreezeFrame } from '../shared/FreezeFrame';
 
 /** What DIAGNOSIS shows with ALL MODULES chosen: the last scan, and how far one in progress has got. */
 export interface ScanShown {

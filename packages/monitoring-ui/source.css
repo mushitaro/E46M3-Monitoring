@@ -1,1 +1,8 @@
 @source "./index.tsx";
+@source "instruments.tsx";
+@source "../../src/components/LogPopover.tsx";
+@source "../../src/components/ui.tsx";
+@source "../../src/views/diagnosis/ScanView.tsx";
+@source "../../src/views/shared/Awaiting.tsx";
+@source "../../src/views/shared/CountReadout.tsx";
+@source "../../src/views/shared/FreezeFrame.tsx";

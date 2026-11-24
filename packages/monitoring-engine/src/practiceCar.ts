@@ -80,7 +80,9 @@ export const BMS46_IDENTS: Readonly<Record<number, PracticeIdent>> = {
  * FS_LESEN reads them (fault-layouts.json; practiceDme.test.ts holds this table to it). The answer is one
  * byte, then the records; the quick test's first byte (`12 05 04 00`) is their count.
  */
-export const PRACTICE_DME_RECORDS: Readonly<Record<string, { length: number; code: number; frequency: number; present: { at: number; mask: number } }>> = {
+export const PRACTICE_DME_RECORDS: Readonly<Record<string, { length: number; code: number; frequency: number; present: { at: number; mask: number } | null }>> = {
+    ms420ds0: { length: 10, code: 0, frequency: 2, present: { at: 1, mask: 0x40 } },
+    bms43ds0: { length: 19, code: 0, frequency: 2, present: null },
     ms430ds0: { length: 10, code: 0, frequency: 2, present: { at: 1, mask: 0x40 } },
     bms46ds0: { length: 19, code: 0, frequency: 2, present: { at: 1, mask: 0x40 } },
     bms46ds1: { length: 20, code: 0, frequency: 3, present: { at: 1, mask: 0x40 } },

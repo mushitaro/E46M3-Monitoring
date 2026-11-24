@@ -6,7 +6,8 @@
   "exports": {
     ".": "./index.tsx",
     "./source.css": "./source.css",
-    "./tabs": "./tabs.ts"
+    "./tabs": "./tabs.ts",
+    "./instruments": "./instruments.tsx"
   },
   "peerDependencies": {
     "react": "^19",

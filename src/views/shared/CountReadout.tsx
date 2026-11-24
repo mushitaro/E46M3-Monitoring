@@ -8,7 +8,7 @@
  * same as answering the question. The counts it drew are still on screen, as
  * the facet chips above the list, where they filter.
  */
-import { LABEL } from '@/components/ui';
+import { LABEL } from '../../components/ui';
 
 /**
  * A hub-scale numeric readout: one number, one caption.

@@ -26,6 +26,7 @@ import {
     Ds2Link,
     FTDI_VENDOR_ID,
     buildDs2Frame,
+    frameToBytes,
     describeStatus,
     isPositiveResponse,
     WebSerialTransport,
@@ -544,11 +545,8 @@ export class LinkSession {
             this.noteRead(to, hex2(address), 'IDENT', 0x00, new Uint8Array(0), { error: e });
             if (isDs2Error(e) && e.code === 'NOT_SENT') throw e;
         }
-        const f = await this.resolveFitted(link, address, answer);
-        if (f.answer !== null) {
-            this.fitmentNow = new Map(this.fitmentNow).set(address, f);
-            this.update({ fitment: this.fitmentNow });
-        }
+        const { fitted: f } = await this.resolveFitted(link, address, answer);
+        this.rememberIdentity(f);
         this.append(
             f.answer === null ? 'info' : 'rx',
             f.answer === null
@@ -558,10 +556,19 @@ export class LinkSession {
         return f;
     }
 
-    private async resolveFitted(link: Ds2Link, address: number, answer: Uint8Array | null): Promise<Fitted> {
+    private rememberIdentity(fitted: Fitted): void {
+        const current = new Map(this.fitmentNow);
+        if (fitted.answer === null) current.delete(fitted.address);
+        else current.set(fitted.address, fitted);
+        this.fitmentNow = current;
+        this.update({ fitment: current });
+    }
+
+    private async resolveFitted(link: Ds2Link, address: number, answer: Uint8Array | null) {
         const id = this.identity;
         let f = fittedFrom(id.rules, id.modules, address, answer);
-        if (address === DME_ADDRESS && !f.sgbd && id.rules.kwpEngine && this.transport) {
+        let identifiedPayload: Uint8Array | null = null;
+        if (this.link === link && !this.snap.lineLost && address === DME_ADDRESS && !f.sgbd && id.rules.kwpEngine && this.transport) {
             const data = Uint8Array.of(0x1a,0x80);
             const request = toHex(kwpRequest(address,data));
             try {
@@ -572,15 +579,16 @@ export class LinkSession {
                 if (reply.data[0] === 0x5a && reply.data[1] === 0x80 && reply.data.length >= 14) {
                     const key = [...reply.data.slice(10,14)].map(b => b.toString(16).padStart(2,'0')).join('');
                     const name = id.rules.kwpEngine[key];
-                    const entry = name && id.modules.find(m => m.sgbd.replace(/\.prg$/i,'').toUpperCase() === name);
-                    if (entry) f = { address, sgbd: name, moduleId: entry.id, answer: toHex(reply.bytes), identRequest: request };
+                    const entry = id.modules.find(m => m.sgbd.replace(/\.prg$/i, '').toUpperCase() === name);
+                    f = { address, sgbd: name ?? null, moduleId: entry?.id ?? null, answer: toHex(reply.bytes), identRequest: request };
+                    identifiedPayload = reply.data;
                 }
             } catch (e) {
                 this.append('warn', 'D_MOTOR IDENT: ' + (e instanceof Error ? e.message : String(e)));
             }
         }
-        if (this.link !== link) throw new Error('The identified connection has changed.');
-        return f;
+        if (this.link !== link || this.snap.lineLost) throw new Error('The identified connection has changed.');
+        return { fitted: f, identifiedPayload };
     }
 
     /**
@@ -1029,18 +1037,26 @@ export class LinkSession {
             const ident = target.ident ?? refuse(`${target.moduleId}: its SGBD carries no short IDENT frame; nothing is sent.`);
             await this.preflight(link, 'Identity read', requires);
             this.append('tx', `IDENT ${ident.hex} (${ident.source})`);
-            const frame = await this.readFrame(to, target.moduleId, 'IDENT', ident.control, ident.payload);
-            link.assertPositive(frame, 'Identity read');
-            this.append('rx', toHex(frame.payload));
-            // The screen's IDENT is the common one (moduleProtocol takes no other): what it says
-            // about which module this is counts as much as the scan's.
-            if (isCommonIdent(buildDs2Frame(to.address, ident.control, ident.payload))) {
-                const answer = Uint8Array.from([frame.address, frame.length, frame.controlOrStatus, ...frame.payload, frame.checksum]);
-                const f = await this.resolveFitted(link, to.address, answer);
-                this.fitmentNow = new Map(this.fitmentNow).set(to.address, f);
-                this.update({ fitment: this.fitmentNow });
+            const common = isCommonIdent(buildDs2Frame(to.address, ident.control, ident.payload));
+            const canAskEngineGroup = common && to.address === DME_ADDRESS && this.identity.identOk.has(to.address) && !!this.identity.rules.kwpEngine;
+            let frame: Ds2Frame | null = null;
+            let timeout: unknown;
+            try {
+                frame = await this.readFrame(to, target.moduleId, 'IDENT', ident.control, ident.payload);
+            } catch (error) {
+                if (!canAskEngineGroup || !isDs2Error(error) || error.code !== 'READ_TIMEOUT') throw error;
+                timeout = error;
             }
-            const value = { hex: toHex(frame.payload), length: frame.payload.length };
+            let payload = frame?.payload;
+            if (common) {
+                const result = await this.resolveFitted(link, to.address, frame && frameToBytes(frame));
+                this.rememberIdentity(result.fitted);
+                if (result.identifiedPayload) payload = result.identifiedPayload;
+                else if (frame) link.assertPositive(frame, 'Identity read');
+            } else if (frame) link.assertPositive(frame, 'Identity read');
+            if (!payload) throw timeout;
+            this.append('rx', toHex(payload));
+            const value = { hex: toHex(payload), length: payload.length };
             this.identNow = value;
             this.update({ ident: value });
             return value;
@@ -1585,8 +1601,9 @@ export class LinkSession {
             let gearAt = -Infinity;
             try {
                 // The blocks are the MSS54's: only to a DME that has said it is one.
-                await this.clearFor(to.address, this.target.moduleId);
+                if (tuned.blocks.length) await this.clearFor(to.address, this.target.moduleId);
                 await clearReads(moduleReads);
+                if (!tuned.blocks.length && !moduleReads.length) refuse('No selected measurement belongs to an identified module.');
                 while (this.polling && this.link) {
                     // New channels, asked for while the run goes on: from this sample on.
                     const tune = this.logTune;
@@ -1597,6 +1614,7 @@ export class LinkSession {
                         await clearReads(reads);
                         moduleReads = reads;
                         tuned = logBlocks(tune.channels, mss54 && moduleReads.length > 0);
+                        if (!tuned.blocks.length && !moduleReads.length) refuse('No selected measurement belongs to an identified module.');
                         this.append('info', `Recording now ${tune.channels.length} channel(s) across ${tuned.blocks.length} block(s)${moduleReads.length ? ` and ${moduleReads.length} module read(s)` : ''}; the run goes on.`);
                         options?.onRetune?.({ time: elapsed(), channels: [...tune.channels], blocks: tuned.blocks.length,
                             moduleChannels: reads.flatMap(read => [...read.wanted].map(result => `${read.module}:${read.job.id}:${result}`)) });
@@ -1727,7 +1745,7 @@ export class LinkSession {
     ): boolean => {
         if (!this.polling || !this.logging) return false;
         const hasModules = Boolean(modules?.reads.length);
-        if (this.target.decoder !== 'mss54' && channels.length) return false;
+        if (channels.length && (this.target.decoder !== 'mss54' || !isM3(this.fitmentNow))) return false;
         if (!planBlockReads(channels).blocks.length && !hasModules) return false;
         this.logTune = { channels: [...channels], reads: [...(modules?.reads ?? [])], ledger: modules?.ledger ?? null };
         return true;

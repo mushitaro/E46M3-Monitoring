@@ -188,6 +188,8 @@ const GEAR_EVERY_S = 1;
 
 /** A recording's channels changed while it ran: from `time` (its seconds) on, these, at `blocks` round trips a sample. */
 export interface LogRetuned {
+    /** Module channels actually installed at this sample boundary. */
+    moduleChannels: string[];
     time: number;
     channels: ChannelId[];
     blocks: number;
@@ -1508,7 +1510,8 @@ export class LinkSession {
                         moduleReads = reads;
                         tuned = logBlocks(tune.channels, mss54 && moduleReads.length > 0);
                         this.append('info', `Recording now ${tune.channels.length} channel(s) across ${tuned.blocks.length} block(s)${moduleReads.length ? ` and ${moduleReads.length} module read(s)` : ''}; the run goes on.`);
-                        options?.onRetune?.({ time: elapsed(), channels: [...tune.channels], blocks: tuned.blocks.length });
+                        options?.onRetune?.({ time: elapsed(), channels: [...tune.channels], blocks: tuned.blocks.length,
+                            moduleChannels: reads.flatMap(read => [...read.wanted].map(result => `${read.module}:${read.job.id}:${result}`)) });
                     }
                     const { blocks, wanted } = tuned;
                     const values: Partial<Record<ChannelId, number | null>> = {};

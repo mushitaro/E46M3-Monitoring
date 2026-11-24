@@ -48,3 +48,5 @@ export * from './link/session.ts';
 export * from './link/notSent.ts';
 export * from './intake/intakeCheck.ts';
 export * from './intake/build.ts';
+
+export type { LogRetuned } from './link/session.ts';

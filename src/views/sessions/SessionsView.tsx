@@ -15,8 +15,7 @@ import { CountReadout } from '@/views/shared/CountReadout';
 import { StatusButton } from './StatusButton';
 import type { Sessions } from './useSessions';
 
-/** Rows of a saved datalog the viewer draws. The CSV keeps every row; the screen does not need to. */
-const VIEWER_ROWS = 200;
+import { SavedValues } from './SavedValues';
 
 const NOTICE_TONE = {
     info: 'text-slate-400',
@@ -371,40 +370,7 @@ function SessionViewer({
                 )}
             </Section>
 
-            {csv && session.datalog && (
-                <Section
-                    title={t.viewer_datalog}
-                    count={session.datalog.samples}
-                    note={t.viewer_rows(Math.min(VIEWER_ROWS, csv.rows.length), csv.rows.length)}
-                >
-                    {/* Scrolls sideways only: the pane already scrolls down, and a second vertical
-                        scroller inside it would trap the wheel. */}
-                    <div className="overflow-x-auto">
-                        <table className="font-mono text-[11px] tabular-nums text-slate-300">
-                            <thead>
-                                <tr className="text-left text-slate-500">
-                                    {csv.header.map((h) => (
-                                        <th key={h} className="whitespace-nowrap px-2 py-1 font-normal">
-                                            {h}
-                                        </th>
-                                    ))}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {csv.rows.slice(0, VIEWER_ROWS).map((r, i) => (
-                                    <tr key={i} className="border-t border-slate-800/50">
-                                        {r.map((c, j) => (
-                                            <td key={j} className="whitespace-nowrap px-2 py-0.5 text-right">
-                                                {c}
-                                            </td>
-                                        ))}
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </Section>
-            )}
+            {csv && session.datalog && <SavedValues header={csv.header} rows={csv.rows} count={session.datalog.samples} total={csv.rows.length} />}
 
             <Section title={t.viewer_failures} count={session.failures.length}>
                 {session.failures.length === 0 ? (

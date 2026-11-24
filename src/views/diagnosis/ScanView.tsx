@@ -114,7 +114,7 @@ function useProfiles(run: ScanRun | null, mss54: EcuProfile | null): ReadonlyMap
     const ids = useMemo(() => {
         const out = new Set<string>();
         for (const r of run?.results ?? []) {
-            const id = r.sgbdFaults?.module ?? (r.faults ? (r.variant?.moduleId ?? (r.modules.length === 1 ? r.modules[0] : null)) : null);
+            const id = r.decoded && (r.variant?.moduleId === 'mss54' || r.modules.length === 1 && r.modules[0] === 'mss54') ? 'mss54' : r.sgbdFaults?.module ?? (r.faults ? (r.variant?.moduleId ?? (r.modules.length === 1 ? r.modules[0] : null)) : null);
             if (id) out.add(id);
         }
         return [...out].sort().join(',');

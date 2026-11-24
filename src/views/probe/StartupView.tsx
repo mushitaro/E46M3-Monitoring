@@ -1,9 +1,9 @@
 'use client';
 
-import { DataList, DataRow, Pane, Section, humanName } from '@/components/ui';
-import { useLang } from '@/lib/i18n';
-import { diffForms, type Form } from '@/lib/probe/items';
-import type { NotebookEntry } from '@/lib/notebook/rules';
+import { DataList, DataRow, Pane, Section, humanName } from '../../components/ui';
+import { useLang } from '../../lib/i18n';
+import { diffForms, type Form } from '../../lib/probe/items';
+import type { NotebookEntry } from '../../lib/notebook/rules';
 import type { ProbeSessions } from './useProbeSessions';
 
 const when = (ms: number) => new Date(ms).toLocaleString();
@@ -17,7 +17,9 @@ const day = (ms: number) => new Date(ms).toLocaleDateString();
  * the board shows it, PROBE runs it, and the assistant's calls that name no session mean it. NEW
  * SESSION and NEXT are in the sub-action row under the hub.
  */
-export function StartupView({ s }: { s: ProbeSessions }) {
+type StartupRow = Pick<ProbeSessions['sessions'][number], 'id' | 'words' | 'v' | 'runs' | 'startedAt' | 'follows' | 'purpose'> & { standing: boolean | null };
+
+export function StartupView({ s }: { s: { sessions: readonly StartupRow[]; current: string | null; open: (id: string) => void } }) {
     const { t } = useLang();
     const startedOf = new Map(s.sessions.map((x) => [x.id, x.startedAt]));
     return (
@@ -35,7 +37,7 @@ export function StartupView({ s }: { s: ProbeSessions }) {
                                 : [
                                       when(x.startedAt),
                                       follows !== undefined ? t.startup_follows(day(follows)) : null,
-                                      x.words !== null && !x.standing ? t.startup_ended : null,
+                                      x.words !== null && x.standing === false ? t.startup_ended : null,
                                       x.purpose,
                                   ]
                                       .filter(Boolean)

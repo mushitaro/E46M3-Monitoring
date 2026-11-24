@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react';
 import { EmbeddedLanguage, STRINGS } from '../../src/lib/i18n';
 
+export { ActuatorViz } from '../../src/views/actuator/ActuatorViz';
 export { ActuatorPanel, type ActuatorRequest } from '../../src/views/actuator/ActuatorView';
 export { partTable } from '../../src/lib/partName';
 export { AdaptationView, AdaptationViz } from '../../src/views/adaptation/AdaptationView';

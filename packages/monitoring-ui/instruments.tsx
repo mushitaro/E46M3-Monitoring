@@ -19,7 +19,7 @@ export { CreditsDialog } from '../../src/components/CreditsDialog';
 export { useInstallPrompt } from '../../src/hooks/useInstallPrompt';
 export { DialogFrame } from '../../src/components/DialogFrame';
 export { ConfirmDialog } from '../../src/components/ConfirmDialog';
-export { SessionsView, type MemoryViewState } from '../../src/views/sessions/SessionsView';
+export { SessionsView, SessionsViz, type MemoryViewState } from '../../src/views/sessions/SessionsView';
 export { useJournal } from '../../src/views/sessions/useJournal';
 export { sessionStore } from '../../src/lib/sync/sessionStore';
 export { describeSave, describeSync, savePhase, syncPhase } from '../../src/lib/sync/status';

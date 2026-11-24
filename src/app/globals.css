@@ -17,6 +17,7 @@
    --------------------------------------------------------------------------- */
 
 @import "tailwindcss";
+@import "@tsunagi/monitoring-ui/source.css";
 /* Supplies animate-in / fade-in / zoom-in-95. Without it Tailwind v4 emits no
    rule at all for those class names, so every popover and modal in the app was
    materialising instantly at full opacity — the markup looked right in review

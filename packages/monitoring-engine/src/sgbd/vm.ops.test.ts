@@ -180,3 +180,61 @@ describe('a table row found by number (tabseeku)', () => {
         expect(text(seek(5))).toBe('unknown');
     });
 });
+
+describe('add and subtract with the carry (addc 0x49, subc 0x4a)', () => {
+    it('adds the carry the last add left, and sets it again on overflow', () => {
+        const r = run([
+            // adds L0, L1 with 0xffffffff + 1: zero, carry set; then addc 5 + 2 + carry
+            ...movL(L0, 0xffff_ffff), ...movL(L1, 1), ...op(0x04, L0, L1),
+            ...movL(L0, 5), ...movL(L1, 2), ...op(0x49, L0, L1), ...ergd('WITH_CARRY', L0),
+            // that addc did not overflow: the next one adds no carry
+            ...movL(L0, 5), ...movL(L1, 2), ...op(0x49, L0, L1), ...ergd('WITHOUT', L0),
+            ...eoj,
+        ]);
+        expect(r.stopped).toBeNull();
+        expect(value(r, 'WITH_CARRY')).toBe(8);
+        expect(value(r, 'WITHOUT')).toBe(7);
+    });
+
+    it('subtracts the borrow the last subtraction left', () => {
+        const r = run([
+            // subb 1 - 2 borrows; subc 10 - 3 - borrow
+            ...movL(L0, 1), ...movL(L1, 2), ...op(0x03, L0, L1),
+            ...movL(L0, 10), ...movL(L1, 3), ...op(0x4a, L0, L1), ...ergd('WITH_BORROW', L0),
+            ...movL(L0, 10), ...movL(L1, 3), ...op(0x4a, L0, L1), ...ergd('WITHOUT', L0),
+            ...eoj,
+        ]);
+        expect(r.stopped).toBeNull();
+        expect(value(r, 'WITH_BORROW')).toBe(6);
+        expect(value(r, 'WITHOUT')).toBe(7);
+    });
+});
+
+describe('after the answer: a string that holds nothing, and one that is short', () => {
+    // move S1, {12 05 0b 03} ; xsend S2, S1 ; then the tail reads
+    const S3 = 0x1f;
+    const job = (tail: number[]) => [0x00, 0x18, S1, ...str([0x12, 0x05, 0x0b, 0x03]), 0x2a, 0x11, S2, S1, ...tail, ...eoj];
+    const sent = Uint8Array.from([0x12, 0x05, 0x0b, 0x03, 0x1f]);
+    const answer = Uint8Array.from([0x12, 0x05, 0xa0, 0x2a, 0x9d]);
+
+    it('reads a working string the job never filled as zeros, as EdiabasLib does (BMS46, MS42 learned values)', () => {
+        // clear S3 ; move L0, S3[#0] ; ergd "Z", L0
+        const r = run(job([0x01, 0x10, S3, 0x00, 0x49, L0, S3, 0, 0, ...ergd('Z', L0)]), { sent, answer });
+        expect(r.stopped).toBeNull();
+        expect(value(r, 'Z')).toBe(0);
+    });
+
+    it('stops on an empty string cut from the answer, rather than read the short answer as zeros', () => {
+        // move S3, S2[#5]{0} — nothing, cut from the answer ; move L0, S3[#0] ; ergd "Z", L0
+        const r = run(job([0x00, 0x1c, S3, S2, 5, 0, 0, 0, 0x00, 0x49, L0, S3, 0, 0, ...ergd('Z', L0)]), { sent, answer });
+        expect(r.stopped?.reason).toBe('read past the end of a string');
+        expect(r.results.map((x) => x.name)).not.toContain('Z');
+    });
+
+    it('still stops at a read past the end of the answer, rather than read zeros as values', () => {
+        // move L0, S2[#4] — the answer has five bytes
+        const r = run(job([0x00, 0x49, L0, S2, 4, 0, ...ergd('PAST', L0)]), { sent, answer });
+        expect(r.stopped?.reason).toBe('read past the end of a string');
+        expect(r.results.map((x) => x.name)).not.toContain('PAST');
+    });
+});

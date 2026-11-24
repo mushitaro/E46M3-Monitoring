@@ -63,10 +63,16 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('the speed, read by the module’s own SGBD 
         expect(speedFromAnswer(s, t, answer(0x12, [0, 0, 0, 0, 0, 0, 37, 0]))).toBe(37);
     });
 
-    it('MS420DS0, BMS46DS0, BMS46DS1: their own job stops before the value, so nothing is read yet', () => {
-        for (const m of ['ms420ds0', 'bms46ds0', 'bms46ds1']) {
+    it('MS420DS0, BMS46DS0, BMS46DS1: their own job reads the speed now that an empty working string reads as zeros', () => {
+        // They stopped before the value at `comp S1[0]` on an empty S4, which EdiabasLib reads as zero.
+        // The source stays closed (below): which answer length the DME really gives is a car's to say —
+        // one byte short, these jobs read the frame's checksum where the value is (their code checks no length).
+        for (const [m, at] of [['ms420ds0', 2], ['bms46ds0', 8], ['bms46ds1', 8]] as const) {
             const s = source(m, m);
-            for (const n of [8, 16, 32]) expect(speedFromAnswer(s, table(m), answer(0x12, new Array(n).fill(0))), `${m} ${n}`).toBeNull();
+            const data = new Array(16).fill(0);
+            expect(speedFromAnswer(s, table(m), answer(0x12, data)), `${m} 0`).toBe(0);
+            data[at] = 37;
+            expect(speedFromAnswer(s, table(m), answer(0x12, data)), `${m} 37`).toBe(37);
         }
     });
 

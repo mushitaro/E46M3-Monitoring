@@ -115,7 +115,7 @@ public repo を clone した人が、**何がどれだけ欠けているか**を
 | `sgbd/gen_job_frames.py` | #1 の全モジュール（E46 M3・M3 以外の E46・DSC MK60）の、動かすジョブ（作動テスト・検査・模擬・リセット・消去・初期化ほか。書き込みは除く）を、値を取らないものも含めて、値の組ごと（選択肢は全部、数は型の端まで散らした値）に `SgbdDump --exec … --string` で EdiabasLib の模擬に走らせ、送った電文と与えた答えを順に記録する（答えは使い捨ての `.sim`。IDENT は `variants.oracle.json` の答え、ほかは肯定の空の答え、KWP は SID+0x40）。アプリが同じジョブのコードで組む電文（二通以上なら、同じ答えを返して順に）と一致したものだけを実車に開く（`sgbd/agreedFrame.ts`）。Linux でも動く：EdiabasLib のソースを net8.0 で SgbdDump と一緒に組み、`SGBD_DUMP_EXE`・`EDIABAS_ECU_PATH`（データ repo の `sgbd/prg`）・`EDIABAS_SIM_PATH`（`sgbd/sim`）を渡す。全部回したあと `--recheck` | `public/ecu-data/job-frames.oracle.json` |
 | `gen_smg2_workflows.py` | `SMG2.json` | `public/ecu-data/smg2-workflows.json` |
 | `gen_dsc_hydraulics.py` | `DSC_E46.json` ＋ `dsc_e46.telegrams.json` | `public/ecu-data/dsc_e46.hydraulics.json` |
-| `gen_sgbd_results.py` | #1（`.prg` のジョブのコード）＋ `<SGBD>.json` の `tables` | `public/ecu-data/<id>.results.json`（SMG II の 6 ジョブと、34 モジュールの故障読取 FS_LESEN、M3 でない DME 5 つの車速 STATUS_GESCHWINDIGKEIT。エンジンの `packages/monitoring-engine/src/sgbd/vm.ts` が答えを読むのに走らせる） |
+| `gen_sgbd_results.py` | #1（`.prg` のジョブのコード）＋ `<SGBD>.json` の `tables` | `public/ecu-data/<id>.results.json`（SMG II の 6 ジョブと、34 モジュールの故障読取 FS_LESEN、M3 でない DME 5 つの車速 STATUS_GESCHWINDIGKEIT と学習値の読取（名前が学習値を言う引数の無い STATUS_…、`sgbd/adaptationReads.ts` と同じ規則）。エンジンの `packages/monitoring-engine/src/sgbd/vm.ts` が答えを読むのに走らせる） |
 | `jobtext/gen_jobtext.py` | `<id>.jobs.json` ＋ `cautions.py` | `public/ecu-data/<id>.jobtext.json` |
 | `gen_live_blocks.py` | **#4** ＋ `MSS54DS0.json` ＋ #1 ＋ `terms/live_channels.py` | `packages/ds2-mss54/src/liveValueBlocks.generated.ts` |
 | `gen_adaptation_blocks.py` | **#4** ＋ `MSS54DS0.json` | `packages/ds2-mss54/src/adaptationBlocks.generated.ts` |

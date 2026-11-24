@@ -10,6 +10,7 @@ import { normCode } from '@/lib/faultCode';
 import { useLang } from '@/lib/i18n';
 import { currentPlan } from '@/lib/notebook/rules';
 import { BOARD_LIMITS, defaultReadouts, type Part, type PartKind, type Readout } from '@/lib/probe/board';
+import { ComparePanel } from './ComparePanel';
 import { channelStats, compareRuns, type Comparison } from '@/lib/probe/compare';
 import { graphOf, readoutsOf, type GraphTone } from '@/lib/probe/graph';
 import type { ProbeLive, StoredRun } from '@/lib/probe/runStore';
@@ -258,67 +259,9 @@ function PartBody({ part: p, s, data }: { part: Part; s: ProbeSessions; data: Bo
         case 'compare': {
             const c = compareOf(s, p);
             if (!c) return <Empty>{s.runs.length === 0 ? t.board_noRun : t.board_noCompare}</Empty>;
-            return (
-                <div className="space-y-2">
-                    <p className="font-mono text-[11px] text-slate-500">
-                        {t.compare_runs(
-                            `${when(c.a.startedAt)} ${runLabel({ record: s.current ?? c.a.record, n: c.a.n, planV: c.a.planV, startedAt: c.a.startedAt })}`,
-                            `${when(c.b.startedAt)} ${runLabel({ record: s.current ?? c.b.record, n: c.b.n, planV: c.b.planV, startedAt: c.b.startedAt })}`,
-                        )}
-                        {' · '}
-                        {t.compare_common(c.channels.length + c.judges.length)}
-                    </p>
-                    <DataList>
-                        {c.channels.map((x) => (
-                            <DataRow
-                                key={x.channel}
-                                name={humanName('')}
-                                ident={x.channel}
-                                trailing={
-                                    <span className="shrink-0 font-mono text-[11px] tabular-nums text-slate-300">
-                                        {num(x.a?.mean)} → {num(x.b?.mean)}
-                                        <span className={`ml-2 ${x.delta ? 'text-amber-400' : 'text-slate-600'}`}>
-                                            {x.delta !== null && x.delta > 0 ? '+' : ''}
-                                            {num(x.delta)}
-                                        </span>
-                                    </span>
-                                }
-                            />
-                        ))}
-                        {c.judges.map((j) => (
-                            <DataRow
-                                key={`j-${j.id}`}
-                                name={humanName('')}
-                                ident={j.id}
-                                trailing={
-                                    <span className="shrink-0 font-mono text-[11px] tabular-nums text-slate-300">
-                                        {num(j.a?.value)} → {num(j.b?.value)}
-                                        <span className="ml-2">{j.b?.pass === null || j.b === null ? '—' : j.b.pass ? t.pass : t.fail}</span>
-                                    </span>
-                                }
-                            />
-                        ))}
-                        {c.items?.added.map((i) => (
-                            <DataRow
-                                key={`+${i.key}`}
-                                leading={<Pill tone="ok">{t.item_added}</Pill>}
-                                name={humanName('')}
-                                ident={i.label}
-                                trailing={<span className="shrink-0 text-[11px] text-slate-500">{t.item_since(c.items!.to)}</span>}
-                            />
-                        ))}
-                        {c.items?.removed.map((i) => (
-                            <DataRow
-                                key={`-${i.key}`}
-                                leading={<Pill>{t.item_removed}</Pill>}
-                                name={humanName('')}
-                                ident={i.label}
-                                trailing={<span className="shrink-0 text-[11px] text-slate-500">{t.item_until(c.items!.to)}</span>}
-                            />
-                        ))}
-                    </DataList>
-                </div>
-            );
+            return <ComparePanel values={c}
+                before={`${when(c.a.startedAt)} ${runLabel({ record: s.current ?? c.a.record, n: c.a.n, planV: c.a.planV, startedAt: c.a.startedAt })}`}
+                after={`${when(c.b.startedAt)} ${runLabel({ record: s.current ?? c.b.record, n: c.b.n, planV: c.b.planV, startedAt: c.b.startedAt })}`} />;
         }
 
         case 'values': {

@@ -6,6 +6,7 @@ import { EmbeddedLanguage, STRINGS } from '../../src/lib/i18n';
 export { ActuatorPanel, type ActuatorRequest } from '../../src/views/actuator/ActuatorView';
 export { partTable } from '../../src/lib/partName';
 export { AdaptationView, AdaptationViz } from '../../src/views/adaptation/AdaptationView';
+export { ComparePanel, type ComparedValues } from '../../src/views/probe/ComparePanel';
 export { BoardLayout, type BoardSection } from '../../src/views/probe/BoardLayout';
 export { StartupView } from '../../src/views/probe/StartupList';
 export { ServiceView, ServiceViz } from '../../src/views/service/ServiceView';

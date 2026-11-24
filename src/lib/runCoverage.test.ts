@@ -2,6 +2,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { EcuIndex, EcuProfile, JobFramesOracle, SgbdResultsTable, TelegramTable } from '@tsunagi/monitoring-engine';
+import { hasFaultRead, hasIdent, moduleChannels, moduleProtocol, withAgreedFrames } from '@tsunagi/monitoring-engine';
+import { MSS54_CHANNELS } from '@tsunagi/ds2-mss54';
+import { isOn } from './jobSurface';
 import { runCoverage, type CoverageItem } from './runCoverage';
 
 /**
@@ -15,10 +18,11 @@ const DATA = path.resolve(import.meta.dirname, '..', '..', 'public', 'ecu-data')
 const HAVE = existsSync(path.join(DATA, 'job-frames.oracle.json'));
 const read = <T,>(f: string) => JSON.parse(readFileSync(path.join(DATA, f), 'utf-8')) as T;
 
+const opt = <T,>(f: string): T | null => existsSync(path.join(DATA, f)) ? read<T>(f) : null;
+
 function coverage(): CoverageItem[] {
     const index = read<EcuIndex>('index.json');
     const ids = index.modules.map((m) => m.id);
-    const opt = <T,>(f: string): T | null => (existsSync(path.join(DATA, f)) ? read<T>(f) : null);
     return runCoverage({
         index,
         profiles: new Map(ids.map((id) => [id, read<EcuProfile>(`${id}.jobs.json`)])),
@@ -26,6 +30,32 @@ function coverage(): CoverageItem[] {
         results: new Map(ids.map((id) => [id, opt<SgbdResultsTable>(`${id}.results.json`)])),
         oracle: read<JobFramesOracle>('job-frames.oracle.json'),
     });
+}
+
+function moduleInventory(items: CoverageItem[]): string {
+    const lines = [
+        '# E46 診断機器別の収録範囲', '',
+        '識別と故障は電文・読取定義の有無。測定は画面が列挙できる数値項目数。サービスと作動は一覧の分類で、確認・実行・停止の実車試験は別途必要。', '',
+        '| 機器 | 系統 | 識別 | 故障読取 | 測定項目 | サービス | 作動 | 読み取り以外で実行条件が揃うジョブ | 定義のみ |',
+        '|---|---|---|---|---:|---:|---:|---:|---:|',
+    ];
+    const oracle = read<JobFramesOracle>('job-frames.oracle.json');
+    for (const { id, address, group } of read<EcuIndex>('index.json').modules) {
+        const profile = read<EcuProfile>(id + '.jobs.json');
+        const raw = opt<TelegramTable>(id + '.telegrams.json');
+        const results = opt<SgbdResultsTable>(id + '.results.json');
+        const telegrams = raw && withAgreedFrames(raw, oracle, results);
+        const protocol = moduleProtocol(id, address, telegrams);
+        const data = results && { address, profile, telegrams, results, jobs: new Map(profile.jobs.map(j => [j.id, j])) };
+        const channels = id === 'mss54' ? MSS54_CHANNELS.size : data ? moduleChannels(id, data).length : 0;
+        const service = profile.jobs.filter(isOn('service')).length;
+        const actuator = profile.jobs.filter(isOn('actuator')).length;
+        const eligible = items.filter(i => i.module === id && i.status === 'runs').length;
+        const faultJob = results?.jobs.FS_LESEN && !profile.jobs.find(j => j.id === 'FS_LESEN')?.catalogOnly;
+        const inventory = profile.jobs.filter(j => j.catalogOnly).length;
+        lines.push(`| ${id} | ${group} | ${hasIdent(protocol) ? 'あり' : '—'} | ${hasFaultRead(protocol) || faultJob ? 'あり' : '—'} | ${channels} | ${service} | ${actuator} | ${eligible} | ${inventory} |`);
+    }
+    return lines.join('\n') + '\n';
 }
 
 function report(items: CoverageItem[]): string {
@@ -77,6 +107,7 @@ describe.skipIf(!HAVE)('every job the owner’s table opens runs (operator, 2026
         const dir = path.resolve(import.meta.dirname, '..', '..', 'run-coverage');
         mkdirSync(dir, { recursive: true });
         writeFileSync(path.join(dir, 'RUN-COVERAGE.md'), report(items));
+        writeFileSync(path.join(dir, 'E46-MODULES.md'), moduleInventory(items));
     }
     // The counts, always: what CI shows on every run.
     if (HAVE) console.log(report(items).split('## 未完了')[0]);

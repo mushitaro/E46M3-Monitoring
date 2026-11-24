@@ -21,6 +21,7 @@
 
 import {
     Ds2Address,
+    Ds2Control,
     Ds2Error,
     Ds2Link,
     FTDI_VENDOR_ID,
@@ -68,14 +69,16 @@ import { loadEcuCatalog } from '../ecuCatalog.ts';
 import { bestTelegram, loadTelegrams } from '../telegrams.ts';
 import { PracticePort, setPracticeAnswers } from '../practiceEcu.ts';
 import { loadJobFramesOracle } from '../sgbd/agreedFrame.ts';
-import { practiceCar } from '../practiceCar.ts';
+import { practiceCar, practiceDmeOf } from '../practiceCar.ts';
+import { ADAPTATION_READ } from '../sgbd/adaptationReads.ts';
+import { speedSourcesFor, speedFromAnswer } from '../speedSources.ts';
 import { runProbe, type ProbeDeps, type ProbePlan, type ProbeRun } from '../probe/executor.ts';
 import { modulesOf } from '../probe/plan.ts';
 import { runScan, type ScanRun, type ScanTarget } from '../probe/scan.ts';
 import { CLUSTER_VIN_UNVERIFIED } from '../clusterVin.ts';
 import { EMPTY_IDENTITY, loadIdentity, type Identity } from '../identity.ts';
 import { NO_FAULT_LAYOUTS, decodeByLayout, loadFaultLayouts, type FaultLayouts } from '../faultLayouts.ts';
-import { answerFrame, decodeFaultRead, decodeRead, loadSgbdResults, type DecodedRead, type SgbdFaultRead } from '../sgbd/results.ts';
+import { answerFrame, decodeFaultRead, decodeRead, telemetryValues, loadSgbdResults, type DecodedRead, type SgbdFaultRead } from '../sgbd/results.ts';
 import { hasFaultJob, readFaultsByJob, type JobFaultRead } from '../sgbd/faultRead.ts';
 import { decisionFor as rpmPolicy } from '../policy.ts';
 import type { CatalogJob as RpmJob } from '../ecuCatalog.ts';
@@ -622,7 +625,10 @@ export class LinkSession {
      */
     private noteVehicle(values: LiveValues): VehicleState | null {
         const next = vehicleStateFrom(values, appNow(), this.vehicleNow);
-        if (!next) return null;
+        return next ? this.noteVehicleState(next) : null;
+    }
+
+    private noteVehicleState(next: VehicleState): VehicleState {
         this.vehicleNow = next;
         this.update({ vehicleState: next, motion: motionOf(next, next.at) });
         if (this.motionTimer) clearTimeout(this.motionTimer);
@@ -645,7 +651,22 @@ export class LinkSession {
      */
     private async measureMotion(link: Ds2Link): Promise<Motion> {
         // Block 19 has MSS54 semantics. A different or unidentified DME cannot attest stationary this way.
-        if (this.fitmentNow.has(DME_ADDRESS) && !isM3(this.fitmentNow)) return 'unknown';
+        if (this.fitmentNow.has(DME_ADDRESS) && !isM3(this.fitmentNow)) {
+            const module = this.fitmentNow.get(DME_ADDRESS)?.moduleId;
+            if (!module) return 'unknown';
+            const source = speedSourcesFor(module, null).find(s => s.moduleId === module);
+            if (!source || (!source.usable && this.modeNow !== 'practice')) return 'unknown';
+            const table = await loadSgbdResults(module);
+            if (!source.usable && table?.practiceLearned?.module !== module) return 'unknown';
+            const request = telegramBytes(source.frame);
+            if (!request || request[0] !== DME_ADDRESS || request[2] !== Ds2Control.READ_IO_STATUS) return 'unknown';
+            const frame = await this.readFrame(link.to(DME), module, source.job, request[2], request.slice(3, -1));
+            if (!isPositiveResponse(frame)) return 'unknown';
+            const speed = speedFromAnswer(source, table, answerFrame(frame.address, frame.controlOrStatus, frame.payload));
+            if (speed === null || this.link !== link || this.fitmentNow.get(DME_ADDRESS)?.moduleId !== module) return 'unknown';
+            const state = this.noteVehicleState({ speedKmh: speed, speedCanKmh: null, rpm: null, voltageV: null, at: appNow() });
+            return motionOf(state, state.at);
+        }
         // With no cached identity, readFrame identifies the DME on this connection before transmitting.
         const block = blockBySelection(SPEED_BLOCK);
         if (!block) return 'unknown';
@@ -838,7 +859,11 @@ export class LinkSession {
                           transport: new WebSerialTransport({
                               // The practice car: the DME, the module asked for, and every module such a
                               // car carries (practiceCar), so a scan finds what a car would.
-                              requestPort: async () => new PracticePort([address, ...practiceCar.fitted]),
+                              requestPort: async () => {
+                                  const dme = practiceDmeOf(practiceCar.idents[DME_ADDRESS]);
+                                  const table = dme ? await loadSgbdResults(dme) : null;
+                                  return new PracticePort([address, ...practiceCar.fitted], table?.practiceLearned);
+                              },
                           }),
                       }
                     : permittedOnly
@@ -1203,7 +1228,10 @@ export class LinkSession {
             const result = scan?.results.find(r => Number(r.address) === address);
             const fitted = this.fitmentNow.get(address)?.moduleId ?? result?.variant?.moduleId;
             const single = result?.modules.length === 1 && result.modules[0] === moduleId;
-            if (!result || !['identified', 'answered'].includes(result.outcome) ||
+            // A negative fault-memory reply does not undo an earlier positive identification.
+            const identifiedBeforeRefusal = result?.outcome === 'rejected' && result.variant?.basis === 'identified' &&
+                result.variant.moduleId === moduleId && this.fitmentNow.get(address)?.moduleId === moduleId;
+            if (!result || (!identifiedBeforeRefusal && !['identified', 'answered'].includes(result.outcome)) ||
                 (fitted ? fitted !== moduleId : result.variant !== undefined || !single || result.ident?.outcome !== 'answered')) throw new Error('この接続で対象モジュールを確認できません');
             const [profile, table] = await Promise.all([loadEcuCatalog(moduleId), loadTelegrams(moduleId)]);
             const job = profile.jobs.find(j => j.id === jobId);
@@ -1275,7 +1303,12 @@ export class LinkSession {
         // the read: the bytes stand either way.
         let decoded: DecodedRead | null = null;
         try {
-            decoded = decodeRead(await loadSgbdResults(target.moduleId), jobId, hex, answerFrame(frame.address, frame.controlOrStatus, frame.payload));
+            const table = await loadSgbdResults(target.moduleId);
+            const reply = answerFrame(frame.address, frame.controlOrStatus, frame.payload);
+            decoded = decodeRead(table, jobId, hex, reply);
+            if (table && decoded && ADAPTATION_READ.test(jobId)) {
+                decoded = { ...decoded, values: telemetryValues(table, jobId, hex, reply) };
+            }
         } catch {
             decoded = null;
         }

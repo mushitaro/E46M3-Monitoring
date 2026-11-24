@@ -23,7 +23,7 @@ import {
     type LiveValueBlock,
 } from '@tsunagi/ds2-mss54';
 import { SimulatedSerialPort, type ExchangeBehavior, type SerialOptions, type SerialPortLike, type SimulatedEcuOptions } from '@tsunagi/ds2-core';
-import { loadSgbdResults } from './sgbd/results.ts';
+import { loadSgbdResults, type SgbdResultsTable } from './sgbd/results.ts';
 import { fastFrame } from './sgbd/nativeRpm.ts';
 import { KWP_FORMAT, KWP_TESTER, xorOf } from './kwpOnDs2.ts';
 import type { JobFramesOracle } from './sgbd/agreedFrame.ts';
@@ -191,9 +191,9 @@ const SIM_TESTPRG_POLLS = 6;
  * would on a car, so a request sent to the wrong module fails in PRACTICE too instead of being
  * answered by the DME.
  */
-export function practiceBus(addresses: readonly number[]): SimulatedEcuOptions[] {
+export function practiceBus(addresses: readonly number[], learned?: SgbdResultsTable['practiceLearned']): SimulatedEcuOptions[] {
     const unique = [...new Set([0x12, ...addresses])];
-    return unique.map((address) => ({ ...(address === 0x12 ? practiceEcu() : practiceModule(address)), script: lineScript() }));
+    return unique.map((address) => ({ ...(address === 0x12 ? practiceEcu(learned) : practiceModule(address)), script: lineScript() }));
 }
 
 /**
@@ -267,7 +267,7 @@ function practiceModule(address: number): SimulatedEcuOptions {
     };
 }
 
-export function practiceEcu(): SimulatedEcuOptions {
+export function practiceEcu(learned?: SgbdResultsTable['practiceLearned']): SimulatedEcuOptions {
     // The simulated test program's own state. It lives in this closure because
     // the protocol says it should: TESTPRG_STOP resets a run and TESTPRG_STARTEN
     // advances it, so a counter reset by 0x33 and stepped by 0x32 IS the ECU's
@@ -327,6 +327,16 @@ export function practiceEcu(): SimulatedEcuOptions {
                         return { payload };
                     }
                     if (dme) {
+                        const fixture = learned?.module === dme ? learned : undefined;
+                        if (fixture && request.payload.length === 1 && (arg === fixture.idleBlock || arg === fixture.speedBlock)) {
+                            const payload = Uint8Array.from(fixture.payload);
+                            if (arg === fixture.speedBlock) {
+                                payload[fixture.speedOffset] = Math.min(255, Math.max(0, Math.ceil(practiceSpeed())));
+                                const rpm = engine().rpm;
+                                new DataView(payload.buffer).setUint16(0, Math.round(dme.startsWith('bms46') ? rpm / 0.15625 : rpm));
+                            }
+                            return { payload };
+                        }
                         // These practice RPM bytes are decoded by each variant's STATUS_MOTORDREHZAHL.
                         // Other blocks need their own fixture; an MSS54 reply would give a false reading.
                         if (arg !== 3) return { status: Ds2Status.PARAMETER_ERROR };
@@ -567,8 +577,8 @@ export class PracticePort implements SerialPortLike {
     private _readable: ReadableStream<Uint8Array> | null = null;
     private _writable: WritableStream<Uint8Array> | null = null;
 
-    constructor(addresses: readonly number[]) {
-        this.inner = new SimulatedSerialPort(practiceBus(addresses));
+    constructor(addresses: readonly number[], learned?: SgbdResultsTable['practiceLearned']) {
+        this.inner = new SimulatedSerialPort(practiceBus(addresses, learned));
     }
     get readable() {
         return this._readable;

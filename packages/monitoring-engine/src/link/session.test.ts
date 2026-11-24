@@ -91,6 +91,26 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('a LinkSession on the practice car', () => {
         expect(s.getSnapshot().fitment.get(0x12)?.moduleId).toBe('mss54');
     });
 
+    it.each([
+        ['ms420ds0', '15', '10'], ['ms430ds0', '19', '10'],
+        ['bms46ds0', '61', '10'], ['bms46ds1', '61', 'A7'],
+    ])('reads the independently simulated idle adaptation and speed on %s', async (module, hw, diag) => {
+        practiceCar.idents = { 0x12: { hw, diag } };
+        const session = sessionFor(module);
+        await session.connect('practice');
+        const targets = (await loadScanTargets(index)).filter(t => t.address === 0x12);
+        await session.scanAll(targets, () => EMPTY_LEDGER);
+        const read = await session.readFittedJob(module, 0x12, 'STATUS_LL_ADAPTION', () => EMPTY_LEDGER);
+        const expected = readShipped<{ practiceLearned: { expectedIdle: { value: number; unit: string } } }>(module + '.results.json').practiceLearned.expectedIdle;
+        expect(read?.decoded?.status, session.getSnapshot().error ?? module).toBe('OKAY');
+        const idle = read?.decoded?.values.find(v => v.name === 'STAT_LL_ADAPTION_WERT');
+        expect(idle?.unit).toBe(expected.unit);
+        expect(idle?.value).toBeCloseTo(expected.value, 5);
+        expect(await session.readVehicleState()).toBe('parked');
+        practiceCar.speedKmh = 23;
+        expect(await session.readVehicleState()).toBe('moving');
+    });
+
     it('runs a SERVICE read only for the module found by a scan of this connection', async () => {
         const s = sessionFor('mss54');
         await s.connect('practice');

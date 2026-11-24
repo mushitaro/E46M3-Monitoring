@@ -13,6 +13,7 @@ import { readEcuData } from '../ecuData.ts';
 import { runSgbdJob, type SgbdResult, type SgbdTables } from './vm.ts';
 
 export interface SgbdResultsTable {
+    practiceLearned?: { module: string; speedBlock: number; speedOffset: number; idleBlock: number; payload: number[]; expectedIdle: { value: number; unit: string } };
     practiceRpm?: { ident: number[] | null; service: number[]; replies: number[][] };
     nativeRpm?: import('./nativeRpm.ts').NativeRpm;
     module: string;

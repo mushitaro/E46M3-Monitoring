@@ -13,12 +13,14 @@ describe('where a car’s speed is read from', () => {
         expect(usableSpeedSource('gs20')).toBeNull();
     });
 
-    it.skipIf(!HAVE_SHIPPED_DATA)('names only frames the module’s own telegram table carries for that job', () => {
+    it.skipIf(!HAVE_SHIPPED_DATA)('names the verified frame from the interpreter or the module’s own telegram table', () => {
         for (const sources of Object.values(SPEED_SOURCES)) {
             for (const s of sources) {
                 if (s.job.startsWith('LIVE_')) continue;
                 const table = readShipped<TelegramTable>(`${s.moduleId}.telegrams.json`);
-                expect(table.jobs[s.job]?.map((t) => t.hex.toLowerCase()), `${s.moduleId}.${s.job}`).toContain(s.frame);
+                const oracle = readShipped<{ jobs: Record<string, { cases: Array<{ args: string[]; sends: string[] }> }> }>('job-frames.oracle.json');
+                const direct = oracle.jobs[s.moduleId + ':' + s.job]?.cases.find(c => !c.args.length)?.sends;
+                expect(direct?.length === 1 ? direct : table.jobs[s.job]?.map((t) => t.hex.toLowerCase()), `${s.moduleId}.${s.job}`).toContain(s.frame);
             }
         }
     });

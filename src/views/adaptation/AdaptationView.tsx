@@ -11,7 +11,7 @@ import {
     Section,
     humanName,
 } from '../../components/ui';
-import type { AdaptationRead, JobRunResult } from '@tsunagi/monitoring-engine';
+import type { AdaptationRead, JobRunResult, ReadValue } from '@tsunagi/monitoring-engine';
 import { resetJobsFor } from '../../lib/adaptationReset';
 import { jobIndex, label, type EcuProfile } from '@tsunagi/monitoring-engine';
 import { useLang } from '../../lib/i18n';
@@ -39,6 +39,12 @@ import { Adjustments } from './Adjustments';
  * next to the first: a second derivation is a second chance to disagree, and
  * this one would be disagreeing about whether to write to an engine controller.
  */
+interface NativeLearnedReader {
+    ready: boolean;
+    read(job: string): Promise<JobRunResult | null>;
+    retained?: Record<string, readonly ReadValue[]>;
+}
+
 export const AdaptationView = memo(function AdaptationView({
     blocks,
     catalog,
@@ -50,7 +56,7 @@ export const AdaptationView = memo(function AdaptationView({
 }: {
     /** What the ECU answered, or null before anyone asked. */
     blocks: AdaptationRead[] | null;
-    native?: { scope: string; ready: boolean; read: (job: string) => Promise<JobRunResult | null> };
+    native?: NativeLearnedReader & { scope: string };
     catalog: EcuProfile | null;
     ecuId: string;
     telegrams: TelegramTable | null;
@@ -160,7 +166,7 @@ export const AdaptationView = memo(function AdaptationView({
 
 function NativeReadings({ profile, native }: {
     profile: EcuProfile;
-    native: { ready: boolean; read: (job: string) => Promise<JobRunResult | null> };
+    native: NativeLearnedReader;
 }) {
     const { lang, t } = useLang();
     const waiting = useRef(false);
@@ -182,11 +188,12 @@ function NativeReadings({ profile, native }: {
         const answer = answers[id];
         const decoded = answer?.decoded;
         const complete = decoded && !decoded.stopped && decoded.status === 'OKAY' && decoded.values.length > 0;
+        const values = answer === undefined ? native.retained?.[id] : complete ? decoded.values : undefined;
         return <DataRow key={id} ident={id} name={label(job, lang)}
             onSelect={native.ready && !pending ? () => void read(id) : undefined}
-            detail={pending === id ? <p role="status">{t.awaiting_read}</p> : answer === undefined ? undefined :
+            detail={pending === id ? <p role="status">{t.awaiting_read}</p> : answer === undefined && !values ? undefined :
                 <div role="status" className="text-xs text-slate-300">
-                    {complete ? decoded.values.map(v => <p key={v.name} className="font-mono">{v.name} · {v.value} {v.unit}</p>)
+                    {values ? values.map(v => <p key={v.name} className="font-mono">{v.name} · {v.value} {v.unit}</p>)
                         : <p>{lang === 'ja' ? '測定値を確認できません' : 'No confirmed reading'}</p>}
                     {answer && <p className="font-mono text-slate-500">{answer.response}</p>}
                 </div>} />;

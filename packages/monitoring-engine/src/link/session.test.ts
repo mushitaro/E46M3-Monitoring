@@ -96,6 +96,9 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('a LinkSession on the practice car', () => {
         const scan = await s.scanAll(targets, () => EMPTY_LEDGER);
         expect(scan?.results[0]).toMatchObject({ outcome: 'identified', variant: { moduleId: 'dde30ds0' } });
         expect(scan?.results[0]?.faults).toBeUndefined();
+        const start = s.getSnapshot().log.length;
+        expect(await s.readVehicleState()).toBe('unknown');
+        expect(s.getSnapshot().log.slice(start).some(line => line.text.includes('Speed preflight (DME block'))).toBe(false);
     });
 
     it.each([

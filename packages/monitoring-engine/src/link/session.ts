@@ -613,6 +613,9 @@ export class LinkSession {
      * no DME, a refusal, a short block, a speed above zero — is not `parked`.
      */
     private async measureMotion(link: Ds2Link): Promise<Motion> {
+        // Block 19 has MSS54 semantics. A different or unidentified DME cannot attest stationary this way.
+        if (this.fitmentNow.has(DME_ADDRESS) && !isM3(this.fitmentNow)) return 'unknown';
+        // With no cached identity, readFrame identifies the DME on this connection before transmitting.
         const block = blockBySelection(SPEED_BLOCK);
         if (!block) return 'unknown';
         const req = liveBlockRequest(SPEED_BLOCK);
@@ -647,7 +650,7 @@ export class LinkSession {
                 what,
                 measured === 'moving' ? 'moving' : 'link',
                 `the car could not be shown to be stationary (${measured}). ` +
-                    'Just before sending, the DME speed (block 19) is read; only 0 km/h lets a read go',
+                    'No verified stationary reading from the fitted DME',
                 { motion: measured, speedKmh: measured === 'moving' ? (this.vehicleNow?.speedKmh ?? null) : null },
             );
         }
@@ -665,7 +668,7 @@ export class LinkSession {
         const wanted = engine ?? undefined;
         const notSent = (reason: 'link' | 'voltage' | 'engine', why: string, measured: { voltageV?: number | null; rpm?: number | null } = {}) =>
             new NotSentError(what, reason, why, { ...measured, ...(wanted ? { engineWanted: wanted } : {}), minVoltageV: MIN_RUN_VOLTAGE });
-        if (!block) throw notSent('link', 'the battery and the engine could not be measured');
+        if (!isM3(this.fitmentNow) || !block) throw notSent('link', 'no verified battery and engine measurement for this DME');
         const req = liveBlockRequest(ENGINE_BLOCK);
         this.append('tx', `Battery and engine preflight (DME block ${ENGINE_BLOCK})`);
         let values: LiveValues;
@@ -1091,7 +1094,7 @@ export class LinkSession {
     readonly readAdaptations = () =>
         this.run('Read adaptations', async (link) => {
             const { target, to } = this.session(link);
-            if (target.decoder !== 'mss54') refuse(`${target.moduleId}: no adaptation-block decoder; nothing is sent.`);
+            if (target.decoder !== 'mss54' || (this.fitmentNow.has(DME_ADDRESS) && !isM3(this.fitmentNow))) refuse(`${target.moduleId}: no identified MSS54 adaptation-block decoder; nothing is sent.`);
             const out: AdaptationRead[] = [];
             for (const block of MSS54_ADAPTATION_BLOCKS) {
                 const req = liveBlockRequest(block.selection);
@@ -1410,7 +1413,7 @@ export class LinkSession {
         const link = this.link;
         if (!link || this.polling) return;
         let to: Ds2Target;
-        const mss54 = this.target.decoder === 'mss54';
+        const mss54 = this.target.decoder === 'mss54' && (!this.fitmentNow.has(DME_ADDRESS) || isM3(this.fitmentNow));
         try {
             const s = this.session(link);
             if (!mss54 && (channels.length || !modules?.reads.length)) refuse(`${s.target.moduleId}: select this car's identified module channels.`);

@@ -21,9 +21,9 @@ import {
   Pane,
   Section,
   humanName,
-} from "@/components/ui";
-import { useLang } from "@/lib/i18n";
-import { TEST_ID, tid } from "@/lib/testIds";
+} from "../../components/ui";
+import { useLang } from "../../lib/i18n";
+import { TEST_ID, tid } from "../../lib/testIds";
 import {
   GEAR_CHANNEL,
   captureWindows,
@@ -31,8 +31,8 @@ import {
   nearestSample,
   sameQuantity,
   segmentStats,
-} from "@/lib/datalogRun";
-import { Awaiting } from "@/views/shared/Awaiting";
+} from "../../lib/datalogRun";
+import { Awaiting } from "../../views/shared/Awaiting";
 import type { Datalog } from "./useDatalog";
 
 /** The plan the open CO-WORK record holds, as DATALOG shows it beside a recording. */
@@ -49,7 +49,19 @@ interface ChannelLook {
   unit: string;
 }
 
-function useLook(datalog: Datalog) {
+interface ChannelLabels {
+  moduleInfo(id: ChannelId): { name: string; ja: string; unit: string | null } | null;
+}
+
+export interface DatalogPlot extends ChannelLabels {
+  selected: ChannelId[];
+  samples: { time: number; values: Partial<Record<ChannelId, number | null>> }[];
+  latest: Partial<Record<ChannelId, number | null>>;
+  segments: { from: number; why: 'start' | 'channels' | 'part' }[];
+  cursor: number | null;
+}
+
+function useLook(datalog: ChannelLabels) {
   const { lang } = useLang();
   return (id: ChannelId): ChannelLook => {
     const ch = MSS54_CHANNELS.get(id);
@@ -496,7 +508,7 @@ export function DatalogViz({
   datalog,
   active,
 }: {
-  datalog: Datalog;
+  datalog: DatalogPlot;
   active: boolean;
 }) {
   const { t } = useLang();
@@ -591,7 +603,7 @@ function Trace({
 }: {
   group: ChannelId[];
   look: (id: ChannelId) => ChannelLook;
-  thin: Datalog["samples"];
+  thin: DatalogPlot["samples"];
   x: (t: number) => number;
   marks: Array<{ x: number; why: string; from: number }>;
   cursor: { x: number; values: Partial<Record<string, number | null>> } | null;

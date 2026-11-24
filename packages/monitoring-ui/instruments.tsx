@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { EmbeddedLanguage, STRINGS } from '../../src/lib/i18n';
 
 export { ScanList, ScanViz } from '../../src/views/diagnosis/ScanView';
+export { DatalogViz, type DatalogPlot } from '../../src/views/datalog/DatalogView';
 export { LogPopover } from '../../src/components/LogPopover';
 export { exportCommsLog } from '../../src/lib/download';
 

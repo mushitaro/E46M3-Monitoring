@@ -1,5 +1,6 @@
 @source "./index.tsx";
-@source "instruments.tsx";
+@source "./instruments.tsx";
+@source "../../src/views/datalog/DatalogView.tsx";
 @source "../../src/components/LogPopover.tsx";
 @source "../../src/components/ui.tsx";
 @source "../../src/views/diagnosis/ScanView.tsx";

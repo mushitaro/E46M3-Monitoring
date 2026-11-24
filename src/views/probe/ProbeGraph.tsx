@@ -54,11 +54,18 @@ export function ProbeGraph({ part: p, samples, run, live = false, large = false,
     const span = g.max + pad - lo;
     const x = (tt: number) => ((tt - g.from) / (g.to - g.from || 1)) * 100;
     const y = (n: number) => 100 - ((n - lo) / span) * 100;
-    const line = (pick: (q: (typeof g.points)[number]) => number | null) =>
-        g.points.flatMap((q) => {
-            const n = pick(q);
-            return n === null ? [] : [`${x(q.t).toFixed(2)},${y(n).toFixed(2)}`];
-        }).join(' ');
+    const lines = (field: 'value' | 'target') => {
+        const segments: string[][] = [];
+        let segment: string[] | null = null;
+        for (const point of g.points) {
+            const n = point[field];
+            if (n === null || point[field === 'value' ? 'valueBreak' : 'targetBreak']) segment = null;
+            if (n === null) continue;
+            if (!segment) { segment = []; segments.push(segment); }
+            segment.push([x(point.t).toFixed(2), y(n).toFixed(2)].join(','));
+        }
+        return segments.map(points => points.join(' '));
+    };
     const dev = g.latest.deviation;
     // The numbers drawn large, in the order asked; a target and difference not among them stay small beside.
     const show = p.show ?? defaultReadouts(p.channels);
@@ -94,8 +101,8 @@ export function ProbeGraph({ part: p, samples, run, live = false, large = false,
                 ) : null}
             </div>
             <svg viewBox="0 0 100 100" preserveAspectRatio="none" className={large ? 'min-h-0 w-full flex-1' : 'h-24 w-full'}>
-                {target ? <polyline points={line((q) => q.target)} fill="none" stroke={SERIES.target} strokeWidth="1.5" strokeDasharray="4 3" vectorEffect="non-scaling-stroke" /> : null}
-                <polyline points={line((q) => q.value)} fill="none" stroke={SERIES.value} strokeWidth="3" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                {target && lines('target').map((points, i) => <polyline key={i} points={points} fill="none" stroke={SERIES.target} strokeWidth="1.5" strokeDasharray="4 3" vectorEffect="non-scaling-stroke" />)}
+                {lines('value').map((points, i) => <polyline key={i} points={points} fill="none" stroke={SERIES.value} strokeWidth="3" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />)}
             </svg>
             <div className="flex items-baseline justify-between gap-3 font-mono text-[10px] text-slate-600">
                 <span>

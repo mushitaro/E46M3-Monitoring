@@ -542,7 +542,7 @@ export class LinkSession {
             if (isDs2Error(e) && e.code === 'NOT_SENT') throw e;
         }
         let f = fittedFrom(id.rules, id.modules, address, answer);
-        if (address === DME_ADDRESS && !f.moduleId && id.rules.kwpEngine && this.transport) {
+        if (address === DME_ADDRESS && !f.sgbd && id.rules.kwpEngine && this.transport) {
             const data = Uint8Array.of(0x1a,0x80);
             const request = toHex(kwpRequest(address,data));
             try {
@@ -728,10 +728,15 @@ export class LinkSession {
         if (job.id !== RPM_JOB || job.class !== 'read' || job.args.length || job.catalogOnly) throw new Error('Invalid measurement job');
         const decision = rpmPolicy(module,job,'engine');
         if (decision.how === 'off') throw new Error('RPM read is disabled');
-        await this.clearFor(DME_ADDRESS,module);
-        await this.preflight(link,RPM_JOB,decision.when === 'moving' || movingRpm(ledger,module + ':' + RPM_JOB) ? 'none' : 'parked');
         const port = this.transport ?? refuse('No open transport.');
-        const reading = await link.withGate(() => exchangeRpm(port,spec,this.modeNow === 'practice'));
+        await this.clearFor(DME_ADDRESS, module);
+        await this.preflight(link, RPM_JOB, decision.when === 'moving' || movingRpm(ledger, module + ':' + RPM_JOB) ? 'none' : 'parked');
+        const reading = await link.withGate(() => {
+            if (this.link !== link || this.transport !== port || this.snap.lineLost || this.fitmentNow.get(DME_ADDRESS)?.moduleId !== module) {
+                throw new Error('The identified engine connection has changed.');
+            }
+            return exchangeRpm(port, spec, this.modeNow === 'practice');
+        });
         this.append('tx', reading.request);
         this.append('rx', reading.response);
         return reading;

@@ -106,6 +106,11 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('a LinkSession on the practice car', () => {
         const idle = read?.decoded?.values.find(v => v.name === 'STAT_LL_ADAPTION_WERT');
         expect(idle?.unit).toBe(expected.unit);
         expect(idle?.value).toBeCloseTo(expected.value, 5);
+        await session.disconnect();
+        await session.connect('practice');
+        expect(await session.readFittedJob(module, 0x12, 'STATUS_LL_ADAPTION', () => EMPTY_LEDGER)).toBeNull();
+        await session.readIdent();
+        expect((await session.readFittedJob(module, 0x12, 'STATUS_LL_ADAPTION', () => EMPTY_LEDGER))?.decoded?.status).toBe('OKAY');
         expect(await session.readVehicleState()).toBe('parked');
         practiceCar.speedKmh = 23;
         expect(await session.readVehicleState()).toBe('moving');

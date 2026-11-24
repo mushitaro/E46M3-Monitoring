@@ -1231,8 +1231,14 @@ export class LinkSession {
             // A negative fault-memory reply does not undo an earlier positive identification.
             const identifiedBeforeRefusal = result?.outcome === 'rejected' && result.variant?.basis === 'identified' &&
                 result.variant.moduleId === moduleId && this.fitmentNow.get(address)?.moduleId === moduleId;
-            if (!result || (!identifiedBeforeRefusal && !['identified', 'answered'].includes(result.outcome)) ||
-                (fitted ? fitted !== moduleId : result.variant !== undefined || !single || result.ident?.outcome !== 'answered')) throw new Error('この接続で対象モジュールを確認できません');
+            const currentIdentity = this.fitmentNow.get(address);
+            // DATALOG may have opened a new target. A fresh positive IDENT on that same
+            // physical connection is sufficient even before another all-module scan.
+            const exactIdentity = currentIdentity?.moduleId === moduleId && !!currentIdentity.answer &&
+                currentIdentity.sgbd?.toLowerCase() === moduleId;
+            const scanned = result && (identifiedBeforeRefusal || ['identified', 'answered'].includes(result.outcome)) &&
+                (fitted ? fitted === moduleId : !result.variant && single && result.ident?.outcome === 'answered');
+            if (!exactIdentity && !scanned) throw new Error('この接続で対象モジュールを確認できません');
             const [profile, table] = await Promise.all([loadEcuCatalog(moduleId), loadTelegrams(moduleId)]);
             const job = profile.jobs.find(j => j.id === jobId);
             if (profile.id !== moduleId || profile.address !== address || table?.module !== moduleId ||
@@ -1240,7 +1246,7 @@ export class LinkSession {
                 throw new Error('このモジュールの読み取り項目を確認できません');
             const frame = bestTelegram(table, jobId);
             const verdict = mayRun(job, frame, ledger(), { moduleId, motion: this.snap.motion, group: profile.group });
-            if (!verdict.allowed || !frame || this.link !== link || this.snap.scan !== scan || this.snap.lineLost)
+            if (!verdict.allowed || !frame || this.link !== link || this.snap.scan !== scan || this.fitmentNow.get(address) !== currentIdentity || this.snap.lineLost)
                 throw new Error('この接続で実行できる読み取りではありません');
             return this.sendJob(link, moduleProtocol(moduleId, address, table), jobId, frame.hex, verdict.requires);
         });

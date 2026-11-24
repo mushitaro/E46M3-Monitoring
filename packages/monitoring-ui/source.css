@@ -29,3 +29,4 @@
 @source "../../src/views/probe/StartupSeries.tsx";
 @source "../../src/views/probe/ProbeGraph.tsx";
 @source "../../src/views/probe/ValueCards.tsx";
+@source "../../src/components/DiagnosticFooter.tsx";

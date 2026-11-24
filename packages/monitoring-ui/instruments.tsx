@@ -151,3 +151,4 @@ export function JapaneseInstruments({ children }: { children: ReactNode }) {
 }
 
 export { emptyBoard, place as placeBoardParts, setShow as setBoardReadouts, boardLine, partProblem, type Board as InstrumentBoard, type Part as InstrumentPart } from '../../src/lib/probe/board';
+export { DiagnosticFooter } from '../../src/components/DiagnosticFooter';

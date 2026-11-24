@@ -60,6 +60,21 @@ SPEED_JOBS = {
 }
 SPEED_JOB = "STATUS_GESCHWINDIGKEIT"
 
+# 同じ DME の学習値（適応値）の読取も、その DME 自身のコードで読む（GREN BLUE SUITE のテスト計画 §7.2 の 2
+# 「学習値（readAdaptations）も MSS54 以外で」）。名前が学習値を言う、引数の無い読取で、電文が表にあるもの。
+# 規則は packages/monitoring-engine/src/sgbd/jobAdaptations.ts の ADAPTATION_READ と同じ。
+ADAPTATION_READ = re.compile(r"^STATUS_(.*ADAP.*|(LAMBDA_)?(ADD|MUL)(_\d)?)$")
+
+
+def adaptation_reads(mid):
+    """The module's own argument-free learned-value reads with a telegram (ADAPTATION_READ)."""
+    cat = json.load(open(os.path.join(OUT, f"{mid}.jobs.json"), encoding="utf-8"))
+    tel = json.load(open(os.path.join(OUT, f"{mid}.telegrams.json"), encoding="utf-8"))
+    return [
+        j["id"] for j in cat["jobs"]
+        if ADAPTATION_READ.match(j["id"]) and j.get("class") == "read" and not j.get("args") and tel["jobs"].get(j["id"])
+    ]
+
 # 故障メモリの読取（FS_LESEN）は下の all_jobs が、SGBD に FS_LESEN があるモジュール全部に足す。
 # 2026-11-13 の #56 は、アプリが送るページとジョブが同じ順で送るモジュールだけ（34）を載せていたが、
 # いまはジョブ自身が実車相手に読み取りを進める（packages/monitoring-engine/src/sgbd/faultRead.ts）ので、先に識別やログインを
@@ -180,7 +195,7 @@ def all_jobs():
     skip = FAULT_SKIP | _nonm3()
     for mid, sgbd in SPEED_JOBS.items():
         sg, names = out.get(mid, (sgbd, []))
-        out[mid] = (sg, names + [SPEED_JOB])
+        out[mid] = (sg, names + [SPEED_JOB] + [n for n in adaptation_reads(mid) if n != SPEED_JOB])
     for f in sorted(os.listdir(OUT)):
         if not f.endswith(".telegrams.json"):
             continue

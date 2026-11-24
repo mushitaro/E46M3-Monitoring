@@ -40,6 +40,7 @@ export * from './sgbd/vm.ts';
 export * from './sgbd/results.ts';
 export * from './sgbd/faultRead.ts';
 export * from './sgbd/logChannels.ts';
+export * from './sgbd/adaptationReads.ts';
 export * from './sgbd/jobFrame.ts';
 export * from './sgbd/agreedFrame.ts';
 export * from './link/types.ts';

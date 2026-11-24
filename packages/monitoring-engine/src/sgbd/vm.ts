@@ -89,6 +89,8 @@ const OP = {
     parr: 0x69, pary: 0x7f, parn: 0x80, hex2y: 0x8e, strlen: 0x90,
     test: 0x6a, xconnect: 0x26, xawlen: 0x29, xstopf: 0x2d, xreps: 0x42, date: 0x6c, ticks: 0xad, shmset: 0x93, shmget: 0x94, flt2a: 0x87,
     scmp: 0x20, gettmr: 0x43, settmr: 0x44, clrt: 0x46, jt: 0x47, wait: 0x6b,
+    // Add and subtract with the carry (EdiabasLib's addc, subc; MS43's learned-value reads scale with them).
+    addc: 0x49, subc: 0x4a,
     // Float precision, float to integer, float compare, the clock, the interface's parameters
     // (EdiabasLib: setflt, flt2fix, fcomp, time, xsetpar; the DMEs' and the body modules' drive jobs).
     setflt: 0x88, flt2fix: 0x96, tabseeku: 0x9a, fcomp: 0xa1, time: 0x6d, xsetpar: 0x28,
@@ -200,6 +202,13 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
     let trap = 0;
     const bytes = new Uint8Array(32); // B0..BF and A0..AF; I0..IF and L0..L7 overlay these, little-endian
     const strings: Uint8Array[] = Array.from({ length: 16 }, () => new Uint8Array(0));
+    /**
+     * Which string registers hold bytes of an answer: the one a send's answer went into, and any written
+     * by an instruction that read one. A string that holds none (a working register the job never filled,
+     * or filled only from its own constants) reads past its end as zeros, as EdiabasLib reads it; one that
+     * holds answer bytes, or was cut from an answer, stops the run there (see `answered`).
+     */
+    const fromAnswer: boolean[] = new Array<boolean>(16).fill(false);
     const floats = new Float64Array(8);
     const stack: number[] = [];
     const results: SgbdResult[] = [];
@@ -327,11 +336,15 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
         if (o.m === 'reg' && o.r.t === 'num') return getNum(o.r);
         if (o.m === 'imm') return o.v;
         if (o.m === 'idx' && !o.len) {
+            // Past the end of a string after an answer: where the string holds bytes, or answer bytes went
+            // into it (`fromAnswer`), the answer was shorter than the job reads, and the run stops rather
+            // than read zeros as values. A working string with nothing of an answer in it, empty, reads as
+            // zeros, as EdiabasLib reads it (BMS46's and MS42's reads test an empty S4 with `comp`).
             const s = strings[o.s];
             const i = o.index();
             let v = 0;
             for (let k = width - 1; k >= 0; k--) v = v * 256 + (s[i + k] ?? 0);
-            if (i + width > s.length && ((answered && !opts.padAnswers) || i + 1 > ARRAY_MAX)) fail('read past the end of a string');
+            if (i + width > s.length && ((answered && !opts.padAnswers && (s.length > 0 || fromAnswer[o.s])) || i + 1 > ARRAY_MAX)) fail('read past the end of a string');
             return v;
         }
         return fail('a number from a non-number');
@@ -343,7 +356,7 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
             const s = strings[o.s];
             const i = o.index();
             const l = o.len ? o.len() : 1;
-            if (i + l > s.length && ((answered && !opts.padAnswers) || i + l > ARRAY_MAX)) fail('read past the end of a string');
+            if (i + l > s.length && ((answered && !opts.padAnswers && (s.length > 0 || fromAnswer[o.s])) || i + l > ARRAY_MAX)) fail('read past the end of a string');
             return s.slice(i, i + l);
         }
         return fail('a string from a non-string');
@@ -383,6 +396,12 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
             opts.onStep?.(base + at);
             const a = operand(mode >> 4);
             const b = operand(mode & 0x0f);
+            // What this instruction writes into a string holds answer bytes when it read any: a whole move
+            // takes its source's, anything else (an indexed write, an append) also keeps the target's.
+            const held = (o: Operand) => (o.m === 'reg' && o.r.t === 'str' && fromAnswer[o.r.n]) || (o.m === 'idx' && fromAnswer[o.s]);
+            const wholeMove = op === OP.move && a.m === 'reg' && a.r.t === 'str';
+            const carries = (!wholeMove && held(a)) || held(b);
+            const before = strings.slice();
 
             switch (op) {
                 case OP.nop:
@@ -479,6 +498,8 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
                 case OP.comp:
                 case OP.subb:
                 case OP.adds:
+                case OP.addc:
+                case OP.subc:
                 case OP.mult:
                 case OP.divs:
                 case OP.and:
@@ -513,6 +534,20 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
                             v = x + y;
                             flags.c = v > u(-1, w);
                             flags.v = sx + sy !== signed(v, w);
+                            break;
+                        }
+                        case OP.addc: {
+                            const c = flags.c ? 1 : 0;
+                            v = x + y + c;
+                            flags.c = v > u(-1, w);
+                            flags.v = sx + sy + c !== signed(v, w);
+                            break;
+                        }
+                        case OP.subc: {
+                            const c = flags.c ? 1 : 0;
+                            v = x - y - c;
+                            flags.c = y + c > x;
+                            flags.v = sx - sy - c !== signed(v, w);
                             break;
                         }
                         case OP.mult:
@@ -924,6 +959,8 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
                 default:
                     fail(`instruction 0x${op.toString(16)}`);
             }
+            for (let n = 0; n < strings.length; n++) if (strings[n] !== before[n]) fromAnswer[n] = op !== OP.clear && carries;
+            if (op === OP.xsend && a.m === 'reg' && a.r.t === 'str') fromAnswer[a.r.n] = true;
         }
         fail('too many steps');
     } catch (e) {

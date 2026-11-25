@@ -14,17 +14,17 @@ import {
     Section,
     Well,
     humanName,
-} from '@/components/ui';
+} from '../../components/ui';
 import type { ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
-import type { RawFaultRead } from '@/hooks/useDs2Link';
-import { normCode } from '@/lib/faultCode';
-import { useLang } from '@/lib/i18n';
+import type { RawFaultRead } from '@tsunagi/monitoring-engine';
+import { normCode } from '../../lib/faultCode';
+import { useLang } from '../../lib/i18n';
 import { text as resolveText, type EcuProfile } from '@tsunagi/monitoring-engine';
-import { Awaiting } from '@/views/shared/Awaiting';
-import { CountReadout } from '@/views/shared/CountReadout';
-import { FreezeFrame } from '@/views/shared/FreezeFrame';
-import { codeText, faultName } from '@/lib/faultText';
-import { isUnnamedLocation, kindsJa } from '@/lib/faultKinds';
+import { Awaiting } from '../shared/Awaiting';
+import { CountReadout } from '../shared/CountReadout';
+import { FreezeFrame } from '../shared/FreezeFrame';
+import { codeText, faultName } from '../../lib/faultText';
+import { isUnnamedLocation, kindsJa } from '../../lib/faultKinds';
 import { mss54Present, presentFromKinds } from '@tsunagi/monitoring-engine';
 
 /**
@@ -147,7 +147,7 @@ export const DiagnosisView = memo(function DiagnosisView({
                                     }),
                                 )}
                             </DataList>
-                            {rawFaults.every((r) => !r.jobFaults || r.jobFaults.faults.length === 0) ? <p className="py-2 text-xs text-emerald-400">{t.faults_none}</p> : null}
+                            {rawFaults.some((r) => r.jobFaults?.status === 'OKAY') && rawFaults.every((r) => !r.jobFaults || (r.jobFaults.status === 'OKAY' && r.jobFaults.stopped === null && r.jobFaults.faults.length === 0)) ? <p className="py-2 text-xs text-emerald-400">{t.faults_none}</p> : null}
                             <Provenance>{t.faults_jobRead}</Provenance>
                         </>
                     ) : null}

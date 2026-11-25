@@ -28,7 +28,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { AlertTriangle, ArrowRight } from 'lucide-react';
-import { LABEL, DataList, DataRow, Field, MicroLabel, Pill, Provenance, Section, emphasise, humanName } from '@/components/ui';
+import { LABEL, DataList, DataRow, Field, MicroLabel, Pill, Provenance, Section, emphasise, humanName } from './ui';
 import {
     description,
     jobIndex,
@@ -42,13 +42,13 @@ import {
     type EcuProfile,
 } from '@tsunagi/monitoring-engine';
 import { deliversResultElsewhere, hasStopControl, operationFor, type OpKind } from '@tsunagi/monitoring-engine';
-import { cautionFor, type JobTextTable } from '@/lib/jobText';
-import { readResultsFor, type ResultBlockRef, type Smg2Procedure, type Smg2Sequence, type Smg2Workflows } from '@/lib/smg2Workflows';
-import { GATE_CODE, GATE_OF, GEARS, MEASURES, PASSES, gearWindows } from '@/lib/gearWindows';
-import { stepsFromActivity, stepsFromSequence } from '@/lib/procedureSteps';
-import { StepList } from '@/components/StepList';
-import { useLang } from '@/lib/i18n';
-import type { JobRunResult } from '@/hooks/useDs2Link';
+import { cautionFor, type JobTextTable } from '../lib/jobText';
+import { readResultsFor, type ResultBlockRef, type Smg2Procedure, type Smg2Sequence, type Smg2Workflows } from '../lib/smg2Workflows';
+import { GATE_CODE, GATE_OF, GEARS, MEASURES, PASSES, gearWindows } from '../lib/gearWindows';
+import { stepsFromActivity, stepsFromSequence } from '../lib/procedureSteps';
+import { StepList } from './StepList';
+import { useLang } from '../lib/i18n';
+import type { JobRunResult } from '../hooks/useDs2Link';
 import type { DecodedRead } from '@tsunagi/monitoring-engine';
 
 const KIND_TONE: Record<OpKind, 'neutral' | 'primary' | 'caution' | 'danger' | 'secondary'> = {

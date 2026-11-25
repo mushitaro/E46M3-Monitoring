@@ -363,14 +363,29 @@ def main() -> None:
 
     now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat()
     os.makedirs(ECU_DATA, exist_ok=True)
-    with open(os.path.join(ECU_DATA, "variants.json"), "w", encoding="utf-8", newline="\n") as fh:
-        json.dump({"schema": 1, "generatedAt": now, "how": "tools/sgbd/gen_variants.py", "groups": groups},
+    # KWP engine identities and the option-dependent DS2 groups are built by
+    # separate generators in the ECU data repository. Keep their rules and evidence together.
+    variants_path = os.path.join(ECU_DATA, "variants.json")
+    oracle_path = os.path.join(ECU_DATA, "variants.oracle.json")
+    prior = {}
+    other_oracles = {}
+    if os.path.exists(variants_path):
+        with open(variants_path, encoding="utf-8") as source:
+            prior = json.load(source)
+    extra_groups = [g for g in prior.get("groups", []) if g["group"] not in RULES]
+    if extra_groups:
+        with open(oracle_path, encoding="utf-8") as source:
+            existing = json.load(source)["groups"]
+        other_oracles = {g["group"]: existing[g["group"]] for g in extra_groups}
+    with open(variants_path, "w", encoding="utf-8", newline="\n") as fh:
+        json.dump({**prior, "schema": 1, "generatedAt": now, "how": "tools/sgbd/gen_variants.py", "groups": groups + extra_groups},
                   fh, ensure_ascii=False, indent=1)
         fh.write("\n")
     by_group = {}
     for g in groups:
         by_group[g["group"]] = [c for c in checked if int(c["answer"][:2], 16) == g["address"]]
-    with open(os.path.join(ECU_DATA, "variants.oracle.json"), "w", encoding="utf-8", newline="\n") as fh:
+    by_group.update(other_oracles)
+    with open(oracle_path, "w", encoding="utf-8", newline="\n") as fh:
         json.dump({"schema": 1, "generatedAt": now,
                    "how": "EdiabasLib ran each group file's IDENTIFIKATION on each answer in simulation (tools/SgbdDump --ident)",
                    "groups": by_group}, fh, ensure_ascii=False, indent=0)

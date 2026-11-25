@@ -2,9 +2,9 @@
 
 import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
-import { LABEL } from '@/components/ui';
-import { useLang } from '@/lib/i18n';
-import { tid, type TestId } from '@/lib/testIds';
+import { LABEL } from './ui';
+import { useLang } from '../lib/i18n';
+import { tid, type TestId } from '../lib/testIds';
 
 const ICON_TONE = {
     neutral: 'text-slate-400',

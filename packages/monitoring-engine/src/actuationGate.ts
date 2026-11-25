@@ -68,6 +68,7 @@ export function mayActuate(
     ledger: Ledger,
     ctx: ActuationContext,
 ): RunVerdict {
+    if (job.catalogOnly) return { allowed: false, reason: 'run_block_noTelegram' };
     // A vehicle is attached. One decision, made in one place, unchanged.
     if (ctx.mode === 'vehicle') return mayRun(job, telegram, ledger, { moduleId: ctx.moduleId, motion: ctx.motion, group: ctx.group, args: ctx.args, agreed: ctx.agreed });
 

@@ -22,9 +22,9 @@
  */
 
 import { AlertTriangle } from 'lucide-react';
-import { DataList, DataRow, LABEL, Provenance, emphasise } from '@/components/ui';
-import type { Step, StepPlan, StepState } from '@/lib/procedureSteps';
-import { useLang } from '@/lib/i18n';
+import { DataList, DataRow, LABEL, Provenance, emphasise } from './ui';
+import type { Step, StepPlan, StepState } from '../lib/procedureSteps';
+import { useLang } from '../lib/i18n';
 
 const STATE_TONE: Record<StepState, string> = {
     pending: 'text-slate-600',

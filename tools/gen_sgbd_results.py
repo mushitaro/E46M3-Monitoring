@@ -222,7 +222,7 @@ def all_jobs():
             continue
         mid = f[: -len(".jobs.json")]
         tel_path = os.path.join(OUT, f"{mid}.telegrams.json")
-        if mid in skip or not os.path.exists(tel_path):
+        if not os.path.exists(tel_path):
             continue
         tel = json.load(open(tel_path, encoding="utf-8"))
         if tel.get("framing") == "kwp-ds2":
@@ -261,6 +261,21 @@ def all_jobs():
         sg, names = out.get(mid, (tel["sgbd"], []))
         out[mid] = (sg, names + [n for n in drive if n not in names])
         DRIVE[mid] = set(drive) - set(names)
+    # Catalog-only operations have no result program in the application data.
+    from sgbd.read_stage import REPLAYED_READS
+    for mid, reads in REPLAYED_READS.items():
+        if mid == "gs30":
+            # The private data generator publishes this gearbox's KWP decoder separately.
+            out.pop(mid, None)
+            continue
+        if mid not in out and not os.path.exists(os.path.join(OUT, f"{mid}.telegrams.json")):
+            continue
+        if mid == "dde30ds0":
+            if mid in out:
+                sgbd, names = out[mid]
+                out[mid] = sgbd, [name for name in names if name in reads]
+        else:
+            out[mid] = mid.upper() + ".prg", sorted(reads)
     return out
 
 

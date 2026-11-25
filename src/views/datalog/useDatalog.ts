@@ -118,8 +118,6 @@ export function useDatalog(link: Link, others: { ledger: Ledger; index: EcuIndex
     const [segments, setSegments] = useState<DatalogSegment[]>([]);
     /** Where the open ten-minute part began: seconds into the run, and `appNow()`. */
     const partRef = useRef({ from: 0, at: 0, part: 1 });
-    /** The channels a change asked for while recording, until the link says from which sample. */
-    const pendingRef = useRef<ChannelId[] | null>(null);
     const partListeners = useRef(new Set<(p: DatalogPart) => void>());
     /** A recording has been started and has not ended: true from START, before the link's state says so. */
     const runningRef = useRef(false);
@@ -226,7 +224,6 @@ export function useDatalog(link: Link, others: { ledger: Ledger; index: EcuIndex
         const chosen = selectedRef.current;
         const at = appNow();
         partRef.current = { from: 0, at, part: 1 };
-        pendingRef.current = null;
         segmentsRef.current = [{ from: 0, at, channels: [...chosen], blocks: blocksFor(chosen), why: 'start', part: 1 }];
         setSegments(segmentsRef.current);
         // Both endings land in the same place: the stop button and a link
@@ -237,10 +234,8 @@ export function useDatalog(link: Link, others: { ledger: Ledger; index: EcuIndex
             setSamples(samplesRef.current.slice());
         };
         const own = chosen.filter((c) => !isModuleChannel(c));
-        const onRetune = ({ time, blocks }: { time: number; blocks: number }) => {
-            const next = pendingRef.current ?? selectedRef.current;
-            pendingRef.current = null;
-            pushSegment({ from: time, at: appNow(), channels: [...next], blocks, why: 'channels', part: partRef.current.part });
+        const onRetune = ({ time, blocks, channels, moduleChannels }: import('@tsunagi/monitoring-engine').LogRetuned) => {
+            pushSegment({ from: time, at: appNow(), channels: [...channels, ...moduleChannels as ChannelId[]], blocks, why: 'channels', part: partRef.current.part });
         };
         const reads = await readsFor(chosen).catch(() => undefined);
         link.startLog(own, onSample, end, reads, { onRetune });
@@ -256,10 +251,8 @@ export function useDatalog(link: Link, others: { ledger: Ledger; index: EcuIndex
             const chosen = [...new Set(ids)];
             const own = chosen.filter((c) => !isModuleChannel(c));
             const reads = await readsFor(chosen);
-            pendingRef.current = chosen;
             const ok = link.retuneLog(own, reads);
             if (!ok) {
-                pendingRef.current = null;
                 return false;
             }
             setSelected(chosen);

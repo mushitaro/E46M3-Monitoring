@@ -1,8 +1,8 @@
 'use client';
 
 import type { LucideIcon } from 'lucide-react';
-import { LABEL } from '@/components/ui';
-import type { StatusLook, StatusTone } from '@/lib/sync/status';
+import { LABEL } from '../../components/ui';
+import type { StatusLook, StatusTone } from '../../lib/sync/status';
 
 /**
  * SAVE or SYNC on the desk: TUNER's session-bar control — a glyph and the state's word, in the

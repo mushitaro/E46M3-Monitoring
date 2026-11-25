@@ -138,6 +138,7 @@ export function useDs2Link(
         readFaults: session.readFaults,
         readAdaptations: session.readAdaptations,
         runRead: session.runRead,
+        readFittedJob: session.readFittedJob,
         clearFaults: session.clearFaults,
         lastRun: snapshot.lastRun,
         startLog: session.startLog,

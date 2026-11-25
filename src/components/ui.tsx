@@ -2,7 +2,7 @@
 
 import { useId, useState } from 'react';
 import { Info, type LucideIcon } from 'lucide-react';
-import { useLang } from '@/lib/i18n';
+import { useLang } from '../lib/i18n';
 import { humanName, type HumanName } from '@tsunagi/monitoring-engine';
 
 /**

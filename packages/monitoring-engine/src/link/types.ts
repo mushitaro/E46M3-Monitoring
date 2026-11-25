@@ -7,7 +7,7 @@
  * and neither may reach into a screen.
  */
 import type { Ds2ErrorKind, TransportKind } from '@tsunagi/ds2-core';
-import type { ChannelId, DecodedAdaptation } from '@tsunagi/ds2-mss54';
+import type { DecodedAdaptation } from '@tsunagi/ds2-mss54';
 import type { KwpDtc } from '../kwpOnDs2.ts';
 import type { DecodedFault } from '../faultLayouts.ts';
 import type { DecodedRead, SgbdFaultRead } from '../sgbd/results.ts';
@@ -50,14 +50,14 @@ export interface LiveSample {
     /** Monotonic seconds since the run began. */
     time: number;
     /**
-     * Keyed by `ChannelId` — `selection:symbol` — never by symbol alone.
+     * Keys include the MSS54 block and symbol or the identified module, job and result.
      *
      * 10 of the 213 quantities appear in two blocks. A symbol-keyed row records
      * whichever block was read last under a name that cannot say which, so a run
      * covering blocks 3 and 35 wrote one column called `n` holding a mixture.
      * The saved CSV was wrong, not just vaguely labelled.
      */
-    values: Partial<Record<ChannelId, number | null>>;
+    values: Partial<Record<string, number | null>>;
 }
 
 /**

@@ -143,8 +143,8 @@ if (args.Length >= 2 && args[0] == "--tables")
 {
     string grp = args[1];
     string file = Directory.EnumerateFiles(ecuPath)
-        .FirstOrDefault(f => string.Equals(Path.GetFileName(f), grp + ".grp", StringComparison.OrdinalIgnoreCase));
-    if (file == null) { Console.Error.WriteLine($"no {grp}.grp in {ecuPath}"); Environment.Exit(2); }
+        .FirstOrDefault(f => string.Equals(Path.GetFileName(f), Path.HasExtension(grp) ? grp : grp + ".grp", StringComparison.OrdinalIgnoreCase));
+    if (file == null) { Console.Error.WriteLine($"no table program {grp} in {ecuPath}"); Environment.Exit(2); }
     using var ed = new EdiabasNet(string.Empty);
     ed.EdInterfaceClass = new EdInterfaceObd();
     ed.SetConfigProperty("EcuPath", ecuPath);

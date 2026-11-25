@@ -33,6 +33,7 @@ export * from './investigation/readRecord.ts';
 export * from './investigation/redact.ts';
 export * from './probe/plan.ts';
 export * from './probe/criteria.ts';
+export * from './probe/captureWindows.ts';
 export * from './probe/executor.ts';
 export * from './probe/scan.ts';
 export * from './probe/modules.ts';
@@ -45,6 +46,9 @@ export * from './sgbd/jobFrame.ts';
 export * from './sgbd/agreedFrame.ts';
 export * from './link/types.ts';
 export * from './link/session.ts';
+export { loadPracticeFleet, type PracticeFleet } from './practiceFleet.ts';
 export * from './link/notSent.ts';
 export * from './intake/intakeCheck.ts';
 export * from './intake/build.ts';
+
+export type { LogRetuned } from './link/session.ts';

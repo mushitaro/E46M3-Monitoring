@@ -21,10 +21,12 @@
 
 import {
     Ds2Address,
+    Ds2Control,
     Ds2Error,
     Ds2Link,
     FTDI_VENDOR_ID,
     buildDs2Frame,
+    frameToBytes,
     describeStatus,
     isPositiveResponse,
     WebSerialTransport,
@@ -58,28 +60,37 @@ import {
     type ErrorMemoryQuickTest,
 } from '@tsunagi/ds2-mss54';
 import { appNow, monoNow } from '../clock.ts';
-import { kwpExchange, kwpFrameOf, parseDtcsByStatus, type KwpFrame } from '../kwpOnDs2.ts';
+import { kwpRequest, kwpExchange, kwpFrameOf, parseDtcsByStatus, type KwpFrame } from '../kwpOnDs2.ts';
 import { finishFrame, initialShm } from '../sgbd/jobFrame.ts';
 import { runSgbdJobLive, type SgbdTables } from '../sgbd/vm.ts';
 import { whyNotSendable } from '../actuationGate.ts';
 import type { ReadRecord } from '../investigation/readRecord.ts';
-import type { ModuleProtocol } from '../moduleProtocol.ts';
+import { moduleProtocol, type ModuleProtocol } from '../moduleProtocol.ts';
+import { loadEcuCatalog } from '../ecuCatalog.ts';
+import { bestTelegram, loadTelegrams } from '../telegrams.ts';
 import { PracticePort, setPracticeAnswers } from '../practiceEcu.ts';
 import { loadJobFramesOracle } from '../sgbd/agreedFrame.ts';
-import { practiceCar } from '../practiceCar.ts';
+import { practiceCar, practiceDmeOf } from '../practiceCar.ts';
+import { loadPracticeFleet, practiceModelFor } from '../practiceFleet.ts';
+import { ADAPTATION_READ } from '../sgbd/adaptationReads.ts';
+import { speedSourcesFor, speedFromAnswer } from '../speedSources.ts';
 import { runProbe, type ProbeDeps, type ProbePlan, type ProbeRun } from '../probe/executor.ts';
 import { modulesOf } from '../probe/plan.ts';
 import { runScan, type ScanRun, type ScanTarget } from '../probe/scan.ts';
 import { CLUSTER_VIN_UNVERIFIED } from '../clusterVin.ts';
 import { EMPTY_IDENTITY, loadIdentity, type Identity } from '../identity.ts';
 import { NO_FAULT_LAYOUTS, decodeByLayout, loadFaultLayouts, type FaultLayouts } from '../faultLayouts.ts';
-import { answerFrame, decodeFaultRead, decodeRead, loadSgbdResults, type DecodedRead, type SgbdFaultRead } from '../sgbd/results.ts';
+import { answerFrame, decodeFaultRead, decodeRead, telemetryValues, loadSgbdResults, type DecodedRead, type SgbdFaultRead } from '../sgbd/results.ts';
 import { hasFaultJob, readFaultsByJob, type JobFaultRead } from '../sgbd/faultRead.ts';
+import { decisionFor } from '../policy.ts';
+import type { CatalogJob } from '../ecuCatalog.ts';
+import { mayReadWhileMoving, withdrawn } from '../ledger.ts';
+import { exchangeMeasurement, nativeMeasurement, validMeasurement, type NativeMeasurement } from '../sgbd/nativeMeasurement.ts';
 import { moduleLogGate, moduleLogValues, type ModuleLogRead } from '../sgbd/logChannels.ts';
-import { DME_ADDRESS, commonIdent, fittedFrom, frameVerdict, isCommonIdent, isM3, mayModuleBeSent, ruleFor, type Fitment, type Fitted } from '../variants.ts';
+import { DME_ADDRESS, commonIdent, fittedFrom, frameVerdict, isCommonIdent, isM3, kwpIdentityGroup, mayModuleBeSent, ruleFor, type Fitment, type Fitted } from '../variants.ts';
 import type { Ledger } from '../ledger.ts';
-import { clearFaultsCommand, isReadOnlyControl, permitCovers, telegramBytes, type ActuationPermit, type SendRequirement } from '../runGate.ts';
-import { MIN_RUN_VOLTAGE } from '../policy.ts';
+import { mayRun, clearFaultsCommand, isReadOnlyControl, permitCovers, telegramBytes, type ActuationPermit, type SendRequirement } from '../runGate.ts';
+import { isReadNature, natureOf, MIN_RUN_VOLTAGE } from '../policy.ts';
 import { NotSentError, notSentOf, type NotSent } from './notSent.ts';
 import {
     VEHICLE_STATE_MAX_AGE_MS,
@@ -186,6 +197,8 @@ const GEAR_EVERY_S = 1;
 
 /** A recording's channels changed while it ran: from `time` (its seconds) on, these, at `blocks` round trips a sample. */
 export interface LogRetuned {
+    /** Module channels actually installed at this sample boundary. */
+    moduleChannels: string[];
     time: number;
     channels: ChannelId[];
     blocks: number;
@@ -533,11 +546,8 @@ export class LinkSession {
             this.noteRead(to, hex2(address), 'IDENT', 0x00, new Uint8Array(0), { error: e });
             if (isDs2Error(e) && e.code === 'NOT_SENT') throw e;
         }
-        const f = fittedFrom(id.rules, id.modules, address, answer);
-        if (f.answer !== null) {
-            this.fitmentNow = new Map(this.fitmentNow).set(address, f);
-            this.update({ fitment: this.fitmentNow });
-        }
+        const { fitted: f } = await this.resolveFitted(link, address, answer);
+        this.rememberIdentity(f);
         this.append(
             f.answer === null ? 'info' : 'rx',
             f.answer === null
@@ -545,6 +555,45 @@ export class LinkSession {
                 : `${hex2(address)} is ${f.sgbd ?? '?'}${f.sgbd && !f.moduleId ? ' (its SGBD is not carried: IDENT only)' : ''}${f.moduleId ? ` → ${f.moduleId}` : ''}`,
         );
         return f;
+    }
+
+    private rememberIdentity(fitted: Fitted): void {
+        const current = new Map(this.fitmentNow);
+        if (fitted.answer === null) current.delete(fitted.address);
+        else current.set(fitted.address, fitted);
+        this.fitmentNow = current;
+        this.update({ fitment: current });
+    }
+
+    private async resolveFitted(link: Ds2Link, address: number, answer: Uint8Array | null) {
+        const id = this.identity;
+        let f = fittedFrom(id.rules, id.modules, address, answer);
+        let identifiedPayload: Uint8Array | null = null;
+        // The gearbox group tries KWP after silence or rejection of common IDENT.
+        // A positive DS2 answer at 0x32 stays on the DS2 branch even when its variant is unknown.
+        const kwp = kwpIdentityGroup(id.rules, address);
+        if (this.link === link && !this.snap.lineLost && !f.sgbd && kwp && this.transport &&
+            (address === DME_ADDRESS || !answer || answer[2] !== 0xa0)) {
+            const data = Uint8Array.of(0x1a,0x80);
+            const request = toHex(kwpRequest(address,data));
+            try {
+                const transport = this.transport;
+                this.append('tx', kwp.name + ' IDENT ' + request);
+                const reply = await link.withGate(() => kwpExchange(transport,{target:address,data,hex:request,source:kwp.name + ' IDENT'}));
+                this.append('rx', toHex(reply.bytes));
+                if (reply.data[0] === 0x5a && reply.data[1] === 0x80 && reply.data.length >= 14) {
+                    const key = [...reply.data.slice(10,14)].map(b => b.toString(16).padStart(2,'0')).join('');
+                    const name = kwp.variants[key];
+                    const entry = id.modules.find(m => m.address === address && m.sgbd.replace(/\.prg$/i, '').toUpperCase() === name);
+                    f = { address, sgbd: name ?? null, moduleId: entry?.id ?? null, answer: toHex(reply.bytes), identRequest: request };
+                    identifiedPayload = reply.data;
+                }
+            } catch (e) {
+                this.append('warn', kwp.name + ' IDENT: ' + (e instanceof Error ? e.message : String(e)));
+            }
+        }
+        if (this.link !== link || this.snap.lineLost) throw new Error('The identified connection has changed.');
+        return { fitted: f, identifiedPayload };
     }
 
     /**
@@ -589,7 +638,10 @@ export class LinkSession {
      */
     private noteVehicle(values: LiveValues): VehicleState | null {
         const next = vehicleStateFrom(values, appNow(), this.vehicleNow);
-        if (!next) return null;
+        return next ? this.noteVehicleState(next) : null;
+    }
+
+    private noteVehicleState(next: VehicleState): VehicleState {
         this.vehicleNow = next;
         this.update({ vehicleState: next, motion: motionOf(next, next.at) });
         if (this.motionTimer) clearTimeout(this.motionTimer);
@@ -611,6 +663,24 @@ export class LinkSession {
      * no DME, a refusal, a short block, a speed above zero — is not `parked`.
      */
     private async measureMotion(link: Ds2Link): Promise<Motion> {
+        // Block 19 has MSS54 semantics. A different or unidentified DME cannot attest stationary this way.
+        if (this.fitmentNow.has(DME_ADDRESS) && !isM3(this.fitmentNow)) {
+            const module = this.fitmentNow.get(DME_ADDRESS)?.moduleId;
+            if (!module) return 'unknown';
+            const source = speedSourcesFor(module, null).find(s => s.moduleId === module);
+            if (!source || (!source.usable && this.modeNow !== 'practice')) return 'unknown';
+            const table = await loadSgbdResults(module);
+            if (!source.usable && table?.practiceLearned?.module !== module) return 'unknown';
+            const request = telegramBytes(source.frame);
+            if (!request || request[0] !== DME_ADDRESS || request[2] !== Ds2Control.READ_IO_STATUS) return 'unknown';
+            const frame = await this.readFrame(link.to(DME), module, source.job, request[2], request.slice(3, -1));
+            if (!isPositiveResponse(frame)) return 'unknown';
+            const speed = speedFromAnswer(source, table, answerFrame(frame.address, frame.controlOrStatus, frame.payload));
+            if (speed === null || this.link !== link || this.fitmentNow.get(DME_ADDRESS)?.moduleId !== module) return 'unknown';
+            const state = this.noteVehicleState({ speedKmh: speed, speedCanKmh: null, rpm: null, voltageV: null, at: appNow() });
+            return motionOf(state, state.at);
+        }
+        // With no cached identity, readFrame identifies the DME on this connection before transmitting.
         const block = blockBySelection(SPEED_BLOCK);
         if (!block) return 'unknown';
         const req = liveBlockRequest(SPEED_BLOCK);
@@ -645,7 +715,7 @@ export class LinkSession {
                 what,
                 measured === 'moving' ? 'moving' : 'link',
                 `the car could not be shown to be stationary (${measured}). ` +
-                    'Just before sending, the DME speed (block 19) is read; only 0 km/h lets a read go',
+                    'No verified stationary reading from the fitted DME',
                 { motion: measured, speedKmh: measured === 'moving' ? (this.vehicleNow?.speedKmh ?? null) : null },
             );
         }
@@ -663,7 +733,7 @@ export class LinkSession {
         const wanted = engine ?? undefined;
         const notSent = (reason: 'link' | 'voltage' | 'engine', why: string, measured: { voltageV?: number | null; rpm?: number | null } = {}) =>
             new NotSentError(what, reason, why, { ...measured, ...(wanted ? { engineWanted: wanted } : {}), minVoltageV: MIN_RUN_VOLTAGE });
-        if (!block) throw notSent('link', 'the battery and the engine could not be measured');
+        if (!isM3(this.fitmentNow) || !block) throw notSent('link', 'no verified battery and engine measurement for this DME');
         const req = liveBlockRequest(ENGINE_BLOCK);
         this.append('tx', `Battery and engine preflight (DME block ${ENGINE_BLOCK})`);
         let values: LiveValues;
@@ -683,6 +753,28 @@ export class LinkSession {
         if (ub < MIN_RUN_VOLTAGE) throw notSent('voltage', `the battery reads ${ub.toFixed(1)} V, under ${MIN_RUN_VOLTAGE} V`, measured);
         if (engine === 'off' && (rpm === null || rpm > 0)) throw notSent('engine', `its SGBD asks for the engine stopped, and it reads ${rpm ?? '—'} rpm`, measured);
         if (engine === 'run' && (rpm === null || rpm < ENGINE_RUNNING_RPM)) throw notSent('engine', `its SGBD asks for the engine running, and it reads ${rpm ?? '—'} rpm`, measured);
+    }
+
+    private async readNativeMeasurement(link: Ds2Link, module: string, spec: NativeMeasurement, ledger: Ledger, job: CatalogJob) {
+        if (!validMeasurement(spec, module, job.id)) throw new Error('Invalid measurement definition');
+        if (withdrawn(ledger, module + ':' + job.id)) throw new Error('This measurement was withdrawn');
+        if (job.class !== 'read' || job.args.length || job.catalogOnly) throw new Error('Invalid measurement job');
+        const controller = this.identity.modules.find(m => m.id === module);
+        if (!controller || controller.address !== (module === 'gs30' ? 0x32 : DME_ADDRESS)) throw new Error('Invalid measurement target');
+        const decision = decisionFor(module, job, controller.group);
+        if (decision.how !== 'run') throw new Error('Measurement is disabled');
+        const port = this.transport ?? refuse('No open transport.');
+        await this.clearFor(controller.address, module);
+        await this.preflight(link, job.id, decision.when === 'moving' || mayReadWhileMoving(ledger, module + ':' + job.id) ? 'none' : 'parked');
+        const reading = await link.withGate(() => {
+            if (this.link !== link || this.transport !== port || this.snap.lineLost || this.fitmentNow.get(controller.address)?.moduleId !== module) {
+                throw new Error('The identified controller connection has changed.');
+            }
+            return exchangeMeasurement(port, controller.address, spec, this.modeNow === 'practice');
+        });
+        this.append('tx', reading.request);
+        this.append('rx', reading.response);
+        return reading;
     }
 
     /**
@@ -763,11 +855,11 @@ export class LinkSession {
         // What was read belongs to the module it was read from. Another module's link must not
         // show the previous one's faults as its own (a DSC switch showed the DME's 0x2C).
         if (this.readsOf !== null && this.readsOf !== this.target.moduleId) {
-            this.update({ ident: null, faults: null, quickTest: null, rawFaults: null, adaptations: null, lastRun: null });
+            this.update({ ident: null, faults: null, quickTest: null, rawFaults: null, adaptations: null, lastRun: null, scan: null });
         }
         this.readsOf = this.target.moduleId;
         this.clearError();
-        this.update({ state: 'connecting' });
+        this.update({ state: 'connecting', scan: null });
         try {
             // PRACTICE deliberately does not go through createDs2Transport: it wraps the
             // simulated port in a REAL WebSerialTransport, so the simulator drives the actual
@@ -782,7 +874,13 @@ export class LinkSession {
                           transport: new WebSerialTransport({
                               // The practice car: the DME, the module asked for, and every module such a
                               // car carries (practiceCar), so a scan finds what a car would.
-                              requestPort: async () => new PracticePort([address, ...practiceCar.fitted]),
+                              requestPort: async () => {
+                                  const fleet = await loadPracticeFleet();
+                                  const ident = practiceCar.idents[DME_ADDRESS];
+                                  const dme = practiceModelFor(fleet, ident)?.module ?? practiceDmeOf(ident);
+                                  const table = dme ? await loadSgbdResults(dme) : null;
+                                  return new PracticePort([address, ...practiceCar.fitted], table?.practiceLearned, fleet);
+                              },
                           }),
                       }
                     : permittedOnly
@@ -945,21 +1043,32 @@ export class LinkSession {
                 this.update({ ident: value });
                 return value;
             }
-            const ident = target.ident ?? refuse(`${target.moduleId}: its SGBD carries no short IDENT frame; nothing is sent.`);
+            const group = ruleFor(this.identity.rules, to.address);
+            const ident = target.ident ?? (group && this.identity.identOk.has(to.address)
+                ? { hex: toHex(commonIdent(to.address)), control: 0, payload: new Uint8Array(), source: group.group }
+                : refuse(`${target.moduleId}: its SGBD carries no short IDENT frame; nothing is sent.`));
             await this.preflight(link, 'Identity read', requires);
             this.append('tx', `IDENT ${ident.hex} (${ident.source})`);
-            const frame = await this.readFrame(to, target.moduleId, 'IDENT', ident.control, ident.payload);
-            link.assertPositive(frame, 'Identity read');
-            this.append('rx', toHex(frame.payload));
-            // The screen's IDENT is the common one (moduleProtocol takes no other): what it says
-            // about which module this is counts as much as the scan's.
-            if (isCommonIdent(buildDs2Frame(to.address, ident.control, ident.payload))) {
-                const answer = Uint8Array.from([frame.address, frame.length, frame.controlOrStatus, ...frame.payload, frame.checksum]);
-                const f = fittedFrom(this.identity.rules, this.identity.modules, to.address, answer);
-                this.fitmentNow = new Map(this.fitmentNow).set(to.address, f);
-                this.update({ fitment: this.fitmentNow });
+            const common = isCommonIdent(buildDs2Frame(to.address, ident.control, ident.payload));
+            const canAskGroup = common && this.identity.identOk.has(to.address) && !!kwpIdentityGroup(this.identity.rules, to.address);
+            let frame: Ds2Frame | null = null;
+            let timeout: unknown;
+            try {
+                frame = await this.readFrame(to, target.moduleId, 'IDENT', ident.control, ident.payload);
+            } catch (error) {
+                if (!canAskGroup || !isDs2Error(error) || error.code !== 'READ_TIMEOUT') throw error;
+                timeout = error;
             }
-            const value = { hex: toHex(frame.payload), length: frame.payload.length };
+            let payload = frame?.payload;
+            if (common) {
+                const result = await this.resolveFitted(link, to.address, frame && frameToBytes(frame));
+                this.rememberIdentity(result.fitted);
+                if (result.identifiedPayload) payload = result.identifiedPayload;
+                else if (frame) link.assertPositive(frame, 'Identity read');
+            } else if (frame) link.assertPositive(frame, 'Identity read');
+            if (!payload) throw timeout;
+            this.append('rx', toHex(payload));
+            const value = { hex: toHex(payload), length: payload.length };
             this.identNow = value;
             this.update({ ident: value });
             return value;
@@ -1089,7 +1198,7 @@ export class LinkSession {
     readonly readAdaptations = () =>
         this.run('Read adaptations', async (link) => {
             const { target, to } = this.session(link);
-            if (target.decoder !== 'mss54') refuse(`${target.moduleId}: no adaptation-block decoder; nothing is sent.`);
+            if (target.decoder !== 'mss54' || (this.fitmentNow.has(DME_ADDRESS) && !isM3(this.fitmentNow))) refuse(`${target.moduleId}: no identified MSS54 adaptation-block decoder; nothing is sent.`);
             const out: AdaptationRead[] = [];
             for (const block of MSS54_ADAPTATION_BLOCKS) {
                 const req = liveBlockRequest(block.selection);
@@ -1138,95 +1247,132 @@ export class LinkSession {
      * "somebody upstream checked" on trust.
      */
     readonly runRead = (jobId: string, hex: string, requires: SendRequirement = 'parked', permit?: ActuationPermit) =>
-        this.run(`Run ${jobId}`, async (link) => {
-            const { target, to } = this.session(link);
-            // A job that sends several frames, and anything that drives a KWP-on-DS2 module, runs as
-            // its own code runs (`runByCode`): each frame it builds goes only if the permit names it.
-            if (permit && (target.kwp || (permit.sequence?.length ?? 0) > 1)) return this.runByCode(link, jobId, hex, permit);
-            // Otherwise a KWP-on-DS2 module is sent its identity and its fault read, and nothing else:
-            // the catalogue path builds DS2 frames, which this module would read as something else.
-            if (target.kwp) refuse(`${jobId}: ${target.moduleId} speaks KWP2000-shaped frames; only its identity, its fault read and what the owner's table opens are built for it.`);
-            const bytes = telegramBytes(hex);
-            if (!bytes) {
-                // A plain Error on purpose: this is the APP refusing, not
-                // the link failing, and the electrical-fault dialog must not
-                // claim a wiring problem for a bug in our own data.
-                throw new Error(`${jobId}: telegram is not a well-formed frame: ${hex}`);
-            }
-            // The frame names its module in its first byte, and it goes to that module or nowhere.
-            // The link used to strip the byte and send the rest to the DME.
-            if (bytes[0] !== target.address) {
-                throw new Error(
-                    `${jobId}: the telegram is addressed to ${hex2(bytes[0])}, the link is talking to ${target.moduleId} at ${hex2(target.address)}`,
-                );
-            }
-            const control = bytes[2];
-            // Belt and braces. If this fires on a vehicle, the gate above it
-            // has a hole and the car is one line away from being written to.
-            //
-            // PRACTICE is the one thing that widens it, and it widens ONLY
-            // here — `mayActuate` still hands a vehicle whatever `mayRun`
-            // said, unchanged. The simulated ECU is where the actuator send
-            // path gets to execute before an M3 is the first thing it
-            // executes against.
-            // A frame that drives something goes with the gate's permit for exactly these bytes.
-            const permitted = permit !== undefined && permitCovers(permit, target.moduleId, jobId, hex, Date.now());
-            if (permit && !permitted) throw new NotSentError(jobId, 'permission', 'the permit does not cover this frame');
-            const refusal = whyNotSendable(control, this.modeNow, target.moduleId, permitted);
-            if (refusal) throw new Error(`${jobId}: ${refusal}`);
-            const payload = bytes.slice(3, bytes.length - 1);
-            // A read the owner has not cleared for a moving car goes only when the DME says
-            // 0 km/h in this same call. A run that drives something is measured further (battery,
-            // engine); its stop is never held back by a measurement.
-            const measured = permit && permit.kind !== 'run' ? null : await this.preflight(link, jobId, permit ? 'parked' : requires);
-            if (permit?.kind === 'run') await this.preflightRun(link, jobId, permit.engine);
-            this.append('tx', `${jobId}: ${hex}`);
-            const drives = permitted || !isReadOnlyControl(control, target.moduleId);
-            const frame = await this.readFrame(to, target.moduleId, jobId, control, payload)
-                .then((f) => {
-                    link.assertPositive(f, jobId);
-                    return f;
-                })
-                .catch((e: unknown) => {
-                    if (drives) this.noteRun(target.moduleId, jobId, permit?.kind ?? 'run', hex, null, isDs2Error(e) && e.code === 'NEGATIVE_RESPONSE' ? 'rejected' : 'failed', e);
-                    throw e;
-                });
-            if (drives) this.noteRun(target.moduleId, jobId, permit?.kind ?? 'run', hex, toHex(frame.payload), 'ok', null);
-            // Read by the job's own code where it ships. A failure to read is not a failure of
-            // the read: the bytes stand either way.
-            let decoded: DecodedRead | null = null;
-            try {
-                decoded = decodeRead(await loadSgbdResults(target.moduleId), jobId, hex, answerFrame(frame.address, frame.controlOrStatus, frame.payload));
-            } catch {
-                decoded = null;
-            }
-            const result: JobRunResult = {
-                jobId,
-                request: hex,
-                response: toHex(frame.payload),
-                payloadLength: frame.payload.length,
-                at: appNow(),
-                error: null,
-                decoded,
-            };
-            this.append('rx', `${frame.payload.length} bytes`);
-            this.update({ lastRun: result });
-            if (measured === 'parked' && this.modeNow === 'vehicle') {
-                try {
-                    this.handlers.onObserved?.({
-                        moduleId: target.moduleId,
-                        jobId,
-                        telegram: hex,
-                        response: result.response,
-                        at: new Date(result.at).toISOString(),
-                        ecuIdent: this.identNow?.hex,
-                    });
-                } catch {
-                    /* recording a fact must never fail the read it is about */
-                }
-            }
-            return result;
+        this.run(`Run ${jobId}`, (link) => this.sendJob(link, this.session(link).target, jobId, hex, requires, permit));
+
+    /** Read a catalogued job on the module this link actually scanned, without reopening the cable. */
+    readonly readFittedJob = (moduleId: string, address: number, jobId: string, ledger: () => Ledger) =>
+        this.run(`Read ${jobId}`, async link => {
+            const scan = this.snap.scan;
+            const result = scan?.results.find(r => Number(r.address) === address);
+            const fitted = this.fitmentNow.get(address)?.moduleId ?? result?.variant?.moduleId;
+            const single = result?.modules.length === 1 && result.modules[0] === moduleId;
+            // A negative fault-memory reply does not undo an earlier positive identification.
+            const identifiedBeforeRefusal = result?.outcome === 'rejected' && result.variant?.basis === 'identified' &&
+                result.variant.moduleId === moduleId && this.fitmentNow.get(address)?.moduleId === moduleId;
+            const currentIdentity = this.fitmentNow.get(address);
+            // DATALOG may have opened a new target. A fresh positive IDENT on that same
+            // physical connection is sufficient even before another all-module scan.
+            const exactIdentity = currentIdentity?.moduleId === moduleId && !!currentIdentity.answer &&
+                currentIdentity.sgbd?.toLowerCase() === moduleId;
+            const scanned = result && (identifiedBeforeRefusal || ['identified', 'answered'].includes(result.outcome)) &&
+                (fitted ? fitted === moduleId : !result.variant && single && result.ident?.outcome === 'answered');
+            if (!exactIdentity && !scanned) throw new Error('この接続で対象モジュールを確認できません');
+            const [profile, table] = await Promise.all([loadEcuCatalog(moduleId), loadTelegrams(moduleId)]);
+            const job = profile.jobs.find(j => j.id === jobId);
+            if (profile.id !== moduleId || profile.address !== address || table?.module !== moduleId ||
+                table.address !== address || !job || !isReadNature(natureOf(moduleId, job)) || job.args.length)
+                throw new Error('このモジュールの読み取り項目を確認できません');
+            const frame = bestTelegram(table, jobId);
+            const verdict = mayRun(job, frame, ledger(), { moduleId, motion: this.snap.motion, group: profile.group });
+            if (!verdict.allowed || !frame || this.link !== link || this.snap.scan !== scan || this.fitmentNow.get(address) !== currentIdentity || this.snap.lineLost)
+                throw new Error('この接続で実行できる読み取りではありません');
+            return this.sendJob(link, moduleProtocol(moduleId, address, table), jobId, frame.hex, verdict.requires);
         });
+
+    private async sendJob(link: Ds2Link, target: ModuleProtocol, jobId: string, hex: string, requires: SendRequirement, permit?: ActuationPermit) {
+        const to = link.to(target.address);
+        // A job that sends several frames, and anything that drives a KWP-on-DS2 module, runs as
+        // its own code runs (`runByCode`): each frame it builds goes only if the permit names it.
+        if (permit && (target.kwp || (permit.sequence?.length ?? 0) > 1)) return this.runByCode(link, jobId, hex, permit);
+        // Otherwise a KWP-on-DS2 module is sent its identity and its fault read, and nothing else:
+        // the catalogue path builds DS2 frames, which this module would read as something else.
+        if (target.kwp) refuse(`${jobId}: ${target.moduleId} speaks KWP2000-shaped frames; only its identity, its fault read and what the owner's table opens are built for it.`);
+        const bytes = telegramBytes(hex);
+        if (!bytes) {
+            // A plain Error on purpose: this is the APP refusing, not
+            // the link failing, and the electrical-fault dialog must not
+            // claim a wiring problem for a bug in our own data.
+            throw new Error(`${jobId}: telegram is not a well-formed frame: ${hex}`);
+        }
+        // The frame names its module in its first byte, and it goes to that module or nowhere.
+        // The link used to strip the byte and send the rest to the DME.
+        if (bytes[0] !== target.address) {
+            throw new Error(
+                `${jobId}: the telegram is addressed to ${hex2(bytes[0])}, the link is talking to ${target.moduleId} at ${hex2(target.address)}`,
+            );
+        }
+        const control = bytes[2];
+        // Belt and braces. If this fires on a vehicle, the gate above it
+        // has a hole and the car is one line away from being written to.
+        //
+        // PRACTICE is the one thing that widens it, and it widens ONLY
+        // here — `mayActuate` still hands a vehicle whatever `mayRun`
+        // said, unchanged. The simulated ECU is where the actuator send
+        // path gets to execute before an M3 is the first thing it
+        // executes against.
+        // A frame that drives something goes with the gate's permit for exactly these bytes.
+        const permitted = permit !== undefined && permitCovers(permit, target.moduleId, jobId, hex, Date.now());
+        if (permit && !permitted) throw new NotSentError(jobId, 'permission', 'the permit does not cover this frame');
+        const refusal = whyNotSendable(control, this.modeNow, target.moduleId, permitted);
+        if (refusal) throw new Error(`${jobId}: ${refusal}`);
+        const payload = bytes.slice(3, bytes.length - 1);
+        // A read the owner has not cleared for a moving car goes only when the DME says
+        // 0 km/h in this same call. A run that drives something is measured further (battery,
+        // engine); its stop is never held back by a measurement.
+        const measured = permit && permit.kind !== 'run' ? null : await this.preflight(link, jobId, permit ? 'parked' : requires);
+        if (permit?.kind === 'run') await this.preflightRun(link, jobId, permit.engine);
+        this.append('tx', `${jobId}: ${hex}`);
+        const drives = permitted || !isReadOnlyControl(control, target.moduleId);
+        const frame = await this.readFrame(to, target.moduleId, jobId, control, payload)
+            .then((f) => {
+                link.assertPositive(f, jobId);
+                return f;
+            })
+            .catch((e: unknown) => {
+                if (drives) this.noteRun(target.moduleId, jobId, permit?.kind ?? 'run', hex, null, isDs2Error(e) && e.code === 'NEGATIVE_RESPONSE' ? 'rejected' : 'failed', e);
+                throw e;
+            });
+        if (drives) this.noteRun(target.moduleId, jobId, permit?.kind ?? 'run', hex, toHex(frame.payload), 'ok', null);
+        // Read by the job's own code where it ships. A failure to read is not a failure of
+        // the read: the bytes stand either way.
+        let decoded: DecodedRead | null = null;
+        try {
+            const table = await loadSgbdResults(target.moduleId);
+            const reply = answerFrame(frame.address, frame.controlOrStatus, frame.payload);
+            decoded = decodeRead(table, jobId, hex, reply);
+            if (table && decoded && ADAPTATION_READ.test(jobId)) {
+                decoded = { ...decoded, values: telemetryValues(table, jobId, hex, reply) };
+            }
+        } catch {
+            decoded = null;
+        }
+        const result: JobRunResult = {
+            jobId,
+            request: hex,
+            response: toHex(frame.payload),
+            payloadLength: frame.payload.length,
+            at: appNow(),
+            error: null,
+            decoded,
+        };
+        this.append('rx', `${frame.payload.length} bytes`);
+        this.update({ lastRun: result });
+        if (measured === 'parked' && this.modeNow === 'vehicle') {
+            try {
+                this.handlers.onObserved?.({
+                    moduleId: target.moduleId,
+                    jobId,
+                    telegram: hex,
+                    response: result.response,
+                    at: new Date(result.at).toISOString(),
+                    ecuIdent: this.target.moduleId === target.moduleId && this.target.address === target.address ? this.identNow?.hex : undefined,
+                });
+            } catch {
+                /* recording a fact must never fail the read it is about */
+            }
+        }
+        return result;
+    }
 
     /**
      * A job that drives something, run as its own SGBD code runs (sgbd/vm `runSgbdJobLive`): the job
@@ -1385,9 +1531,10 @@ export class LinkSession {
         const link = this.link;
         if (!link || this.polling) return;
         let to: Ds2Target;
+        const mss54 = this.target.decoder === 'mss54' && (!this.fitmentNow.has(DME_ADDRESS) || isM3(this.fitmentNow));
         try {
             const s = this.session(link);
-            if (s.target.decoder !== 'mss54') refuse(`${s.target.moduleId}: no live-block layout; nothing is recorded.`);
+            if (!mss54 && (channels.length || !modules?.reads.length)) refuse(`${s.target.moduleId}: select this car's identified module channels.`);
             to = s.to;
         } catch (e) {
             this.failWith(e);
@@ -1395,8 +1542,8 @@ export class LinkSession {
         }
         let ledgerOf = modules?.ledger ?? null;
         let moduleReads = [...(modules?.reads ?? [])];
-        let tuned = logBlocks(channels, moduleReads.length > 0);
-        if (tuned.blocks.length === 0) return;
+        let tuned = logBlocks(channels, mss54 && moduleReads.length > 0);
+        if (!tuned.blocks.length && !moduleReads.length) return;
         const gearBlock = blockBySelection(GEAR_BLOCK);
 
         this.polling = true;
@@ -1466,8 +1613,9 @@ export class LinkSession {
             let gearAt = -Infinity;
             try {
                 // The blocks are the MSS54's: only to a DME that has said it is one.
-                await this.clearFor(to.address, this.target.moduleId);
+                if (tuned.blocks.length) await this.clearFor(to.address, this.target.moduleId);
                 await clearReads(moduleReads);
+                if (!tuned.blocks.length && !moduleReads.length) refuse('No selected measurement belongs to an identified module.');
                 while (this.polling && this.link) {
                     // New channels, asked for while the run goes on: from this sample on.
                     const tune = this.logTune;
@@ -1477,12 +1625,14 @@ export class LinkSession {
                         if (tune.ledger) ledgerOf = tune.ledger;
                         await clearReads(reads);
                         moduleReads = reads;
-                        tuned = logBlocks(tune.channels, moduleReads.length > 0);
+                        tuned = logBlocks(tune.channels, mss54 && moduleReads.length > 0);
+                        if (!tuned.blocks.length && !moduleReads.length) refuse('No selected measurement belongs to an identified module.');
                         this.append('info', `Recording now ${tune.channels.length} channel(s) across ${tuned.blocks.length} block(s)${moduleReads.length ? ` and ${moduleReads.length} module read(s)` : ''}; the run goes on.`);
-                        options?.onRetune?.({ time: elapsed(), channels: [...tune.channels], blocks: tuned.blocks.length });
+                        options?.onRetune?.({ time: elapsed(), channels: [...tune.channels], blocks: tuned.blocks.length,
+                            moduleChannels: reads.flatMap(read => [...read.wanted].map(result => `${read.module}:${read.job.id}:${result}`)) });
                     }
                     const { blocks, wanted } = tuned;
-                    const values: Partial<Record<ChannelId, number | null>> = {};
+                    const values: LiveSample['values'] = {};
                     let speed: LiveValues | null = null;
                     let incomplete = false;
                     for (const block of blocks) {
@@ -1516,7 +1666,7 @@ export class LinkSession {
                     }
                     // The gear, once a second, when the channels do not carry it: measured by the DME
                     // in this sample, never carried over from an earlier one.
-                    if (!incomplete && gearBlock && !wanted.has(GEAR_CHANNEL) && elapsed() - gearAt >= GEAR_EVERY_S) {
+                    if (mss54 && !incomplete && gearBlock && !wanted.has(GEAR_CHANNEL) && elapsed() - gearAt >= GEAR_EVERY_S) {
                         const frame = await readBlock(GEAR_BLOCK);
                         if (frame) {
                             gearAt = elapsed();
@@ -1530,6 +1680,13 @@ export class LinkSession {
                         const motion = speed ? motionOf(vehicleStateFrom(speed, now), now) : 'unknown';
                         for (const read of [...moduleReads]) {
                             for (const r of read.wanted) values[`${read.module}:${read.job.id}:${r}` as ChannelId] = null;
+                            const spec = nativeMeasurement(read.results, read.module, read.job.id);
+                            if (spec) {
+                                const channel = [read.module, read.job.id, spec.result].join(':');
+                                const result = await this.readNativeMeasurement(link, read.module, spec, ledgerOf(), read.job);
+                                (values as Record<string, number | null>)[channel] = result.value;
+                                continue;
+                            }
                             const gate = moduleLogGate(read, ledgerOf(), motion);
                             if ('refused' in gate) {
                                 moduleReads.splice(moduleReads.indexOf(read), 1);
@@ -1560,6 +1717,7 @@ export class LinkSession {
                             Object.assign(values, moduleLogValues(read, bytes, frame));
                         }
                     }
+                    if (!mss54 && !moduleReads.length) throw new Error('No identified module can supply the selected values.');
                     if (!incomplete) onSample({ time: elapsed(), values });
                     await yieldToEventLoop();
                 }
@@ -1598,7 +1756,9 @@ export class LinkSession {
         modules?: { reads: readonly ModuleLogRead[]; ledger: () => Ledger },
     ): boolean => {
         if (!this.polling || !this.logging) return false;
-        if (logBlocks(channels, (modules?.reads.length ?? 0) > 0).blocks.length === 0) return false;
+        const hasModules = Boolean(modules?.reads.length);
+        if (channels.length && (this.target.decoder !== 'mss54' || !isM3(this.fitmentNow))) return false;
+        if (!planBlockReads(channels).blocks.length && !hasModules) return false;
         this.logTune = { channels: [...channels], reads: [...(modules?.reads ?? [])], ledger: modules?.ledger ?? null };
         return true;
     };
@@ -1768,8 +1928,16 @@ export class LinkSession {
             for (const a of addresses) {
                 if (id.identOk.has(a)) await this.identify(link, a).catch((e) => this.append('warn', `IDENT ${hex2(a)}: ${e instanceof Error ? e.message : String(e)}`));
             }
+            const mss54 = isM3(this.fitmentNow);
+            if (!mss54 && modulesOf(plan.steps).includes('mss54')) throw new Error('This plan requires an identified MSS54.');
+            for (const module of modulesOf(plan.steps)) {
+                const protocol = deps.module(module)?.protocol;
+                if (protocol) await this.clearFor(protocol.address, module);
+            }
             const run = await runProbe(plan, {
                 ...deps,
+                mss54,
+                measurementExchange: (module, spec, job) => this.readNativeMeasurement(link, module, spec, deps.ledger(), job),
                 // The run reads the speed block when a cycle decides on it and at least every
                 // `SPEED_REFRESH_MS` (executor): the car's state is kept from it, as a recording keeps
                 // it, so the status and the read records say how fast the car is while a plan runs

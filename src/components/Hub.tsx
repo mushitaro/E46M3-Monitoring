@@ -1,7 +1,7 @@
 'use client';
 
 import type { LucideIcon } from 'lucide-react';
-import { useBusyLock } from '@/hooks/useBusyLock';
+import { useBusyLock } from '../hooks/useBusyLock';
 import { HUB_LABEL, TextButton } from './ui';
 
 /**

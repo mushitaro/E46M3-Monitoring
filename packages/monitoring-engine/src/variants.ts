@@ -71,6 +71,8 @@ export interface GroupRule {
     /** `D_0012`: the group file the rule was read from. */
     group: string;
     groupSha256: string;
+    /** Required identity payload bytes, excluding header and checksum. */
+    minimumDataLength?: number;
     /** The status byte of an answer the group reads on DS2's road (0xA0). Any other: nothing chosen. */
     positive: number;
     choose: Choice;
@@ -79,9 +81,19 @@ export interface GroupRule {
 }
 
 export interface VariantRules {
+    /** D_MOTOR's exact diagnostic/variant byte pairs at engine address 0x12. */
+    kwpEngine?: Readonly<Record<string,string>>;
+    /** D_0032's independently reproduced KWP gearbox identities. */
+    kwpGearbox?: Readonly<Record<string,string>>;
     schema: 1;
     generatedAt: string;
     groups: readonly GroupRule[];
+}
+
+export function kwpIdentityGroup(rules: VariantRules, address: number) {
+    if (address === 0x12 && rules.kwpEngine) return { name: 'D_MOTOR', variants: rules.kwpEngine };
+    if (address === 0x32 && rules.kwpGearbox) return { name: 'D_0032', variants: rules.kwpGearbox };
+    return null;
 }
 
 export const NO_RULES: VariantRules = { schema: 1, generatedAt: '', groups: [] };
@@ -89,6 +101,9 @@ export const NO_RULES: VariantRules = { schema: 1, generatedAt: '', groups: [] }
 /** The SGBD of the late E46 M3's DME. The car is an M3 when 0x12 has said it is this one. */
 export const M3_DME_SGBD = 'MSS54DS0';
 export const DME_ADDRESS = 0x12;
+
+// These option-dependent addresses must be identified even on an MSS54 car with older data files.
+const optionGroups = new Set([0x65, 0x70, 0xa6]);
 
 function keyOf(answer: Uint8Array, slices: readonly Slice[]): string {
     let out = '';
@@ -130,6 +145,7 @@ export function groupChoice(rule: GroupRule, answer: Uint8Array): string | null 
 
 /** The SGBD this answer identifies, or null: not positive, no row, or the group's "not found". */
 export function variantOf(rule: GroupRule, answer: Uint8Array): string | null {
+    if (rule.minimumDataLength !== undefined && answer.length - 4 < rule.minimumDataLength) return null;
     const v = groupChoice(rule, answer);
     return v !== null && !rule.unknown.includes(v) ? v : null;
 }
@@ -140,6 +156,7 @@ export function ruleFor(rules: VariantRules, address: number): GroupRule | null 
 
 /** What one address said to its IDENT this session. */
 export interface Fitted {
+    identRequest?: string;
     address: number;
     /** The whole answer frame, hex, or null when it did not answer. */
     answer: string | null;
@@ -204,6 +221,7 @@ export function mayModuleBeSent(address: number, moduleId: string, fitment: Fitm
         if (f.answer === null) return { ok: false, reason: `${at} did not answer its IDENT` };
         return { ok: false, reason: `${at}: its IDENT answer chose no variant (?): only its IDENT is sent` };
     }
+    if (optionGroups.has(address)) return { ok: false, reason: `${at}: its module identification rule is unavailable` };
     if (isM3(fitment)) return { ok: true, basis: 'm3-fitment' };
     const dme = fitment.get(DME_ADDRESS);
     const car = !dme ? 'the DME has not been identified' : dme.sgbd ? `the DME is ${dme.sgbd}, not the M3's ${M3_DME_SGBD}` : 'the DME did not identify itself as an M3';
@@ -234,6 +252,7 @@ export function frameVerdict(frame: Uint8Array, fitment: Fitment, rules: Variant
     if (ruleFor(rules, address)) {
         return f?.moduleId ? null : `${hex2(address)}: not identified as a module this app carries (?): only its IDENT is sent`;
     }
+    if (optionGroups.has(address)) return `${hex2(address)}: module identification rule unavailable; only its IDENT is sent`;
     return isM3(fitment) ? null : `${hex2(address)}: the car has not identified itself as an M3, and this address has no variant rule (?): only its IDENT is sent`;
 }
 

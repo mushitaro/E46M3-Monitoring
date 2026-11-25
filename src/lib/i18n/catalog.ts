@@ -663,4 +663,4 @@ export interface Localised {
 }
 
 /** What `t` is: the chrome, plus this language's prose. */
-export type Catalog = Chrome & Localised;
+export type Catalog = { [K in keyof Chrome]: string } & Localised;

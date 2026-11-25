@@ -26,13 +26,13 @@
 
 import { useMemo } from 'react';
 import { AlertTriangle } from 'lucide-react';
-import { Pane, Provenance, Section, TextButton, emphasise } from '@/components/ui';
-import { StepList } from '@/components/StepList';
-import { stepsFromJobFamily } from '@/lib/procedureSteps';
-import { humanName } from '@/components/ui';
-import type { DscFamily, DscHydraulics } from '@/lib/dscHydraulics';
+import { Pane, Provenance, Section, TextButton, emphasise } from './ui';
+import { StepList } from './StepList';
+import { stepsFromJobFamily } from '../lib/procedureSteps';
+import { humanName } from './ui';
+import type { DscFamily, DscHydraulics } from '../lib/dscHydraulics';
 import type { CatalogJob } from '@tsunagi/monitoring-engine';
-import { useLang } from '@/lib/i18n';
+import { useLang } from '../lib/i18n';
 
 export function DscHydraulicsPane({
     hydraulics,

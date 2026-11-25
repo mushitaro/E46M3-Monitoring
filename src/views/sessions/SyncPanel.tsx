@@ -1,5 +1,6 @@
 "use client";
 
+import { SyncCopies } from "./SyncCopies";
 import { useState } from "react";
 import { CloudDownload, CloudUpload, Trash2 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -94,95 +95,7 @@ export function SyncPanel({
         Icon={CloudUpload}
         onClose={onClose}
       >
-        <div className="flex flex-col gap-1.5 pb-2">
-          {/* The send, first: the one thing this panel does. Where it goes is said beside
-                        it, because it is the one fact about the button the button cannot say. An
-                        expired sign-in is said here as that fact; the way back is the header's SIGN
-                        IN AGAIN (AppHeader `SignInNotice`). */}
-          <div className="flex min-h-[20px] flex-wrap items-baseline gap-x-4 gap-y-1">
-            {s.syncLook && (
-              <StatusButton
-                look={s.syncLook}
-                tones={SYNC_TONE}
-                Icon={CloudUpload}
-                busy={busy}
-                onClick={() => void s.sync()}
-              />
-            )}
-            <span className="text-[11px] text-slate-500">
-              {s.cloudEnabled ? (account ?? "…") : t.sessions_noCloud}
-            </span>
-            {s.waiting > 0 && (
-              <span className="text-[11px] text-amber-400">
-                {t.sessions_outbox(s.waiting)}
-              </span>
-            )}
-          </div>
-          {/* Reserved, so the lists below do not move when SYNC reports. */}
-          <p
-            className={`min-h-[18px] text-[11px] ${s.notice ? NOTICE_TONE[s.notice.tone] : ""}`}
-          >
-            {s.notice?.text}
-          </p>
-        </div>
-
-        {s.cloudEnabled && (
-          <Section title={t.sessions_inAccount} count={s.cloud?.length}>
-            {s.cloud !== null && s.cloud.length === 0 ? (
-              <p className="py-2 text-xs text-slate-500">
-                {t.sessions_emptyCloud}
-              </p>
-            ) : (
-              <DataList>
-                {(s.cloud ?? []).map((x) => (
-                  <DataRow
-                    key={x.id}
-                    name={humanName(x.label)}
-                    trailing={
-                      <span className="flex shrink-0 items-baseline gap-3">
-                        {x.mock === 1 && (
-                          <Pill tone="secondary">{t.practice}</Pill>
-                        )}
-                        <TextButton
-                          onClick={() => void s.restore(x.id)}
-                          disabled={busy}
-                          Icon={CloudDownload}
-                        >
-                          {t.restore}
-                        </TextButton>
-                        <TextButton
-                          onClick={() =>
-                            setConfirm({
-                              kind: "cloud",
-                              id: x.id,
-                              label: x.label,
-                            })
-                          }
-                          disabled={busy}
-                          tone="danger"
-                          Icon={Trash2}
-                        >
-                          {t.remove}
-                        </TextButton>
-                      </span>
-                    }
-                    detail={
-                      <p className="font-mono text-[11px] text-slate-500">
-                        {t.sessions_counts(
-                          x.fault_count,
-                          x.sample_count,
-                          x.failure_count,
-                        )}{" "}
-                        · {kb(x.session_bytes)} · {when(x.synced_at)}
-                      </p>
-                    }
-                  />
-                ))}
-              </DataList>
-            )}
-          </Section>
-        )}
-
+        <SyncCopies s={s} account={account} busy={busy} remove={(id,label) => setConfirm({kind:"cloud",id,label})} />
         {s.cloudEnabled && (
           <Section
             title={t.sessions_errors}

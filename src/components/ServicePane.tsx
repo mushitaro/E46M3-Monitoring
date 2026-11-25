@@ -66,7 +66,7 @@
  */
 
 import { useMemo, useState } from 'react';
-import { Chip, DataList, DataRow, FacetRow, LABEL, ListControls, Pane, Pill, Section } from '@/components/ui';
+import { Chip, DataList, DataRow, FacetRow, LABEL, ListControls, Pane, Pill, Section } from './ui';
 import {
     description,
     facetCounts,
@@ -78,11 +78,11 @@ import {
     type Risk,
 } from '@tsunagi/monitoring-engine';
 import { jobOperation, type OpKind } from '@tsunagi/monitoring-engine';
-import { isOn } from '@/lib/jobSurface';
+import { isOn } from '../lib/jobSurface';
 import { mayRunOnVehicle, type Ledger } from '@tsunagi/monitoring-engine';
 import { mayRun } from '@tsunagi/monitoring-engine';
 import { bestTelegram, type TelegramTable } from '@tsunagi/monitoring-engine';
-import { useLang } from '@/lib/i18n';
+import { useLang } from '../lib/i18n';
 import type { Motion } from '@tsunagi/monitoring-engine';
 
 /** The class order is the order of consequence, not alphabetical. */

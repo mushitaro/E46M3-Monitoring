@@ -3,20 +3,19 @@
 import { memo, useState } from 'react';
 import { ArrowLeft, CloudUpload, Database, Eye, Link2, Trash2 } from 'lucide-react';
 import { formatErrorCode } from '@tsunagi/ds2-mss54';
-import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { DataList, DataRow, Field, Pane, Pill, Section, TextButton, Well, humanName } from '@/components/ui';
-import { normCode } from '@/lib/faultCode';
-import { useLang } from '@/lib/i18n';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { DataList, DataRow, Field, Pane, Pill, Section, TextButton, Well, humanName } from '../../components/ui';
+import { normCode } from '../../lib/faultCode';
+import { useLang } from '../../lib/i18n';
 import { text as resolveText, type EcuProfile } from '@tsunagi/monitoring-engine';
 import { KEEP_MS, expiresAt, type Episode, type JournalEvent } from '@tsunagi/monitoring-engine';
 import { mss54Present, needsSync, parseCsv, savedScanFaults, sessionFaultCount, sessionLabel, summarise, type SavedSession } from '@tsunagi/monitoring-engine';
-import { SAVE_TONE, SYNC_TONE } from '@/lib/sync/status';
-import { CountReadout } from '@/views/shared/CountReadout';
+import { SAVE_TONE, SYNC_TONE } from '../../lib/sync/status';
+import { CountReadout } from '../shared/CountReadout';
 import { StatusButton } from './StatusButton';
-import type { Sessions } from './useSessions';
+import type { StatusLook } from '../../lib/sync/status';
 
-/** Rows of a saved datalog the viewer draws. The CSV keeps every row; the screen does not need to. */
-const VIEWER_ROWS = 200;
+import { SavedValues } from './SavedValues';
 
 const NOTICE_TONE = {
     info: 'text-slate-400',
@@ -24,6 +23,14 @@ const NOTICE_TONE = {
     warn: 'text-amber-400',
     error: 'text-red-400',
 } as const;
+
+export interface MemoryViewState {
+    viewing: string | null; view(id: string | null): void; local: SavedSession[] | null; busy: string | null;
+    saveLook: StatusLook; syncLook: StatusLook | null; current: { faults: number | null; samples: number; failures: number };
+    content: boolean; notice: { tone: 'error'|'ok'|'warn'|'info'; text: string } | null;
+    unkept: Episode[]; now: number; undatedExpiry(ep: Episode): number | null; episodeNow: Episode | null; cloudEnabled: boolean;
+    save(): unknown; keep(start: number): unknown; join(ep: Episode): unknown; removeLocal(id: string): unknown;
+}
 
 type Confirm = { id: string; label: string; synced: boolean };
 
@@ -44,7 +51,7 @@ export const SessionsView = memo(function SessionsView({
     ecuId,
     onOpenSync,
 }: {
-    sessions: Sessions;
+    sessions: MemoryViewState;
     /** Opens SESSION SYNC (SyncPanel), which the shell owns so the menu sheet opens the same one. */
     onOpenSync: () => void;
     /** The loaded module's catalogue, used to name a saved fault when the session is for the same module. */
@@ -251,7 +258,7 @@ function lastFaultCount(ep: Episode): number | null {
     return sessionFaultCount({ faults: faults?.faults ?? null, faultsAt: faults?.t, scan: last('scan')?.scan ?? null });
 }
 
-function CurrentCounts({ s }: { s: Sessions }) {
+function CurrentCounts({ s }: { s: MemoryViewState }) {
     const { t } = useLang();
     const ep = s.episodeNow;
     // When it was recorded: the time, or that the time is not yet certain (a head unit's clock that woke
@@ -371,40 +378,7 @@ function SessionViewer({
                 )}
             </Section>
 
-            {csv && session.datalog && (
-                <Section
-                    title={t.viewer_datalog}
-                    count={session.datalog.samples}
-                    note={t.viewer_rows(Math.min(VIEWER_ROWS, csv.rows.length), csv.rows.length)}
-                >
-                    {/* Scrolls sideways only: the pane already scrolls down, and a second vertical
-                        scroller inside it would trap the wheel. */}
-                    <div className="overflow-x-auto">
-                        <table className="font-mono text-[11px] tabular-nums text-slate-300">
-                            <thead>
-                                <tr className="text-left text-slate-500">
-                                    {csv.header.map((h) => (
-                                        <th key={h} className="whitespace-nowrap px-2 py-1 font-normal">
-                                            {h}
-                                        </th>
-                                    ))}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {csv.rows.slice(0, VIEWER_ROWS).map((r, i) => (
-                                    <tr key={i} className="border-t border-slate-800/50">
-                                        {r.map((c, j) => (
-                                            <td key={j} className="whitespace-nowrap px-2 py-0.5 text-right">
-                                                {c}
-                                            </td>
-                                        ))}
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </Section>
-            )}
+            {csv && session.datalog && <SavedValues header={csv.header} rows={csv.rows} count={session.datalog.samples} total={csv.rows.length} />}
 
             <Section title={t.viewer_failures} count={session.failures.length}>
                 {session.failures.length === 0 ? (

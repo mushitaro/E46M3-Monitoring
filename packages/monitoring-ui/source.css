@@ -30,3 +30,5 @@
 @source "../../src/views/probe/ProbeGraph.tsx";
 @source "../../src/views/probe/ValueCards.tsx";
 @source "../../src/components/DiagnosticFooter.tsx";
+@source "../../src/components/Hub.tsx";
+@source "../../src/components/shell/ControlPanel.tsx";

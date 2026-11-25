@@ -1,6 +1,6 @@
 'use client';
 
-import { Hub, HubCluster, HubNotice, SubActions, type HubConfig, type NoticeTone } from '@/components/Hub';
+import { Hub, HubCluster, HubNotice, SubActions, type HubConfig, type NoticeTone } from '../Hub';
 
 /**
  * The right column below the picture: what you are talking to, what went wrong,

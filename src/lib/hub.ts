@@ -25,8 +25,8 @@
  * caller passes the strings and the click handlers in.
  */
 import type { LucideIcon } from 'lucide-react';
-import type { HubConfig, NoticeTone } from '@/components/Hub';
-import type { LinkState } from '@/hooks/useDs2Link';
+import type { HubConfig, NoticeTone } from '../components/Hub';
+import type { LinkState } from '@tsunagi/monitoring-engine';
 
 export type { HubConfig };
 

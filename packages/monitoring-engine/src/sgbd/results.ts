@@ -16,6 +16,7 @@ export interface SgbdResultsTable {
     rawResultNames?: Record<string, string[]>;
     practiceLearned?: { module: string; speedBlock: number; speedOffset: number; idleBlock: number; payload: number[]; expectedIdle: { value: number; unit: string } };
     practiceRpm?: { ident: number[] | null; service: number[]; replies: number[][] };
+    practiceIdentity?: number[];
     nativeRpm?: import('./nativeMeasurement.ts').NativeEncoding;
     nativeMeasurements?: Record<string, import('./nativeMeasurement.ts').NativeMeasurement>;
     practiceMeasurements?: Array<{ service: number[]; replies: number[][] }>;

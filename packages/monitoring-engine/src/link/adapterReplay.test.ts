@@ -22,6 +22,14 @@ interface MenuReading {
 }
 const menuFile = 'menu-readings.oracle.json';
 const menuReadings = existsSync(join(SHIPPED_DATA, menuFile)) ? readShipped<{ readings: MenuReading[] }>(menuFile).readings : [];
+interface GearboxReplay {
+    identityRequest: string;
+    identities: { selected: string; response: string }[];
+    readings: (MenuReading & { boundaries: MenuReading['cases'] })[];
+}
+const gearboxFile = 'gearbox-replay.oracle.json';
+const gearbox = existsSync(join(SHIPPED_DATA, gearboxFile)) ? readShipped<GearboxReplay>(gearboxFile) : null;
+const optionalReadings = [...menuReadings, ...(gearbox?.readings.map(r => ({ ...r, cases: r.boundaries })) ?? [])];
 const bytes = (hex: string) => Uint8Array.from(Buffer.from(hex.replaceAll(' ', ''), 'hex'));
 const hex = (data: Uint8Array) => [...data].map(b => b.toString(16).padStart(2, '0')).join(' ');
 
@@ -127,16 +135,18 @@ describe.skipIf(!cases.length)('ordinary Web Serial read path with synthetic int
         expect(replay.port.open).toHaveBeenCalledWith(expect.objectContaining({ baudRate: 9600, dataBits: 8, parity: 'even', stopBits: 1 }));
         expect(replay.pending).toHaveLength(0);
     }, 20_000);
-    it.each(menuReadings)('records $module $job on the positively identified optional module', async test => {
+    it.each(optionalReadings)('records $module $job on the positively identified optional module', async test => {
         const groups = readShipped<{ groups: Record<string, { answer: string; variant: string | null }[]> }>('variants.oracle.json').groups;
         const group = 'D_' + test.address.toString(16).padStart(4, '0').toUpperCase();
-        const ident = groups[group].find(row => row.variant === test.module.toUpperCase())!.answer;
         const identRequest = hex(Uint8Array.of(test.address, 4, 0, test.address ^ 4));
+        const idents = test.module === 'gs30' && gearbox
+            ? new Map([[identRequest, '32 04 b0 86'], [gearbox.identityRequest, gearbox.identities.find(i => i.selected === 'GS30')!.response]])
+            : new Map([[identRequest, groups[group].find(row => row.variant === test.module.toUpperCase())!.answer]]);
         const channel = test.module + ':' + test.job + ':' + test.result;
         const dme = cases.find(c => c.module === 'd50m57a1')!;
         for (const example of test.cases) {
             const read = { job: test.job, response: example.reply, request: test.request, value: example.value, unit: example.unit };
-            const replay = installPort({ ...dme, readings: [read] }, 'refused', new Map([[identRequest, ident]]));
+            const replay = installPort({ ...dme, readings: [read] }, 'refused', idents);
             const session = await connect();
             await session.readIdent();
             const { reads, unknown } = await moduleLogReads([channel], () => test.address);
@@ -164,6 +174,26 @@ describe.skipIf(!cases.length)('ordinary Web Serial read path with synthetic int
         }
     }, 30_000);
 
+    it.skipIf(!gearbox)('refuses both neighbouring gearbox identities without sending a GS30 measurement', async () => {
+        const option = gearbox!;
+        const dme = cases.find(c => c.module === 'd50m57a1')!;
+        for (const id of option.identities.filter(row => row.selected === 'XYZ')) {
+            const replay = installPort({ ...dme, readings: [] }, 'refused', new Map([
+                ['32 04 00 36', '32 04 b0 86'], [option.identityRequest, id.response],
+            ]));
+            const session = await connect();
+            await session.readIdent();
+            const read = option.readings[0];
+            const { reads } = await moduleLogReads([['gs30', read.job, read.result].join(':')], () => 0x32);
+            const error = await new Promise<string | null>(resolve =>
+                session.startLog([], () => { throw Error('unexpected measurement'); }, resolve, { reads, ledger: () => EMPTY_LEDGER }));
+            expect(error).toContain('No selected measurement');
+            expect(session.getSnapshot().fitment.get(0x32)).toMatchObject({ moduleId: null, answer: id.response });
+            expect(session.getSnapshot().fitment.get(0x12)?.moduleId).toBe(dme.module);
+            expect(replay.writes).not.toContain(read.request);
+            await session.disconnect();
+        }
+    });
     it('reads the group identity after an echoed common IDENT receives no ECU answer', async () => {
         const test = cases.find(c => c.module === 'd50m57a1')!;
         const replay = installPort(test, 'silent');

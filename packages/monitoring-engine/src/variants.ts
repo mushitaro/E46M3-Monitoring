@@ -83,9 +83,17 @@ export interface GroupRule {
 export interface VariantRules {
     /** D_MOTOR's exact diagnostic/variant byte pairs at engine address 0x12. */
     kwpEngine?: Readonly<Record<string,string>>;
+    /** D_0032's independently reproduced KWP gearbox identities. */
+    kwpGearbox?: Readonly<Record<string,string>>;
     schema: 1;
     generatedAt: string;
     groups: readonly GroupRule[];
+}
+
+export function kwpIdentityGroup(rules: VariantRules, address: number) {
+    if (address === 0x12 && rules.kwpEngine) return { name: 'D_MOTOR', variants: rules.kwpEngine };
+    if (address === 0x32 && rules.kwpGearbox) return { name: 'D_0032', variants: rules.kwpGearbox };
+    return null;
 }
 
 export const NO_RULES: VariantRules = { schema: 1, generatedAt: '', groups: [] };

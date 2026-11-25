@@ -517,7 +517,11 @@ if __name__ == "__main__":
                 raise FileNotFoundError(path)
             kwp = mid in KWP_ON_DS2
             table = kwp_table(mid, prg, addr) if kwp else None
-            data = table["jobs"] if kwp else extract(path, addr, arg_counts(prg), mid in FIRST_SEND)
+            if mid == "gs30":
+                # GS30's identity belongs to its group. Its status jobs use KWP2000*.
+                data = {}
+            else:
+                data = table["jobs"] if kwp else extract(path, addr, arg_counts(prg), mid in FIRST_SEND)
             if mid in REPLAYED_READS:
                 data = {name: entries for name, entries in data.items() if name in REPLAYED_READS[mid]}
             dest = os.path.join(OUT, f"{mid}.telegrams.json")

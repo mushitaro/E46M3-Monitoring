@@ -86,7 +86,7 @@ import type { CatalogJob } from '../ecuCatalog.ts';
 import { mayReadWhileMoving, withdrawn } from '../ledger.ts';
 import { exchangeMeasurement, nativeMeasurement, validMeasurement, type NativeMeasurement } from '../sgbd/nativeMeasurement.ts';
 import { moduleLogGate, moduleLogValues, type ModuleLogRead } from '../sgbd/logChannels.ts';
-import { DME_ADDRESS, commonIdent, fittedFrom, frameVerdict, isCommonIdent, isM3, mayModuleBeSent, ruleFor, type Fitment, type Fitted } from '../variants.ts';
+import { DME_ADDRESS, commonIdent, fittedFrom, frameVerdict, isCommonIdent, isM3, kwpIdentityGroup, mayModuleBeSent, ruleFor, type Fitment, type Fitted } from '../variants.ts';
 import type { Ledger } from '../ledger.ts';
 import { mayRun, clearFaultsCommand, isReadOnlyControl, permitCovers, telegramBytes, type ActuationPermit, type SendRequirement } from '../runGate.ts';
 import { isReadNature, natureOf, MIN_RUN_VOLTAGE } from '../policy.ts';
@@ -568,23 +568,27 @@ export class LinkSession {
         const id = this.identity;
         let f = fittedFrom(id.rules, id.modules, address, answer);
         let identifiedPayload: Uint8Array | null = null;
-        if (this.link === link && !this.snap.lineLost && address === DME_ADDRESS && !f.sgbd && id.rules.kwpEngine && this.transport) {
+        // The gearbox group tries KWP after silence or rejection of common IDENT.
+        // A positive DS2 answer at 0x32 stays on the DS2 branch even when its variant is unknown.
+        const kwp = kwpIdentityGroup(id.rules, address);
+        if (this.link === link && !this.snap.lineLost && !f.sgbd && kwp && this.transport &&
+            (address === DME_ADDRESS || !answer || answer[2] !== 0xa0)) {
             const data = Uint8Array.of(0x1a,0x80);
             const request = toHex(kwpRequest(address,data));
             try {
                 const transport = this.transport;
-                this.append('tx', 'D_MOTOR IDENT ' + request);
-                const reply = await link.withGate(() => kwpExchange(transport,{target:address,data,hex:request,source:'D_MOTOR IDENT'}));
+                this.append('tx', kwp.name + ' IDENT ' + request);
+                const reply = await link.withGate(() => kwpExchange(transport,{target:address,data,hex:request,source:kwp.name + ' IDENT'}));
                 this.append('rx', toHex(reply.bytes));
                 if (reply.data[0] === 0x5a && reply.data[1] === 0x80 && reply.data.length >= 14) {
                     const key = [...reply.data.slice(10,14)].map(b => b.toString(16).padStart(2,'0')).join('');
-                    const name = id.rules.kwpEngine[key];
-                    const entry = id.modules.find(m => m.sgbd.replace(/\.prg$/i, '').toUpperCase() === name);
+                    const name = kwp.variants[key];
+                    const entry = id.modules.find(m => m.address === address && m.sgbd.replace(/\.prg$/i, '').toUpperCase() === name);
                     f = { address, sgbd: name ?? null, moduleId: entry?.id ?? null, answer: toHex(reply.bytes), identRequest: request };
                     identifiedPayload = reply.data;
                 }
             } catch (e) {
-                this.append('warn', 'D_MOTOR IDENT: ' + (e instanceof Error ? e.message : String(e)));
+                this.append('warn', kwp.name + ' IDENT: ' + (e instanceof Error ? e.message : String(e)));
             }
         }
         if (this.link !== link || this.snap.lineLost) throw new Error('The identified connection has changed.');
@@ -750,20 +754,22 @@ export class LinkSession {
         if (engine === 'run' && (rpm === null || rpm < ENGINE_RUNNING_RPM)) throw notSent('engine', `its SGBD asks for the engine running, and it reads ${rpm ?? '—'} rpm`, measured);
     }
 
-    private async readEngineMeasurement(link: Ds2Link, module: string, spec: NativeMeasurement, ledger: Ledger, job: CatalogJob) {
+    private async readNativeMeasurement(link: Ds2Link, module: string, spec: NativeMeasurement, ledger: Ledger, job: CatalogJob) {
         if (!validMeasurement(spec, module, job.id)) throw new Error('Invalid measurement definition');
         if (withdrawn(ledger, module + ':' + job.id)) throw new Error('This measurement was withdrawn');
         if (job.class !== 'read' || job.args.length || job.catalogOnly) throw new Error('Invalid measurement job');
-        const decision = decisionFor(module, job, 'engine');
+        const controller = this.identity.modules.find(m => m.id === module);
+        if (!controller || controller.address !== (module === 'gs30' ? 0x32 : DME_ADDRESS)) throw new Error('Invalid measurement target');
+        const decision = decisionFor(module, job, controller.group);
         if (decision.how !== 'run') throw new Error('Measurement is disabled');
         const port = this.transport ?? refuse('No open transport.');
-        await this.clearFor(DME_ADDRESS, module);
+        await this.clearFor(controller.address, module);
         await this.preflight(link, job.id, decision.when === 'moving' || mayReadWhileMoving(ledger, module + ':' + job.id) ? 'none' : 'parked');
         const reading = await link.withGate(() => {
-            if (this.link !== link || this.transport !== port || this.snap.lineLost || this.fitmentNow.get(DME_ADDRESS)?.moduleId !== module) {
-                throw new Error('The identified engine connection has changed.');
+            if (this.link !== link || this.transport !== port || this.snap.lineLost || this.fitmentNow.get(controller.address)?.moduleId !== module) {
+                throw new Error('The identified controller connection has changed.');
             }
-            return exchangeMeasurement(port, spec, this.modeNow === 'practice');
+            return exchangeMeasurement(port, controller.address, spec, this.modeNow === 'practice');
         });
         this.append('tx', reading.request);
         this.append('rx', reading.response);
@@ -1034,17 +1040,20 @@ export class LinkSession {
                 this.update({ ident: value });
                 return value;
             }
-            const ident = target.ident ?? refuse(`${target.moduleId}: its SGBD carries no short IDENT frame; nothing is sent.`);
+            const group = ruleFor(this.identity.rules, to.address);
+            const ident = target.ident ?? (group && this.identity.identOk.has(to.address)
+                ? { hex: toHex(commonIdent(to.address)), control: 0, payload: new Uint8Array(), source: group.group }
+                : refuse(`${target.moduleId}: its SGBD carries no short IDENT frame; nothing is sent.`));
             await this.preflight(link, 'Identity read', requires);
             this.append('tx', `IDENT ${ident.hex} (${ident.source})`);
             const common = isCommonIdent(buildDs2Frame(to.address, ident.control, ident.payload));
-            const canAskEngineGroup = common && to.address === DME_ADDRESS && this.identity.identOk.has(to.address) && !!this.identity.rules.kwpEngine;
+            const canAskGroup = common && this.identity.identOk.has(to.address) && !!kwpIdentityGroup(this.identity.rules, to.address);
             let frame: Ds2Frame | null = null;
             let timeout: unknown;
             try {
                 frame = await this.readFrame(to, target.moduleId, 'IDENT', ident.control, ident.payload);
             } catch (error) {
-                if (!canAskEngineGroup || !isDs2Error(error) || error.code !== 'READ_TIMEOUT') throw error;
+                if (!canAskGroup || !isDs2Error(error) || error.code !== 'READ_TIMEOUT') throw error;
                 timeout = error;
             }
             let payload = frame?.payload;
@@ -1671,7 +1680,7 @@ export class LinkSession {
                             const spec = nativeMeasurement(read.results, read.module, read.job.id);
                             if (spec) {
                                 const channel = [read.module, read.job.id, spec.result].join(':');
-                                const result = await this.readEngineMeasurement(link, read.module, spec, ledgerOf(), read.job);
+                                const result = await this.readNativeMeasurement(link, read.module, spec, ledgerOf(), read.job);
                                 (values as Record<string, number | null>)[channel] = result.value;
                                 continue;
                             }
@@ -1925,7 +1934,7 @@ export class LinkSession {
             const run = await runProbe(plan, {
                 ...deps,
                 mss54,
-                measurementExchange: (module, spec, job) => this.readEngineMeasurement(link, module, spec, deps.ledger(), job),
+                measurementExchange: (module, spec, job) => this.readNativeMeasurement(link, module, spec, deps.ledger(), job),
                 // The run reads the speed block when a cycle decides on it and at least every
                 // `SPEED_REFRESH_MS` (executor): the car's state is kept from it, as a recording keeps
                 // it, so the status and the read records say how fast the car is while a plan runs

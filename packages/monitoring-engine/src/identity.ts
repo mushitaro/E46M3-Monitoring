@@ -14,7 +14,7 @@ import { identAddresses, loadVariantRules, NO_RULES, type VariantRules } from '.
 
 export interface Identity {
     rules: VariantRules;
-    modules: ReadonlyArray<{ id: string; sgbd: string; address: number }>;
+    modules: ReadonlyArray<{ id: string; sgbd: string; address: number; group?: string }>;
     identOk: ReadonlySet<number>;
 }
 
@@ -26,7 +26,7 @@ export async function loadIdentity(): Promise<Identity> {
         const protocols = await Promise.all(index.modules.map(async (m) => moduleProtocol(m.id, m.address, await loadTelegrams(m.id))));
         return {
             rules,
-            modules: index.modules.map((m) => ({ id: m.id, sgbd: m.sgbd, address: m.address })),
+            modules: index.modules.map((m) => ({ id: m.id, sgbd: m.sgbd, address: m.address, group: m.group })),
             identOk: identAddresses(protocols, rules),
         };
     } catch {

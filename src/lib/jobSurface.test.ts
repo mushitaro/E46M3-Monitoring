@@ -37,8 +37,8 @@ describe('every job belongs to exactly one tab', () => {
             const file = path.join(DATA, id + '.results.json');
             return existsSync(file) && Boolean(read<{ nativeRpm?: unknown }>(id + '.results.json').nativeRpm);
         });
-        expect(modules.length - nativeProfiles.length).toBe(62);
-        expect(counted - nativeProfiles.reduce((n, m) => n + m.profile.jobs.length, 0)).toBe(2530);
+        expect(modules.length - nativeProfiles.length).toBe(63);
+        expect(counted - nativeProfiles.reduce((n, m) => n + m.profile.jobs.length, 0)).toBe(2629);
         const diesel = modules.find(m => m.id === 'dde30ds0')!;
         expect(diesel.profile.jobs.filter(j => !j.catalogOnly).map(j => j.id).sort()).toEqual(
             ['IDENT', 'STATUS_GESCHWINDIGKEIT', 'STATUS_MOTORDREHZAHL'],
@@ -97,7 +97,7 @@ describe('SERVICE carries the whole of what a real car will accept', () => {
         // DDE3 IDENT uses the protocol read. Its numeric channels use the independently checked sampler.
         const optional = runnable.filter(key => /^(dws|ekp_ds2|gr2)\./.test(key));
         expect(optional.sort()).toEqual(['dws.IDENT', 'dws.STATUS_IO', 'ekp_ds2.IDENT',
-            'ekp_ds2.STATUS_MESSWERTE', 'ekp_ds2.STATUS_REGELUNGSWERTE', 'gr2.IDENT']);
+            'ekp_ds2.STATUS_EINREGELZEIT', 'ekp_ds2.STATUS_MESSWERTE', 'ekp_ds2.STATUS_REGELUNGSWERTE', 'gr2.IDENT', 'gr2.STATUS_INKREMENTE']);
         expect(runnable.length - optional.length).toBe(127);
     });
 });

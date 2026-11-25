@@ -20,6 +20,7 @@ export interface NativeMeasurement extends NativeEncoding {
     result: string;
     width: 1 | 2;
     bias: number;
+    signed?: boolean;
 }
 
 const rpmServices = ['22 40 00', '2c 10 00 91', '2c 10 00 9e', '2c 10 00 2d', '2c 10 00 0c', '2c 10 0f 10'];
@@ -33,6 +34,11 @@ export function validMeasurement(spec: NativeMeasurement, module: string, job: s
         !Number.isInteger(spec.offset) || spec.offset < 0 || spec.offset > 64 || !spec.unit ||
         !Array.isArray(spec.service) || !spec.service.every(x => Number.isInteger(x) && x >= 0 && x <= 255)) return false;
     const service = toHex(Uint8Array.from(spec.service)).toLowerCase();
+    if (module === 'gs30') {
+        if (spec.format !== 'kwp-star') return false;
+        return (job === 'STATUS_BATTERIESPANNUNG' && spec.result === 'STAT_UBAT_WERT' && service === '21 02') ||
+            (job === 'STATUS_ISTGANG' && spec.result === 'STAT_ISTGANG_WERT' && service === '21 03');
+    }
     if (job === TEMPERATURE_JOB) {
         return spec.result === 'STAT_MOTORTEMPERATUR_WERT' && spec.format === 'kwp-star' && temperatureServices.includes(service);
     }
@@ -53,7 +59,8 @@ export function measurementValue(spec: NativeMeasurement, data: Uint8Array): num
     const pos = prefix + spec.offset;
     if (data.length < pos + spec.width || data[0] !== spec.service[0] + 0x40 ||
         !spec.service.slice(1, prefix).every((b, i) => data[i + 1] === b)) return null;
-    const raw = spec.width === 1 ? data[pos] : data[pos] * 256 + data[pos + 1];
+    const unsigned = spec.width === 1 ? data[pos] : data[pos] * 256 + data[pos + 1];
+    const raw = spec.signed && (data[pos] & 0x80) !== 0 ? unsigned - 2 ** (spec.width * 8) : unsigned;
     return raw * spec.scale + spec.bias;
 }
 
@@ -63,24 +70,24 @@ export function fastFrame(target: number, from: number, data: number[]): Uint8Ar
 }
 
 /** Caller owns the connection gate and has identified the exact module before every read. */
-export async function exchangeMeasurement(transport: Ds2ByteTransport, spec: NativeMeasurement, practice: boolean) {
+export async function exchangeMeasurement(transport: Ds2ByteTransport, address: number, spec: NativeMeasurement, practice: boolean) {
     const data = Uint8Array.from(spec.service);
     if (spec.format === 'kwp-star') {
-        const request = kwpRequest(0x12, data);
-        const reply = await kwpExchange(transport, {target: 0x12, data, hex: toHex(request), source: spec.job}, spec.timeout);
+        const request = kwpRequest(address, data);
+        const reply = await kwpExchange(transport, {target: address, data, hex: toHex(request), source: spec.job}, spec.timeout);
         return { request: toHex(request), response: toHex(reply.bytes), value: measurementValue(spec, reply.data) };
     }
     if (!practice) throw new Error('このECUにはBMW-FAST対応の接続が必要です。');
-    const request = fastFrame(0x12,0xf1,spec.service);
+    const request = fastFrame(address,0xf1,spec.service);
     transport.purge();
     await transport.write(request);
     const echo = await transport.readExact(request.length,spec.timeout);
     if (toHex(echo) !== toHex(request)) throw new Error('BMW-FAST echo mismatch');
     const head = await transport.readExact(3,spec.timeout);
-    if ((head[0]&0xc0)!==0x80 || head[1]!==0xf1 || head[2]!==0x12 || !(head[0]&63)) throw new Error('Unexpected BMW-FAST response header');
+    if ((head[0]&0xc0)!==0x80 || head[1]!==0xf1 || head[2]!==address || !(head[0]&63)) throw new Error('Unexpected BMW-FAST response header');
     const tail = await transport.readExact((head[0]&63)+1,spec.timeout);
     const payload = tail.subarray(0,-1);
-    const expected = fastFrame(0xf1,0x12,[...payload]);
+    const expected = fastFrame(0xf1,address,[...payload]);
     if (expected.at(-1)!==tail.at(-1)) throw new Error('BMW-FAST checksum mismatch');
     return {request: toHex(request), response: toHex(expected), value: measurementValue(spec,payload)};
 }

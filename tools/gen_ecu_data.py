@@ -101,6 +101,7 @@ MODULES = {
     "bms46ds1": M("BMS46DS1", "BMS46 (M43 エンジン、EU3)",      "BMS46 (M43 engine, EU3)",     0x12, "engine", "nonm3",
                   "ECU の名乗りは「BMS 46 fuer M43 EU3」", "The ECU calls itself \"BMS 46 fuer M43 EU3\""),
     "smg2":     M("SMG2",     "SMG II (E46 M3 変速機)",        "SMG II (E46 M3 Gearbox)",     0x32, "drivetrain", "smg"),
+    "gs30":     M("GS30", "シーケンシャル変速機 GS30", "Sequential gearbox GS30", 0x32, "drivetrain", "nonm3"),
     "gs20":     M("GS20",     "GS20 (5 速 AT)",                 "GS20 (5-speed automatic)",    0x32, "drivetrain", "nonm3",
                   "ECU の名乗りは「Getriebesteuerung GS20」", "The ECU calls itself \"Getriebesteuerung GS20\""),
     # 0x56 は年式で中身が入れ替わる。前期は ASCMK20.prg、後期は DSC_E46.prg。同時装着は無い。

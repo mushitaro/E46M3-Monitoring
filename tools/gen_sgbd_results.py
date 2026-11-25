@@ -264,6 +264,10 @@ def all_jobs():
     # Catalog-only operations have no result program in the application data.
     from sgbd.read_stage import REPLAYED_READS
     for mid, reads in REPLAYED_READS.items():
+        if mid == "gs30":
+            # The private data generator publishes this gearbox's KWP decoder separately.
+            out.pop(mid, None)
+            continue
         if mid not in out and not os.path.exists(os.path.join(OUT, f"{mid}.telegrams.json")):
             continue
         if mid == "dde30ds0":

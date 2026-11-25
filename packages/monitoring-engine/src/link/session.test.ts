@@ -79,6 +79,25 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('a LinkSession on the practice car', () => {
         }
     );
 
+    it('identifies the practice SSG with its own gearbox target and records voltage and gear', async () => {
+        practiceCar.gearboxProgram = 'gs30';
+        practiceCar.idents = { ...practiceCar.idents, 0x12: { hw: '19', diag: '10' } };
+        const session = sessionFor('gs30');
+        await session.connect('practice');
+        expect(await session.readIdent(), session.lastError() ?? '').not.toBeNull();
+        expect(session.getSnapshot().fitment.get(0x32)).toMatchObject({ moduleId: 'gs30', sgbd: 'GS30' });
+        const channels = ['gs30:STATUS_BATTERIESPANNUNG:STAT_UBAT_WERT', 'gs30:STATUS_ISTGANG:STAT_ISTGANG_WERT'];
+        const steps = [{ n: 1, kind: 'sample' as const, do: 'Read the sequential gearbox', channels }];
+        const modules = await loadProbeModules(steps, index);
+        let count = 0;
+        const run = await session.startProbe({ id: 'gearbox', v: 1, steps,
+            judge: channels.map((channel, n) => ({ id: String(n), channel, stat: 'max', op: '>', value: 0, provenance: 'authored' })) },
+            { module: m => modules.get(m) ?? null, ledger: () => EMPTY_LEDGER,
+              onSample: () => { if (++count === 3) session.stopLog(); } });
+        expect(run?.judges[0]?.value, session.lastError() ?? '').toBeCloseTo(14.4434, 4);
+        expect(run?.judges[1]).toMatchObject({ value: 2, pass: true, n: 3 });
+    });
+
     it('connects, says so in its snapshot and to subscribers, and identifies the DME through the loader it was given', async () => {
         const s = sessionFor('mss54');
         const seen: LinkSnapshot['state'][] = [];

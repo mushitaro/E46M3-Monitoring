@@ -222,7 +222,10 @@ function practiceModule(address: number): SimulatedEcuOptions {
     return {
         address,
         respond: (request) => {
-            if (request.controlOrStatus === 0x00) return { payload: new Uint8Array(ds2IdentData(practiceCar.idents[address] ?? { hw: '00', diag: '00' })) };
+            if (request.controlOrStatus === 0x00) {
+                if (address === 0x32 && practiceCar.gearboxProgram) return { status: Ds2Status.REJECTED };
+                return { payload: new Uint8Array(ds2IdentData(practiceCar.idents[address] ?? { hw: '00', diag: '00' })) };
+            }
             if (request.controlOrStatus === Ds2Control.READ_ERROR_MEMORY) {
                 return { payload: new Uint8Array(practiceCar.moduleFaults[address] ?? cleanAnswer(address)) };
             }
@@ -594,29 +597,32 @@ export class PracticePort implements SerialPortLike {
     }
 
     private readonly sampleNumbers = new Map<string, number>();
-    private async engineAnswer(chunk: Uint8Array): Promise<Uint8Array[] | null> {
-        if (!practiceCar.rpmProgram || chunk[1] !== 0x12 || chunk[2] !== KWP_TESTER) return null;
+    private async nativeAnswer(chunk: Uint8Array): Promise<Uint8Array[] | null> {
+        const address = chunk[1];
+        const program = address === 0x12 ? practiceCar.rpmProgram : address === 0x32 ? practiceCar.gearboxProgram : null;
+        if (!program || chunk[2] !== KWP_TESTER || (address !== 0x12 && !practiceCar.fitted.includes(address))) return null;
         const star = chunk[0] === KWP_FORMAT;
         if (!star && (chunk[0] & 0xc0) !== 0x80) return null;
-        const table = await loadSgbdResults(practiceCar.rpmProgram);
-        const fixture = table?.practiceRpm;
-        if (!fixture || practiceCar.lineDown) return [];
+        const table = await loadSgbdResults(program);
+        if (!table || practiceCar.lineDown) return [];
+        const fixture = table.practiceRpm;
         const payload = [...chunk.slice(star ? 4 : 3, -1)];
         const correct = star ? xorOf(chunk.slice(0,-1)) : chunk.slice(0,-1).reduce((a,b) => a+b,0) & 255;
         if (correct !== chunk.at(-1) || (star ? chunk[3] : chunk[0]&63) !== payload.length) return [];
         const service = payload.join(',');
-        let response = service === '26,128' ? fixture.ident : null;
+        let response = service === '26,128' ? table.practiceIdentity ?? fixture?.ident ?? null : null;
         if (service !== '26,128') {
-            const deck = [fixture, ...(table?.practiceMeasurements ?? [])].find(f => f.service.join(',') === service);
+            const deck = [fixture, ...(table.practiceMeasurements ?? [])].find(f => f?.service.join(',') === service);
             if (deck?.replies.length) {
-                const index = this.sampleNumbers.get(service) ?? 0;
+                const key = program + ':' + service;
+                const index = this.sampleNumbers.get(key) ?? 0;
                 response = deck.replies[index % deck.replies.length];
-                this.sampleNumbers.set(service, index + 1);
+                this.sampleNumbers.set(key, index + 1);
             }
         }
         if (!response) return [chunk];
-        if (!star) return [chunk,fastFrame(KWP_TESTER,0x12,response)];
-        const raw = Uint8Array.from([KWP_FORMAT,KWP_TESTER,0x12,response.length,...response]);
+        if (!star) return [chunk,fastFrame(KWP_TESTER,address,response)];
+        const raw = Uint8Array.from([KWP_FORMAT,KWP_TESTER,address,response.length,...response]);
         return [chunk,Uint8Array.from([...raw,xorOf(raw)])];
     }
 
@@ -642,7 +648,7 @@ export class PracticePort implements SerialPortLike {
                     for (const out of injectedAnswer(injected, chunk, kwp)) this.controller?.enqueue(out);
                     return;
                 }
-                const answer = await this.engineAnswer(chunk) ?? practiceKwpAnswer(chunk);
+                const answer = await this.nativeAnswer(chunk) ?? practiceKwpAnswer(chunk);
                 if (answer) for (const out of answer) this.controller?.enqueue(out);
                 else await writer.write(chunk);
             },

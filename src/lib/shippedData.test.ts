@@ -315,7 +315,7 @@ describe('what a real car would accept today', () => {
         }
     }
 
-    it('is 133 jobs across 45 modules', () => {
+    it('is 135 jobs across 45 modules', () => {
         // 103 across 36 until 2026-11-11's non-M3 DMEs and GS20 arrived (six modules, 23 jobs): their own
         // read-only reads (control bytes already in `READ_ONLY_CONTROLS`). The policy did not move, and an
         // M3 is sent none of them — which module is at an address is its IDENT's to say (lib/variants).
@@ -340,8 +340,8 @@ describe('what a real car would accept today', () => {
         // Then 126 -> 127 (owner, 2026-11-15): reads are judged by nature (policy.ts), not by class, and
         // BM46WIDE's CHECKSUMME_ABFRAGEN, filed `unclassified`, is a read whose frame carries 0x0a
         // (QUERY_ENCODING_CHECKSUM, a read). Its control byte still had to pass, as every read's must.
-        // Three optional DS2 modules add three identity reads and three measured status jobs.
-        expect(allowed.length).toBe(133);
+        // Three optional DS2 modules add three identity reads and five measured status jobs.
+        expect(allowed.length).toBe(135);
         expect(new Set(allowed.map((a) => a.split('.')[0])).size).toBe(45);
     });
 

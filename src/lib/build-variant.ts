@@ -1,7 +1,7 @@
 'use client';
 
 import { useSyncExternalStore } from 'react';
-import { DEV_VARIANT_IS_PREVIEW, featureEnabled, type FeatureName } from '@/lib/features';
+import { DEV_VARIANT_IS_PREVIEW, featureEnabled, type FeatureName } from './features';
 
 /**
  * Which build this is, read from the `<meta name="app-variant">` that `scripts/brand-preview.mjs`

@@ -1,5 +1,7 @@
 'use client';
 
+import { readEcuData } from '@tsunagi/monitoring-engine';
+
 /**
  * The one written sentence a job may carry: what to know BEFORE pressing it.
  *
@@ -57,7 +59,7 @@ export async function loadJobText(moduleId: string): Promise<JobTextTable | null
     const hit = cache.get(moduleId);
     if (hit !== undefined) return hit;
     try {
-        const res = await fetch(`./ecu-data/${moduleId}.jobtext.json`, { cache: 'no-store' });
+        const res = await readEcuData(`${moduleId}.jobtext.json`);
         if (!res.ok) {
             cache.set(moduleId, null);
             return null;

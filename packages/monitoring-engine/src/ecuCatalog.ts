@@ -311,6 +311,8 @@ export interface JobOperationData {
 }
 
 export interface CatalogJob {
+    /** Present in the source inventory, but no verified execution contract is available. */
+    catalogOnly?: boolean;
     id: string;
     ja: string;
     en: string;
@@ -380,6 +382,8 @@ export interface EcuProfile {
         generator: string;
         generatedAt: string;
     };
+    /** Job identifiers reviewed for this ECU in the private catalogue. Displaying a reset never grants it. */
+    learnedValues?: { read: string[]; reset: string[] };
     jobCount: number;
     texts: LocalisedText[];
     jobs: CatalogJob[];

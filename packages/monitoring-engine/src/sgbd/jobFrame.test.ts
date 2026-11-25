@@ -16,6 +16,7 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('a job’s frame for the values chosen, buil
     // table up by name, and a PIN (0x0A) makes it refuse, so an offered PIN would be a choice that
     // sends nothing.
     it('SMG II drives each actuator the screen offers with the frame EdiabasLib builds', () => {
+        const table = smg2();
         type Oracle = { jobs: Record<string, { cases: { args: string[]; sends: string[] }[] }> };
         type Jobs = { jobs: { id: string; args: { name: string; options?: { value: string }[] }[] }[] };
         const oracle = readShipped<Oracle>('job-frames.oracle.json').jobs['smg2:STEUERN_STELLGLIED'].cases;
@@ -26,12 +27,12 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('a job’s frame for the values chosen, buil
             const args = [name, 'POSITIONSVORGABE', '0'];
             const want = oracle.find((c) => c.args.join(';') === args.join(';'));
             expect(want?.sends, name).toHaveLength(1);
-            expect(jobFrameFrom(smg2(), 0x32, 'STEUERN_STELLGLIED', args), name).toMatchObject({ ok: true, hex: want!.sends[0] });
+            expect(jobFrameFrom(table, 0x32, 'STEUERN_STELLGLIED', args), name).toMatchObject({ ok: true, hex: want!.sends[0] });
         }
         // Every value EdiabasLib was run with: the same frame where it sent one (the mode and the third
         // value are bytes of their own), and none where it sent none (a PIN in place of the name).
         for (const c of oracle) {
-            const r = jobFrameFrom(smg2(), 0x32, 'STEUERN_STELLGLIED', c.args);
+            const r = jobFrameFrom(table, 0x32, 'STEUERN_STELLGLIED', c.args);
             if (c.sends.length) expect(r, c.args.join(';')).toMatchObject({ ok: true, hex: c.sends[0] });
             else expect(r.ok, c.args.join(';')).toBe(false);
         }

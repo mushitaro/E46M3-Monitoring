@@ -2,11 +2,16 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { configureEcuData, fetchEcuDataFromPage, type EcuDataLoader } from '../ecuData.ts';
 import type { EcuIndex } from '../ecuCatalog.ts';
 import { moduleProtocol } from '../moduleProtocol.ts';
-import { practiceCar, resetPracticeCar } from '../practiceCar.ts';
+import { M3_IDENTS, NON_M3_IDENTS, practiceCar, resetPracticeCar } from '../practiceCar.ts';
+import type { PracticeFleet } from '../practiceFleet.ts';
 import type { TelegramTable } from '../telegrams.ts';
 import { HAVE_SHIPPED_DATA, readShipped } from '../testing/shipped.ts';
 import type { EcuProfile } from '../ecuCatalog.ts';
 import { mayActuate } from '../actuationGate.ts';
+import { loadScanTargets, loadProbeModules } from '../probe/modules.ts';
+import { moduleLogReads } from '../sgbd/logChannels.ts';
+import { telemetryValues, answerFrame, type SgbdResultsTable } from '../sgbd/results.ts';
+import type { ChannelId } from '@tsunagi/ds2-mss54';
 import { EMPTY_LEDGER } from '../ledger.ts';
 import { decisionFor } from '../policy.ts';
 import { permitFor } from '../runGate.ts';
@@ -31,6 +36,13 @@ const fromDisk: EcuDataLoader = async (file) => {
 
 describe.skipIf(!HAVE_SHIPPED_DATA)('a LinkSession on the practice car', () => {
     let index: EcuIndex;
+    const identFor = (id: string) => {
+        if (id === 'mss54') return M3_IDENTS[0x12];
+        const { practiceFleet } = readShipped<{ practiceFleet: PracticeFleet }>('variants.json');
+        const model = Object.values(practiceFleet.models).find(row => row.module === id);
+        if (!model) throw new Error('Missing practice fixture: ' + id);
+        return model.ident;
+    };
     const opened: LinkSession[] = [];
     const sessionFor = (id: string) => {
         const entry = index.modules.find((m) => m.id === id)!;
@@ -53,6 +65,47 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('a LinkSession on the practice car', () => {
         resetPracticeCar();
     });
 
+    it.each(['ms450ds0','me9k_ng4','me9n45','mev9n46','mev9n46l','dde50k47','d50m47a','d50m47b1','d50m57a1','d50m57e1'])(
+        'identifies %s and judges its own engine speed and temperature for the same PROBE run', async id => {
+            practiceCar.rpmProgram = id;
+            practiceCar.idents = { ...practiceCar.idents, 0x12: { hw: '00', diag: '00' } };
+            const s = sessionFor('mss54');
+            await s.connect('practice');
+            await s.readIdent();
+            expect(s.getSnapshot().fitment.get(0x12)?.moduleId, JSON.stringify(s.getSnapshot().log.slice(-8))).toBe(id);
+            const channel = id + ':STATUS_MOTORDREHZAHL:STAT_MOTORDREHZAHL_WERT';
+            const temperature = id + ':STATUS_MOTORTEMPERATUR:STAT_MOTORTEMPERATUR_WERT';
+            const steps = [{ n: 1, kind: 'sample' as const, do: 'Engine readings', channels: [channel, temperature] }];
+            const modules = await loadProbeModules(steps, index);
+            let count = 0;
+            const run = await s.startProbe({ id: 'practice', v: 1, steps, judge: [
+                { id: 'rotation', channel, stat: 'max', op: '>', value: 0, provenance: 'authored' },
+                { id: 'warm', channel: temperature, stat: 'max', op: '>', value: 100, provenance: 'authored' },
+            ] },
+                { module: m => modules.get(m) ?? null, ledger: () => EMPTY_LEDGER, onSample: () => { if (++count === 4) s.stopLog(); } });
+            expect(run?.judges, s.lastError() ?? '').toMatchObject([{ pass: true, n: 4 }, { pass: true, n: 4 }]);
+        }
+    );
+
+    it('identifies the practice SSG with its own gearbox target and records voltage and gear', async () => {
+        practiceCar.gearboxProgram = 'gs30';
+        practiceCar.idents = { ...practiceCar.idents, 0x12: NON_M3_IDENTS[0x12] };
+        const session = sessionFor('gs30');
+        await session.connect('practice');
+        expect(await session.readIdent(), session.lastError() ?? '').not.toBeNull();
+        expect(session.getSnapshot().fitment.get(0x32)).toMatchObject({ moduleId: 'gs30', sgbd: 'GS30' });
+        const channels = ['gs30:STATUS_BATTERIESPANNUNG:STAT_UBAT_WERT', 'gs30:STATUS_ISTGANG:STAT_ISTGANG_WERT'];
+        const steps = [{ n: 1, kind: 'sample' as const, do: 'Read the sequential gearbox', channels }];
+        const modules = await loadProbeModules(steps, index);
+        let count = 0;
+        const run = await session.startProbe({ id: 'gearbox', v: 1, steps,
+            judge: channels.map((channel, n) => ({ id: String(n), channel, stat: 'max', op: '>', value: 0, provenance: 'authored' })) },
+            { module: m => modules.get(m) ?? null, ledger: () => EMPTY_LEDGER,
+              onSample: () => { if (++count === 3) session.stopLog(); } });
+        expect(run?.judges[0]?.value, session.lastError() ?? '').toBeCloseTo(14.4434, 4);
+        expect(run?.judges[1]).toMatchObject({ value: 2, pass: true, n: 3 });
+    });
+
     it('connects, says so in its snapshot and to subscribers, and identifies the DME through the loader it was given', async () => {
         const s = sessionFor('mss54');
         const seen: LinkSnapshot['state'][] = [];
@@ -67,6 +120,116 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('a LinkSession on the practice car', () => {
         const ident = await s.readIdent();
         expect(ident?.length).toBeGreaterThan(0);
         expect(s.getSnapshot().fitment.get(0x12)?.moduleId).toBe('mss54');
+    });
+
+    it('reads all four GS20 learned memory blocks as raw data from the identified gearbox', async () => {
+        practiceCar.idents = { ...NON_M3_IDENTS };
+        const session = sessionFor('ms430ds0');
+        await session.connect('practice');
+        const targets = (await loadScanTargets(index)).filter(t => t.address === 0x12 || t.address === 0x32);
+        const scan = await session.scanAll(targets, () => EMPTY_LEDGER);
+        expect(scan?.results.find(r => Number(r.address) === 0x32)?.variant?.moduleId).toBe('gs20');
+        const table = readShipped<SgbdResultsTable>('gs20.results.json');
+        const jobs = Object.keys(table.rawResultNames ?? {}).filter(job => /^ADAPTIONSWERTE_.*_LESEN$/.test(job));
+        expect(jobs).toHaveLength(4);
+        for (const job of jobs) {
+            const read = await session.readFittedJob('gs20', 0x32, job, () => EMPTY_LEDGER);
+            expect(read?.decoded, session.lastError() ?? job).toMatchObject({
+                stopped: null, status: 'OKAY', rawValues: [{ name: 'DATEN', hex: Array.from({ length: 16 }, (_, n) => n.toString(16).padStart(2, '0')).join(' ') }],
+            });
+            expect(read?.decoded?.values).toEqual([]);
+        }
+    });
+
+    it.each(['ms420ds0', 'ms430ds0', 'bms46ds0', 'bms46ds1'])('reads the independently simulated idle adaptation and speed on %s', async module => {
+        practiceCar.idents = { 0x12: identFor(module) };
+        const session = sessionFor(module);
+        await session.connect('practice');
+        const targets = (await loadScanTargets(index)).filter(t => t.address === 0x12);
+        await session.scanAll(targets, () => EMPTY_LEDGER);
+        const read = await session.readFittedJob(module, 0x12, 'STATUS_LL_ADAPTION', () => EMPTY_LEDGER);
+        const expected = readShipped<{ practiceLearned: { expectedIdle: { value: number; unit: string } } }>(module + '.results.json').practiceLearned.expectedIdle;
+        expect(read?.decoded?.status, session.getSnapshot().error ?? module).toBe('OKAY');
+        const idle = read?.decoded?.values.find(v => v.name === 'STAT_LL_ADAPTION_WERT');
+        expect(idle?.unit).toBe(expected.unit);
+        expect(idle?.value).toBeCloseTo(expected.value, 5);
+        await session.disconnect();
+        await session.connect('practice');
+        expect(await session.readFittedJob(module, 0x12, 'STATUS_LL_ADAPTION', () => EMPTY_LEDGER)).toBeNull();
+        await session.readIdent();
+        expect((await session.readFittedJob(module, 0x12, 'STATUS_LL_ADAPTION', () => EMPTY_LEDGER))?.decoded?.status).toBe('OKAY');
+        expect(await session.readVehicleState()).toBe('parked');
+        practiceCar.speedKmh = 23;
+        expect(await session.readVehicleState()).toBe('moving');
+    });
+
+    it('runs a SERVICE read only for the module found by a scan of this connection', async () => {
+        const s = sessionFor('mss54');
+        await s.connect('practice');
+        const read = (module: string, job = 'STATUS_DIGITAL') => s.readFittedJob(module, 0x12, job, () => EMPTY_LEDGER);
+        expect(await read('mss54')).toBeNull();
+        const targets = (await loadScanTargets(index)).filter(t => t.address === 0x12);
+        await s.scanAll(targets, () => EMPTY_LEDGER);
+        expect(await read('ms430ds0')).toBeNull();
+        expect(await read('mss54', 'FS_LOESCHEN')).toBeNull();
+        expect(await read('mss54')).toMatchObject({ jobId: 'STATUS_DIGITAL', error: null });
+        await s.disconnect();
+        await s.connect('practice');
+        expect(await read('mss54')).toBeNull();
+    });
+
+    it('keeps DDE3 identification when this ECU has no released fault reader', async () => {
+        practiceCar.idents = { 0x12: identFor('dde30ds0') };
+        const s = sessionFor('dde30ds0');
+        await s.connect('practice');
+        const targets = (await loadScanTargets(index)).filter(t => t.address === 0x12);
+        const scan = await s.scanAll(targets, () => EMPTY_LEDGER);
+        expect(scan?.results[0]).toMatchObject({ outcome: 'identified', variant: { moduleId: 'dde30ds0' } });
+        expect(scan?.results[0]?.faults).toBeUndefined();
+        const start = s.getSnapshot().log.length;
+        expect(await s.readVehicleState()).toBe('unknown');
+        expect(s.getSnapshot().log.slice(start).some(line => line.text.includes('Speed preflight (DME block'))).toBe(false);
+    });
+
+    it.each(['mss54', 'ms430ds0', 'ms420ds0', 'dde30ds0', 'bms43ds0', 'bms46ds0', 'bms46ds1'])('%s logs the identified ECU and judges its native RPM in PROBE', async id => {
+        const mss54 = id === 'mss54';
+        const channel = mss54 ? '3:n' : `${id}:STATUS_MOTORDREHZAHL:STAT_MOTORDREHZAHL_WERT`;
+        practiceCar.idents = { 0x12: identFor(id) };
+        practiceCar.engineRunning = true;
+        const s = sessionFor(id);
+        await s.connect('practice');
+        await s.readIdent();
+        expect(s.getSnapshot().fitment.get(0x12)?.moduleId).toBe(id);
+        const { reads, unknown } = await moduleLogReads(mss54 ? [] : [channel], () => 0x12);
+        expect(unknown).toEqual([]);
+        const samples: number[] = [];
+        await new Promise<void>((resolve, reject) => {
+            s.startLog(mss54 ? [channel as ChannelId] : [], sample => {
+                const value = (sample.values as Record<string, number>)[channel];
+                if (typeof value === 'number') samples.push(value);
+                s.stopLog();
+            }, failure => failure ? reject(new Error(failure)) : resolve(), { reads, ledger: () => EMPTY_LEDGER });
+            if (s.getSnapshot().state !== 'logging') reject(new Error(s.lastError() ?? 'not logging'));
+        });
+        expect(samples).toHaveLength(1);
+        expect(samples[0]).toBeGreaterThan(750);
+        expect(samples[0]).toBeLessThan(900);
+        const steps = [{ n: 1, kind: 'sample' as const, do: 'RPM', channels: [channel] }];
+        const modules = await loadProbeModules(steps, index);
+        let measured = 0;
+        const run = await s.startProbe({ id: 'rpm', v: 1, steps, judge: [{ id: 'rpm', channel, stat: 'mean', op: '>', value: 750, provenance: 'authored' }] },
+            { module: m => modules.get(m) ?? null, ledger: () => EMPTY_LEDGER, onSample: () => { if (++measured === 3) s.stopLog(); } });
+        expect(run?.samples.length, s.lastError() ?? '').toBe(3);
+        expect(run?.judges[0]).toMatchObject({ pass: true, n: 3 });
+        if (!mss54) {
+            expect(run!.samples.every(sample => Object.keys(sample.values).every(c => c.startsWith(id + ':')))).toBe(true);
+            const incompatible = await s.startProbe({ id: 'wrong', v: 1, steps: [{ ...steps[0], channels: ['3:n'] }] },
+                { module: () => null, ledger: () => EMPTY_LEDGER, onSample: () => s.stopLog() });
+            expect(incompatible).toBeNull();
+            const table = readShipped<SgbdResultsTable>(`${id}.results.json`);
+            expect(telemetryValues(table, 'STATUS_MOTORDREHZAHL', reads[0].telegram!.hex,
+                answerFrame(0x12, 0xa0, new Uint8Array([4])))).toEqual([]);
+        }
     });
 
     it('reads the DME fault memory, decoded', async () => {

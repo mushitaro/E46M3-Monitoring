@@ -1,7 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { EcuIndex, EcuProfile, JobFramesOracle, SgbdResultsTable, TelegramTable } from '@tsunagi/monitoring-engine';
+import type { Choice, VariantRules, EcuIndex, EcuProfile, JobFramesOracle, SgbdResultsTable, TelegramTable } from '@tsunagi/monitoring-engine';
+import { hasFaultRead, hasIdent, moduleChannels, moduleProtocol, withAgreedFrames } from '@tsunagi/monitoring-engine';
+import { MSS54_CHANNELS } from '@tsunagi/ds2-mss54';
+import { isOn } from './jobSurface';
 import { runCoverage, type CoverageItem } from './runCoverage';
 
 /**
@@ -15,10 +18,11 @@ const DATA = path.resolve(import.meta.dirname, '..', '..', 'public', 'ecu-data')
 const HAVE = existsSync(path.join(DATA, 'job-frames.oracle.json'));
 const read = <T,>(f: string) => JSON.parse(readFileSync(path.join(DATA, f), 'utf-8')) as T;
 
+const opt = <T,>(f: string): T | null => existsSync(path.join(DATA, f)) ? read<T>(f) : null;
+
 function coverage(): CoverageItem[] {
     const index = read<EcuIndex>('index.json');
     const ids = index.modules.map((m) => m.id);
-    const opt = <T,>(f: string): T | null => (existsSync(path.join(DATA, f)) ? read<T>(f) : null);
     return runCoverage({
         index,
         profiles: new Map(ids.map((id) => [id, read<EcuProfile>(`${id}.jobs.json`)])),
@@ -28,9 +32,46 @@ function coverage(): CoverageItem[] {
     });
 }
 
+function moduleInventory(items: CoverageItem[]): string {
+    const variants = read<VariantRules>('variants.json');
+    const namesIn = (choice: Choice): string[] => {
+        if (!choice) return [];
+        if (typeof choice === 'string') return [choice.toLowerCase()];
+        const branches = 'rows' in choice ? choice.rows.map(r => r[1]) :
+            'ranges' in choice ? choice.ranges.map(r => r[2]) : [choice.then];
+        return branches.concat(choice.else).flatMap(namesIn);
+    };
+    const groupNames = new Map(variants.groups.map(g => [g.address, new Set(namesIn(g.choose))]));
+    const nativeEngines = new Set(Object.values(variants.kwpEngine ?? {}).map(name => name.toLowerCase()));
+    const lines = [
+        '# E46 診断機器別の収録範囲', '',
+        '識別と故障は電文・読取定義の有無。測定は画面が列挙できる数値項目数。サービスと作動は一覧の分類で、確認・実行・停止の実車試験は別途必要。', '',
+        '| 機器 | 系統 | 識別 | 故障読取 | 測定項目 | サービス | 作動 | 読み取り以外で実行条件が揃うジョブ | 定義のみ |',
+        '|---|---|---|---|---:|---:|---:|---:|---:|',
+    ];
+    const oracle = read<JobFramesOracle>('job-frames.oracle.json');
+    for (const { id, address, group } of read<EcuIndex>('index.json').modules) {
+        const profile = read<EcuProfile>(id + '.jobs.json');
+        const raw = opt<TelegramTable>(id + '.telegrams.json');
+        const results = opt<SgbdResultsTable>(id + '.results.json');
+        const telegrams = raw && withAgreedFrames(raw, oracle, results);
+        const protocol = moduleProtocol(id, address, telegrams);
+        const data = results && { address, profile, telegrams, results, jobs: new Map(profile.jobs.map(j => [j.id, j])) };
+        const channels = id === 'mss54' ? MSS54_CHANNELS.size : data ? moduleChannels(id, data).length : 0;
+        const service = profile.jobs.filter(isOn('service')).length;
+        const actuator = profile.jobs.filter(isOn('actuator')).length;
+        const eligible = items.filter(i => i.module === id && i.status === 'runs').length;
+        const faultJob = results?.jobs.FS_LESEN && !profile.jobs.find(j => j.id === 'FS_LESEN')?.catalogOnly;
+        const inventory = profile.jobs.filter(j => j.catalogOnly).length;
+        lines.push(`| ${id} | ${group} | ${hasIdent(protocol) ? 'あり' : (groupNames.get(address)?.has(profile.sgbd.replace(/\.prg$/i, '').toLowerCase()) || (address === 0x12 && nativeEngines.has(id))) ? '識別表' : '—'} | ${hasFaultRead(protocol) || faultJob ? 'あり' : '—'} | ${channels} | ${service} | ${actuator} | ${eligible} | ${inventory} |`);
+    }
+    return lines.join('\n') + '\n';
+}
+
 function report(items: CoverageItem[]): string {
     const by = (s: CoverageItem['status']) => items.filter((i) => i.status === s);
     const fit = new Map(read<EcuIndex>('index.json').modules.map((m) => [m.id, m.fit ?? 'm3']));
+    const inventoryOnly = [...fit.keys()].flatMap(id => read<EcuProfile>(id + '.jobs.json').jobs.filter(job => job.catalogOnly).map(job => id + '.' + job.id));
     const line = (i: CoverageItem) => `| ${i.module} | ${i.job} | ${i.nature} | ${i.who === 'ai' ? 'AI も' : '画面の人'} | ${i.sets ?? ''} | ${(i.why ?? '').replace(/\|/g, '/')} |`;
     const head = '| モジュール | ジョブ | 性質 | 誰が | 値の組 | 理由 |\n|---|---|---|---|---|---|';
     const count = (pred: (i: CoverageItem) => boolean) => items.filter(pred).length;
@@ -45,9 +86,15 @@ function report(items: CoverageItem[]): string {
         `| E46 M3 | ${count((i) => fit.get(i.module) !== 'nonm3' && i.status === 'runs')} | ${count((i) => fit.get(i.module) !== 'nonm3' && i.status === 'external')} | ${count((i) => fit.get(i.module) !== 'nonm3' && i.status === 'open')} |`,
         `| M3 以外の E46 | ${count((i) => fit.get(i.module) === 'nonm3' && i.status === 'runs')} | ${count((i) => fit.get(i.module) === 'nonm3' && i.status === 'external')} | ${count((i) => fit.get(i.module) === 'nonm3' && i.status === 'open')} |`,
         '',
+        `定義は収録済みで実行照合待ちの項目は ${inventoryOnly.length} 件。下表の実行件数には含まない。`,
+        '',
         '## 未完了',
         '',
         by('open').length ? [head, ...by('open').map(line)].join('\n') : 'なし。',
+        '',
+        '## 定義収録・実行照合待ち',
+        '',
+        ...inventoryOnly.map(id => '- ' + id),
         '',
         '## 外の理由で動かないもの',
         '',
@@ -70,6 +117,7 @@ describe.skipIf(!HAVE)('every job the owner’s table opens runs (operator, 2026
         const dir = path.resolve(import.meta.dirname, '..', '..', 'run-coverage');
         mkdirSync(dir, { recursive: true });
         writeFileSync(path.join(dir, 'RUN-COVERAGE.md'), report(items));
+        writeFileSync(path.join(dir, 'E46-MODULES.md'), moduleInventory(items));
     }
     // The counts, always: what CI shows on every run.
     if (HAVE) console.log(report(items).split('## 未完了')[0]);

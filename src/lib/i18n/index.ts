@@ -16,7 +16,7 @@
  * something you find in a screenshot. What is left here is the store.
  */
 
-import { useSyncExternalStore } from 'react';
+import { createContext, useContext, useSyncExternalStore } from 'react';
 import { CHROME } from './chrome';
 import { en } from './en';
 import { ja } from './ja';
@@ -95,11 +95,14 @@ export function getLang(): Lang {
 const subscribeNever = () => () => {};
 
 /** The resolved language and its strings. Server snapshot: the prerender's `ja`. */
+export const EmbeddedLanguage = createContext<{ lang: Lang; t: Strings } | null>(null);
+
 export function useLang(): { lang: Lang; t: Strings } {
+    const embedded = useContext(EmbeddedLanguage);
     const lang = useSyncExternalStore(
         subscribeNever,
         () => current,
         () => 'ja' as Lang,
     );
-    return { lang, t: STRINGS[lang] };
+    return embedded ?? { lang, t: STRINGS[lang] };
 }

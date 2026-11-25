@@ -4,8 +4,8 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { Download, Terminal, Trash2, X } from 'lucide-react';
 import { LABEL } from './ui';
-import type { CommsLogLine } from '@/hooks/useDs2Link';
-import { useLang } from '@/lib/i18n';
+import type { CommsLogLine } from '../hooks/useDs2Link';
+import { useLang } from '../lib/i18n';
 
 /**
  * The comms log as an on-demand popover, not a tab.

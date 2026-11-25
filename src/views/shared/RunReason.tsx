@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { LABEL } from '@/components/ui';
-import { useLang } from '@/lib/i18n';
+import { LABEL } from '../../components/ui';
+import { useLang } from '../../lib/i18n';
 import type { RunBlockKey, RunVerdict } from '@tsunagi/monitoring-engine';
 
 /**

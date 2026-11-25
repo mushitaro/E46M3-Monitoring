@@ -28,6 +28,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
+from sgbd.read_stage import REPLAYED_READS
 from sgbd import classify, model, specs                      # noqa: E402
 from sgbd.model import ROLE_TEXT, ROLE_UNIT, ROLE_VALUE      # noqa: E402
 from translate import authored, leftover_ratio, translate    # noqa: E402
@@ -88,6 +89,7 @@ MODULES = {
     # M3 でない E46 の DME（DS2 の世代、〜2002 年ごろ）。0x12 に何がいるかは IDENT が D_0012 の選び方で決める
     # （variants.json。EdiabasLib にグループファイルを走らせて食い違い 0）。同じ 0x12 の MS420DS1・MS43_SP2 は
     # D_0012 が選ばないので載せない（tools/sgbd/fitment.py）。アドレスは dump_modules.py の実送信 IDENT `12 04 00`。
+    "dde30ds0": M("DDE30DS0", "DDE 3.0 (M47 ディーゼル)", "DDE 3.0 (M47 diesel)", 0x12, "engine", "nonm3"),
     "ms420ds0": M("MS420DS0", "MS42 (M52TU エンジン)",          "MS42 (M52TU engine)",         0x12, "engine", "nonm3",
                   "ECU の名乗りは「MS 42.0 fuer M52 mit EWS 3」", "The ECU calls itself \"MS 42.0 fuer M52 mit EWS 3\""),
     "ms430ds0": M("MS430DS0", "MS43 (M54 エンジン)",            "MS43 (M54 engine)",           0x12, "engine", "nonm3",
@@ -99,6 +101,7 @@ MODULES = {
     "bms46ds1": M("BMS46DS1", "BMS46 (M43 エンジン、EU3)",      "BMS46 (M43 engine, EU3)",     0x12, "engine", "nonm3",
                   "ECU の名乗りは「BMS 46 fuer M43 EU3」", "The ECU calls itself \"BMS 46 fuer M43 EU3\""),
     "smg2":     M("SMG2",     "SMG II (E46 M3 変速機)",        "SMG II (E46 M3 Gearbox)",     0x32, "drivetrain", "smg"),
+    "gs30":     M("GS30", "シーケンシャル変速機 GS30", "Sequential gearbox GS30", 0x32, "drivetrain", "nonm3"),
     "gs20":     M("GS20",     "GS20 (5 速 AT)",                 "GS20 (5-speed automatic)",    0x32, "drivetrain", "nonm3",
                   "ECU の名乗りは「Getriebesteuerung GS20」", "The ECU calls itself \"Getriebesteuerung GS20\""),
     # 0x56 は年式で中身が入れ替わる。前期は ASCMK20.prg、後期は DSC_E46.prg。同時装着は無い。
@@ -131,6 +134,9 @@ MODULES = {
     "lws5":     M("LWS5",     "舵角センサ LWS5",                "Steering angle sensor LWS5",  0x57, "chassis", "std",
                   "ECU の名乗りは「CAN インタフェース付き舵角」。対になる DSC を SGBD は述べていない",
                   "The ECU calls itself a steering-angle sensor with a CAN interface; the SGBD never says which DSC it pairs with"),
+    "dws":      M("DWS", "タイヤ空気圧警告 DWS", "Deflation warning DWS", 0x70, "chassis", "opt"),
+    "ekp_ds2":  M("EKP_DS2", "燃料ポンプ制御 EKP", "Electronic fuel pump EKP", 0x65, "engine", "nonm3"),
+    "gr2":      M("GR2", "クルーズコントロール GR2", "Cruise control GR2", 0xA6, "comfort", "nonm3"),
     "rdc":      M("RDC",      "タイヤ空気圧 RDC",               "Tyre pressure control RDC",   0x70, "chassis", "opt"),
     # --- safety & security -------------------------------------------------------
     "mrs3":     M("MRS3",     "エアバッグ MRS3",                "Airbag MRS3",                 0xA4, "safety", "early", "〜03/2003", "up to 03/2003"),
@@ -728,6 +734,8 @@ def build(mid: str, m: dict, addrs: dict) -> dict:
             job["crossFieldConstraints"] = cross
         if cls.note:
             job["note"] = cls.note
+        if mid in REPLAYED_READS and job["id"] not in REPLAYED_READS[mid]:
+            job["catalogOnly"] = True
         jobs_out.append(job)
 
     if len(jobs_out) != d.job_count:

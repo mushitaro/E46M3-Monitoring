@@ -1,11 +1,12 @@
 'use client';
 
-import { CircleDot, Loader2, Play, PlayCircle, PlugZap, Radar, Radio, Square, Zap } from 'lucide-react';
+import { CircleDot, Play, PlayCircle, Radar, Radio, Square, Zap } from 'lucide-react';
 import type { HubConfig, NoticeTone } from '@/components/Hub';
 import type { useDs2Link } from '@/hooks/useDs2Link';
 import type { ProbeProgress } from '@/hooks/useProbe';
 import { appNow, hasIdent, mayTryFaultRead, type ModuleProtocol } from '@tsunagi/monitoring-engine';
-import { hubConfigFor, hubNoticeFor } from '@/lib/hub';
+import { hubNoticeFor } from '@/lib/hub';
+import { useLinkHub } from './useLinkHub';
 import { variantRefusalLine } from '@/lib/notSentText';
 import { jobRiskOf, type CatalogJob } from '@tsunagi/monitoring-engine';
 import { useLang } from '@/lib/i18n';
@@ -24,11 +25,7 @@ import type { Datalog } from '@/views/datalog/useDatalog';
  * plumbing — which glyph means READ, which string table entry, which handler —
  * and it is here so the shell states WHAT is true rather than how it is spelled.
  *
- * The glyphs are chosen once, in this file. `Loader2` rather than the state's own
- * icon for BUSY is the load-bearing one: `animate-spin` rotates whatever it is
- * handed, and a plug or a bolt spun end over end reads as a corrupt icon instead
- * of as progress, at the two moments the operator most needs to believe the tool
- * is alive.
+ * The link glyphs and verbs come from useLinkHub, shared with embedded instruments.
  */
 export function useHub(input: {
     tab: Tab;
@@ -55,7 +52,7 @@ export function useHub(input: {
     const { t } = useLang();
     const { link, datalog, selectedJob, runVerdict } = input;
 
-    const hub = hubConfigFor({
+    const hub = useLinkHub({
         linkState: link.state,
         practiceArmed: input.practiceArmed,
         connect: (mode) => void link.connect(mode),
@@ -134,14 +131,6 @@ export function useHub(input: {
                 },
             },
         }),
-        t: {
-            hub_connect: t.hub_connect,
-            hub_connecting: t.hub_connecting,
-            hub_busy: t.hub_reading,
-            hub_connected: t.hub_connected,
-            mode_practice: t.mode_practice,
-        },
-        icons: { plug: PlugZap, loader: Loader2, idle: CircleDot },
     });
 
     // One line, one precedence: a link error outranks a catalog error outranks

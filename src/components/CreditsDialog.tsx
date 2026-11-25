@@ -2,13 +2,13 @@
 
 import { useState } from 'react';
 import { Heart } from 'lucide-react';
-import { DialogFrame } from '@/components/DialogFrame';
-import { MicroLabel, emphasise } from '@/components/ui';
-import { useBuildLabel } from '@/lib/build-variant';
-import { useLang } from '@/lib/i18n';
-import { APP_VERSION } from '@/lib/version';
-import { MESH } from '@/lib/links';
-import { readSupporters } from '@/lib/supporters';
+import { DialogFrame } from './DialogFrame';
+import { MicroLabel, emphasise } from './ui';
+import { useBuildLabel } from '../lib/build-variant';
+import { useLang } from '../lib/i18n';
+import { APP_VERSION } from '../lib/version';
+import { MESH } from '../lib/links';
+import { readSupporters } from '../lib/supporters';
 
 /**
  * Who this is built on.

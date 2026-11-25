@@ -1,13 +1,11 @@
 'use client';
 
+import { MonitoringTabBar } from '@tsunagi/monitoring-ui';
 import { Cpu } from 'lucide-react';
-import { LABEL, TextButton } from '@/components/ui';
-import type { LinkMode, LinkState } from '@/hooks/useDs2Link';
-import type { EcuIndex } from '@tsunagi/monitoring-engine';
-import { CHROME } from '@/lib/i18n/chrome';
-import { ALL_MODULES } from '@tsunagi/monitoring-engine';
-import { useLang } from '@/lib/i18n';
-import { TAB_ORDER, type Tab } from '@/lib/tabs';
+import { LABEL, TextButton } from '../ui';
+import { ALL_MODULES, type EcuIndex, type LinkMode, type LinkState } from '@tsunagi/monitoring-engine';
+import { useLang, type Lang } from '../../lib/i18n';
+import { TAB_ORDER, type Tab } from '../../lib/tabs';
 
 /**
  * The furniture around the views: the bars, the tab strip, the module row.
@@ -55,50 +53,8 @@ export function useTabLabels(): Record<Tab, string> {
  * and LIST gets the 44px back. The comms log that sits at this bar's right goes
  * to the footer's right-hand slot (LogPopover's `openUp`).
  */
-export function TabBar({
-    tab,
-    enabled,
-    onChange,
-    children,
-}: {
-    tab: Tab;
-    /** The tabs this build may render — `enabledTabs` from lib/features. The ORDER is still TAB_ORDER's. */
-    enabled: ReadonlySet<Tab>;
-    onChange: (next: Tab) => void;
-    /** The tools that sit right of the rule — today, the comms log. */
-    children?: React.ReactNode;
-}) {
-    const LABELS = useTabLabels();
-
-    return (
-        <nav role="tablist" className={`${BAR} z-30 max-[900px]:hidden`}>
-            <div className="no-scrollbar mr-auto flex h-full min-w-0 flex-1 gap-6 overflow-x-auto overflow-y-hidden">
-                {TAB_ORDER.filter((id) => enabled.has(id)).map((id) => (
-                    <button
-                        key={id}
-                        role="tab"
-                        aria-selected={tab === id}
-                        aria-controls={`pane-${id}`}
-                        onClick={() => onChange(id)}
-                        className={`flex h-full shrink-0 items-center whitespace-nowrap border-b-2 ${LABEL} transition-colors ${
-                            tab === id
-                                ? 'border-blue-400 text-blue-400'
-                                : 'border-transparent text-slate-500 hover:text-slate-300'
-                        }`}
-                    >
-                        {LABELS[id]}
-                    </button>
-                ))}
-            </div>
-
-            {/* Tools right, fenced with a vertical rule. The comms log is a
-                popover and not a tab: it has to be reachable WHILE doing the
-                thing that is failing, not somewhere you navigate away to. */}
-            {children && (
-                <div className="ml-4 flex h-full items-center border-l border-slate-800 pl-4">{children}</div>
-            )}
-        </nav>
-    );
+export function TabBar(props: Omit<Parameters<typeof MonitoringTabBar>[0], 'labels'>) {
+    return <MonitoringTabBar {...props} labels={useTabLabels()} />;
 }
 
 /**
@@ -153,6 +109,8 @@ export function ModuleRow({
     mode,
     state,
     practiceArmed,
+    practiceLocked = false,
+    readoutLanguage = 'en',
     onPractice,
     onDisconnect,
     onChangeEcu,
@@ -167,6 +125,10 @@ export function ModuleRow({
     mode: LinkMode;
     state: LinkState;
     practiceArmed: boolean;
+    /** The host can fix the connection mode when only a practice car is available. */
+    practiceLocked?: boolean;
+    /** WORKS uses its English instrument chrome. An embedding shop can choose Japanese readouts. */
+    readoutLanguage?: Lang;
     onPractice: (v: boolean) => void;
     onDisconnect: () => void;
     onChangeEcu: (id: string) => void;
@@ -187,11 +149,11 @@ export function ModuleRow({
                     <Cpu className="size-3" />
                     <span className="sr-only min-[1280px]:not-sr-only">{t.module}</span>
                 </span>
-                <EcuSelect index={index} value={all && allowAll ? ALL_MODULES : ecuId} module={ecuId} connected={connected} allowAll={allowAll} onChange={onChangeEcu} hidden={hidden} />
+                <EcuSelect index={index} value={all && allowAll ? ALL_MODULES : ecuId} module={ecuId} connected={connected} allowAll={allowAll} onChange={onChangeEcu} hidden={hidden} language={readoutLanguage} />
             </div>
             <div className="ml-auto flex shrink-0 items-center gap-3 [@media(max-width:899px)_and_(orientation:landscape)]:h-8">
                 {!connected ? (
-                    <PracticeToggle checked={practiceArmed} disabled={false} onChange={onPractice} />
+                    <PracticeToggle checked={practiceArmed} disabled={practiceLocked} onChange={onPractice} />
                 ) : (
                     <>
                         {mode === 'practice' && practiceEngine && (
@@ -200,7 +162,7 @@ export function ModuleRow({
                                 {t.practice_engine}
                             </label>
                         )}
-                        <LinkReadout mode={mode} state={state} />
+                        <LinkReadout mode={mode} state={state} language={readoutLanguage} />
                         <TextButton onClick={onDisconnect} tone="danger">
                             {t.disconnect}
                         </TextButton>
@@ -216,12 +178,13 @@ export function ModuleRow({
  * this row never shows. A Record, so a new phase is a type error here, not a
  * readout one word too narrow.
  */
-const LIVE_PHASES: Record<Exclude<LinkState, 'disconnected'>, true> = {
-    connecting: true,
-    connected: true,
-    busy: true,
-    logging: true,
+const LIVE_PHASES: Record<Exclude<LinkState, 'disconnected'>, string> = {
+    connecting: '接続中',
+    connected: '接続済み',
+    busy: '処理中',
+    logging: '記録中',
 };
+const LINK_MODES: Record<LinkMode, string> = { vehicle: '実車', practice: '練習' };
 
 /**
  * Mode over phase, as wide as the longest phase, whichever phase it shows.
@@ -235,14 +198,14 @@ const LIVE_PHASES: Record<Exclude<LinkState, 'disconnected'>, true> = {
  * left, so a readout that followed its word would slide DISCONNECT sideways
  * every time a read started or ended.
  */
-function LinkReadout({ mode, state }: { mode: LinkMode; state: LinkState }) {
+function LinkReadout({ mode, state, language }: { mode: LinkMode; state: LinkState; language: Lang }) {
     return (
         <span className="grid shrink-0 font-mono text-[10px] uppercase leading-3 tracking-wider text-slate-600">
-            <span>{mode}</span>
+            <span>{language === 'ja' ? LINK_MODES[mode] : mode}</span>
             <span className="grid">
-                {(Object.keys(LIVE_PHASES) as LinkState[]).map((phase) => (
+                {(Object.keys(LIVE_PHASES) as (keyof typeof LIVE_PHASES)[]).map((phase) => (
                     <span key={phase} className={`[grid-area:1/1] ${phase === state ? '' : 'invisible'}`}>
-                        {phase}
+                        {language === 'ja' ? LIVE_PHASES[phase] : phase}
                     </span>
                 ))}
             </span>
@@ -311,7 +274,9 @@ function EcuSelect({
     allowAll,
     onChange,
     hidden,
+    language,
 }: {
+    language: Lang;
     hidden?: ReadonlySet<string>;
     index: EcuIndex | null;
     /** What the select shows: a module id, or ALL_MODULES. */
@@ -337,21 +302,19 @@ function EcuSelect({
     // and printing it twice on one 32px line is the sort of thing that makes a
     // panel look unread.
     //
-    // English in both languages, so this takes no `lang`. `MSS54`, `SMG II` and
-    // `DSC` are the ECUs' own designations and `S54 / E46 M3` is a chassis code —
-    // the whole string is machine identity, not prose, and it sits in a row of
-    // English chrome tokens (MODULE, PRACTICE) under English tabs. The Japanese
-    // variant only ever translated the one common noun in it (エンジン / 変速機),
-    // which bought nothing and broke the row's vocabulary.
+    // The standalone instrument uses English names; the store uses the same
+    // supplied index in Japanese, preserving module identities and addresses.
     //
     // `min-w-0` on the chip and the select, and `truncate`: this is what yields
     // when the row is short (ModuleRow). A select is as wide as its WIDEST
     // option, not the one it shows, so without them the chip held out for its
     // full 224px and was clipped at the column's edge instead. Now it shrinks and
     // the name ends in an ellipsis inside the chip.
+    const { t } = useLang();
     return (
         <div className="flex min-w-0 items-center rounded bg-slate-800 px-2 py-0.5">
             <select
+                aria-label={t.module}
                 value={value}
                 // Connected, the select still moves between ALL MODULES and the module the link was
                 // opened for — the scan reaches every address on the one link — and nowhere else:
@@ -363,19 +326,19 @@ function EcuSelect({
             >
                 {allowAll && (
                     <option value={ALL_MODULES} className="bg-slate-900 text-slate-300">
-                        {CHROME.module_all}
+                        {t.module_all}
                     </option>
                 )}
                 {(index?.groups ?? []).map((g) => {
                     const rows = (index?.modules ?? []).filter((e) => e.group === g.key && !hidden?.has(e.id));
                     if (rows.length === 0) return null;
                     return (
-                        <optgroup key={g.key} label={g.en} className="bg-slate-900">
+                        <optgroup key={g.key} label={g[language]} className="bg-slate-900">
                             {rows.map((e) => (
                                 <option key={e.id} value={e.id} disabled={connected && e.id !== module} className="bg-slate-900 text-slate-300">
-                                    {e.name_en || e.name}
+                                    {language === 'ja' ? e.name || e.name_en : e.name_en || e.name}
                                     {sharesAddress.has(e.address) && index?.fit[e.fit]
-                                        ? ` — ${index.fit[e.fit].en}` : ''}
+                                        ? ` — ${index.fit[e.fit][language]}` : ''}
                                 </option>
                             ))}
                         </optgroup>

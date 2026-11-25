@@ -5,6 +5,10 @@
    "jobs": 223,
    "results": 966
   },
+  "dde30ds0": {
+   "jobs": 177,
+   "results": 632
+  },
   "ms420ds0": {
    "jobs": 186,
    "results": 748
@@ -235,16 +239,16 @@
   }
  },
  "totals": {
-  "jobs": 2297,
-  "results": 13423
+  "jobs": 2474,
+  "results": 14055
  },
  "roles": {
   "raw": 42,
-  "status": 2174,
+  "status": 2348,
   "telegram": 656,
-  "text": 712,
-  "unit": 1340,
-  "value": 8499
+  "text": 746,
+  "unit": 1448,
+  "value": 8815
  },
- "unclassified": 190
+ "unclassified": 193
 }

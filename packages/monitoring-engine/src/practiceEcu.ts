@@ -23,6 +23,9 @@ import {
     type LiveValueBlock,
 } from '@tsunagi/ds2-mss54';
 import { SimulatedSerialPort, type ExchangeBehavior, type SerialOptions, type SerialPortLike, type SimulatedEcuOptions } from '@tsunagi/ds2-core';
+import { loadSgbdResults, type SgbdResultsTable } from './sgbd/results.ts';
+import { fastFrame } from './sgbd/nativeMeasurement.ts';
+import { practiceModelFor, practiceRpmPayload, type PracticeFleet } from './practiceFleet.ts';
 import { KWP_FORMAT, KWP_TESTER, xorOf } from './kwpOnDs2.ts';
 import type { JobFramesOracle } from './sgbd/agreedFrame.ts';
 import {
@@ -189,9 +192,9 @@ const SIM_TESTPRG_POLLS = 6;
  * would on a car, so a request sent to the wrong module fails in PRACTICE too instead of being
  * answered by the DME.
  */
-export function practiceBus(addresses: readonly number[]): SimulatedEcuOptions[] {
+export function practiceBus(addresses: readonly number[], learned?: SgbdResultsTable['practiceLearned'], fleet: PracticeFleet | null = null): SimulatedEcuOptions[] {
     const unique = [...new Set([0x12, ...addresses])];
-    return unique.map((address) => ({ ...(address === 0x12 ? practiceEcu() : practiceModule(address)), script: lineScript() }));
+    return unique.map((address) => ({ ...(address === 0x12 ? practiceEcu(learned, fleet) : practiceModule(address, fleet)), script: lineScript() }));
 }
 
 /**
@@ -215,12 +218,17 @@ function lineScript(): ExchangeBehavior[] {
 export const PRACTICE_MODULE_BLOCK = 128;
 
 /** A module other than the DME: its fault memory from the practice car, the rest the DME's responder. */
-function practiceModule(address: number): SimulatedEcuOptions {
+function practiceModule(address: number, fleet: PracticeFleet | null): SimulatedEcuOptions {
     const dme = practiceEcu();
     return {
         address,
         respond: (request) => {
-            if (request.controlOrStatus === 0x00) return { payload: new Uint8Array(ds2IdentData(practiceCar.idents[address] ?? { hw: '00', diag: '00' })) };
+            if (request.controlOrStatus === 0x00) {
+                if (address === 0x32 && practiceCar.gearboxProgram) return { status: Ds2Status.REJECTED };
+                const engineIdent = practiceCar.idents[0x12];
+                const defaultIdent = engineIdent && 'hw' in engineIdent && engineIdent.hw === '1B' ? fleet?.defaultM3Idents[address] : undefined;
+                return { payload: new Uint8Array(ds2IdentData(practiceCar.idents[address] ?? defaultIdent ?? { hw: '00', diag: '00' })) };
+            }
             if (request.controlOrStatus === Ds2Control.READ_ERROR_MEMORY) {
                 return { payload: new Uint8Array(practiceCar.moduleFaults[address] ?? cleanAnswer(address)) };
             }
@@ -250,6 +258,12 @@ function practiceModule(address: number): SimulatedEcuOptions {
                 clearPracticeSmg2Adaptations(request.payload[0]);
                 return practiceAnswerFor(address, request.controlOrStatus, request.payload) ?? { payload: new Uint8Array(0) };
             }
+            const ident = practiceCar.idents[address];
+            if (ident && 'hw' in ident && request.payload.length === 1) {
+                const fixture = fleet?.modules.find(m => m.hw === ident.hw && m.address === address)?.reads.find(
+                    r => r.control === request.controlOrStatus && r.argument === request.payload[0]);
+                if (fixture) return { payload: Uint8Array.from(fixture.response) };
+            }
             if (request.controlOrStatus === Ds2Control.READ_IO_STATUS || request.controlOrStatus === 0x40) {
                 const out = new Uint8Array(PRACTICE_MODULE_BLOCK);
                 // SMG II's STATUS_IO_LESEN, as the scenario set it (practiceCar `smg2Status`).
@@ -265,7 +279,7 @@ function practiceModule(address: number): SimulatedEcuOptions {
     };
 }
 
-export function practiceEcu(): SimulatedEcuOptions {
+export function practiceEcu(learned?: SgbdResultsTable['practiceLearned'], fleet: PracticeFleet | null = null): SimulatedEcuOptions {
     // The simulated test program's own state. It lives in this closure because
     // the protocol says it should: TESTPRG_STOP resets a run and TESTPRG_STARTEN
     // advances it, so a counter reset by 0x33 and stepped by 0x32 IS the ECU's
@@ -294,25 +308,48 @@ export function practiceEcu(): SimulatedEcuOptions {
                     // A non-M3 car's DME (MS43, BMS46), in the layout its own SGBD reads (practiceCar
                     // `nonM3DmeFaults`): the record shape of the DME its IDENT selects.
                     const fs = practiceCar.nonM3DmeFaults ?? practiceCar.ms43Faults;
-                    const shape = fs ? PRACTICE_DME_RECORDS[practiceDmeOf(practiceCar.idents[0x12]) ?? ''] : undefined;
+                    const model = practiceModelFor(fleet, practiceCar.idents[0x12]);
+                    const shape = model?.fault ?? PRACTICE_DME_RECORDS[practiceDmeOf(practiceCar.idents[0x12]) ?? ''];
                     if (fs && shape) {
                         if (arg === 0x00) return { payload: new Uint8Array([fs.length]) };
                         const out = [0x00];
                         for (const f of fs) {
                             const rec = new Array<number>(shape.length).fill(0);
                             rec[shape.code] = f.code;
-                            if (f.present) rec[shape.present.at] |= shape.present.mask;
+                            if (f.present && shape.present) rec[shape.present.at] |= shape.present.mask;
                             rec[shape.frequency] = f.count;
                             out.push(...rec);
                         }
                         return { payload: new Uint8Array(out) };
                     }
+                    const ident = practiceCar.idents[0x12];
+                    if (!ident || !('hw' in ident) || ident.hw.toUpperCase() !== '1B') return { status: Ds2Status.PARAMETER_ERROR };
                     return arg === 0x00
                         ? { payload: new Uint8Array([0x02, 0x00, 0x02, 0x00, 0x00]) } // quicktest
                         : { payload: faultPayload() };
                 }
 
                 case Ds2Control.READ_IO_STATUS: {
+                    const model = practiceModelFor(fleet, practiceCar.idents[0x12]);
+                    if (model) {
+                        const fixture = learned?.module === model.module ? learned : undefined;
+                        if (fixture && request.payload.length === 1 && (arg === fixture.idleBlock || arg === fixture.speedBlock)) {
+                            const payload = Uint8Array.from(fixture.payload);
+                            if (arg === fixture.speedBlock) {
+                                payload[fixture.speedOffset] = Math.min(255, Math.max(0, Math.ceil(practiceSpeed())));
+                                practiceRpmPayload(model, engine().rpm, payload);
+                            }
+                            return { payload };
+                        }
+                        const acceptance = model.rpm?.request;
+                        if (acceptance?.length === request.payload.length && acceptance.every((b,i) => request.payload[i] === b)) {
+                            const payload = practiceRpmPayload(model, engine().rpm);
+                            if (payload) return { payload };
+                        }
+                        return { status: Ds2Status.PARAMETER_ERROR };
+                    }
+                    const ident = practiceCar.idents[0x12];
+                    if (!ident || !('hw' in ident) || ident.hw.toUpperCase() !== '1B') return { status: Ds2Status.PARAMETER_ERROR };
                     const block = blockBySelection(arg);
                     if (block) return { payload: blockPayload(block) };
 
@@ -542,14 +579,44 @@ export class PracticePort implements SerialPortLike {
     private _readable: ReadableStream<Uint8Array> | null = null;
     private _writable: WritableStream<Uint8Array> | null = null;
 
-    constructor(addresses: readonly number[]) {
-        this.inner = new SimulatedSerialPort(practiceBus(addresses));
+    constructor(addresses: readonly number[], learned?: SgbdResultsTable['practiceLearned'], fleet: PracticeFleet | null = null) {
+        this.inner = new SimulatedSerialPort(practiceBus(addresses, learned, fleet));
     }
     get readable() {
         return this._readable;
     }
     get writable() {
         return this._writable;
+    }
+
+    private readonly sampleNumbers = new Map<string, number>();
+    private async nativeAnswer(chunk: Uint8Array): Promise<Uint8Array[] | null> {
+        const address = chunk[1];
+        const program = address === 0x12 ? practiceCar.rpmProgram : address === 0x32 ? practiceCar.gearboxProgram : null;
+        if (!program || chunk[2] !== KWP_TESTER || (address !== 0x12 && !practiceCar.fitted.includes(address))) return null;
+        const star = chunk[0] === KWP_FORMAT;
+        if (!star && (chunk[0] & 0xc0) !== 0x80) return null;
+        const table = await loadSgbdResults(program);
+        if (!table || practiceCar.lineDown) return [];
+        const fixture = table.practiceRpm;
+        const payload = [...chunk.slice(star ? 4 : 3, -1)];
+        const correct = star ? xorOf(chunk.slice(0,-1)) : chunk.slice(0,-1).reduce((a,b) => a+b,0) & 255;
+        if (correct !== chunk.at(-1) || (star ? chunk[3] : chunk[0]&63) !== payload.length) return [];
+        const service = payload.join(',');
+        let response = service === '26,128' ? table.practiceIdentity ?? fixture?.ident ?? null : null;
+        if (service !== '26,128') {
+            const deck = [fixture, ...(table.practiceMeasurements ?? [])].find(f => f?.service.join(',') === service);
+            if (deck?.replies.length) {
+                const key = program + ':' + service;
+                const index = this.sampleNumbers.get(key) ?? 0;
+                response = deck.replies[index % deck.replies.length];
+                this.sampleNumbers.set(key, index + 1);
+            }
+        }
+        if (!response) return [chunk];
+        if (!star) return [chunk,fastFrame(KWP_TESTER,address,response)];
+        const raw = Uint8Array.from([KWP_FORMAT,KWP_TESTER,address,response.length,...response]);
+        return [chunk,Uint8Array.from([...raw,xorOf(raw)])];
     }
 
     async open(options: SerialOptions): Promise<void> {
@@ -574,7 +641,7 @@ export class PracticePort implements SerialPortLike {
                     for (const out of injectedAnswer(injected, chunk, kwp)) this.controller?.enqueue(out);
                     return;
                 }
-                const answer = practiceKwpAnswer(chunk);
+                const answer = await this.nativeAnswer(chunk) ?? practiceKwpAnswer(chunk);
                 if (answer) for (const out of answer) this.controller?.enqueue(out);
                 else await writer.write(chunk);
             },

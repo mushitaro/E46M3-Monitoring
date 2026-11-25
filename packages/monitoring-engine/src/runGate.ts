@@ -357,6 +357,7 @@ export function mayRun(
         if (job.class === 'identity') return { allowed: false, reason: 'run_block_identity' };
         return { allowed: false, reason: 'run_block_policyOff' };
     }
+    if (job.catalogOnly) return { allowed: false, reason: 'run_block_noTelegram' };
     if (!isReadNature(decision.nature)) return mayDrive(job, telegram, ledger, ctx, decision);
 
     // PRACTICE is NOT a reason to refuse.

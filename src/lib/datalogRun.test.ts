@@ -39,6 +39,14 @@ describe('a recording in segments', () => {
         expect(w[0].hit).toBeCloseTo(1.6, 5);
     });
 
+    it('starts a fresh capture on a revision even when the condition already held', () => {
+        const rpm = 'ms430ds0:STATUS_MOTORDREHZAHL:STAT_MOTORDREHZAHL_WERT';
+        const rows = [0, 1, 2, 3, 4].map(time => ({ time, values: { [rpm]: time === 2 ? null : 0 } }));
+        const cond = [{ channel: rpm, op: '==' as const, value: 0 }];
+        expect(captureWindows(rows, cond, 1, 2, 2, 4)).toEqual([{ hit: 3, from: 2, to: 5 }]);
+        expect(captureWindows(rows, cond, 1, 2, 2, 3)).toEqual([]);
+    });
+
     it('finds the sample nearest a moment, and a moment of the recording with its cursor', () => {
         expect(samples[nearestSample(samples, 4.03)!].time).toBeCloseTo(4.025, 5);
         const m = momentOf(samples, 4.5, 2, null)!;

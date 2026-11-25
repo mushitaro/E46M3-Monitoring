@@ -1,15 +1,15 @@
 'use client';
 
 import { Zap } from 'lucide-react';
-import { DataList, DataRow, Field, Section, humanName } from '@/components/ui';
-import type { Arming } from '@/hooks/useActuatorArming';
-import type { JobRunResult } from '@/hooks/useDs2Link';
+import { DataList, DataRow, Field, Section, humanName } from '../../components/ui';
+import type { ArmedJob } from '../../lib/arming';
+import type { JobRunResult } from '@tsunagi/monitoring-engine';
 import { label, type EcuProfile } from '@tsunagi/monitoring-engine';
-import { useLang } from '@/lib/i18n';
-import { partName } from '@/lib/partName';
-import type { Smg2Workflows } from '@/lib/smg2Workflows';
-import { useNow } from '@/hooks/useNow';
-import { Awaiting } from '@/views/shared/Awaiting';
+import { useLang } from '../../lib/i18n';
+import { partName } from '../../lib/partName';
+import type { Smg2Workflows } from '../../lib/smg2Workflows';
+import { useNow } from '../../hooks/useNow';
+import { Awaiting } from '../../views/shared/Awaiting';
 
 /**
  * What is energised, right now.
@@ -32,7 +32,7 @@ export function ActuatorViz({
     lastRun,
 }: {
     profile: EcuProfile | null;
-    arming: Arming;
+    arming: { armed: ReadonlyMap<string, Pick<ArmedJob, 'jobId' | 'at' | 'timeoutS' | 'args' | 'moduleId'>> };
     workflows: Smg2Workflows | null;
     /** The link's last run: the start that went out, and its answer. */
     lastRun: JobRunResult | null;

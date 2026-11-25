@@ -96,21 +96,6 @@ _NOT_EQUIPPED: dict[str, Fitment] = {
         "reason_ja": "E83（X3）用。",
         "reason_en": "For the E83 (X3).",
     },
-    "DWS": {
-        "addr": "0x70", "instead": "rdc", "provenance": "authored",
-        "reason_ja": "空気圧警告（DWS）。M3 の 0x70 は RDC（Reifendruckkontrolle）。",
-        "reason_en": "Deflation warning. On the M3, 0x70 is RDC (tyre-pressure control).",
-    },
-    "GR2": {
-        "addr": "0xA6", "provenance": "authored",
-        "reason_ja": "独立したクルーズコントロール ECU。M3 のクルーズは DME 内蔵で、0xA6 は空。",
-        "reason_en": "A standalone cruise-control ECU. On the M3 cruise lives inside the DME and 0xA6 is empty.",
-    },
-    "EKP_DS2": {
-        "addr": "0x65", "provenance": "authored",
-        "reason_ja": "電子燃料ポンプ制御。M3 の燃料ポンプはリレー駆動で、0x65 は空。",
-        "reason_en": "Electronic fuel-pump control. The M3's pump is relay-driven and 0x65 is empty.",
-    },
 }
 
 # ---------------------------------------------------------------------------

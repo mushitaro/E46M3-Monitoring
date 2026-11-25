@@ -28,7 +28,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
-from sgbd.read_stage import DDE3_READS
+from sgbd.read_stage import REPLAYED_READS
 from sgbd import classify, model, specs                      # noqa: E402
 from sgbd.model import ROLE_TEXT, ROLE_UNIT, ROLE_VALUE      # noqa: E402
 from translate import authored, leftover_ratio, translate    # noqa: E402
@@ -133,6 +133,9 @@ MODULES = {
     "lws5":     M("LWS5",     "舵角センサ LWS5",                "Steering angle sensor LWS5",  0x57, "chassis", "std",
                   "ECU の名乗りは「CAN インタフェース付き舵角」。対になる DSC を SGBD は述べていない",
                   "The ECU calls itself a steering-angle sensor with a CAN interface; the SGBD never says which DSC it pairs with"),
+    "dws":      M("DWS", "タイヤ空気圧警告 DWS", "Deflation warning DWS", 0x70, "chassis", "opt"),
+    "ekp_ds2":  M("EKP_DS2", "燃料ポンプ制御 EKP", "Electronic fuel pump EKP", 0x65, "engine", "nonm3"),
+    "gr2":      M("GR2", "クルーズコントロール GR2", "Cruise control GR2", 0xA6, "comfort", "nonm3"),
     "rdc":      M("RDC",      "タイヤ空気圧 RDC",               "Tyre pressure control RDC",   0x70, "chassis", "opt"),
     # --- safety & security -------------------------------------------------------
     "mrs3":     M("MRS3",     "エアバッグ MRS3",                "Airbag MRS3",                 0xA4, "safety", "early", "〜03/2003", "up to 03/2003"),
@@ -730,7 +733,7 @@ def build(mid: str, m: dict, addrs: dict) -> dict:
             job["crossFieldConstraints"] = cross
         if cls.note:
             job["note"] = cls.note
-        if mid == "dde30ds0" and job["id"] not in DDE3_READS:
+        if mid in REPLAYED_READS and job["id"] not in REPLAYED_READS[mid]:
             job["catalogOnly"] = True
         jobs_out.append(job)
 

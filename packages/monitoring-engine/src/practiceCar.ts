@@ -51,6 +51,7 @@ export function kombiIdentData(diagIndex: number): number[] {
 export const M3_IDENTS: Readonly<Record<number, PracticeIdent>> = {
     0x12: { hw: '1B', diag: '90' },
     0x32: { hw: '2F', diag: '00' },
+    0x70: { data: [0, 0, 0, 0, 0, 0, 0x01, 0, 0, 0, 0, 0, 0] }, // The fitted RDC's DS2 diagnostic index.
     0x80: { data: kombiIdentData(0x60) },
 };
 

@@ -1620,7 +1620,7 @@ export class LinkSession {
                             moduleChannels: reads.flatMap(read => [...read.wanted].map(result => `${read.module}:${read.job.id}:${result}`)) });
                     }
                     const { blocks, wanted } = tuned;
-                    const values: Partial<Record<ChannelId, number | null>> = {};
+                    const values: LiveSample['values'] = {};
                     let speed: LiveValues | null = null;
                     let incomplete = false;
                     for (const block of blocks) {

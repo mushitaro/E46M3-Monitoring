@@ -12,16 +12,22 @@ import type { TelegramTable } from '../telegrams.ts';
 import { SHIPPED_DATA, readShipped } from '../testing/shipped.ts';
 import { LinkSession } from './session.ts';
 
-interface ReadCase { job: string; request: string; response: string; value: number; unit: string }
+interface ReadCase { job: string; request: string; response: string; value: number; unit: string | null }
 interface AdapterCase { module: string; series: string[]; identity: string; readings: ReadCase[] }
 const file = 'adapter-replay.oracle.json';
 const cases = existsSync(join(SHIPPED_DATA, file)) ? readShipped<{cases: AdapterCase[]}>(file).cases : [];
+interface MenuReading {
+    module: string; address: number; job: string; result: string; request: string;
+    cases: { reply: string; value: number; unit: string | null }[];
+}
+const menuFile = 'menu-readings.oracle.json';
+const menuReadings = existsSync(join(SHIPPED_DATA, menuFile)) ? readShipped<{ readings: MenuReading[] }>(menuFile).readings : [];
 const bytes = (hex: string) => Uint8Array.from(Buffer.from(hex.replaceAll(' ', ''), 'hex'));
 const hex = (data: Uint8Array) => [...data].map(b => b.toString(16).padStart(2, '0')).join(' ');
 
 // The OS port is the only substituted layer. The ordinary chooser, transport, gate, DATALOG
 // and PROBE run in vehicle mode. Replies are independent of the decoder and practice vehicle.
-function installPort(test: AdapterCase, common: 'refused' | 'silent' = 'refused') {
+function installPort(test: AdapterCase, common: 'refused' | 'silent' = 'refused', moduleIdents: ReadonlyMap<string, string> = new Map()) {
     const writes: string[] = [];
     let identity = test.identity;
     const pending = [...test.readings, ...test.readings];
@@ -37,6 +43,8 @@ function installPort(test: AdapterCase, common: 'refused' | 'silent' = 'refused'
                 response = '12 04 b0 a6';
             } else if (request === 'b8 12 f1 02 1a 80 c3') {
                 response = identity;
+            } else if (moduleIdents.has(request)) {
+                response = moduleIdents.get(request)!;
             } else {
                 const reading = pending.shift();
                 if (reading?.request !== request) throw new Error('Unexpected adapter request ' + request);
@@ -119,6 +127,43 @@ describe.skipIf(!cases.length)('ordinary Web Serial read path with synthetic int
         expect(replay.port.open).toHaveBeenCalledWith(expect.objectContaining({ baudRate: 9600, dataBits: 8, parity: 'even', stopBits: 1 }));
         expect(replay.pending).toHaveLength(0);
     }, 20_000);
+    it.each(menuReadings)('records $module $job on the positively identified optional module', async test => {
+        const groups = readShipped<{ groups: Record<string, { answer: string; variant: string | null }[]> }>('variants.oracle.json').groups;
+        const group = 'D_' + test.address.toString(16).padStart(4, '0').toUpperCase();
+        const ident = groups[group].find(row => row.variant === test.module.toUpperCase())!.answer;
+        const identRequest = hex(Uint8Array.of(test.address, 4, 0, test.address ^ 4));
+        const channel = test.module + ':' + test.job + ':' + test.result;
+        const dme = cases.find(c => c.module === 'd50m57a1')!;
+        for (const example of test.cases) {
+            const read = { job: test.job, response: example.reply, request: test.request, value: example.value, unit: example.unit };
+            const replay = installPort({ ...dme, readings: [read] }, 'refused', new Map([[identRequest, ident]]));
+            const session = await connect();
+            await session.readIdent();
+            const { reads, unknown } = await moduleLogReads([channel], () => test.address);
+            expect(unknown, channel).toEqual([]);
+            const data = await moduleLogData(test.module, test.address);
+            const column = moduleChannels(test.module, data!).find(c => c.channel === channel);
+            expect(column, channel).toMatchObject({ unit: example.unit });
+            const value = await new Promise<number | null | undefined>((resolve, reject) => {
+                let saved: number | null | undefined;
+                session.startLog([], sample => { saved = sample.values[channel]; session.stopLog(); },
+                    error => error ? reject(new Error(error)) : resolve(saved), { reads, ledger: () => EMPTY_LEDGER });
+            });
+            expect(value).toBeCloseTo(example.value, 4);
+            expect(session.getSnapshot().fitment.get(test.address)?.moduleId).toBe(test.module);
+            const steps = [{ n: 1, kind: 'sample' as const, do: 'Read the identified module', channels: [channel] }];
+            const modules = await loadProbeModules(steps, readShipped<EcuIndex>('index.json'));
+            const probe = await session.startProbe({ id: test.module, v: 1, steps,
+                judge: [{ id: 'optional', channel, stat: 'max', op: '>', value: 0, provenance: 'authored' }] },
+                { module: id => modules.get(id) ?? null, ledger: () => EMPTY_LEDGER, onSample: () => session.stopLog() });
+            expect(probe?.judges[0]?.value).toBeCloseTo(example.value, 4);
+            expect(probe?.judges[0]).toMatchObject({ pass: example.value > 0, n: 1 });
+            expect(replay.pending).toHaveLength(0);
+            expect(replay.writes).toContain(identRequest);
+            await session.disconnect();
+        }
+    }, 30_000);
+
     it('reads the group identity after an echoed common IDENT receives no ECU answer', async () => {
         const test = cases.find(c => c.module === 'd50m57a1')!;
         const replay = installPort(test, 'silent');

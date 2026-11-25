@@ -38,11 +38,13 @@ SGBD からは復元できない（SGBD はジョブと結果の名前しか公�
 失えば `packages/ds2-mss54/src/liveValueBlocks.generated.ts` と
 `adaptationBlocks.generated.ts` は二度と再生成できず、手編集しか道が無くなる。
 
-対して #1 の SGBD は `tools/SgbdDump/out/*.json` としてコミット済みなので、
+対して #1 の SGBD はダンプが `$SGBD_DUMP_DIR` に在る（§2。repo の外）ので、
 `C:\EDIABAS` を失っても **今あるものは作り直せる**。再ダンプができなくなるだけ。
 
-repo に取り込むかどうかは、逆コンパイル物であるためライセンス面の判断が要る
-（`THIRD-PARTY-NOTICES.md` §3.2）。**未決。**
+**repo には取り込まない。** 逆コンパイルした `.cs` は karter16 のツールのソースで、
+`THIRD-PARTY-NOTICES.md` §3.4 が repo に入れないと決めている。karter16 から得た許諾
+（同 §3.2）はこの企画での使用に対するもので、逆コンパイルしたソースの公開まで含むとは
+読まない。失ったときの備えは repo の中ではなく外で取る。
 
 ### EC-APPS の残り
 

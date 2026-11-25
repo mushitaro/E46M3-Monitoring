@@ -21,6 +21,10 @@
 // karter16's work. The route was a decompilation, and that is stated
 // rather than glossed. THIRD-PARTY-NOTICES.md §3.2.
 //
+// NOT UNDER THIS REPOSITORY'S MIT LICENCE (see LICENSE). Used with
+// karter16's permission, which was given to this project and is not
+// ours to pass on. To reuse this table, ask karter16.
+//
 // NOT VERIFIED ON A VEHICLE.
 
 import type { FieldFormat } from '@tsunagi/ds2-core';

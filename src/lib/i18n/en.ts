@@ -144,7 +144,7 @@ export const en: Localised = {
                 "adaptation blocks. BMW's SGBD publishes job and result NAMES only, so every " +
                 "number this app shows rests on karter16's work.",
             url: 'https://github.com/karter16/MSS54-DS2-Tool-Public',
-            licence: '(c) 2026 karter16 · MSS54 DS2 Tool Freeware Licence',
+            licence: "(c) 2026 karter16 · MSS54 DS2 Tool Freeware Licence · used with the author's permission",
         },
         {
             name: 'EdiabasLib — Ulrich Holeschak',
@@ -163,6 +163,9 @@ export const en: Localised = {
         },
     ],
     credits_notices: 'The full licence and provenance position is in THIRD-PARTY-NOTICES.md.',
+    credits_trademarks:
+        'BMW, M3 and the other BMW names belong to BMW AG and are used only to say which car this works with. ' +
+        'This tool is not affiliated with, endorsed or sponsored by BMW AG or BMW M GmbH.',
     credits_meshLead: 'This app is part of the TSUNAGI community. The research continues, and the people who carry it are listed, at',
     credits_meshTail: '.',
     credits_supportersLead: 'Carried by',

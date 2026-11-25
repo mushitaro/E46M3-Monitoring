@@ -22,6 +22,10 @@
 //  they were obtained is a decompilation, and that is stated rather than
 //  glossed. THIRD-PARTY-NOTICES.md §3.2 carries the whole position.
 //
+//  NOT UNDER THIS REPOSITORY'S MIT LICENCE (see LICENSE). Used with
+//  karter16's permission, which was given to this project and is not
+//  ours to pass on. To reuse this table, ask karter16.
+//
 //  NOT VERIFIED ON A VEHICLE. `expectedLength` below is the reference's
 //  declared block length and is advisory only: validate a response against
 //  minPayloadLength(fields) instead, because a declared length can be stale

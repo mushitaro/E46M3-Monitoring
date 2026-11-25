@@ -117,6 +117,10 @@ Two files of this project could not exist without it:
 | `packages/ds2-mss54/src/liveValueBlocks.generated.ts` | 8 live-measurement blocks, 213 fields — byte offset, data format and scaling for each |
 | `packages/ds2-mss54/src/adaptationBlocks.generated.ts` | the adaptation block layouts, and the DTC catalogue schema |
 
+`packages/ds2-mss54/src/errorMemory.ts` is written here, not generated, but the
+error- and shadow-memory record layouts it reads are taken from the tool's
+`DmeErrorMemoryParser`, and its header says so.
+
 **The SGBD cannot supply any of it.** BMW's `.prg` files publish job names and result
 names; they do not publish where in a response payload a value sits or what to
 multiply it by. Every live value this app shows, and every adaptation value it
@@ -126,21 +130,26 @@ Stated plainly, because the alternative is to leave it vague:
 
 - The **route was a decompilation** of the published application. The licence grants
   use and unmodified redistribution; it does not grant decompilation, and this
-  project did it anyway.
+  project did it before asking.
+- **karter16 has since given this project permission** for this use, by direct
+  message on the NAM3 Forum (<https://nam3forum.com>). The permission was given to
+  this project and does not pass to anyone who copies these files — which is why
+  `LICENSE` excludes the two generated files from MIT, and why each file's header
+  says the same (§3.5).
 - What is used are byte offsets and scaling factors for a hardware protocol —
   arguably facts about a BMW ECU rather than that author's creative expression. That
   is an argument, not a ruling, and it is recorded here as an argument.
 - **Neither the tool's source nor its binary is redistributed by this project.** No
   file from it is committed here, and the generators read a local copy the operator
-  supplies (`docs/REFERENCES.md` §4).
+  supplies (`docs/REFERENCES.md` §1, #4).
 - The licence asks that attribution and project links stay intact. They are here, in
   `README.md`, in the header of each generated file, and in the app's own credits
   dialog — which is reachable at any time and is deliberately NOT inside the
   disclaimer, because a disclaimer is dismissed once and then never seen again.
 
-If karter16 would prefer this project not derive from that work, that is a request
-this project will honour: the two generated files and their generators are separable,
-and removing them costs the live values and the adaptation decode, not the app.
+If karter16 withdraws that permission, this project will honour it: the two
+generated files and their generators are separable, and removing them costs the live
+values and the adaptation decode, not the app.
 
 ### 3.3 What follows from this
 
@@ -197,6 +206,20 @@ text file — from the pre-commit hook (`npm run hooks:install`), from CI, and f
 `npm run deploy`. The history was rewritten once to remove the tables
 (`docs/PRESERVED.md`); these checks are what stop it needing to happen again.
 
+### 3.5 In the repository, but not under MIT
+
+Two committed files are not this project's to license:
+
+| File | Whose work | On what terms |
+|---|---|---|
+| `packages/ds2-mss54/src/liveValueBlocks.generated.ts` | karter16's live-value catalogue (§3.2) | used with karter16's permission, given to this project only |
+| `packages/ds2-mss54/src/adaptationBlocks.generated.ts` | karter16's adaptation profiles (§3.2) | the same |
+
+`LICENSE` names both after the MIT text. Each file's header says the same, and the
+header is emitted by its generator rather than written into the output, so it
+survives regeneration. It is in the file as well as in `LICENSE` because a copied
+file leaves `LICENSE` behind.
+
 ---
 
 ## 4. Dependency audit status
@@ -243,3 +266,15 @@ vehicle.
 corrections, hypotheses that were tested and rejected, and the specific incident
 behind each guard. Several of those guards were removed once already on reasoning the
 files now record as wrong. Do not strip them.
+
+---
+
+## 6. Names and trademarks
+
+BMW, M3 and the other BMW names used in this project belong to BMW AG. They are
+used only to say which vehicle this tool works with. **This project is not
+affiliated with, endorsed by or sponsored by BMW AG or BMW M GmbH.**
+
+The same statement is in `README.md` and in the app's credits dialog, for the same
+reason as the attribution in §3.2: someone who installed the app never opens this
+file.

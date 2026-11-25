@@ -20,7 +20,19 @@ Next.js 16 / React 19 / Tailwind v4、`output: 'export'` の静的書き出し�
 | どの SGBD を載せ、どれを載せないか | `docs/FITMENT.md` ＋ `tools/sgbd/fitment.py` |
 | 何を作ってきたか・なぜそう決めたか | `docs/PLAN.md` |
 | ライセンスとデータの出所 | `THIRD-PARTY-NOTICES.md` |
-| ///M の意匠体系 | `tsunagi-m-design` スキル（`SKILL.md` だけでなく `references/` も） |
+
+## 参照するスキル
+
+指示が無くても、手を動かす前に読む。
+
+| 何を決めるとき | スキル |
+|---|---|
+| 意匠・レイアウト・ハブ・z-index・文言 | `tsunagi-m-design` |
+| 技術選定・リポジトリ構成・検査列・ポート | `tsunagi-m-stack` |
+| 環境・配信・命名・アイコン | `tsunagi-m-release` |
+| スマホでの実装 | `tsunagi-m-mobile` |
+
+`tsunagi-m-mobile` はこの repo に同梱（`.claude/skills/`）。他はアカウント共通。
 
 ## この repo の決まり
 

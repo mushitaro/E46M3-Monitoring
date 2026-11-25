@@ -143,7 +143,7 @@ export const ja: Localised = {
                 'BMW の SGBD はジョブ名と結果名しか公表していないので、' +
                 'このアプリが出す数値は全部この仕事の上に載っています。',
             url: 'https://github.com/karter16/MSS54-DS2-Tool-Public',
-            licence: '(c) 2026 karter16 · MSS54 DS2 Tool Freeware Licence',
+            licence: '(c) 2026 karter16 · MSS54 DS2 Tool Freeware Licence · 作者の許諾を得て使用',
         },
         {
             name: 'EdiabasLib — Ulrich Holeschak',
@@ -162,6 +162,9 @@ export const ja: Localised = {
         },
     ],
     credits_notices: 'ライセンスと出所の全文は THIRD-PARTY-NOTICES.md にあります。',
+    credits_trademarks:
+        'BMW、M3 ほかの BMW の名称は BMW AG のもので、対応する車両を示すためだけに使っています。' +
+        'このツールは BMW AG・BMW M GmbH とは関係がなく、承認も後援も受けていません。',
     credits_meshLead: '本アプリは TSUNAGI のコミュニティに繋がっています。研究の続きと、支えてくださる方々の一覧は',
     credits_meshTail: 'に。',
     credits_supportersLead: 'このツールを支えてくださっている方々',

@@ -44,6 +44,9 @@
 #  結果名しか公表しておらず、**バイト位置・データ形式・スケール係数はここにしか
 #  無い**。アプリが出すライブ値と適応値は、全部この人の仕事の上に載っている。
 #  立場の全文は THIRD-PARTY-NOTICES.md §3.2。
+#
+#  出力は repo の MIT の**適用外**（LICENSE）。karter16 の許諾を得て使っているが、
+#  その許諾はこの企画へのもので、他人へ渡せない。出力のヘッダもそう言う。
 # ============================================================================
 
 from __future__ import annotations
@@ -357,6 +360,11 @@ def _emit(blocks, divergences, total, matched, unmatched, unreadable) -> None:
         "// value sits or what to multiply it by, so the adaptation decode rests on",
         "// karter16's work. The route was a decompilation, and that is stated",
         "// rather than glossed. THIRD-PARTY-NOTICES.md §3.2.",
+        "//",
+        # A copied file leaves LICENSE behind, so the scope travels with it.
+        "// NOT UNDER THIS REPOSITORY'S MIT LICENCE (see LICENSE). Used with",
+        "// karter16's permission, which was given to this project and is not",
+        "// ours to pass on. To reuse this table, ask karter16.",
         "//",
         "// NOT VERIFIED ON A VEHICLE.",
         "",

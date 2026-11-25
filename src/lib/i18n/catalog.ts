@@ -124,6 +124,8 @@ export interface Localised {
     credits_lede: string;
     credits_entries: Array<{ name: string; what: string; url: string; licence?: string }>;
     credits_notices: string;
+    /** Whose the BMW names are, and that this is not BMW's. THIRD-PARTY-NOTICES.md §6. */
+    credits_trademarks: string;
     /** The colophon: where the work continues, and the people who carry it. */
     credits_meshLead: string;
     credits_meshTail: string;

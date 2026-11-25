@@ -94,6 +94,10 @@ export function CreditsDialog({ onClose }: { onClose: () => void }) {
             <p className="mt-5 border-t border-slate-800 pt-3 text-[11px] leading-relaxed text-slate-500">
                 {t.credits_notices}
             </p>
+            {/* Whose the BMW names are (THIRD-PARTY-NOTICES.md §6). Here and not in
+                the disclaimer for the same reason as the credits themselves: the
+                disclaimer is seen once. Under the notices' rule, not a second one. */}
+            <p className="mt-2 text-[11px] leading-relaxed text-slate-500">{t.credits_trademarks}</p>
 
             {/* Which build this is. The header drops the version below 900px,
                 and this is the dialog someone opens when they are about to write
@@ -121,7 +125,7 @@ export function CreditsDialog({ onClose }: { onClose: () => void }) {
                             </p>
                         )}
                         {supporters.others && <p className="mt-1">{t.credits_supportersOthers}</p>}
-                        <p className="mt-1 font-mono text-[9px] tracking-wider">{t.credits_supportersAsOf(supporters.asOf)}</p>
+                        <p className="mt-1 font-mono text-[10px] tracking-wider">{t.credits_supportersAsOf(supporters.asOf)}</p>
                     </div>
                 )}
                 <p className="mt-2">

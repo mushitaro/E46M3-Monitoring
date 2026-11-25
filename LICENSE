@@ -19,3 +19,20 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+What this licence does not cover
+
+The MIT licence above covers this project's own work. It does not cover
+these two files:
+
+    packages/ds2-mss54/src/liveValueBlocks.generated.ts
+    packages/ds2-mss54/src/adaptationBlocks.generated.ts
+
+The byte offsets, data formats and scaling in them are derived from
+MSS54 DS2 Tool, (c) 2026 karter16
+(https://github.com/karter16/MSS54-DS2-Tool-Public), and are used here
+with the author's permission. That permission was given to this project
+and is not ours to pass on: to reuse those tables, ask karter16.
+THIRD-PARTY-NOTICES.md section 3.2 has the details.

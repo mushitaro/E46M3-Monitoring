@@ -2,13 +2,12 @@
 
 import { MonitoringTabBar } from '@tsunagi/monitoring-ui';
 import { Cpu } from 'lucide-react';
-import { LABEL, TextButton } from '@/components/ui';
-import type { LinkMode, LinkState } from '@/hooks/useDs2Link';
-import type { EcuIndex } from '@tsunagi/monitoring-engine';
-import { CHROME } from '@/lib/i18n/chrome';
+import { LABEL, TextButton } from '../ui';
+import type { EcuIndex, LinkMode, LinkState } from '@tsunagi/monitoring-engine';
+import { CHROME } from '../../lib/i18n/chrome';
 import { ALL_MODULES } from '@tsunagi/monitoring-engine';
-import { useLang } from '@/lib/i18n';
-import { TAB_ORDER, type Tab } from '@/lib/tabs';
+import { useLang } from '../../lib/i18n';
+import { TAB_ORDER, type Tab } from '../../lib/tabs';
 
 /**
  * The furniture around the views: the bars, the tab strip, the module row.
@@ -119,6 +118,7 @@ export function ModuleRow({
     all = false,
     practiceEngine,
     hidden,
+    linkLabels,
 }: {
     index: EcuIndex | null;
     ecuId: string;
@@ -127,7 +127,7 @@ export function ModuleRow({
     state: LinkState;
     practiceArmed: boolean;
     onPractice: (v: boolean) => void;
-    onDisconnect: () => void;
+    onDisconnect?: () => void;
     onChangeEcu: (id: string) => void;
     /** DIAGNOSIS offers ALL MODULES (`ALL_MODULES`) above the modules; the other tabs need one. */
     allowAll?: boolean;
@@ -137,6 +137,7 @@ export function ModuleRow({
     practiceEngine?: { running: boolean; onChange: (v: boolean) => void };
     /** Modules this car ruled out at their address (its IDENT, or the owner): not offered. */
     hidden?: ReadonlySet<string>;
+    linkLabels?: Partial<Record<LinkMode | LinkState, string>>;
 }) {
     const { t } = useLang();
     return (
@@ -159,8 +160,8 @@ export function ModuleRow({
                                 {t.practice_engine}
                             </label>
                         )}
-                        <LinkReadout mode={mode} state={state} />
-                        <TextButton onClick={onDisconnect} tone="danger">
+                        <LinkReadout mode={mode} state={state} labels={linkLabels} />
+                        <TextButton onClick={onDisconnect} disabled={!onDisconnect} tone="danger">
                             {t.disconnect}
                         </TextButton>
                     </>
@@ -194,14 +195,14 @@ const LIVE_PHASES: Record<Exclude<LinkState, 'disconnected'>, true> = {
  * left, so a readout that followed its word would slide DISCONNECT sideways
  * every time a read started or ended.
  */
-function LinkReadout({ mode, state }: { mode: LinkMode; state: LinkState }) {
+function LinkReadout({ mode, state, labels }: { mode: LinkMode; state: LinkState; labels?: Partial<Record<LinkMode | LinkState, string>> }) {
     return (
         <span className="grid shrink-0 font-mono text-[10px] uppercase leading-3 tracking-wider text-slate-600">
-            <span>{mode}</span>
+            <span>{labels?.[mode] ?? mode}</span>
             <span className="grid">
                 {(Object.keys(LIVE_PHASES) as LinkState[]).map((phase) => (
                     <span key={phase} className={`[grid-area:1/1] ${phase === state ? '' : 'invisible'}`}>
-                        {phase}
+                        {labels?.[phase] ?? phase}
                     </span>
                 ))}
             </span>

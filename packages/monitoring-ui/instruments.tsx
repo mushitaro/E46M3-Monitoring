@@ -155,3 +155,4 @@ export { DiagnosticFooter } from '../../src/components/DiagnosticFooter';
 export { ControlPanel as InstrumentControlPanel } from '../../src/components/shell/ControlPanel';
 export { TextButton as InstrumentTextButton } from '../../src/components/ui';
 export { useLinkHub } from '../../src/hooks/useLinkHub';
+export { ModuleRow as InstrumentModuleRow } from '../../src/components/shell/Chrome';

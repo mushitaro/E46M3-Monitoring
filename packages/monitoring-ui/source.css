@@ -1,6 +1,8 @@
 @import "./palette.css";
 @source "../../src/views/probe/BoardLayout.tsx";
 @source "../../src/views/diagnosis/SelectedDiagnosis.tsx";
+@source "../../src/views/diagnosis/DiagnosisView.tsx";
+@source "../../src/components/shell/Chrome.tsx";
 @source "../../src/views/probe/StartupList.tsx";
 @source "../../src/views/service/ServiceView.tsx";
 @source "../../src/views/service/JobFrameViz.tsx";

@@ -31,6 +31,8 @@ export { loadSmg2Workflows, type Smg2Workflows } from '../../src/lib/smg2Workflo
 export { loadJobText, type JobTextTable } from '../../src/lib/jobText';
 export { loadDscHydraulics, type DscHydraulics } from '../../src/lib/dscHydraulics';
 export { SelectedDiagnosis } from '../../src/views/diagnosis/SelectedDiagnosis';
+export { DiagnosisView, DiagnosisViz, type FaultRead } from '../../src/views/diagnosis/DiagnosisView';
+export { ModuleRow } from '../../src/components/shell/Chrome';
 export { ScanList, ScanViz } from '../../src/views/diagnosis/ScanView';
 export { DatalogView, PlanSteps, type DatalogPlan, type DatalogInstrument } from '../../src/views/datalog/DatalogView';
 export { PART_S, segmentStats, type DatalogSegment } from '../../src/lib/datalogRun';
@@ -144,7 +146,7 @@ const shopChrome = {
     fail: '外れ',
 } satisfies Record<keyof typeof import('../../src/lib/i18n/chrome').CHROME, string>;
 
-const japanese = { lang: 'ja' as const, t: { ...STRINGS.ja, ...shopChrome, module: 'モジュール' } };
+const japanese = { lang: 'ja' as const, t: { ...STRINGS.ja, ...shopChrome, module: 'モジュール', mode_practice: '練習車を使う' } };
 
 export function JapaneseInstruments({ children }: { children: ReactNode }) {
     return <EmbeddedLanguage.Provider value={japanese}>{children}</EmbeddedLanguage.Provider>;

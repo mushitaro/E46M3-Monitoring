@@ -1,7 +1,7 @@
 'use client';
 
-import { Field } from '@/components/ui';
-import { freezeFrameConditions } from '@/lib/faultText';
+import { Field } from '../../components/ui';
+import { freezeFrameConditions } from '../../lib/faultText';
 import type { EcuProfile } from '@tsunagi/monitoring-engine';
 
 /**

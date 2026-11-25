@@ -230,9 +230,11 @@ export function natureOf(moduleId: string, job: Pick<CatalogJob, 'id' | 'class'>
 }
 
 /** The owner's decision for a job. */
-export function decisionFor(moduleId: string, job: Pick<CatalogJob, 'id' | 'class'>, group?: string, args?: readonly string[]): Decision & { nature: Nature } {
+export function decisionFor(moduleId: string, job: Pick<CatalogJob, 'id' | 'class' | 'catalogOnly'>, group?: string, args?: readonly string[]): Decision & { nature: Nature } {
     const nature = natureOf(moduleId, job, group, args);
-    return { nature, ...(OWNER_DECISION[nature] ?? UNDECIDED) };
+    const decision = OWNER_DECISION[nature] ?? UNDECIDED;
+    if (job.catalogOnly && decision.how === 'run') return { nature, ...decision, how: 'show' };
+    return { nature, ...decision };
 }
 
 /** Whether a nature is a read (its frames must carry a read control byte to go). */

@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { DataList, DataRow, LABEL, Section } from '@/components/ui';
-import { adjustmentJobs, adjustmentStatus, type AdjustmentStatus } from '@/lib/adjustments';
-import { cautionFor, loadJobText, type JobTextTable } from '@/lib/jobText';
-import { useLang } from '@/lib/i18n';
+import { DataList, DataRow, LABEL, Section } from '../../components/ui';
+import { adjustmentJobs, adjustmentStatus, type AdjustmentStatus } from '../../lib/adjustments';
+import { cautionFor, loadJobText, type JobTextTable } from '../../lib/jobText';
+import { useLang } from '../../lib/i18n';
 import { label, type EcuProfile, type Ledger, type Motion } from '@tsunagi/monitoring-engine';
 
 /**

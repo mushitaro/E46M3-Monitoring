@@ -27,7 +27,7 @@ export interface Graph {
     from: number;
     to: number;
     /** The samples in the window that carry the value, thinned to at most `max`. */
-    points: Array<{ t: number; value: number; target: number | null }>;
+    points: Array<{ t: number; value: number; target: number | null; valueBreak?: true; targetBreak?: true }>;
     /** The y range both lines share. */
     min: number;
     max: number;
@@ -46,9 +46,20 @@ export function graphOf(samples: readonly ProbeSample[], spec: GraphSpec, max = 
     // is not walked from its first sample on every redraw.
     let start = samples.length;
     while (start > 0 && samples[start - 1].t >= from) start--;
-    const window = samples.slice(start).filter((s) => finite(s.values[spec.value]));
-    const all = window.map((s) => ({ t: s.t, value: s.values[spec.value] as number, target: spec.target && finite(s.values[spec.target]) ? (s.values[spec.target] as number) : null }));
-    const points = all.length <= max ? all : Array.from({ length: max }, (_, k) => all[Math.round((k * (all.length - 1)) / (max - 1))]);
+    let valueGroup = 0, targetGroup = 0;
+    const all = samples.slice(start).flatMap(s => {
+        const value = s.values[spec.value];
+        if (!finite(value)) { valueGroup++; targetGroup++; return []; }
+        const target = spec.target ? s.values[spec.target] : null;
+        if (!finite(target)) targetGroup++;
+        return [{ t: s.t, value, target: finite(target) ? target : null, valueGroup, targetGroup }];
+    });
+    const selected = all.length <= max ? all : Array.from({ length: max }, (_, k) => all[Math.round((k * (all.length - 1)) / (max - 1))]);
+    const points: Graph['points'] = selected.map((p, i) => ({
+        t: p.t, value: p.value, target: p.target,
+        ...(i && p.valueGroup !== selected[i - 1].valueGroup ? { valueBreak: true } : {}),
+        ...(i && p.targetGroup !== selected[i - 1].targetGroup ? { targetBreak: true } : {}),
+    }));
     const ys = all.flatMap((p) => (p.target === null ? [p.value] : [p.value, p.target]));
     const last = all[all.length - 1] ?? null;
     const deviation = last && last.target !== null ? last.value - last.target : null;

@@ -10,7 +10,7 @@ import {
     type ArmedMap,
     type StopHow,
     type Stopped,
-} from '@/lib/arming';
+} from '../lib/arming';
 import type { ActuationPermit, SendRequirement } from '@tsunagi/monitoring-engine';
 
 /**

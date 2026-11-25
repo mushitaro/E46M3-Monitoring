@@ -83,3 +83,11 @@ describe('the numbers a graph draws large (owner, 2026-11-13)', () => {
         ]);
     });
 });
+
+describe('missing samples', () => {
+    it('keeps both gaps when the missing sample itself is thinned out', () => {
+        const g = graphOf(run(12, t => ({ a: t === 5 ? null : t, b: t === 9 ? null : t })), { value: 'a', target: 'b', seconds: 30 }, 3);
+        expect(g.points[1].valueBreak).toBe(true);
+        expect(g.points[2].targetBreak).toBe(true);
+    });
+});

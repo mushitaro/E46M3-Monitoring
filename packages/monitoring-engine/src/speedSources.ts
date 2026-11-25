@@ -9,23 +9,16 @@
  *
  * Which bytes of the answer are the speed is the module's own SGBD's to say: `speedFromAnswer` runs the
  * job's own code (sgbd/results) on the answer and takes the result the job names, only when the job read
- * the answer to its end. Run that way (2026-11-15, on answers built here, not yet a car's):
- *  - KOMBI46 STATUS_ANALOG_LESEN reads the speed from data bytes 8–9; zeros read 0 km/h.
- *  - BMS43DS0 STATUS_GESCHWINDIGKEIT reads it from data byte 6, km/h as the byte; zeros read 0.
- *  - MS420DS0, BMS46DS0, BMS46DS1: their job stops in its own code (a compare on an empty string, where
- *    EDIABAS's behaviour is not yet measured in sgbd/vm), so nothing is read from them yet.
- *  - MS430DS0: its job uses an instruction (0x6a) sgbd/vm does not run, before it sends.
- *
- * **None of them is used** (plan Phase 4-5: closed until a car confirms it). The consequence is
- * deliberate: on those cars the preflight reads nothing it trusts, says `unknown`, and every parked-only
- * read and the fault clear stay unsent. The IDENT and each module's own fault read do not wait on the
- * speed (runGate `fault-read`, operator 2026-11-04), so an intake check still works.
+ * the answer to its end, using the same payload boundary as recorded telemetry.
+ * EdiabasLib independently decoded the speed and idle-adaptation practice responses of
+ * MS420DS0, MS430DS0 and both BMS46 variants. These sources remain closed on cars until
+ * the stationary and moving readings have been confirmed on the fitted hardware.
  *
  * To open one: confirm on a car that the job's own reading gives the speed (and 0 standing still), then
  * set `usable` with the evidence in `provenance`. That change is a person's (autonomy:human).
  */
 
-import { decodeRead, type SgbdResultsTable } from './sgbd/results.ts';
+import { decodeRead, telemetryValues, type SgbdResultsTable } from './sgbd/results.ts';
 
 export interface SpeedSource {
     /** The module whose own SGBD sends the frame. */
@@ -58,11 +51,11 @@ export const SPEED_SOURCES: Readonly<Record<string, readonly SpeedSource[]>> = {
     ],
     // MS42 and MS43 (M52TU, M54): the DME's own speed job, or the early cluster's (KOMBI46 STATUS_ANALOG_LESEN).
     ms420ds0: [
-        { moduleId: 'ms420ds0', job: 'STATUS_GESCHWINDIGKEIT', frame: '12 05 0b 03 1f', result: 'STAT_GESCHWINDIGKEIT_WERT', usable: false, provenance: 'named by MS420DS0; its own job stops before the value (sgbd/vm), no car yet' },
+        { moduleId: 'ms420ds0', job: 'STATUS_GESCHWINDIGKEIT', frame: '12 05 0b 03 1f', result: 'STAT_GESCHWINDIGKEIT_WERT', usable: false, provenance: 'EdiabasLib speed response verified in simulation; physical validation pending' },
         KOMBI46_SPEED,
     ],
     ms430ds0: [
-        { moduleId: 'ms430ds0', job: 'STATUS_GESCHWINDIGKEIT', frame: '12 0b 70 00 00 00 00 7d 18 1d 11', result: 'STAT_GESCHWINDIGKEIT_WERT', usable: false, provenance: 'named by MS430DS0 (a 0x70 frame its telegram table carries more than one of); its own job does not run in sgbd/vm yet, no car yet' },
+        { moduleId: 'ms430ds0', job: 'STATUS_GESCHWINDIGKEIT', frame: '12 0b 70 00 00 00 00 7d 18 1d 11', result: 'STAT_GESCHWINDIGKEIT_WERT', usable: false, provenance: 'catalogue candidate; practice uses the independent interpreter request, physical validation pending' },
         KOMBI46_SPEED,
     ],
     // M43 (BMS43, BMS46): the DME's own speed job, or the early cluster's.
@@ -71,11 +64,11 @@ export const SPEED_SOURCES: Readonly<Record<string, readonly SpeedSource[]>> = {
         KOMBI46_SPEED,
     ],
     bms46ds0: [
-        { moduleId: 'bms46ds0', job: 'STATUS_GESCHWINDIGKEIT', frame: '12 05 0b 03 1f', result: 'STAT_GESCHWINDIGKEIT_WERT', usable: false, provenance: 'named by BMS46DS0; its own job stops before the value (sgbd/vm), no car yet' },
+        { moduleId: 'bms46ds0', job: 'STATUS_GESCHWINDIGKEIT', frame: '12 05 0b 03 1f', result: 'STAT_GESCHWINDIGKEIT_WERT', usable: false, provenance: 'EdiabasLib speed response verified in simulation; physical validation pending' },
         KOMBI46_SPEED,
     ],
     bms46ds1: [
-        { moduleId: 'bms46ds1', job: 'STATUS_GESCHWINDIGKEIT', frame: '12 05 0b 03 1f', result: 'STAT_GESCHWINDIGKEIT_WERT', usable: false, provenance: 'named by BMS46DS1; its own job stops before the value (sgbd/vm), no car yet' },
+        { moduleId: 'bms46ds1', job: 'STATUS_GESCHWINDIGKEIT', frame: '12 05 0b 03 1f', result: 'STAT_GESCHWINDIGKEIT_WERT', usable: false, provenance: 'EdiabasLib speed response verified in simulation; physical validation pending' },
         KOMBI46_SPEED,
     ],
 };
@@ -103,6 +96,6 @@ export function speedFromAnswer(source: SpeedSource, table: SgbdResultsTable | n
     if (!table || table.module !== source.moduleId) return null;
     const read = decodeRead(table, source.job, source.frame, answer);
     if (!read || read.stopped || read.status !== 'OKAY') return null;
-    const v = read.values.find((x) => x.name === source.result)?.value;
-    return typeof v === 'number' && Number.isFinite(v) ? v : null;
+    const v = telemetryValues(table, source.job, source.frame, answer).find(x => x.name === source.result && x.unit?.toLowerCase() === 'km/h')?.value;
+    return typeof v === 'number' && v >= 0 ? v : null;
 }

@@ -36,6 +36,15 @@ const fitted = (address: number, ident: PracticeIdent | null) =>
 const rule = (address: number) => FIXTURE_RULES.groups.find((g) => g.address === address)!;
 
 describe('the group rule', () => {
+    it('requires an optional controller to identify itself even if the data service omitted its group', () => {
+        const m3 = fit(fitted(0x12, M3_IDENTS[0x12]));
+        for (const [address, moduleId] of [[0x70, 'rdc'], [0x70, 'dws'], [0x65, 'ekp_ds2'], [0xa6, 'gr2']] as const) {
+            expect(mayModuleBeSent(address, moduleId, m3, FIXTURE_RULES).ok).toBe(false);
+            const permittedIdent = new Set([address]);
+            expect(frameVerdict(commonIdent(address), m3, FIXTURE_RULES, permittedIdent)).toBeNull();
+            expect(frameVerdict(Uint8Array.of(address, 4, 11, address ^ 4 ^ 11), m3, FIXTURE_RULES, permittedIdent)).not.toBeNull();
+        }
+    });
     it('reads the answer where the group file does, and takes the first table that knows the key', () => {
         expect(variantOf(rule(0x12), identFrame(0x12, M3_IDENTS[0x12]))).toBe('MSS54DS0');
         expect(variantOf(rule(0x12), identFrame(0x12, NON_M3_IDENTS[0x12]))).toBe('MS430DS0');
@@ -229,6 +238,16 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('the generated rules (variants.json) against
             }
         }
         expect(n).toBeGreaterThan(1000);
+    });
+
+    it('requires the full identity payload for the optional tyre controller', () => {
+        const tyre = rules!.groups.find(g => g.group === 'D_0070')!;
+        expect(tyre.minimumDataLength).toBeGreaterThan(0);
+        const answer = new Uint8Array(tyre.minimumDataLength! + 3);
+        answer[0] = tyre.address;
+        answer[2] = tyre.positive;
+        expect(groupChoice({ ...tyre, choose: 'synthetic' }, answer)).toBe('synthetic');
+        expect(variantOf({ ...tyre, choose: 'synthetic' }, answer)).toBeNull();
     });
 
     it('know the practice cars: the M3 is MSS54DS0 + SMG2, the other is MS430DS0 + GS20', () => {

@@ -45,7 +45,8 @@ import type { CatalogJob } from '../ecuCatalog.ts';
 import type { Ledger } from '../ledger.ts';
 import type { ModuleProtocol } from '../moduleProtocol.ts';
 import { isReadOnlyControl, mayRun, mayRunProtocolRead, telegramBytes, type RunBlockKey } from '../runGate.ts';
-import { answerFrame, decodeFaultRead, decodeRead, foldResults, type ReadValue, type SgbdFaultRead, type SgbdResultsTable } from '../sgbd/results.ts';
+import { nativeMeasurement, type NativeMeasurement } from '../sgbd/nativeMeasurement.ts';
+import { answerFrame, decodeFaultRead, decodeRead, telemetryValues, foldResults, type ReadValue, type SgbdFaultRead, type SgbdResultsTable } from '../sgbd/results.ts';
 import { parseDtcsByStatus, type KwpFrame } from '../kwpOnDs2.ts';
 import { runSgbdJob } from '../sgbd/vm.ts';
 import type { Telegram } from '../telegrams.ts';
@@ -97,6 +98,9 @@ export interface ProbePlan {
 }
 
 export interface ProbeDeps {
+    measurementExchange?(module: string, spec: NativeMeasurement, job: CatalogJob): Promise<{ value: number | null; request: string; response: string }>;
+    /** Whether the connected engine supports MSS54 blocks. LinkSession supplies the identified fitment. */
+    mss54?: boolean;
     link: Ds2Link;
     module(moduleId: string): ProbeModule | null;
     /** Read each time: a kill list that arrives mid-run applies to the next frame. */
@@ -294,7 +298,7 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
     };
 
     const { blocks: allBlocks } = planBlockReads(liveChannels(plan.steps, judges));
-    let blocks: LiveValueBlock[] = allBlocks;
+    let blocks: LiveValueBlock[] = deps.mss54 === false ? [] : allBlocks;
     // Whether the plan itself reads the speed block: then it goes every cycle, as the plan asked.
     const speedPlanned = planBlockReads(liveChannels(plan.steps, judges, false)).blocks.some((b) => b.selection === SPEED_BLOCK);
     let speedReadAt: number | null = null;
@@ -553,7 +557,25 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
         const mod = deps.module(lane.module);
         if (!mod) return drop('refused', 'unknown module');
         const hit = mod.job(lane.job);
-        if (!hit) return drop('refused', 'not in the catalogue');
+        if (!hit || hit.job.class !== 'read' || hit.job.args.length || lane.job.startsWith('FS_')) return drop('refused', 'not an argument-free telemetry read');
+        const spec = nativeMeasurement(mod.results, lane.module, what);
+        if (spec) {
+            if (!deps.measurementExchange) return drop('refused','This link cannot read the native measurement');
+            try {
+                const r = await deps.measurementExchange(lane.module, spec, hit.job);
+                record({ step: 0, module: lane.module, what, request: r.request, response: r.response,
+                    outcome: r.value === null ? 'rejected' : 'ok', motion });
+                values[[lane.module, what, spec.result].join(':')] = r.value;
+                lane.failures = 0;
+                return 'ok';
+            } catch (e) {
+                if (gateHeld(e)) return 'held';
+                const reason = e instanceof Error ? e.message : String(e);
+                record({ step: 0, module: lane.module, what, request: null, response: null, outcome: 'failed', reason, motion });
+                if (++lane.failures >= LINK_LOST_AFTER) lane.dropped = reason;
+                return 'skipped';
+            }
+        }
         if (!mod.results?.jobs[lane.job]) return drop('refused', 'no SGBD code ships to read this answer (tools/gen_sgbd_results.py)');
         const verdict = mayRun(hit.job, hit.telegram, deps.ledger(), { moduleId: lane.module, motion });
         // Moving, or not measured parked: this sample goes without it; it is read when it may be.
@@ -566,8 +588,8 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
             const frame = await deps.link.to(mod.protocol.address).exchangeWithRetry(bytes[2], bytes.slice(3, bytes.length - 1), { attempts: 2 });
             deps.link.assertPositive(frame, `${lane.module} ${what}`);
             lane.failures = 0;
-            const decoded = decodeRead(mod.results, what, hex, answerFrame(frame.address, frame.controlOrStatus, frame.payload));
-            for (const v of decoded?.values ?? []) {
+            const telemetry = telemetryValues(mod.results, what, hex, answerFrame(frame.address, frame.controlOrStatus, frame.payload));
+            for (const v of telemetry) {
                 if (typeof v.value !== 'number') continue;
                 const c = `${lane.module}:${lane.job}:${v.name}`;
                 if (lane.results.has('*') || lane.results.has(v.name)) values[c] = v.value;
@@ -575,8 +597,8 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
             // The first answer of the run is kept whole, as evidence of what this read looks like.
             if (!lane.answered) {
                 lane.answered = true;
-                record({ step: 0, module: lane.module, what, request: hex, response: toHex(frame.payload), outcome: 'ok', motion, ...(decoded ? { values: decoded.values } : {}) });
-                if (decoded?.stopped) record({ step: 0, module: lane.module, what, request: hex, response: toHex(frame.payload), outcome: 'rejected', reason: `read stopped: ${decoded.stopped.reason}`, motion });
+                record({ step: 0, module: lane.module, what, request: hex, response: toHex(frame.payload), outcome: 'ok', motion, values: telemetry });
+                if (!telemetry.length) record({ step: 0, module: lane.module, what, request: hex, response: toHex(frame.payload), outcome: 'rejected', reason: 'no complete numeric result', motion });
             }
             if (motion === 'parked') deps.onObserved?.({ id: `${lane.module}:${what}`, telegram: hex, response: toHex(frame.payload), at: deps.now() });
             return 'ok';

@@ -2,14 +2,14 @@
 
 import { AlertTriangle, Play } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { DialogFrame } from '@/components/DialogFrame';
-import { DialogButton, LABEL, MicroLabel, Pill, Well, emphasise } from '@/components/ui';
-import { planLines, type Phase } from '@/lib/actuatorArgs';
+import { DialogFrame } from '../DialogFrame';
+import { DialogButton, LABEL, MicroLabel, Pill, Well, emphasise } from '../ui';
+import { planLines, type Phase } from '../../lib/actuatorArgs';
 import type { CatalogJob } from '@tsunagi/monitoring-engine';
-import { execStyleOf } from '@/lib/execStyle';
-import { allChecked, requiredChecks } from '@/lib/gateChecks';
-import { TEST_ID, tid } from '@/lib/testIds';
-import { useLang } from '@/lib/i18n';
+import { execStyleOf } from '../../lib/execStyle';
+import { allChecked, requiredChecks } from '../../lib/gateChecks';
+import { TEST_ID, tid } from '../../lib/testIds';
+import { useLang } from '../../lib/i18n';
 import { operationFor } from '@tsunagi/monitoring-engine';
 import type { RunVerdict } from '@tsunagi/monitoring-engine';
 import type { ActuationMode } from '@tsunagi/monitoring-engine';

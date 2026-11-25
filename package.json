@@ -30,6 +30,7 @@
     "coverage:runs": "WRITE_COVERAGE=1 vitest run src/lib/runCoverage.test.ts"
   },
   "dependencies": {
+    "@tsunagi/monitoring-ui": "*",
     "lucide-react": "^0.562.0",
     "next": "16.1.1",
     "react": "19.2.3",

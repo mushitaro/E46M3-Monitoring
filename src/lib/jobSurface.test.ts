@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { EcuIndex, EcuProfile } from '@tsunagi/monitoring-engine';
@@ -17,7 +17,7 @@ const modules = index.modules.map((m) => ({
 }));
 
 describe('every job belongs to exactly one tab', () => {
-    it('lands on one surface, across all 58 modules', () => {
+    it('lands on one surface, across the full installed catalogue', () => {
         // The property that makes this a partition rather than two filters that
         // happen to agree. Two surfaces run a job through DIFFERENT gates —
         // SERVICE via mayRun, ACTUATOR via mayActuate, which is wider in
@@ -33,7 +33,17 @@ describe('every job belongs to exactly one tab', () => {
         }
         // 1524 across 51; 64 more with DSC MK60 (2026-11-10).
         // 1588 until the non-M3 DMEs and GS20 arrived (2026-11-11).
-        expect(counted).toBe(2297);
+        const nativeProfiles = modules.filter(({ id }) => {
+            const file = path.join(DATA, id + '.results.json');
+            return existsSync(file) && Boolean(read<{ nativeRpm?: unknown }>(id + '.results.json').nativeRpm);
+        });
+        expect(modules.length - nativeProfiles.length).toBe(63);
+        expect(counted - nativeProfiles.reduce((n, m) => n + m.profile.jobs.length, 0)).toBe(2629);
+        const diesel = modules.find(m => m.id === 'dde30ds0')!;
+        expect(diesel.profile.jobs.filter(j => !j.catalogOnly).map(j => j.id).sort()).toEqual(
+            ['IDENT', 'STATUS_GESCHWINDIGKEIT', 'STATUS_MOTORDREHZAHL'],
+        );
+        expect(Object.keys(diesel.telegrams.jobs).sort()).toEqual(diesel.profile.jobs.filter(j => !j.catalogOnly).map(j => j.id).sort());
     });
 
     it('puts the actuators on ACTUATOR and nothing else there', () => {
@@ -84,6 +94,10 @@ describe('SERVICE carries the whole of what a real car will accept', () => {
         // 103 -> 126: the non-M3 DMEs and GS20 (six modules, 2026-11-11), their own read-only reads.
         //
         // 126 -> 127 (owner, 2026-11-15): reads judged by nature — BM46WIDE's CHECKSUMME_ABFRAGEN (0x0a).
-        expect(runnable.length).toBe(127);
+        // DDE3 IDENT uses the protocol read. Its numeric channels use the independently checked sampler.
+        const optional = runnable.filter(key => /^(dws|ekp_ds2|gr2)\./.test(key));
+        expect(optional.sort()).toEqual(['dws.IDENT', 'dws.STATUS_IO', 'ekp_ds2.IDENT',
+            'ekp_ds2.STATUS_EINREGELZEIT', 'ekp_ds2.STATUS_MESSWERTE', 'ekp_ds2.STATUS_REGELUNGSWERTE', 'gr2.IDENT', 'gr2.STATUS_INKREMENTE']);
+        expect(runnable.length - optional.length).toBe(127);
     });
 });

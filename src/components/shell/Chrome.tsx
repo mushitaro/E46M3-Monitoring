@@ -1,5 +1,6 @@
 'use client';
 
+import { MonitoringTabBar } from '@tsunagi/monitoring-ui';
 import { Cpu } from 'lucide-react';
 import { LABEL, TextButton } from '@/components/ui';
 import type { LinkMode, LinkState } from '@/hooks/useDs2Link';
@@ -55,50 +56,8 @@ export function useTabLabels(): Record<Tab, string> {
  * and LIST gets the 44px back. The comms log that sits at this bar's right goes
  * to the footer's right-hand slot (LogPopover's `openUp`).
  */
-export function TabBar({
-    tab,
-    enabled,
-    onChange,
-    children,
-}: {
-    tab: Tab;
-    /** The tabs this build may render — `enabledTabs` from lib/features. The ORDER is still TAB_ORDER's. */
-    enabled: ReadonlySet<Tab>;
-    onChange: (next: Tab) => void;
-    /** The tools that sit right of the rule — today, the comms log. */
-    children?: React.ReactNode;
-}) {
-    const LABELS = useTabLabels();
-
-    return (
-        <nav role="tablist" className={`${BAR} z-30 max-[900px]:hidden`}>
-            <div className="no-scrollbar mr-auto flex h-full min-w-0 flex-1 gap-6 overflow-x-auto overflow-y-hidden">
-                {TAB_ORDER.filter((id) => enabled.has(id)).map((id) => (
-                    <button
-                        key={id}
-                        role="tab"
-                        aria-selected={tab === id}
-                        aria-controls={`pane-${id}`}
-                        onClick={() => onChange(id)}
-                        className={`flex h-full shrink-0 items-center whitespace-nowrap border-b-2 ${LABEL} transition-colors ${
-                            tab === id
-                                ? 'border-blue-400 text-blue-400'
-                                : 'border-transparent text-slate-500 hover:text-slate-300'
-                        }`}
-                    >
-                        {LABELS[id]}
-                    </button>
-                ))}
-            </div>
-
-            {/* Tools right, fenced with a vertical rule. The comms log is a
-                popover and not a tab: it has to be reachable WHILE doing the
-                thing that is failing, not somewhere you navigate away to. */}
-            {children && (
-                <div className="ml-4 flex h-full items-center border-l border-slate-800 pl-4">{children}</div>
-            )}
-        </nav>
-    );
+export function TabBar(props: Omit<Parameters<typeof MonitoringTabBar>[0], 'labels'>) {
+    return <MonitoringTabBar {...props} labels={useTabLabels()} />;
 }
 
 /**

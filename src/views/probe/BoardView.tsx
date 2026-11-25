@@ -1,17 +1,20 @@
 'use client';
 
-import { ChevronDown, ChevronUp, ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
-import { MSS54_CHANNELS, formatErrorCode, type ChannelId, type ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
+import { BoardLayout } from './BoardLayout';
+import { ValueCards, channelLabel } from './ValueCards';
+export { ValueCards, latestValues } from './ValueCards';
+import { formatErrorCode, type ErrorMemoryEntry } from '@tsunagi/ds2-mss54';
 import type { RawFaultRead } from '@/hooks/useDs2Link';
 import type { ProbeProgress } from '@/hooks/useProbe';
-import { DataList, DataRow, Field, Pane, Pill, Provenance, Section, TextButton, humanName } from '@/components/ui';
+import { DataList, DataRow, Field, Pane, Pill, Provenance, Section, humanName } from '@/components/ui';
 import { text as resolveText, type EcuProfile } from '@tsunagi/monitoring-engine';
 import { normCode } from '@/lib/faultCode';
 import { useLang } from '@/lib/i18n';
 import { currentPlan } from '@/lib/notebook/rules';
-import { BOARD_LIMITS, defaultReadouts, type Part, type PartKind, type Readout } from '@/lib/probe/board';
+import { type Part, type PartKind } from '@/lib/probe/board';
+import { ComparePanel } from './ComparePanel';
 import { channelStats, compareRuns, type Comparison } from '@/lib/probe/compare';
-import { graphOf, readoutsOf, type GraphTone } from '@/lib/probe/graph';
+import { ProbeGraph } from './ProbeGraph';
 import type { ProbeLive, StoredRun } from '@/lib/probe/runStore';
 import type { ScanRun } from '@tsunagi/monitoring-engine';
 import { formOf } from '@/lib/probe/sessions';
@@ -78,48 +81,10 @@ export function BoardView({ s, data }: { s: ProbeSessions; data: BoardData }) {
             </Pane>
         );
     }
-    return (
-        <Pane>
-            {parts.map((p, i) => (
-                <Section
-                    key={p.id}
-                    title={KIND_LABEL[p.kind](t)}
-                    note={p.title}
-                    actions={
-                        <span className="flex items-baseline gap-2">
-                            <TextButton tone="neutral" Icon={ChevronUp} disabled={i === 0} onClick={() => s.move(p.id, -1)} aria-label={t.board_up} title={t.board_up} className="-my-2 px-1 py-2">
-                                {null}
-                            </TextButton>
-                            <TextButton
-                                tone="neutral"
-                                Icon={ChevronDown}
-                                disabled={i === parts.length - 1}
-                                onClick={() => s.move(p.id, 1)}
-                                aria-label={t.board_down}
-                                title={t.board_down}
-                                className="-my-2 px-1 py-2"
-                            >
-                                {null}
-                            </TextButton>
-                            <TextButton
-                                tone="neutral"
-                                Icon={p.open ? ChevronsDownUp : ChevronsUpDown}
-                                onClick={() => s.toggle(p.id)}
-                                aria-expanded={p.open}
-                                aria-label={p.open ? t.board_close : t.board_open}
-                                title={p.open ? t.board_close : t.board_open}
-                                className="-my-2 px-1 py-2"
-                            >
-                                {null}
-                            </TextButton>
-                        </span>
-                    }
-                >
-                    {p.open ? <PartBody part={p} s={s} data={data} /> : null}
-                </Section>
-            ))}
-        </Pane>
-    );
+    return <BoardLayout parts={parts.map(p => ({
+        id: p.id, title: KIND_LABEL[p.kind](t), note: p.title, open: p.open,
+        body: () => <PartBody part={p} s={s} data={data} />,
+    }))} onMove={s.move} onToggle={s.toggle} />;
 }
 
 function Empty({ children }: { children: React.ReactNode }) {
@@ -296,67 +261,9 @@ function PartBody({ part: p, s, data }: { part: Part; s: ProbeSessions; data: Bo
         case 'compare': {
             const c = compareOf(s, p);
             if (!c) return <Empty>{s.runs.length === 0 ? t.board_noRun : t.board_noCompare}</Empty>;
-            return (
-                <div className="space-y-2">
-                    <p className="font-mono text-[11px] text-slate-500">
-                        {t.compare_runs(
-                            `${when(c.a.startedAt)} ${runLabel({ record: s.current ?? c.a.record, n: c.a.n, planV: c.a.planV, startedAt: c.a.startedAt })}`,
-                            `${when(c.b.startedAt)} ${runLabel({ record: s.current ?? c.b.record, n: c.b.n, planV: c.b.planV, startedAt: c.b.startedAt })}`,
-                        )}
-                        {' · '}
-                        {t.compare_common(c.channels.length + c.judges.length)}
-                    </p>
-                    <DataList>
-                        {c.channels.map((x) => (
-                            <DataRow
-                                key={x.channel}
-                                name={humanName('')}
-                                ident={x.channel}
-                                trailing={
-                                    <span className="shrink-0 font-mono text-[11px] tabular-nums text-slate-300">
-                                        {num(x.a?.mean)} → {num(x.b?.mean)}
-                                        <span className={`ml-2 ${x.delta ? 'text-amber-400' : 'text-slate-600'}`}>
-                                            {x.delta !== null && x.delta > 0 ? '+' : ''}
-                                            {num(x.delta)}
-                                        </span>
-                                    </span>
-                                }
-                            />
-                        ))}
-                        {c.judges.map((j) => (
-                            <DataRow
-                                key={`j-${j.id}`}
-                                name={humanName('')}
-                                ident={j.id}
-                                trailing={
-                                    <span className="shrink-0 font-mono text-[11px] tabular-nums text-slate-300">
-                                        {num(j.a?.value)} → {num(j.b?.value)}
-                                        <span className="ml-2">{j.b?.pass === null || j.b === null ? '—' : j.b.pass ? t.pass : t.fail}</span>
-                                    </span>
-                                }
-                            />
-                        ))}
-                        {c.items?.added.map((i) => (
-                            <DataRow
-                                key={`+${i.key}`}
-                                leading={<Pill tone="ok">{t.item_added}</Pill>}
-                                name={humanName('')}
-                                ident={i.label}
-                                trailing={<span className="shrink-0 text-[11px] text-slate-500">{t.item_since(c.items!.to)}</span>}
-                            />
-                        ))}
-                        {c.items?.removed.map((i) => (
-                            <DataRow
-                                key={`-${i.key}`}
-                                leading={<Pill>{t.item_removed}</Pill>}
-                                name={humanName('')}
-                                ident={i.label}
-                                trailing={<span className="shrink-0 text-[11px] text-slate-500">{t.item_until(c.items!.to)}</span>}
-                            />
-                        ))}
-                    </DataList>
-                </div>
-            );
+            return <ComparePanel values={c}
+                before={`${when(c.a.startedAt)} ${runLabel({ record: s.current ?? c.a.record, n: c.a.n, planV: c.a.planV, startedAt: c.a.startedAt })}`}
+                after={`${when(c.b.startedAt)} ${runLabel({ record: s.current ?? c.b.record, n: c.b.n, planV: c.b.planV, startedAt: c.b.startedAt })}`} />;
         }
 
         case 'values': {
@@ -427,164 +334,12 @@ function sourceOf(s: ProbeSessions, p: Part, live: ProbeLive | null | undefined)
 
 const samplesOf = (src: { live: ProbeLive | null; run: StoredRun | null }) => (src.live ? src.live.samples : src.run!.samples);
 
-const READOUT_LABEL: Record<Readout, (t: T) => string> = {
-    value: (t) => t.readout_value,
-    target: (t) => t.graph_target,
-    delta: () => 'Δ',
-    max: (t) => t.readout_max,
-    min: (t) => t.readout_min,
-    mean: (t) => t.readout_mean,
-};
-
-/** The value and its difference carry the colour of how far off target it is; the target its line's blue; the run's spread the quiet ink. */
-const readoutColour = (r: Readout, tone: GraphTone) => (r === 'value' || r === 'delta' ? TONE[tone] : r === 'target' ? SERIES.target : TONE.none);
-
-/** Off target, as the diverging scale says it: above red, below blue, within or unjudged the ink. */
-const TONE: Record<GraphTone, string> = { above: '#F87A7F', below: '#6CCBEF', within: '#F2F2F5', none: '#F2F2F5' };
-/** The data series registry (tsunagi-m-design §1.10): measured feedback violet and thick, the target blue and dashed. */
-const SERIES = { value: '#B9A6EE', target: '#0A9BDB' };
-
-function channelLabel(id: string, lang: string): { name: string; unit: string } {
-    const c = MSS54_CHANNELS.get(id as ChannelId);
-    return c ? { name: lang === 'en' ? c.field.name : c.field.ja, unit: c.field.unit } : { name: id, unit: '' };
-}
-
-/**
- * A graph part: the value large, coloured by how far it is from its target (when the assistant gave
- * a band), the window's value and target as two lines, and the context values small. `large` is the
- * MULTI pane's, for a driver's glance; the board draws it compact.
- */
-export function GraphPart({ part: p, s, live, large = false }: { part: Part; s: ProbeSessions; live: ProbeLive | null | undefined; large?: boolean }) {
-    const { t, lang } = useLang();
-    const [value, target] = p.channels ?? [];
-    const src = sourceOf(s, p, live);
-    if (!value) return null;
-    if (!src.live && !src.run) return <Empty>{p.run ? t.board_noRunN(p.run) : t.board_noRun}</Empty>;
-    const samples = samplesOf(src);
-    const g = graphOf(samples, { value, target, context: p.context, seconds: p.seconds ?? BOARD_LIMITS.seconds.default, band: p.band });
-    const v = channelLabel(value, lang);
-    if (!g.latest) return <Empty>{t.graph_noValue}</Empty>;
-    // A tenth of the range above and below, so the thick line is not cut at the edges; a flat line sits in the middle.
-    const pad = (g.max - g.min) * 0.1 || Math.max(1, Math.abs(g.max) * 0.05);
-    const lo = g.min - pad;
-    const span = g.max + pad - lo;
-    const x = (tt: number) => ((tt - g.from) / (g.to - g.from || 1)) * 100;
-    const y = (n: number) => 100 - ((n - lo) / span) * 100;
-    const line = (pick: (q: (typeof g.points)[number]) => number | null) =>
-        g.points.flatMap((q) => {
-            const n = pick(q);
-            return n === null ? [] : [`${x(q.t).toFixed(2)},${y(n).toFixed(2)}`];
-        }).join(' ');
-    const dev = g.latest.deviation;
-    // The numbers drawn large, in the order asked; a target and difference not among them stay small beside.
-    const show = p.show ?? defaultReadouts(p.channels);
-    const big = readoutsOf(g, show.some((r) => r === 'max' || r === 'min' || r === 'mean') ? channelStats({ samples: samplesOf(src) }).get(value) : undefined, show);
-    const small = target ? (['target', 'delta'] as const).filter((r) => !show.includes(r)) : [];
-    const size = large ? (big.length > 3 ? 'text-5xl' : 'text-6xl') : big.length > 3 ? 'text-2xl' : 'text-3xl';
-    return (
-        <div className={large ? 'flex h-full flex-col gap-2' : 'space-y-1'}>
-            <div className="flex items-baseline justify-between gap-3">
-                <span className="min-w-0 truncate text-xs text-slate-300">{v.name}</span>
-                <span className="shrink-0 font-mono text-[10px] text-slate-600">
-                    {src.live ? `${t.run_tag} ${src.live.n} · LIVE` : `${t.run_tag} ${src.run!.n}`}
-                </span>
-            </div>
-            <div className="flex flex-wrap items-end gap-x-5 gap-y-1">
-                {big.map((r) => (
-                    <div key={r.kind} className="min-w-0">
-                        <p className="text-[11px] text-slate-500">{READOUT_LABEL[r.kind](t)}</p>
-                        <p className="flex items-baseline gap-1">
-                            <span className={`font-mono tabular-nums ${size}`} style={{ color: readoutColour(r.kind, g.tone) }}>
-                                {r.kind === 'delta' && r.value !== null && r.value > 0 ? '+' : ''}
-                                {num(r.value)}
-                            </span>
-                            <span className="text-xs text-slate-500">{v.unit}</span>
-                        </p>
-                    </div>
-                ))}
-                {g.latest.target !== null && small.length ? (
-                    <span className="pb-1 font-mono text-xs tabular-nums text-slate-400">
-                        {small.includes('target') ? `${t.graph_target} ${num(g.latest.target)}` : null}
-                        {small.includes('delta') && dev !== null ? <span className="ml-2" style={{ color: TONE[g.tone] }}>Δ {dev > 0 ? '+' : ''}{num(dev)}</span> : null}
-                    </span>
-                ) : null}
-            </div>
-            <svg viewBox="0 0 100 100" preserveAspectRatio="none" className={large ? 'min-h-0 w-full flex-1' : 'h-24 w-full'}>
-                {target ? <polyline points={line((q) => q.target)} fill="none" stroke={SERIES.target} strokeWidth="1.5" strokeDasharray="4 3" vectorEffect="non-scaling-stroke" /> : null}
-                <polyline points={line((q) => q.value)} fill="none" stroke={SERIES.value} strokeWidth="3" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-            </svg>
-            <div className="flex items-baseline justify-between gap-3 font-mono text-[10px] text-slate-600">
-                <span>
-                    {num(g.min)} – {num(g.max)} · {p.seconds ?? BOARD_LIMITS.seconds.default} s
-                </span>
-                {p.band !== undefined ? <Provenance>{t.graph_band(num(p.band))}</Provenance> : null}
-            </div>
-            {g.context.length ? (
-                <div className="flex flex-wrap gap-x-4 gap-y-1">
-                    {g.context.map((c) => {
-                        const l = channelLabel(c.channel, lang);
-                        return (
-                            <span key={c.channel} className="flex items-baseline gap-1 text-[11px] text-slate-500">
-                                {l.name}
-                                <span className="font-mono tabular-nums text-slate-300">{num(c.value)}</span>
-                                {l.unit}
-                            </span>
-                        );
-                    })}
-                </div>
-            ) : null}
-        </div>
-    );
-}
-
-/**
- * The values as cards (operator, 2026-11-11: 「カードみたいなイメージ」): each channel's newest number
- * large with its unit, and its mean and spread small beneath — read at a glance from the driver's seat.
- * `large` is the MULTI pane's.
- */
-export function ValueCards({ source, only, large = false }: { source: Pick<ProbeLive, 'samples'>; only?: readonly string[]; large?: boolean }) {
-    const { lang } = useLang();
-    const stats = [...channelStats(source)].filter(([k]) => !only || only.includes(k));
-    const latest = latestValues(source);
-    return (
-        <div className={`grid gap-2 ${large ? 'grid-cols-2 lg:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3'}`}>
-            {stats.map(([k, x]) => {
-                const l = channelLabel(k, lang);
-                return (
-                    <div key={k} className="min-w-0 rounded bg-slate-800/40 px-3 py-2">
-                        <p className="truncate text-[11px] text-slate-400" title={k}>
-                            {l.name}
-                        </p>
-                        <p className="flex items-baseline gap-1">
-                            <span className={`font-mono tabular-nums text-slate-100 ${large ? 'text-5xl' : 'text-3xl'}`}>{num(latest.get(k))}</span>
-                            <span className="text-xs text-slate-500">{l.unit}</span>
-                        </p>
-                        <p className="truncate font-mono text-[10px] tabular-nums text-slate-500">
-                            ⌀ {num(x.mean)} · {num(x.min)}–{num(x.max)} · n {x.n}
-                        </p>
-                    </div>
-                );
-            })}
-        </div>
-    );
-}
-
-/**
- * The newest number each channel has had in a run in progress. Kept per sample list and carried on
- * from where it stopped, like `channelStats`: the board redraws once a sample.
- */
-const newest = new WeakMap<readonly ProbeLive['samples'][number][], { seen: number; out: Map<string, number> }>();
-export function latestValues(live: Pick<ProbeLive, 'samples'>): Map<string, number> {
-    let memo = newest.get(live.samples);
-    if (!memo || memo.seen > live.samples.length) {
-        memo = { seen: 0, out: new Map() };
-        newest.set(live.samples, memo);
-    }
-    for (let i = memo.seen; i < live.samples.length; i++) {
-        for (const [k, v] of Object.entries(live.samples[i].values)) if (typeof v === 'number' && Number.isFinite(v)) memo.out.set(k, v);
-    }
-    memo.seen = live.samples.length;
-    return new Map(memo.out);
+export function GraphPart({ part, s, live, large = false }: { part: Part; s: ProbeSessions; live: ProbeLive | null | undefined; large?: boolean }) {
+    const { t } = useLang();
+    const src = sourceOf(s, part, live);
+    if (!part.channels?.length) return null;
+    if (!src.live && !src.run) return <Empty>{part.run ? t.board_noRunN(part.run) : t.board_noRun}</Empty>;
+    return <ProbeGraph part={part} samples={samplesOf(src)} run={src.live?.n ?? src.run!.n} live={!!src.live} large={large} />;
 }
 
 /**

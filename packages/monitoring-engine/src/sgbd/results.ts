@@ -10,9 +10,17 @@
  */
 
 import { readEcuData } from '../ecuData.ts';
+import { verifyMeasurements } from './nativeMeasurement.ts';
 import { runSgbdJob, type SgbdResult, type SgbdTables } from './vm.ts';
 
 export interface SgbdResultsTable {
+    rawResultNames?: Record<string, string[]>;
+    practiceLearned?: { module: string; speedBlock: number; speedOffset: number; idleBlock: number; payload: number[]; expectedIdle: { value: number; unit: string } };
+    practiceRpm?: { ident: number[] | null; service: number[]; replies: number[][] };
+    practiceIdentity?: number[];
+    nativeRpm?: import('./nativeMeasurement.ts').NativeEncoding;
+    nativeMeasurements?: Record<string, import('./nativeMeasurement.ts').NativeMeasurement>;
+    practiceMeasurements?: Array<{ service: number[]; replies: number[][] }>;
     module: string;
     sgbd: string;
     source: string;
@@ -28,6 +36,8 @@ export interface ReadValue {
 }
 
 export interface DecodedRead {
+    /** Original program results published as bytes. Never treated as a numeric measurement. */
+    rawValues?: Array<{ name: string; hex: string }>;
     /** Values, in the order the job reports them; units folded in, `JOB_STATUS` and the raw answer left out. */
     values: ReadValue[];
     /** The job's own verdict on the answer (`OKAY`, or why not). */
@@ -43,9 +53,17 @@ export function loadSgbdResults(moduleId: string): Promise<SgbdResultsTable | nu
     let hit = cache.get(moduleId);
     if (!hit) {
         hit = readEcuData(`${moduleId}.results.json`)
-            .then((r) => (r.ok ? (r.json() as Promise<SgbdResultsTable>) : null))
+            .then(async r => {
+                if (!r.ok) return null;
+                const table = await r.json() as SgbdResultsTable;
+                if (table?.module !== moduleId) return null;
+                await verifyMeasurements(table);
+                return table;
+            })
             .catch(() => null);
         cache.set(moduleId, hit);
+        const pending = hit;
+        void pending.then(table => { if (!table && cache.get(moduleId) === pending) cache.delete(moduleId); });
     }
     return hit;
 }
@@ -98,7 +116,26 @@ export function decodeRead(table: SgbdResultsTable | null, jobId: string, reques
         { code: fromBase64(job.code), base: job.base },
         { sent: bytesOf(request), answer, tables: table.tables as SgbdTables },
     );
-    return { ...foldResults(run.results), stopped: run.stopped, provenance: 'sgbd-job' };
+    const folded = foldResults(run.results);
+    const names = table.rawResultNames?.[jobId];
+    const rawValues = !run.stopped && folded.status === 'OKAY' && names
+        ? run.results.flatMap(r => r.value.kind === 'bytes' && r.value.value.length && names.includes(r.name)
+            ? [{ name: r.name, hex: Array.from(r.value.value, b => b.toString(16).padStart(2, '0')).join(' ') }] : [])
+        : [];
+    return { ...folded, ...(rawValues.length ? { rawValues } : {}), stopped: run.stopped, provenance: 'sgbd-job' };
+}
+
+/** Telemetry must not count the checksum as data. Some status jobs take their final
+ * value byte straight from the next position, without validating the answer length.
+ * Run the decoder on the payload boundary as well and accept only matching numeric
+ * results. Neither input is sent; the first is the exact wire response. */
+export function telemetryValues(table: SgbdResultsTable, jobId: string, sent: string, answer: Uint8Array): ReadValue[] {
+    const read = decodeRead(table, jobId, sent, answer);
+    if (!read || read.stopped || (read.status !== null && read.status !== 'OKAY')) return [];
+    const bounded = decodeRead(table, jobId, sent, answer.subarray(0, -1));
+    if (!bounded || bounded.stopped || bounded.status !== read.status) return [];
+    return read.values.filter(v => typeof v.value === 'number' && Number.isFinite(v.value) &&
+        bounded.values.some(b => b.name === v.name && b.value === v.value && b.unit === v.unit));
 }
 
 /** One fault-memory entry as the module's own FS_LESEN reports it: one result set. */

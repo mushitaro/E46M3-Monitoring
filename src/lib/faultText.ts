@@ -8,7 +8,7 @@
  * describe: a code the table lacks has no name, said as such, not a guessed one.
  */
 import { hexCode, text as resolveText, type EcuProfile, type HumanName } from '@tsunagi/monitoring-engine';
-import { normCode } from '@/lib/faultCode';
+import { normCode } from './faultCode';
 
 type Lang = 'ja' | 'en';
 

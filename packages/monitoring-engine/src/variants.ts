@@ -247,7 +247,13 @@ export function isCommonIdent(frame: Uint8Array): boolean {
  */
 export function frameVerdict(frame: Uint8Array, fitment: Fitment, rules: VariantRules, identOk: ReadonlySet<number>): string | null {
     const address = frame[0];
-    if (isCommonIdent(frame)) return identOk.has(address) ? null : `${hex2(address)}: the common IDENT is not this address's own; not sent`;
+    if (isCommonIdent(frame) && !identOk.has(address)) {
+        // On an M3, an address no rule tells apart is the M3's equipment, and its module's own job may send
+        // the IDENT-shaped frame its own SGBD carries (PDC's INITIALISIERUNG), as it may send its other frames.
+        if (isM3(fitment) && !ruleFor(rules, address) && !optionGroups.has(address)) return null;
+        return `${hex2(address)}: the common IDENT is not this address's own; not sent`;
+    }
+    if (isCommonIdent(frame)) return null;
     const f = fitment.get(address);
     if (ruleFor(rules, address)) {
         return f?.moduleId ? null : `${hex2(address)}: not identified as a module this app carries (?): only its IDENT is sent`;

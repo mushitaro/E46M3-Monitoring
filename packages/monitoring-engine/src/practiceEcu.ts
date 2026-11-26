@@ -26,6 +26,7 @@ import { SimulatedSerialPort, type ExchangeBehavior, type SerialOptions, type Se
 import { loadSgbdResults, type SgbdResultsTable } from './sgbd/results.ts';
 import { fastFrame } from './sgbd/nativeMeasurement.ts';
 import { practiceModelFor, practiceRpmPayload, type PracticeFleet } from './practiceFleet.ts';
+import { withPracticeBattery, type PracticeBattery } from './practiceDmeBattery.ts';
 import { KWP_FORMAT, KWP_TESTER, xorOf } from './kwpOnDs2.ts';
 import type { JobFramesOracle } from './sgbd/agreedFrame.ts';
 import {
@@ -192,9 +193,9 @@ const SIM_TESTPRG_POLLS = 6;
  * would on a car, so a request sent to the wrong module fails in PRACTICE too instead of being
  * answered by the DME.
  */
-export function practiceBus(addresses: readonly number[], learned?: SgbdResultsTable['practiceLearned'], fleet: PracticeFleet | null = null): SimulatedEcuOptions[] {
+export function practiceBus(addresses: readonly number[], learned?: SgbdResultsTable['practiceLearned'], fleet: PracticeFleet | null = null, battery: PracticeBattery | null = null): SimulatedEcuOptions[] {
     const unique = [...new Set([0x12, ...addresses])];
-    return unique.map((address) => ({ ...(address === 0x12 ? practiceEcu(learned, fleet) : practiceModule(address, fleet)), script: lineScript() }));
+    return unique.map((address) => ({ ...(address === 0x12 ? practiceEcu(learned, fleet, battery) : practiceModule(address, fleet)), script: lineScript() }));
 }
 
 /**
@@ -279,7 +280,7 @@ function practiceModule(address: number, fleet: PracticeFleet | null): Simulated
     };
 }
 
-export function practiceEcu(learned?: SgbdResultsTable['practiceLearned'], fleet: PracticeFleet | null = null): SimulatedEcuOptions {
+export function practiceEcu(learned?: SgbdResultsTable['practiceLearned'], fleet: PracticeFleet | null = null, battery: PracticeBattery | null = null): SimulatedEcuOptions {
     // The simulated test program's own state. It lives in this closure because
     // the protocol says it should: TESTPRG_STOP resets a run and TESTPRG_STARTEN
     // advances it, so a counter reset by 0x33 and stepped by 0x32 IS the ECU's
@@ -307,9 +308,10 @@ export function practiceEcu(learned?: SgbdResultsTable['practiceLearned'], fleet
                 case Ds2Control.READ_ERROR_MEMORY: {
                     // A non-M3 car's DME (MS43, BMS46), in the layout its own SGBD reads (practiceCar
                     // `nonM3DmeFaults`): the record shape of the DME its IDENT selects.
-                    const fs = practiceCar.nonM3DmeFaults ?? practiceCar.ms43Faults;
                     const model = practiceModelFor(fleet, practiceCar.idents[0x12]);
                     const shape = model?.fault ?? PRACTICE_DME_RECORDS[practiceDmeOf(practiceCar.idents[0x12]) ?? ''];
+                    // Such a DME with nothing stored answers an empty memory, as a car's does (not a refusal).
+                    const fs = practiceCar.nonM3DmeFaults ?? practiceCar.ms43Faults ?? (shape ? [] : undefined);
                     if (fs && shape) {
                         if (arg === 0x00) return { payload: new Uint8Array([fs.length]) };
                         const out = [0x00];
@@ -339,12 +341,12 @@ export function practiceEcu(learned?: SgbdResultsTable['practiceLearned'], fleet
                                 payload[fixture.speedOffset] = Math.min(255, Math.max(0, Math.ceil(practiceSpeed())));
                                 practiceRpmPayload(model, engine().rpm, payload);
                             }
-                            return { payload };
+                            return { payload: battery ? withPracticeBattery(battery, payload, engine().battV) : payload };
                         }
                         const acceptance = model.rpm?.request;
                         if (acceptance?.length === request.payload.length && acceptance.every((b,i) => request.payload[i] === b)) {
                             const payload = practiceRpmPayload(model, engine().rpm);
-                            if (payload) return { payload };
+                            if (payload) return { payload: battery ? withPracticeBattery(battery, payload, engine().battV) : payload };
                         }
                         return { status: Ds2Status.PARAMETER_ERROR };
                     }
@@ -579,8 +581,8 @@ export class PracticePort implements SerialPortLike {
     private _readable: ReadableStream<Uint8Array> | null = null;
     private _writable: WritableStream<Uint8Array> | null = null;
 
-    constructor(addresses: readonly number[], learned?: SgbdResultsTable['practiceLearned'], fleet: PracticeFleet | null = null) {
-        this.inner = new SimulatedSerialPort(practiceBus(addresses, learned, fleet));
+    constructor(addresses: readonly number[], learned?: SgbdResultsTable['practiceLearned'], fleet: PracticeFleet | null = null, battery: PracticeBattery | null = null) {
+        this.inner = new SimulatedSerialPort(practiceBus(addresses, learned, fleet, battery));
     }
     get readable() {
         return this._readable;

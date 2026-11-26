@@ -85,6 +85,7 @@ import { SyncPanel } from '@/views/sessions/SyncPanel';
 import { useJournal } from '@/views/sessions/useJournal';
 import { useE2EDoor } from '@/lib/e2e';
 import { useFailureNotes, useSessions } from '@/views/sessions/useSessions';
+import { readSpeedSourcesSeen, writeSpeedSourcesSeen } from '@/lib/speedSourcesSeen';
 
 /** Below 900, the window that is not up: still laid out, neither seen nor touched. From 900 all are up. */
 const NARROW_HIDDEN = 'invisible pointer-events-none min-[900px]:visible min-[900px]:pointer-events-auto';
@@ -273,6 +274,17 @@ export default function Home() {
             setObserved((l) => recordVehicleRun(l, `${r.moduleId}:${r.jobId}`, { at: r.at, telegram: r.telegram, response: r.response, outcome: r.outcome, ecuIdent: r.ecuIdent })),
         [],
     );
+    // Another E46's DME whose own speed job has been seen above 0 on a car (D3, owner 2026-11-26): its 0
+    // then means stationary. Kept on this device by the DME's module id (a fact about that DME's job,
+    // not about one car), so a short drive with the cable in opens it once.
+    const [speedSeen, setSpeedSeen] = useState<ReadonlySet<string>>(() => new Set(readSpeedSourcesSeen()));
+    const speedSourceSeen = useCallback((dme: string) => speedSeen.has(dme), [speedSeen]);
+    const onSpeedSourceSeen = useCallback((s: { moduleId: string }) => setSpeedSeen((all) => {
+        if (all.has(s.moduleId)) return all;
+        const next = new Set(all).add(s.moduleId);
+        writeSpeedSourcesSeen([...next]);
+        return next;
+    }), []);
     // The owner's press in SESSION SYNC → WHILE MOVING, after the confirmation. grantMovingOk refuses
     // anything without enough stationary answers, so a stale screen cannot clear more than it showed.
     const onGrantMovingOk = useCallback(
@@ -280,7 +292,7 @@ export default function Home() {
         [],
     );
     // Every read sent to the car, either way, is a read record in the WORKS build (lib/sync/readRecords).
-    const link = useDs2Link({ onFailure: failures.onFailure, target, onObserved, onRead: sessionsEnabled ? recordRead : undefined, onPracticed, onActuated });
+    const link = useDs2Link({ onFailure: failures.onFailure, target, onObserved, onRead: sessionsEnabled ? recordRead : undefined, onPracticed, onActuated, speedSourceSeen, onSpeedSourceSeen });
 
     // The kill list: fetched when the page opens and every ten minutes, from this origin. It can
     // only withdraw, never grant (lib/ledger), and a failed fetch leaves the last list standing.

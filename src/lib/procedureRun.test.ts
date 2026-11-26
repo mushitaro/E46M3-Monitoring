@@ -10,7 +10,7 @@ import {
     planProcedure,
     stillRunning,
 } from './procedureRun';
-import { EMPTY_LEDGER, practiceEcu, recordPracticeRun } from '@tsunagi/monitoring-engine';
+import { EMPTY_LEDGER, practiceEcu } from '@tsunagi/monitoring-engine';
 import type { Smg2Procedure, Smg2Workflows } from './smg2Workflows';
 import type { TelegramTable } from '@tsunagi/monitoring-engine';
 
@@ -43,16 +43,11 @@ describe('planning a procedure', () => {
         if (!r.ok) expect(r.reason).toBe('proc_block_vehicle');
     });
 
-    it('on a vehicle, asks the owner’s decision: this same program practised first, then parked (2026-11-15)', () => {
+    it('on a vehicle, runs parked and not while the car moves (PRACTICE first is the build’s, 2026-11-26)', () => {
         const p = proc('0x01');
-        const before = plan({ mode: 'vehicle', gate: { ledger: EMPTY_LEDGER, motion: 'parked' } });
-        expect(before).toEqual({ ok: false, reason: 'run_block_practiceFirst' });
-        // Practising another program opens nothing for this one.
-        const other = recordPracticeRun(EMPTY_LEDGER, 'smg2:TESTPRG_STARTEN(0x02)', '2026-11-15T00:00:00Z');
-        expect(plan({ mode: 'vehicle', gate: { ledger: other, motion: 'parked' } })).toEqual({ ok: false, reason: 'run_block_practiceFirst' });
-        const practised = recordPracticeRun(EMPTY_LEDGER, `smg2:TESTPRG_STARTEN(${p.testprg})`, '2026-11-15T00:00:00Z');
-        expect(plan({ mode: 'vehicle', gate: { ledger: practised, motion: 'moving' } })).toEqual({ ok: false, reason: 'run_block_moving' });
-        const r = plan({ mode: 'vehicle', gate: { ledger: practised, motion: 'parked' } });
+        // Not asked of this device: the build ran all fourteen in PRACTICE (src/lib/practiceEveryItem.test.ts).
+        expect(plan({ mode: 'vehicle', gate: { ledger: EMPTY_LEDGER, motion: 'moving' } })).toEqual({ ok: false, reason: 'run_block_moving' });
+        const r = plan({ mode: 'vehicle', gate: { ledger: EMPTY_LEDGER, motion: 'parked' } });
         expect(r.ok).toBe(true);
         if (r.ok) {
             expect(r.plan.startJobId).toBe(`TESTPRG_STARTEN(${p.testprg})`);

@@ -64,7 +64,7 @@ describe('every job belongs to exactly one tab', () => {
 });
 
 describe('SERVICE carries the whole of what a real car will accept', () => {
-    it('holds every job mayRun permits on a vehicle with an empty ledger — all of them reads', () => {
+    it('holds every job mayRun sends as a read on a vehicle with an empty ledger', () => {
         // This is why SERVICE is not deleted. DIAGNOSIS, ADAPTATION and DATALOG
         // send frames built from the protocol, not catalogue jobs; the hub's
         // SERVICE branch is the only path that sends one. If these ever moved to
@@ -73,7 +73,9 @@ describe('SERVICE carries the whole of what a real car will accept', () => {
         const runnable: string[] = [];
         for (const { id, profile, telegrams } of modules) {
             for (const job of profile.jobs) {
-                if (mayRun(job, bestTelegram(telegrams, job.id), EMPTY_LEDGER, { moduleId: id, motion: 'parked' }).allowed) {
+                // As a read: what drives something goes from SERVICE too, with its terms (shippedData.test.ts).
+                const v = mayRun(job, bestTelegram(telegrams, job.id), EMPTY_LEDGER, { moduleId: id, motion: 'parked' });
+                if (v.allowed && !v.actuation) {
                     runnable.push(`${id}.${job.id}`);
                     expect(surfaceOf(job), `${id}.${job.id}`).toBe('service');
                     expect(isReadNature(natureOf(id, job)), `${id}.${job.id}`).toBe(true);

@@ -89,10 +89,11 @@ describe('the run gate', () => {
         expect(mayRun(unclassified, tele, EMPTY_LEDGER, ctx('mss54'))).toMatchObject({ allowed: true, requires: 'parked' });
         expect(mayRun(unclassified, tele, EMPTY_LEDGER, { moduleId: 'mss54', motion: 'moving' })).toEqual({ allowed: false, reason: 'run_block_moving' });
         // Named as a mode change: runs (owner, 2026-11-16; shown only before), so like every job
-        // that drives something it goes only after practice — never as a read.
+        // that drives something it goes parked, with its terms and the screen's confirmation — never as
+        // a read. PRACTICE first is the build's (owner, 2026-11-26: src/lib/practiceEveryItem.test.ts).
         const mode: CatalogJob = { ...base, id: 'SLEEP_MODE', class: 'unclassified' };
-        expect(mayRun(mode, tele, EMPTY_LEDGER, ctx('mss54')).allowed).toBe(false);
-        expect(mayRun(mode, tele, EMPTY_LEDGER, ctx('mss54'))).not.toMatchObject({ reason: 'run_block_policyShow' });
+        expect(mayRun(mode, tele, EMPTY_LEDGER, ctx('mss54'))).toMatchObject({ allowed: true, requires: 'parked', actuation: {} });
+        expect(mayRun(mode, tele, EMPTY_LEDGER, { moduleId: 'mss54', motion: 'moving' })).toEqual({ allowed: false, reason: 'run_block_moving' });
     });
 
     it('does not ship a single job that claims to be a read without an operation kind', () => {
@@ -118,15 +119,18 @@ describe('the run gate', () => {
         if (v.allowed) expect(v.control).toBe(Ds2Control.READ_IO_STATUS);
     });
 
-    it('refuses everything that is not a read, with an empty ledger', () => {
+    it('lets nothing that is not a read go as a read: parked, with its terms, or not at all', () => {
         for (const m of MODULES) {
             for (const j of profile(m).jobs) {
                 if (j.class === 'read') continue;
-                const v = mayRun(j, bestTelegram(telegrams(m), j.id), EMPTY_LEDGER, ctx(m));
-                expect(v.allowed, `${m}.${j.id}`).toBe(false);
+                const tele = bestTelegram(telegrams(m), j.id);
+                const v = mayRun(j, tele, EMPTY_LEDGER, ctx(m));
+                if (v.allowed && !isReadOnlyControl(v.control, m)) expect(v, `${m}.${j.id}`).toMatchObject({ requires: 'parked', actuation: {} });
+                const moving = mayRun(j, tele, EMPTY_LEDGER, { moduleId: m, motion: 'moving' });
+                if (moving.allowed) expect(isReadOnlyControl(moving.control, m) && !moving.actuation, `${m}.${j.id} moving`).toBe(true);
             }
         }
-    });
+    }, 30_000);
 
     it('refuses a read whose telegram is only shared or multiple', () => {
         // FS_LESEN's frames are shared with other jobs — the scrape recovered a
@@ -182,20 +186,20 @@ describe('the run gate', () => {
         if (!v.allowed) expect(v.reason).toBe('run_block_controlWrites');
     });
 
-    it('never lets a mutating control byte through for any real job', () => {
+    it('never lets a mutating control byte through for any real job without its terms', () => {
         for (const m of MODULES) {
             for (const j of profile(m).jobs) {
                 const v = mayRun(j, bestTelegram(telegrams(m), j.id), EMPTY_LEDGER, ctx(m));
-                if (!v.allowed) continue;
+                if (!v.allowed || v.actuation) continue;
                 expect(isReadOnlyControl(v.control, m), `${m}.${j.id}`).toBe(true);
             }
         }
         // Every job of every module (2,297 since 2026-11-11): past vitest's 5 s when the suite runs in parallel.
     }, 30_000);
 
-    // A ledger entry unlocks a non-read. Proves the gate is a gate and not a
-    // permanent wall — the wall is the empty shipped ledger.
-    it('drives an engine actuator the owner decided to run, once it has run in PRACTICE, parked', () => {
+    // The owner's table runs it: parked, with its terms, from the shipped (empty) ledger — PRACTICE first is
+    // the build's (owner, 2026-11-26). The ledger still withdraws it.
+    it('drives an engine actuator the owner decided to run, parked, and never once withdrawn', () => {
         const tables = telegrams('mss54');
         const target = profile('mss54').jobs.find(
             (j) => j.class === 'test' && j.args.length === 0 && j.id.startsWith('STEUERN_') && bestTelegram(tables, j.id)?.confidence === 'single',
@@ -203,8 +207,8 @@ describe('the run gate', () => {
         expect(target).toBeDefined();
         const tele = bestTelegram(tables, target.id);
         const id = `mss54:${target.id}`;
-        // Not before it has run in PRACTICE on this device (OWNER_RULES.practiceFirst).
-        expect(mayRun(target, tele, EMPTY_LEDGER, { ...ctx('mss54'), group: 'engine' })).toEqual({ allowed: false, reason: 'run_block_practiceFirst' });
+        // Not asked of this device: the build ran it in PRACTICE (src/lib/practiceEveryItem.test.ts).
+        expect(mayRun(target, tele, EMPTY_LEDGER, { ...ctx('mss54'), group: 'engine' })).toMatchObject({ allowed: true, requires: 'parked' });
         const practiced = recordPracticeRun(EMPTY_LEDGER, id, '2026-11-15T00:00:00Z');
         const v = mayRun(target, tele, practiced, { ...ctx('mss54'), group: 'engine' });
         expect(v).toMatchObject({ allowed: true, requires: 'parked', actuation: { nature: 'a_engine', who: 'ai' } });
@@ -287,7 +291,9 @@ describe('PRACTICE answers everything the gate permits', () => {
         for (const m of MODULES) {
             for (const j of profile(m).jobs) {
                 const v = mayRun(j, bestTelegram(telegrams(m), j.id), EMPTY_LEDGER, ctx(m));
-                if (!v.allowed) continue;
+                // The reads. What drives something runs in PRACTICE through the link, its preflight and its
+                // own code, in src/lib/practiceEveryItem.test.ts.
+                if (!v.allowed || v.actuation) continue;
                 const bytes = telegramBytes(v.telegram.hex)!;
                 // The module's own responder on the PRACTICE line, as the app reaches it. This
                 // asked the DME's responder for every module, which answered SMG II's status

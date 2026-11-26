@@ -93,8 +93,8 @@ export const NATURES: ReadonlyArray<{ nature: Nature; ja: string; en: string }> 
  * actuator tests, procedures, function checks, simulations and adaptation resets are `who: 'ai'`, and
  * operating modes and initialisation/settings go from shown-only to `run`. `when` stays parked;
  * safety deployment and writes stay off. Every rule in OWNER_RULES still holds for the assistant —
- * it reads back and waits for "yes", reads only while moving, measures before sending, practises
- * first, one at a time, stoppable. `who: 'ai'` opens nothing by itself: the assistant reaches a run
+ * it reads back and waits for "yes", reads only while moving, measures before sending, one at a time,
+ * stoppable. `who: 'ai'` opens nothing by itself: the assistant reaches a run
  * only through a facade tool, and none exists for these yet.
  */
 export const OWNER_DECISION: Readonly<Record<Nature, Decision>> = {
@@ -138,8 +138,11 @@ export const OWNER_RULES = {
     alwaysStoppable: true,
     /** One thing driven at a time. */
     oneAtATime: true,
-    /** Practice first: a job goes to the car only after it has run in PRACTICE on this device. */
-    practiceFirst: true,
+    /**
+     * Practice first: nothing goes to the car whose send path has not run in PRACTICE. Done by the build
+     * for every item (src/lib/practiceEveryItem.test.ts), not asked of each device (owner, 2026-11-26).
+     */
+    practiceFirst: 'build',
     /** Every run and its result go to the ledger and CO-WORK. */
     recordRuns: true,
     /** The assistant reads the request back and waits for "yes". */

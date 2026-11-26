@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
-import { EMPTY_LEDGER, recordPracticeRun, type CatalogJob } from '@tsunagi/monitoring-engine';
+import { EMPTY_LEDGER, type CatalogJob } from '@tsunagi/monitoring-engine';
 import type { Smg2Workflows } from '@/lib/smg2Workflows';
 import { isProcedureStart, procedureRows, runWith } from './catalogRoutes';
 
@@ -33,16 +33,14 @@ describe.skipIf(!present)('monitoring_catalog: the door of a job that takes valu
         expect(bleed).toMatchObject({ engine: 'off', takesGear: false, assistantMayStart: true });
         expect(bleed.preconditions.length).toBeGreaterThan(0);
         expect(rows.find((r) => r.procedure === '0x0A')!.takesGear).toBe(true);
-        // Nothing practised on an empty ledger: the gate's own reason, not a bare no.
-        expect(bleed).toMatchObject({ mayStartNow: false, reason: 'run_block_practiceFirst' });
+        // The shipped (empty) ledger: each may start parked — PRACTICE first is the build's (owner, 2026-11-26).
+        expect(bleed).toMatchObject({ mayStartNow: true, reason: null });
     });
 
-    it('a practised procedure may start parked, and not while the car moves; practising one opens no other', () => {
-        const ledger = recordPracticeRun(EMPTY_LEDGER, 'smg2:TESTPRG_STARTEN(0x01)', '2026-11-19T00:00:00.000Z');
-        const parked = procedureRows('smg2', workflows, job('TESTPRG_STARTEN'), undefined, ledger, 'parked', []);
-        expect(parked.find((r) => r.procedure === '0x01')).toMatchObject({ mayStartNow: true, reason: null });
-        expect(parked.find((r) => r.procedure === '0x02')).toMatchObject({ mayStartNow: false });
-        const moving = procedureRows('smg2', workflows, job('TESTPRG_STARTEN'), undefined, ledger, 'moving', []);
+    it('every procedure may start parked, and none while the car moves', () => {
+        const parked = procedureRows('smg2', workflows, job('TESTPRG_STARTEN'), undefined, EMPTY_LEDGER, 'parked', []);
+        expect(parked.filter((r) => !r.mayStartNow).map((r) => [r.procedure, r.reason])).toEqual([]);
+        const moving = procedureRows('smg2', workflows, job('TESTPRG_STARTEN'), undefined, EMPTY_LEDGER, 'moving', []);
         expect(moving.find((r) => r.procedure === '0x01')).toMatchObject({ mayStartNow: false, reason: 'run_block_moving' });
     });
 

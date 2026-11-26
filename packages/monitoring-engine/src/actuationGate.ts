@@ -109,7 +109,16 @@ export function mayActuate(
     // engine preflight and the time-out run here before they run on a car (policy: practice first).
     // As on a car (runGate.mayDrive): what is not a read by its nature drives something, and goes after
     // the screen's confirmation with its permit, whatever its control byte (a clear's 0x05 included).
-    return { allowed: true, telegram, control: bytes[2], requires: 'parked', ...(drives ? { actuation: actuationTerms(job, decision) } : {}) };
+    // The values go with the verdict, as on a car (runGate.mayDrive): a job the link runs by its own code
+    // (several frames, a KWP module's) builds its frames from them, and without them it builds its defaults.
+    return {
+        allowed: true,
+        telegram,
+        control: bytes[2],
+        requires: 'parked',
+        ...(drives ? { actuation: actuationTerms(job, decision) } : {}),
+        ...(drives && job.args.length ? { args: [...(ctx.args ?? [])] } : {}),
+    };
 }
 
 /**

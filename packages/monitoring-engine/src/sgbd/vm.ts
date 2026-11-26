@@ -86,7 +86,8 @@ const OP = {
     tabseek: 0x7c, tabget: 0x7d, strcat: 0x7e, ergl: 0x82, strcmp: 0x8f,
     // The arguments' count, a real, the binary argument, hex text to bytes, a string's length
     // (EdiabasLib's numbering, as the rest; the jobs that take values use them).
-    parr: 0x69, pary: 0x7f, parn: 0x80, hex2y: 0x8e, strlen: 0x90,
+    parr: 0x69, pary: 0x7f, parn: 0x80, hex2y: 0x8e, strlen: 0x90, y2hex: 0x92,
+    xprog: 0x74,
     test: 0x6a, xconnect: 0x26, xawlen: 0x29, xstopf: 0x2d, xreps: 0x42, date: 0x6c, ticks: 0xad, shmset: 0x93, shmget: 0x94, flt2a: 0x87,
     scmp: 0x20, gettmr: 0x43, settmr: 0x44, clrt: 0x46, jt: 0x47, wait: 0x6b,
     // Add and subtract with the carry (EdiabasLib's addc, subc; MS43's learned-value reads scale with them).
@@ -703,6 +704,13 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
                     flags.z = false;
                     break;
                 }
+                case OP.y2hex: {
+                    // Bytes to their hex text, two capitals a byte, no separator (EdiabasLib's y2hex; UEB2's
+                    // VERRIEGELUNG_SETZEN). The frames it leads to are compared with EdiabasLib's like every job's.
+                    if (a.m !== 'reg' || a.r.t !== 'str') fail('y2hex into a non-string');
+                    strings[(a as { r: { n: number } }).r.n] = fromLatin1([...readStr(b)].map((x) => x.toString(16).toUpperCase().padStart(2, '0')).join(''));
+                    break;
+                }
                 case OP.test: {
                     // An `and` that keeps only the flags (MS43's STEUERN_LL_MANIPULATION).
                     const w = widthOf(a) ?? widthOf(b) ?? 1;
@@ -792,6 +800,11 @@ function* jobSteps(job: SgbdJobCode, opts: SgbdRunOptions): Generator<Uint8Array
                 }
                 case OP.xsetpar:
                     // The interface's timing parameters; the link has its own.
+                    break;
+                case OP.xprog:
+                    // The interface's programming voltage (EDIABAS `xprog`): a pin of the interface, not a frame on
+                    // the line. A K+DCAN cable has none to switch, and nothing is sent; the frames before and after
+                    // are the job's and are compared with EdiabasLib's as every frame is.
                     break;
                 case OP.strlen: {
                     // The text's length, to its first NUL.

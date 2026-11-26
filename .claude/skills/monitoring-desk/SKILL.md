@@ -7,6 +7,8 @@ description: 'The desk side of E46M3 /// MONITORING (DS2 diagnosis of a BMW E46 
 
 車の側の会話の手順は `public/guide/*.md`（タブが名乗り、中継が `monitoring_guide` で返す）。この Skill はその**机の側**：任された調査を一周進め、道具が答えられなかったところを開発に回す。仕組みの正本は `docs/AUTONOMY.md`。
 
+**「実車で確かめていない」は止める理由にしない**（運営者 2026-11-26、`docs/NO-STOP.md`）。読み方が推定・実車未確認なら、そう言い添えて計画にも判定にも使う。道具が送れないものは、その門が `docs/NO-STOP.md` §2 の一覧に当たるかを見て、当たらなければ門の方を直す開発の仕事にする。
+
 ## 場所
 
 | 何 | どこ |

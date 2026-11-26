@@ -15,7 +15,7 @@
 - 同じ決まり（停車中だけ・読み返して「いいよ」・書き込みは出さない・止めるはいつでも）が **9 か所**に手で書かれ、
   事実（どのモジュールが読めるか・走行中に何を読めるか）が guide と道具の説明に書き込まれている。決まりが変わるたびに
   直し漏れが出て、**AI に「できない」と言わせる記述が 13 件**残っていた（§3 の A）。
-- 構造の欠陥は 8 件（§3 の C）。中でも大きいのは三つ。
+- 構造の欠陥は 9 件（§3 の C）。中でも大きいのは三つ。
   1. `monitoring_capabilities` はタブが答えるので、**タブが寝ていると呼べず**、AI は古い文書に戻る。
   2. 一つの入口 `/mcp/works` は、**1,024 字を超える道具の説明を最初の数文に切る**。`monitoring_actuate` は
      「練習は要らない・実車未確認は止める理由ではない」の部分が落ちる。
@@ -23,7 +23,7 @@
      2026-11-16 の決定 A より古い。
 - 組み替えの方針は一つ：**事実と決まりはコードが持ち、文はそこから作る。手で書くのは手順と話し方だけ。**
   層ごとに「書いてよいもの」を一行で決め、届き方を「中継が持つ（タブが寝ていても）」にそろえ、検査で守る（§5）。
-- 段取りは 4 段（§6）。運営者に決めてほしいことは 4 つ（§7）。
+- 段取りは 4 段（§6）。運営者に決めてほしいことは 5 つ（§7）。
 
 ---
 
@@ -124,9 +124,9 @@ C1・C2 は claude.ai がそれより強く扱うことがあり、C2 の README
 | A6 | 高 | M1 `monitoring_faults` | 「MSS54 以外は生のバイト。**タブにデコーダが無いから**」 | 2026-11-13 から各モジュール自身の FS_LESEN ジョブで読む（`sgbd/faultRead.ts`）。**同じ M1 の `monitoring_scan` は「ほとんどは SGBD のコードで読む」と言い、食い違う** |
 | A7 | 高 | `reactive.md` 1 と例 | 「MSS54 以外の答えはバイトのまま」「中身の読み方がまだありません」 | 同上 |
 | A8 | 高 | `public/guide/autonomy.md` 4 | 「走行中に読んでよいのは、停車中に答えた読み取りを**オーナーが画面で認めたものだけ**」 | 2026-11-15 の表で、識別・故障・状態の値の読取は走行中も（`OWNER_DECISION` の `r_ident`・`r_status`）。台帳の `grantMovingOk` は表の外のものだけ |
-| A9 | 高 | M1 `monitoring_log_channels`・`monitoring_plan` | SMG II の読取値は「**停車中だけ**。オーナーが走行中を認めたら別」 | SMG II の STATUS_* は class `read`→`r_status`→走行中も（`policy.ts` `natureOf`、`runGate.ts` `mayRun`） |
-| A10 | 高 | M1 `monitoring_scan`、`faults.md` 3 | MK60 は「**DME の車速が 0 のときだけ訊く**。走行中は断る」「コードは推定（ISO 14230）」 | 2026-11-12 から走行中も、2026-11-13 から自身の FS_LESEN のコードで読む。推定は最後まで読めなかったときだけ（`probe/scan.ts` の注釈） |
-| A11 | 中 | `catalog.md` の例 | 「SMG の油圧は、送るバイトが一つに決まっていないので**送れません**」 | SMG II の読取値はジョブ自身のコードで読む（`logChannels`、`smg2:JOB:RESULT`） |
+| A9 | 高 | M1 `monitoring_log_channels`・`monitoring_plan` | SMG II の読取値は「**停車中だけ**。オーナーが走行中を認めたら別」 | SMG II の STATUS_* は class `read`→`r_status`→走行中も（`policy.ts` `natureOf`、`runGate.ts` `mayRun`。DATALOG は `sgbd/logChannels.ts`、PROBE は `executor.ts` の読取の列が `mayRun` を通る。デモテスト S17 が 40 km/h で確かめる） |
+| A10 | 高 | M1 `monitoring_scan`（`faults.md` 3 は半分） | MK60 は「**DME の車速が 0 のときだけ訊く**。走行中は断る」「コードは推定」 | 走査では 2026-11-12 から走行中も、2026-11-13 から自身の FS_LESEN のコードで読む。推定は最後まで読めなかったときだけ（`probe/scan.ts` の注釈）。MK60 だけを読む `monitoring_faults` は今も推定で返す（`useMonitoringFacade.ts` の `inSession`）ので、faults.md 3 のその部分は正しい |
+| A11 | 中 | `catalog.md` の例 | 「SMG に油圧の読み取りはありますが、送るバイトが一つに決まっていないので**送れません**」 | SMG II の読取値はジョブ自身のコードで読む（`logChannels`、`smg2:JOB:RESULT`）。そもそも SMG II の SGBD の読取に油圧そのものの値は無く、あるのは作動油の温度とポンプの状態（`smg2.jobs.json`） |
 | A12 | 中 | R7 `INSTALL.md`（ja） | 「**車への接続**、書き込み、フラッシュはしません」。en の表も MONITORING の作動に触れない | つなぎ直しは声で（2026-10-28）、作動は決定 A |
 | A13 | 中 | M5 `CLAUDE.md` の見出し | 「**アシスタントが届くのは画面の操作まで**」（本文は作動・手順も届くと書く） | 見出しだけ読むと逆 |
 
@@ -152,6 +152,7 @@ C1・C2 は claude.ai がそれより強く扱うことがあり、C2 の README
 | C6 | 中 | **guide に事実が書いてある。** index は「事实はここに書かない」と言うのに、トピックは「MSS54 以外はバイト」「MK60 は推定」「SMG II は 10 秒」「走行中に読めるのは台帳で認めたもの」を書く。A6〜A10 はこれ | 手順と事実が分かれていない |
 | C7 | 中 | **断りの文が 4 か所に散っている**（i18n の `runBlock`、`notSentText`、`actuation.ts`、facade の 33 か所の英文）。S1〜S7 に当たっているのは `runBlock` と `notSent` だけで、「0x56 は DSC」（S5）・「〇〇が動いています」（S7）・「回線が切れた」などは、どの S かを AI が知らない | 断りの形が一つでない |
 | C8 | 中 | **R1＋R2 の 4,096 字を TUNER と MONITORING で分け合っている**（今 3,737 字、残り 359 字）。どちらかが一行足すと、もう一方が切られる | 指示に決まりを書き込んでいる |
+| C9 | 中 | **読取の門が二つある。** カタログの読取・DATALOG・PROBE の読取の列は `mayRun`（運営者の表）を通るが、PROBE の学習値の読取（MSS54 の ADAPT、SMG II の `ADAPTIONSWERTE_LESEN`）は `mayRunProtocolRead(…, 'module')` で、表を見ずに停車中だけ（台帳で認めれば走行中も）になる。`ADAPTIONSWERTE_LESEN` は class `read` で、表の上では `r_status`（走行中も）。CLAUDE.md の「判断する場所は `mayRun` 一箇所」とずれる | 学習値の読取が、表より前に作った門のまま。どちらに合わせるか（学習値を表の `r_status` に入れるか、`r_misc` のように停車中だけにするか）は運営者が決める（§7 Q5） |
 
 ### D. 検査の穴（4 件）
 
@@ -309,8 +310,23 @@ export const refusal = (stop: …, sentence: string, next?: string): Refusal => 
 | Q2 | Skill の「読めないときの決まり」を消して 2 行にするか | **消す** | 古い Skill が古い決まりを言う（C3）。読めないときは「読めない」と言えば足りる |
 | Q3 | 評価の `run-actuator`・`clear-on-own` を「読み返しと『いいよ』の前に動かす」に変えるか | **変える** | 決定 A（2026-11-16）と合わせる。今は許された振る舞いが減点される（A3） |
 | Q4 | Chat のプロジェクトの指示（C1）に一行足すか：「MONITORING で何ができるか・なぜ止まったかは、`monitoring_capabilities` とタブの答えだけで言う」 | **足す** | claude.ai はプロジェクトの指示を強く扱う。中継の指示より先に効く |
+| Q5 | 学習値の読取（MSS54 の ADAPT、SMG II の学習値）を、走行中も読む「状態の値」に入れるか、停車中だけの読取にするか（C9） | **停車中だけ**のまま表に書く（性質を一つ足すか `r_misc` に入れる） | 学習値は走行中に変わる値ではなく、停車中に読めば足りる。門を `mayRun` 一つにすることが先 |
 
 ---
+
+## 8. 段 1 で直したもの（2026-11-26、PR #97 に積んだ）
+
+| 直したもの | 見つけたこと |
+|---|---|
+| `catalog.md` 4 と例、`reactive.md` 1・6 と例、`faults.md` 3・4 と例（`dsc_mk60`）、`autonomy.md` 4 | A1・A2・A7・A8・A10 の半分・A11・B2 |
+| `monitoring_faults`・`monitoring_scan`・`monitoring_log_channels`・`monitoring_plan` の説明 | A6・A9・A10 |
+| `monitoring_actuate`（1,298→1,000 字）と `monitoring_show`（1,987→約 760 字）：はみ出た分を入力の欄の説明へ（中継は欄の説明を切らない） | C2 |
+| `docs/AUTONOMY.md` §3 の表と §4、トピックの一覧は index を指す | A4・A9・B3 |
+| `monitoring-desk` の Skill、`CLAUDE.md` の見出し | A5・A13 |
+| `scenarios/cases.json` の `nevers`（`run-actuator`・`clear-on-own`）と 5 件の答え、`capabilities.json` の `service.run`（missing→built）と `actuate.assistant` | A3、§3 に無かった `service.run` の「missing」 |
+| 検査：T1（説明 1,024 字、`guide.test.ts`）、T2（「人だけ」を言う行、`capabilities.test.ts`。直す前の 4 か所を全部捕まえることを確かめた）、T4（`nevers` が表に従う、`scenarios.test.ts`） | D1・D2・D3 |
+
+残り：A12・B1・B3（Skill）と T6 は中継の側（matrix-tsunagi-dev PR #10 に積む）。B4・B5、段 2〜4、C9 は次。
 
 ## 付録 A. 道具の説明の長さ（`/mcp/works` で 1,024 字を超えると切られる）
 

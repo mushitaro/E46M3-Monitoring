@@ -88,7 +88,7 @@ Next.js 16 / React 19 / Tailwind v4、`output: 'export'` の静的書き出し�
   合わせる前の記録は `loose` で、合わせた時に同じだけ動かす。動かせなかったもの（2026 年より前か `loose`）は
   日付が確かでないものとして、時計の合ったページが見つけた時から 7 日で消す（`packages/monitoring-engine/src/journal.ts` の `expired`）。
   クラウドへ送った CO-WORK の記録で 2026 年より前のものは、サーバーが今に寄せる（`settleUndated`）。
-- **アシスタントが届くのは画面の操作まで。** Matrix から呼べるのは `src/lib/bridge/tools.ts` の一覧だけで、
+- **アシスタントに届くのは道具の一覧だけ。** Matrix から呼べるのは `src/lib/bridge/tools.ts` の一覧だけで、
   答えは `useMonitoringFacade` が組む。読取・記録の開始と停止・CO-WORK・画面の切り替え・手順を画面に置く・
   保存と送信・TUNER への切り替え。接続は、一度画面で許可したケーブルへのつなぎ直しと切断だけ（記録中は
   止める確認のあと。運営者 2026-10-28）で、選ぶ画面は出さない（`reconnectPermitted`）。AI の三つのモード

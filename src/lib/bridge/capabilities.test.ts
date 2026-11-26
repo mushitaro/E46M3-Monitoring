@@ -114,6 +114,31 @@ describe('retired claims do not come back', () => {
         expect(hits).toEqual([]);
     });
 
+    // A list of retired phrases only stops the phrases it knows: "見つかっても実行しない" and
+    // "押すのは停車中に人" got past it. So, line by line over what the assistant and the desk read:
+    // a job that drives something, said to be a person's alone, while the owner's table opens it to
+    // the assistant. A line may still say what the table leaves to the person on the screen.
+    it('no guide topic or Skill says a person alone runs what the owner opened to the assistant', () => {
+        const opened = OWNER_DECISION.a_engine.who === 'ai' && OWNER_DECISION.c_adapt.who === 'ai' && OWNER_DECISION.c_clear.who === 'ai' && OWNER_DECISION.c_check.who === 'ai';
+        expect(opened).toBe(true);
+        const read = [
+            ...readdirSync(path.join(ROOT, 'public/guide')).filter((f) => f.endsWith('.md')).map((f) => `public/guide/${f}`),
+            '.claude/skills/monitoring-desk/SKILL.md',
+            '.claude/skills/monitoring-loop/SKILL.md',
+            'docs/AUTONOMY.md',
+        ];
+        const DRIVE = /作動テスト|調整|学習(値)?の(リセット|初期化)|ゼロ点|消去|システムチェック/;
+        const HUMAN = /(リセット|調整|作動テスト)[^。]*は画面に置く|人が実行|押すのは[^。]*人|見つかっても実行しない|画面に置くところまで|AI は(動かさない|始めない)|人だけが/;
+        const SCREEN_PERSON = /画面の人に任せた|表が画面の人/;
+        const hits: string[] = [];
+        for (const f of read) {
+            for (const line of readFileSync(path.join(ROOT, f), 'utf-8').split('\n')) {
+                if (DRIVE.test(line) && HUMAN.test(line) && !SCREEN_PERSON.test(line)) hits.push(`${f}: ${line.trim().slice(0, 120)}`);
+            }
+        }
+        expect(hits).toEqual([]);
+    });
+
     it('the Japanese refusal texts say no retired rule either', () => {
         for (const [k, v] of Object.entries(ja.runBlock)) for (const { re } of RETIRED) expect(re.test(v), k).toBe(false);
     });

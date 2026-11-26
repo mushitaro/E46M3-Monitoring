@@ -5,6 +5,8 @@
 この文書は、このビルドのコード（道具の一覧 `src/lib/bridge/tools.ts`、運営者の表 `policy.ts` の `OWNER_DECISION`、
 止める理由の閉じた一覧 `stopReasons.ts`＝`docs/NO-STOP.md` §2）から作る。AI は同じ中身を `monitoring_capabilities` で読む。
 **README・ほかの docs・Skill・記憶と食い違ったら、こちら（とタブの答え）が正しい。** ここかタブの断りが言わない限り「できない」と言わない。
+タブは同じ答えを hello に載せ、中継が持つので、タブが寝ていても `monitoring_capabilities` は答える。タブの答えには、ここに無い
+モジュールごとの表（`modules`：どれを読み、アドレスで何が決め、故障を何で読むか）が足される。ecu-data から作るので、この文書には載せない。
 
 ## 運営者の表（項目の性質ごと）
 
@@ -117,6 +119,6 @@
 | `monitoring_connect` | control | Connect again to the car through the cable this device has already been allowed — the one a person connected on the screen before (operator, 2026-10-28). |
 | `monitoring_disconnect` | control | Let the cable go (the screen's DISCONNECT). |
 | `monitoring_open_tuner` | control | Move this tab to TUNER WORKS (MAPPING: |
-| `monitoring_guide` | read | The procedure for the conversation (held by the relay, there while the tab sleeps). |
+| `monitoring_guide` | read | The procedure for the conversation (held by the relay, there while the tab sleeps; so is this answer). |
 | `monitoring_dev_request` | control | The operator's words to MONITORING's development, without the tab. |
 | `monitoring_dev_status` | control | Development's answers to the operator's requests. |

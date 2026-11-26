@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { BridgeClient, type BridgeStatus, type Hello } from '@/lib/bridge/bridgeClient';
+import { capabilitiesNow } from '@/lib/bridge/capabilities';
 import { loadGuide, type HelloGuide } from '@/lib/bridge/guide';
 import { bridgeHandlers, type TabFacade } from '@/lib/bridge/handlers';
 import { helloTools } from '@/lib/bridge/tools';
@@ -187,7 +188,7 @@ export function useAssistantBridge(input: {
                     guide = null;
                     throw e;
                 });
-                return { ...helloRef.current, tools: helloTools(), guide: await guide, device: deviceLabel(defaultsRef.current) };
+                return { ...helloRef.current, tools: helloTools(), guide: await guide, capabilities: await capabilitiesNow(), device: deviceLabel(defaultsRef.current) };
             },
             device: () => ({ id: deviceId(), nav: isHeadUnit() }),
             onStatus: setStatus,

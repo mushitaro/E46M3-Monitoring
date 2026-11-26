@@ -77,6 +77,9 @@ export interface Hello {
     device?: string | null;
     tools: ReadonlyArray<{ name: string; description: string; inputSchema: object; scope: ToolScope }>;
     guide: HelloGuide;
+    /** monitoring_capabilities' answer (capabilities.ts), which the relay keeps and answers itself, so
+     *  what the app can do is known while this tab sleeps (ASSISTANT-LAYERS.md C1). */
+    capabilities?: object;
 }
 
 export interface BridgeClientOptions {

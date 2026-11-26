@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { NATURES, OWNER_DECISION, RUN_BLOCK_STOP, STOP_IDS } from '@tsunagi/monitoring-engine';
-import { NATURE_TOOLS, capabilities, capabilitiesMarkdown } from './capabilities';
+import { NATURE_TOOLS, capabilities, capabilitiesMarkdown, moduleRoster, type Capabilities } from './capabilities';
 import { MONITORING_TOOLS } from './tools';
 import { en } from '../i18n/en';
 import { ja } from '../i18n/ja';
@@ -56,6 +56,7 @@ describe('monitoring_capabilities is built from the code', () => {
     it('fits in one answer', () => {
         expect(Buffer.byteLength(JSON.stringify(c), 'utf-8')).toBeLessThanOrEqual(24 * 1024);
     });
+
 
     it('is what docs/CAPABILITIES.md says', () => {
         const md = capabilitiesMarkdown();
@@ -141,5 +142,49 @@ describe('retired claims do not come back', () => {
 
     it('the Japanese refusal texts say no retired rule either', () => {
         for (const [k, v] of Object.entries(ja.runBlock)) for (const { re } of RETIRED) expect(re.test(v), k).toBe(false);
+    });
+});
+
+const DATA = path.join(ROOT, 'public', 'ecu-data');
+const HAVE_DATA = existsSync(path.join(DATA, 'index.json')) && existsSync(path.join(DATA, 'variants.json'));
+
+/**
+ * The modules part (ASSISTANT-LAYERS.md 5.3): which modules this build reads and how, so "is DSC read?"
+ * is answered from the data the app runs on, not from a guide that said "DSC has no way to read it".
+ * The relay keeps the whole answer from the hello (at most 48 KB, bridge/src/catalog.ts) and answers it
+ * while the tab sleeps.
+ */
+describe.skipIf(!HAVE_DATA)('monitoring_capabilities: the modules, from the catalogue', () => {
+    const json = (f: string) => (HAVE_DATA ? JSON.parse(readFileSync(path.join(DATA, f), 'utf-8')) : null);
+    const index = json('index.json') ?? { modules: [] };
+    const layouts = existsSync(path.join(DATA, 'fault-layouts.json')) ? json('fault-layouts.json') : { schema: 1, verifiedOnCar: false, modules: {} };
+    const roster = moduleRoster(index, json('variants.json') ?? { schema: 1, generatedAt: '', groups: [] }, layouts);
+    const by = new Map(roster.map((m) => [m.id, m]));
+
+    it('lists every module in the catalogue once', () => {
+        expect(roster.map((m) => m.id)).toEqual(index.modules.map((m: { id: string }) => m.id));
+    });
+
+    it('tells the modules apart the way the link does', () => {
+        expect(by.get('mss54')).toMatchObject({ chosenBy: 'ident', faults: 'decoder', address: '0x12' });
+        expect(by.get('smg2')?.chosenBy).toBe('ident');
+        expect(by.get('gs20')?.chosenBy).toBe('ident');
+        expect(by.get('kombi46')?.chosenBy).toBe('ident');
+        // 0x56: ASC MK20 early, DSC late, no rule — the owner says which (monitoring_variant).
+        expect(by.get('ascmk20')?.chosenBy).toBe('owner');
+        expect(by.get('dsc_e46')?.chosenBy).toBe('owner');
+        // MK60 is read on an M3 (KWP on the DS2 line, CLAUDE.md).
+        expect(by.get('dsc_mk60')?.chosenBy).toBe('m3');
+        expect(by.get('lws5')?.chosenBy).toBe('m3');
+    });
+
+    it('says every module\'s faults are read, and by what', () => {
+        for (const m of roster) expect(['decoder', 'layout', 'own'], m.id).toContain(m.faults);
+        for (const id of Object.keys(layouts.modules)) if (by.has(id)) expect(by.get(id)?.faults, id).toBe('layout');
+    });
+
+    it('fits in the hello with the rest, well under the relay\'s 48 KB', () => {
+        const whole: Capabilities = { ...capabilities(), modules: roster, moduleRules: ['x'] };
+        expect(Buffer.byteLength(JSON.stringify(whole), 'utf-8')).toBeLessThanOrEqual(40 * 1024);
     });
 });

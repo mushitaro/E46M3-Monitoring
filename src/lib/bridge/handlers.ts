@@ -40,7 +40,7 @@ import {
     type NotebookEntry,
 } from '../notebook/rules';
 import type { MonitoringToolName } from './tools';
-import { capabilities } from './capabilities';
+import { capabilitiesNow } from './capabilities';
 
 
 /**
@@ -405,7 +405,7 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
             };
         },
 
-        monitoring_capabilities: async () => capabilities(),
+        monitoring_capabilities: async () => capabilitiesNow(),
 
         monitoring_ledger: async (args) => f.ledger(optText(args.module)),
 

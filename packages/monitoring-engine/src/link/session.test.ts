@@ -175,7 +175,14 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('a LinkSession on the practice car', () => {
         expect(await read('mss54')).toMatchObject({ jobId: 'STATUS_DIGITAL', error: null });
         await s.disconnect();
         await s.connect('practice');
+        // The scan stays for the list and the assistant (a module switch is DISCONNECT, CONNECT),
+        // but a scan of another connection does not vouch for this one.
+        expect(s.getSnapshot().scan?.results.some(r => Number(r.address) === 0x12)).toBe(true);
+        expect(s.getSnapshot().scanLive).toBe(false);
         expect(await read('mss54')).toBeNull();
+        await s.scanAll(targets, () => EMPTY_LEDGER);
+        expect(s.getSnapshot().scanLive).toBe(true);
+        expect(await read('mss54')).toMatchObject({ jobId: 'STATUS_DIGITAL', error: null });
     });
 
     it('keeps DDE3 identification when this ECU has no released fault reader', async () => {

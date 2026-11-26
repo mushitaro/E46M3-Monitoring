@@ -146,6 +146,7 @@ export function useDs2Link(
         retuneLog: session.retuneLog,
         startProbe: session.startProbe,
         scan: snapshot.scan,
+        scanLive: snapshot.scanLive,
         scanProgress: snapshot.scanProgress,
         scanAll: session.scanAll,
         clearLog: session.clearLog,

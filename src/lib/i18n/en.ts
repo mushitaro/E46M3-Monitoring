@@ -194,6 +194,7 @@ export const en: Localised = {
             ? `${hex} is one of two modules, by the car's year. Which is this car's? Nothing is driven here until you say (reads go on as before).`
             : `${hex}'s IDENT does not tell which model this is. Which is this car's? Nothing is driven here until you say (reads go on as before).`,
     variant_ruledOut: (hex, other) => `On this car ${hex} is ${other}: this module's parts are not driven.`,
+    variant_absent: (hex) => `On this car nothing answered at ${hex} in the last scan: taken as not fitted. If it is fitted, choose it here or tell the assistant.`,
     gate_what: 'What moves',
     gate_needs: 'Preconditions (confirm each)',
     gate_stopsAfter: (s) => `Stops by itself after ${s} s. STOP ends it at any time.`,

@@ -95,6 +95,8 @@ export interface TabFacade {
      */
     actuate(q: { module: string; job: string; phase: 'start' | 'pulse'; ownerSaid: string; values?: string[]; query?: string }): Promise<unknown>;
     procedure(q: { procedure: string; gear?: string; ownerSaid: string }): Promise<unknown>;
+    /** The owner's words on which module answers at an address several share (0x56 and others): recorded, nothing sent. */
+    variant(q: { module: string; ownerSaid: string }): unknown;
     /** Stop every output that is on. Not gated: anyone, any time. */
     stopOutputs(): Promise<unknown>;
     /** Null when it started; otherwise why not. */
@@ -545,6 +547,8 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
                 gear: typeof args.gear === 'string' ? args.gear : undefined,
                 ownerSaid: typeof args.owner_said === 'string' ? args.owner_said : '',
             }),
+
+        monitoring_variant: async (args) => f.variant({ module: text(args.module, 'module'), ownerSaid: typeof args.owner_said === 'string' ? args.owner_said : '' }),
 
         monitoring_stop_outputs: async () => f.stopOutputs(),
 

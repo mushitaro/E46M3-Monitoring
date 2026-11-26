@@ -51,6 +51,7 @@ function tab(over: Partial<TabFacade> = {}) {
         stage: async () => ({}),
         actuate: vi.fn(async (q) => ({ started: true, ...q })),
         procedure: vi.fn(async (q) => ({ started: true, ...q })),
+        variant: vi.fn(() => ({ recorded: true })),
         stopOutputs: vi.fn(async () => ({ stopped: [] })),
         startLog: () => null,
         datalog: () => ({ selected: ['3:n'], samples: 0 }),
@@ -479,6 +480,16 @@ describe('monitoring_actuate and monitoring_stop_outputs', () => {
         const { f, h } = tab();
         expect(await h.monitoring_stop_outputs({})).toEqual({ stopped: [] });
         expect(f.stopOutputs).toHaveBeenCalled();
+    });
+});
+
+describe('monitoring_variant (owner, 2026-11-26: docs/NO-STOP.md §4 D2)', () => {
+    it('hands the module and the owner\'s words to the facade, and nothing else', async () => {
+        const { f, h } = tab();
+        expect(await h.monitoring_variant({ module: 'dsc_e46', owner_said: '後期の DSC だよ' })).toEqual({ recorded: true });
+        expect(f.variant).toHaveBeenCalledWith({ module: 'dsc_e46', ownerSaid: '後期の DSC だよ' });
+        await h.monitoring_variant({ module: 'ascmk20' });
+        expect(f.variant).toHaveBeenLastCalledWith({ module: 'ascmk20', ownerSaid: '' });
     });
 });
 

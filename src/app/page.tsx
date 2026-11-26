@@ -19,7 +19,7 @@ import { takeLeftRunning, useActuatorArming, type LeftRunning } from '@/hooks/us
 import type { Stopped } from '@/lib/arming';
 import { partName, partTable } from '@/lib/partName';
 import { notSentLine } from '@/lib/notSentText';
-import { carKey, choiceFor, decidedByYear, identifiedAt, readChoices, variantRefusal, variantState, withChoice, VARIANT_CHOICE_KEY, type VariantChoices } from '@/lib/variantChoice';
+import { carKey, choiceFor, decidedByYear, identifiedAt, readChoices, silentAt, variantRefusal, variantState, withChoice, VARIANT_CHOICE_KEY, type VariantChoices, type VariantState } from '@/lib/variantChoice';
 import type { ProcedureEnd } from '@/lib/procedureEnd';
 import { procedureReason } from '@/lib/procedureEnd';
 import { loadVariantRules, ruleFor, type VariantRules } from '@tsunagi/monitoring-engine';
@@ -808,6 +808,7 @@ export default function Home() {
                 hasRule: !!variantRules && !!ruleFor(variantRules, entry.address),
                 identified: identifiedAt(entry.address, link.fitment, link.scan),
                 chosen: choiceFor(variantChoices, car, entry.address),
+                silent: silentAt(entry.address, link.scan),
                 nameOf: (m) => moduleName(ecuIndex, m) ?? m,
             });
         },
@@ -834,6 +835,23 @@ export default function Home() {
         (id: string) => variantRefusal(variantOf(id), moduleName(ecuIndex, id) ?? id),
         [variantOf, ecuIndex],
     );
+    // The owner's words, recorded by the assistant where the screen's choice goes (monitoring_variant, D2).
+    const recordVariant = useCallback(
+        (id: string): { ok: true; address: number } | { ok: false; reason: string } => {
+            const entry = ecuIndex?.modules.find((m) => m.id === id);
+            if (!entry) return { ok: false, reason: `${id} is not a module of this app.` };
+            const v = variantOf(id);
+            if (v.state === 'ruledOut' && !v.absent) return { ok: false, reason: variantRefusal(v, moduleName(ecuIndex, id) ?? id)! };
+            if (v.state === 'ok' && choiceFor(variantChoices, car, entry.address) !== id) {
+                return { ok: false, reason: `Which module answers at 0x${entry.address.toString(16).toUpperCase().padStart(2, '0')} is not the owner's to say: its IDENT decides, or no other module of this app shares it.` };
+            }
+            confirmVariant(entry.address, id);
+            return { ok: true, address: entry.address };
+        },
+        [ecuIndex, variantOf, variantChoices, car, confirmVariant],
+    );
+    const variantLine = (v: Exclude<VariantState, { state: 'ok' }>) =>
+        v.state === 'ruledOut' ? (v.absent ? t.variant_absent(v.hex) : t.variant_ruledOut(v.hex, v.other)) : t.variant_ask(v.hex, decidedByYear(v.candidates));
 
     // Modules the car's IDENT (or the owner) ruled out at their address: not offered on the select (SC10 F01).
     const ruledOutModules = useMemo(
@@ -841,7 +859,7 @@ export default function Home() {
         [ecuIndex, ecuId, variantOf],
     );
 
-    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, probeSessions, mode, tab, changeTab, showPane: setPane, selectJob, arming, startProcedure, workflows, switchModule, startScan, updateWaiting, allModules: scopeAll, syncInvestigations, defaultDevice: t.assistant_defaultDevice, noteSentOnce, pickSet, variantUnconfirmed, leftRunning, lastProcedure });
+    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, probeSessions, mode, tab, changeTab, showPane: setPane, selectJob, arming, startProcedure, workflows, switchModule, startScan, updateWaiting, allModules: scopeAll, syncInvestigations, defaultDevice: t.assistant_defaultDevice, noteSentOnce, pickSet, variantUnconfirmed, recordVariant, leftRunning, lastProcedure });
     // The end-to-end scenarios' door to the same tools (lib/e2e): a test build only.
     useE2EDoor(facade);
     const assistant = useAssistantBridge({
@@ -894,7 +912,7 @@ export default function Home() {
         confirmRun: () => {
             // Which module answers at this address is the IDENT's, or the owner's to say on ACTUATOR, first.
             const v = variantOf(ecuId);
-            if (v.state !== 'ok') return setScreenNotice(v.state === 'ruledOut' ? t.variant_ruledOut(v.hex, v.other) : t.variant_ask(v.hex, decidedByYear(v.candidates)));
+            if (v.state !== 'ok') return setScreenNotice(variantLine(v));
             if (selectedJob && runVerdict?.allowed) setServiceGate({ job: selectedJob, verdict: runVerdict });
         },
         probe: probe.progress ? { progress: probe.progress, stop: probe.stop, moduleName: (id) => moduleName(ecuIndex, id) ?? id } : undefined,

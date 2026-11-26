@@ -201,6 +201,7 @@ export interface Localised {
     variant_otherHere: (hex: string, sgbd: string) => string;
     variant_ask: (hex: string, byYear: boolean) => string;
     variant_ruledOut: (hex: string, other: string) => string;
+    variant_absent: (hex: string) => string;
     /** The confirmation, in the order it is read: what moves, what it needs, how long, what pressing does. */
     gate_what: string;
     gate_needs: string;

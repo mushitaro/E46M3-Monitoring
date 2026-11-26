@@ -305,6 +305,18 @@ export const MONITORING_TOOLS = {
             ['procedure', 'owner_said'],
         ),
     },
+    monitoring_variant: {
+        scope: 'control',
+        description:
+            "Record which of this app's modules is fitted at an address several share with no IDENT rule to tell them apart (0x56: ASC MK20 on an early car or DSC on a late one; the board monitors at 0xF0, the navigation computers at 0x7F, and others) — in the owner's own words, kept where the screen's ACTUATOR choice goes, once per car. Sends nothing. Until it is known, nothing that drives goes to that address (monitoring_actuate says so); an address where nothing answered in the last scan is taken as not fitted. Ask the owner which is fitted (by name, or by the car's year for 0x56) and pass their words. Refused where the car's IDENT already says which module is there.",
+        inputSchema: obj(
+            {
+                module: str('The module the owner says is fitted, as monitoring_modules lists it (dsc_e46, ascmk20, …).'),
+                owner_said: str("The owner's own words saying it is fitted."),
+            },
+            ['module', 'owner_said'],
+        ),
+    },
     monitoring_stop_outputs: {
         scope: 'control',
         description: 'Stop every output that is on, oldest first: each one\'s stop frame is sent and it is taken off whatever the module answers. Never refused — anyone may stop, any time, moving or not.',

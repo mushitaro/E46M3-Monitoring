@@ -44,9 +44,9 @@ import { PRIVACY_PREVIEW } from '@/lib/links';
  * ## Why the copy is a list of four
  *
  * Each line is a thing the app actually does, stated so it can be checked
- * against the app rather than believed: reads only with one named exception,
- * unconfirmed things labelled and refused, PRACTICE talking to a simulator, and
- * the car itself still being dangerous. A paragraph of general caution would be
+ * against the app rather than believed: what goes to a car and how it is measured
+ * first, what a car has not shown yet said alongside (never a refusal: owner,
+ * 2026-11-26), PRACTICE talking to a simulator, and the car itself still being dangerous. A paragraph of general caution would be
  * shorter and would say nothing a reader could verify.
  *
  * ## The preview adds what it sends

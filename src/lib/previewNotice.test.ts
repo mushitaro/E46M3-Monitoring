@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { DISCLAIMER_VERSION } from './disclaimer';
 import { firstRunDialogUp } from './previewNotice';
 
 /** localStorage as a browser keeps it. */
@@ -47,7 +48,7 @@ describe('the preview notice acknowledgement', () => {
     it('is missing until AGREE, however long ago the disclaimer was agreed to', async () => {
         const storage = memoryStorage();
         vi.stubGlobal('localStorage', storage);
-        storage.setItem('e46m3.disclaimer', '1');
+        storage.setItem('e46m3.disclaimer', String(DISCLAIMER_VERSION));
         const { notice, disclaimer } = await fresh();
         expect(disclaimer.disclaimerStore.snapshot()).toBe(true);
         expect(notice.previewNoticeAcknowledged()).toBe(false);
@@ -64,7 +65,7 @@ describe('the preview notice acknowledgement', () => {
         notice.agreeToFirstRun(true, true);
 
         expect(storage.getItem('preview-notice:v2')).not.toBeNull();
-        expect(storage.getItem('e46m3.disclaimer')).toBe('1');
+        expect(storage.getItem('e46m3.disclaimer')).toBe(String(DISCLAIMER_VERSION));
         expect(notice.previewNoticeAcknowledged()).toBe(true);
         expect(notice.previewNoticeStore.snapshot()).toBe(true);
         expect(heard).toHaveBeenCalled();
@@ -77,7 +78,7 @@ describe('the preview notice acknowledgement', () => {
 
         notice.agreeToFirstRun(false, true);
 
-        expect(storage.getItem('e46m3.disclaimer')).toBe('1');
+        expect(storage.getItem('e46m3.disclaimer')).toBe(String(DISCLAIMER_VERSION));
         expect(storage.getItem('preview-notice:v2')).toBeNull();
         expect(notice.previewNoticeAcknowledged()).toBe(false);
     });

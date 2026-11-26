@@ -2,8 +2,8 @@ import { all, ask, pressAndTime, rowOf, rowText, screenText, wire } from './_sc0
 
 /**
  * SC06 部品を動かす（画面）— SMG II の油圧ポンプ。docs/VIRTUAL-CAR-TESTS.md M1。
- * テスト用のビルドは実車につながらない。実車モードでつながっていない画面で札を見て、PRACTICE で動かし、
- * 実車モードに戻って札が消えるかを見る。実車で START → 実行（手順 7）は実車のみ（FINDINGS に書く）。
+ * テスト用のビルドは実車につながらない。実車モードでつながっていない画面で札を見て（「練習から」は 2026-11-26 に
+ * 無くなった）、PRACTICE で動かし、実車モードに戻って見る。実車で START → 実行（手順 7）は実車のみ（FINDINGS に書く）。
  * 時間切れで止まるところは、PRACTICE で確かめる。
  */
 const JOB = 'STEUERN_STELLGLIED';
@@ -15,43 +15,29 @@ const row = (page) => rowOf(page, JOB, 'tj-start');
 
 const scenario = {
     id: 'SC06',
-    title: '部品を動かす（画面）：SMG II の油圧ポンプ — 「練習から」→ PRACTICE で値を選んで START → 確認 → 動作中 → STOP → 実車モードで札が消える',
+    title: '部品を動かす（画面）：SMG II の油圧ポンプ — 実車モードに「練習から」は出ない → PRACTICE で値を選んで START → 確認 → 動作中 → STOP → 実車モードでも出ない',
     story:
-        '実車モード・停車で SMG II の ACTUATOR を開くと、油圧ポンプの行に「練習から」。PRACTICE にして値を選び、START の確認に何が動くか・前提・秒数が出る。' +
-        '実行すると「動作中 残り n 秒」と STOP、結果欄に送信と応答。STOP で「止まった」。実車モードに戻ると札が消え、START が押せる。実車では測ってから動き、時間切れで止まる。',
+        '実車モード・停車で SMG II の ACTUATOR を開いても、油圧ポンプの行に「練習から」は出ない（2026-11-26 から練習はビルドが済ませる）。PRACTICE にして値を選び、START の確認に何が動くか・前提・秒数が出る。' +
+        '実行すると「動作中 残り n 秒」と STOP、結果欄に送信と応答。STOP で「止まった」。実車モードに戻っても「練習から」は出ない。実車では測ってから動き、時間切れで止まる。',
     steps: all([
         // 1. 実車モード・停車で、SMG II の ACTUATOR を開く
         { ui: 'module', value: 'smg2', means: 'SMG II を選ぶ（実車モード：PRACTICE は入れない）' },
         { ui: 'tab', name: 'ACTUATOR', settle: 1500 },
         {
             check: {
-                desc: '手順 1：油圧ポンプを選ぶと、行に「練習から」の札、START は押せない',
+                desc: '手順 1：油圧ポンプを選んでも「練習から」の札は出ない（練習はビルドが済ませる。2026-11-26）。押せないなら、行の札がその理由を言う',
                 run: async (page) => {
                     const r = row(page);
                     for (let i = 0; i < 20 && (await r.locator('select').count()) === 0; i++) await page.waitForTimeout(250);
                     await r.locator('select').selectOption({ label: SET });
                     await page.waitForTimeout(400);
                     const t = await rowText(r);
-                    const disabled = await r.locator('[data-test="tj-start"]').isDisabled();
-                    return t.includes('練習から') && disabled ? true : `札：${t.replace(/\n/g, ' / ')}、START ${disabled ? '押せない' : '押せる'}`;
+                    if (t.includes('練習から')) return `札：${t.replace(/\n/g, ' / ')}`;
+                    return true;
                 },
             },
         },
-        { shot: 's01-practice-first' },
-        {
-            check: {
-                desc: '手順 1：「練習から」に触ると「PRACTICE でこの項目を一度実行してください」と出る（U2）',
-                run: async (page) => {
-                    const chip = row(page).getByText('練習から').first();
-                    const title = (await chip.getAttribute('title')) ?? (await chip.locator('xpath=ancestor-or-self::*[@title][1]').getAttribute('title').catch(() => null));
-                    await chip.click();
-                    await page.waitForTimeout(600);
-                    const t = await screenText(page);
-                    return t.includes('PRACTICE でこの項目を一度実行してください') ? true : `触っても画面に説明が出ない（マウスを重ねたときの title だけ：「${title}」。ナビは触るだけでマウスが無い）`;
-                },
-            },
-        },
-        { shot: 's01-chip-touched' },
+        { shot: 's01-no-practice-first' },
         // 2. PRACTICE にして、値を選ぶ
         { ui: 'practice' },
         { ui: 'click', text: 'CONNECT', settle: 2500, means: '練習の車につなぐ' },
@@ -247,7 +233,7 @@ const scenario = {
         { ui: 'tab', name: 'ACTUATOR', settle: 800 },
         {
             check: {
-                desc: '手順 6：実車モードで同じ行の「練習から」の札が消える',
+                desc: '手順 6：実車モードで同じ行に「練習から」の札が出ない',
                 run: async (page) => {
                     const r = row(page);
                     await r.locator('select').selectOption({ label: SET });

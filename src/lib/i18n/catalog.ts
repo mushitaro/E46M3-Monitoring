@@ -219,8 +219,8 @@ export interface Localised {
     credits_supportersOthers: string;
     credits_supportersAsOf: (date: string) => string;
     gate_verified: string;
-    gate_unverified: string;
-    gate_practiceOnly: string;
+    stop_nothingOn: string;
+    stop_notAJob: string;
     args_required: (names: string) => string;
     precond_voltage_ok: string;
     precond_stationary: string;

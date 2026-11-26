@@ -20,14 +20,15 @@ const runToEnd = async (page) => {
 /**
  * IJ06・IJ19（いじわる：手順の途中で断られる・練習したのは別の部品）。
  * IJ06 は練習の車に、手順の途中の問い合わせを一度だけ否定応答（0xA2）で返させる。
- * IJ19 の実車の札は、テストのビルドが実車の線を開けないので実車でだけ確かめる（FINDINGS-ij.md）。
+ * IJ19 は 2026-11-26 から断る話ではない：練習はビルドが全項目で済ませ、実車で「練習から」と止めない（docs/NO-STOP.md）。
+ * 残るのは、練習の記録が部品ごとに台帳に残ること。
  */
 const scenario = {
     id: 'IJ06-19',
     title: '手順の途中でモジュールが断る・練習したのは別の部品',
     story:
         'IJ06：SMG II のエア抜きの途中で、モジュールが問い合わせを断る。ダイアログに「モジュールが断りました」と理由。手順は止まり、AI も同じことを言う。' +
-        'IJ19：練習したのは油圧ポンプなのに、クラッチの弁を実車で動かそうとする。札は「練習から」、AI も「その部品はまだ練習していません」と言う。',
+        'IJ19：練習したのは油圧ポンプだけ。台帳に部品ごとに残る（2026-11-26 から、練習していない部品でも実車で止めない）。',
     steps: always([
         ...connectPractice,
         check('SMG II を画面に出してつなぐ', async (page) => (await onModule(page, 'smg2')) ?? true),
@@ -83,7 +84,7 @@ const scenario = {
             const valve = ids.some((id) => /STEUERN_STELLGLIED\(MAGNETVENTIL_KUPPLUNG\)/.test(id));
             return pump && !valve ? true : `台帳: ${ids.join(', ')}`;
         }),
-        check('IJ19：AI の台帳の答えで「練習した」が読める（その部品はまだ練習していません、と言える）', async (page, st) => {
+        check('IJ19：AI の台帳の答えで「練習した」が読める（記録として。止める理由にはしない）', async (page, st) => {
             const rec = (st.ledger?.records ?? []).find((x) => /HYDROPUMPE/.test(x.id));
             return rec && ('practiced' in rec || 'practicedAt' in rec) ? true : `答えに練習の欄が無い: ${JSON.stringify(rec).slice(0, 200)}`;
         }),

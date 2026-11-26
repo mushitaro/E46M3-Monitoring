@@ -262,9 +262,9 @@ export default function Home() {
             ),
         [],
     );
-    // A job that drives something, run in PRACTICE through the real send path: the evidence the
-    // owner's rule asks for before it goes to the car (policy: practice first). And every run on the
-    // car, either way, into the ledger (policy: record runs).
+    // A job that drives something, run in PRACTICE through the real send path: kept in the ledger as
+    // practice (the rule itself is the build's since 2026-11-26: src/lib/practiceEveryItem.test.ts).
+    // And every run on the car, either way, into the ledger (policy: record runs).
     const onPracticed = useCallback(
         (p: { moduleId: string; jobId: string; at: string }) => setObserved((l) => recordPracticeRun(l, `${p.moduleId}:${p.jobId}`, p.at)),
         [],
@@ -1278,7 +1278,13 @@ export default function Home() {
                                 has no release job, and a disabled STOP would imply
                                 one exists. */}
                             {tab === 'service' && selectedJob && hasStopControl(operationFor(selectedJob)) && (
-                                <TextButton disabled tone="destructive" Icon={Square} title={t.gate_practiceOnly}>
+                                <TextButton
+                                    tone="destructive"
+                                    Icon={Square}
+                                    disabled={!arming.anyArmed}
+                                    title={arming.anyArmed ? undefined : t.stop_nothingOn}
+                                    onClick={() => void stopAll('stop')}
+                                >
                                     {operationFor(selectedJob).kind === 'procedure' ? t.op_abort : t.op_stop}
                                 </TextButton>
                             )}

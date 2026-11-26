@@ -143,6 +143,7 @@ IJ10 の道具が無いこと・ロールバーを出さないこと・新しい
 
 ### F20 AI の台帳の答えに「練習した」が無い（IJ19）
 - 基準：練習したのは別の部品なのに実車で動かそうとすると、札は「練習から」、AI も「その部品はまだ練習していません」と言う。
+- 2026-11-26：運営者の決定で端末ごとの練習の門は無くなった（練習はビルドが済ませる。`docs/NO-STOP.md` §4 D1）。この基準は廃止。
 - 起きたこと：台帳には部品ごと（`smg2:STEUERN_STELLGLIED(HYDROPUMPE)`）に残り、クラッチの弁は無い（よい）。ただし `monitoring_ledger` の答えに `practiced` が無く、AI はどの部品を練習したかを言えない。
 - 原因の見当：`src/hooks/useMonitoringFacade.ts:380-384` の `ledger` が `practiced`・`practicedAt` を落とす。
 - 直し方の案：答えに `practiced`・`practicedAt` を足す。

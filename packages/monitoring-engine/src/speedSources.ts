@@ -11,11 +11,12 @@
  * job's own code (sgbd/results) on the answer and takes the result the job names, only when the job read
  * the answer to its end, using the same payload boundary as recorded telemetry.
  * EdiabasLib independently decoded the speed and idle-adaptation practice responses of
- * MS420DS0, MS430DS0 and both BMS46 variants. These sources remain closed on cars until
- * the stationary and moving readings have been confirmed on the fitted hardware.
+ * MS420DS0, MS430DS0 and both BMS46 variants.
  *
- * To open one: confirm on a car that the job's own reading gives the speed (and 0 standing still), then
- * set `usable` with the evidence in `provenance`. That change is a person's (autonomy:human).
+ * `usable: false` no longer waits for a person (owner, 2026-11-26: docs/NO-STOP.md §4 D3). The link reads
+ * the fitted DME's own speed job before a parked send (link/session `readDmeState`) and takes its 0 as
+ * stationary once it has seen that job above 0 on this car with the cable connected — the app records
+ * that itself (`LinkHandlers.onSpeedSourceSeen`). Setting `usable` true here opens it on every car at once.
  */
 
 import { decodeRead, telemetryValues, type SgbdResultsTable } from './sgbd/results.ts';

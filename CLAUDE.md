@@ -50,11 +50,13 @@ Next.js 16 / React 19 / Tailwind v4、`output: 'export'` の静的書き出し�
   誰が始めるか（画面の人／AI も）を運営者が決め（2026-11-15、`packages/monitoring-engine/src/policy.ts` の
   `OWNER_DECISION`。項目の性質は `natureOf` が SGBD の名前と分類から判断し、書き込みの名前のものは必ず書き込み）、
   その表に従う。判断する場所は `packages/monitoring-engine/src/runGate.ts` の `mayRun` 一箇所で、ここを迂回する経路を
-  作らない。部品を動かすものは、練習モードで一度動かしたあと（台帳の `practiced`）、停車中に、画面の確認のあとで、
-  `permitFor` の許可をつけて送る。リンクは許可がその電文そのものかを確かめ、送る直前に車速・電圧（12 V 以上）・
+  作らない。部品を動かすものは、停車中に、画面の確認のあとで、`permitFor` の許可をつけて送る。練習はビルドが
+  全項目を模擬実車で本物の送る道に一度ずつ流して済ませ（`src/lib/practiceEveryItem.test.ts`、運営者 2026-11-26）、
+  端末ごと・項目ごとには求めない。リンクは許可がその電文そのものかを確かめ、送る直前に車速・電圧（12 V 以上）・
   SGBD が言うエンジンの状態を測る（`session.ts` の `preflightRun`）。一度に一つ、時間切れで止める（`useActuatorArming`）。
-  実車での実行は台帳に残る（`recordVehicleRun`）。SMG II の手順は `mayRunProcedure`（手順ごとに練習で一度、
-  状態の問い直しは測り直さない `follow` の許可）。
+  実車での実行は台帳に残る（`recordVehicleRun`）。SMG II の手順は `mayRunProcedure`（状態の問い直しは
+  測り直さない `follow` の許可）。M3 でない E46 では、停車・電圧・エンジンをその車の DME 自身のジョブで測り、
+  その車で一度 0 より上を見た車速だけを停車の証にする（`readDmeState`）。
 - **モジュールには、そのモジュール自身の SGBD が送るものだけを送る。** 宛先は送るたびに名前で
   言う（`link.to(address)`）。IDENT・消去・ハートビートは `packages/monitoring-engine/src/moduleProtocol.ts` が
   そのモジュールのテレグラム表から完全一致で取る。故障読取は、そのモジュール自身の FS_LESEN ジョブを
@@ -77,7 +79,7 @@ Next.js 16 / React 19 / Tailwind v4、`output: 'export'` の静的書き出し�
   そのメーター自身の `80 05 02 02`（AIF ブロック 2）を送り、VIN の下 7 桁の文字だけを走査の `vin` に置く
   （`packages/monitoring-engine/src/clusterVin.ts`。17 桁はメーターに無い。実車未確認）。答えのバイトは走査の結果・台帳・AI の返り値に入れない。
 - **止まっているかは実測する。** `mayRun` は motion を必須で受け、停車中だけのものは送る直前に DME の
-  車速（ブロック 19）が 0 のときだけ出る。読めなければ出さない。走行中も送るのは、運営者が決めたもの
+  車速（M3 はブロック 19、ほかの E46 はその DME 自身の車速のジョブ）が 0 のときだけ出る。読めなければ出さない。走行中も送るのは、運営者が決めたもの
   （識別と故障の読み取り、状態の値の読み取り。`policy.ts`）と、オーナーが台帳で認めたもの（`grantMovingOk`）。
   アプリは自分で格上げしない。故障の消去は停車中だけ（誰が始めるかは表）。
 - **時刻は `packages/monitoring-engine/src/clock.ts` の `appNow()`。** ナビの時計は 2006・2007 年で起き、走行中に飛ぶ。記録の順序と

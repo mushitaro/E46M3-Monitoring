@@ -38,7 +38,8 @@ export const STORAGE_KEY = 'e46m3.disclaimer';
  * risk, a changed refusal, a capability that did not exist before. A typo fix is
  * not a new statement, and re-asking for one teaches people to dismiss it.
  */
-export const DISCLAIMER_VERSION = 1;
+// 2 (2026-11-26): what goes to a car is no longer "reads only", and "not confirmed on a car" is no longer a refusal.
+export const DISCLAIMER_VERSION = 2;
 
 /** Has this reader agreed to the text as it stands now? */
 export function isAcknowledged(stored: string | null, version = DISCLAIMER_VERSION): boolean {

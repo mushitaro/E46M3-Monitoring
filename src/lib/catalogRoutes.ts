@@ -36,7 +36,7 @@ export interface ProcedureRow {
     preconditions: string[];
     /** Whether the owner's table opens it to the assistant; otherwise it is the screen's. */
     assistantMayStart: boolean;
-    /** The gate's answer now (practised first, parked); the dialog measures again before it sends. */
+    /** The gate's answer now (parked); the dialog measures again before it sends. */
     mayStartNow: boolean;
     reason: RunBlockKey | null;
 }

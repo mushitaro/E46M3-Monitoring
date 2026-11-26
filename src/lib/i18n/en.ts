@@ -95,10 +95,10 @@ export const en: Localised = {
         'A personal tool for reading a BMW E46 M3 over DS2. **It is not a professional ' +
         'diagnostic device.** Base repair decisions on the service manual (TIS) and on the car in front of you.',
     disclaimer_points: [
-        'What it sends to a real car is **reads only**. The single exception is clearing the fault memory, and it asks first.',
+        "What it sends to a real car is reads, and what the owner has decided to run, item by item. What moves a part or clears is sent **parked, with the speed, battery and engine measured just before, after you confirm**.",
         "The classifications, translations and expected values come out of BMW's SGBD files mechanically. " +
-            '**Anything not confirmed against a car says so**, and an operation that has not been confirmed is refused with its reason stated.',
-        'PRACTICE mode talks to a simulator, not a car. It is the only mode in which an actuator test will fire.',
+            '**What a car has not shown yet says where it comes from.** That is not a reason not to send it; when something is not sent, it says why and what to do next.',
+        'PRACTICE mode talks to a simulator, not a car. Every item that moves something has run once on this simulator before each release.',
         'Working on a car is dangerous. Jacking it up, running the engine, moving parts — this tool does none of that for you.',
     ],
     disclaimer_agree: 'Agree & Continue',
@@ -235,9 +235,8 @@ export const en: Localised = {
     credits_supportersOthers: '…and others who chose not to be named',
     credits_supportersAsOf: (date: string) => `As of ${date}, most MILE first`,
     gate_verified: 'Confirmed on a car',
-    gate_unverified: 'Not confirmed on a car',
-    gate_practiceOnly:
-        'Blocked: not verified on a vehicle. Each job is unlocked individually once a car has confirmed it and the ledger records the evidence.',
+    stop_nothingOn: 'Nothing is on.',
+    stop_notAJob: "This stop frame is the app's construction, not a job of the DSC's own SGBD, so it is not sent. What you started stops with its row's STOP, its time-out, or the assistant's monitoring_stop_outputs.",
     args_required: (names: string) => `Args: ${names}`,
     precond_voltage_ok: 'Battery 12 V or more',
     precond_stationary: 'Stationary',
@@ -458,7 +457,7 @@ export const en: Localised = {
         run_block_policyShow: 'Shown only',
         run_block_policyOff: 'Not offered',
     },
-    actuator_info: 'Jobs that briefly move a part. On the car, the ones the owner decided to run go once they have run in PRACTICE, parked, with the battery and engine measured, after you confirm, and stop on a time-out. The tag on a row is why it cannot run now.',
+    actuator_info: 'Jobs that briefly move a part. On the car, the ones the owner decided to run go parked, with the battery and engine measured, after you confirm (the build has run every item on the practice car), and stop on a time-out. The tag on a row is why it cannot run now.',
     run_result: 'Run result',
     run_request: 'Sent',
     run_response: 'Response',

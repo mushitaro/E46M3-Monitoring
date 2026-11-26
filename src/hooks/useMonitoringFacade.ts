@@ -837,7 +837,7 @@ export function useMonitoringFacade(input: {
                 name: job.en,
                 mode: link.mode,
                 ownerSaid,
-                note: 'Its dialog is on the screen and runs it through the gate; it may still refuse there (not practised, not measured parked, battery, engine), or the module may refuse a step, and the dialog says why. It ends by itself, or with ABORT or monitoring_stop_outputs. monitoring_status lastProcedure says how it ended.',
+                note: 'Its dialog is on the screen and runs it through the gate; it may still refuse there (not measured parked, battery, engine), or the module may refuse a step, and the dialog says why. It ends by itself, or with ABORT or monitoring_stop_outputs. monitoring_status lastProcedure says how it ended.',
             };
         },
 

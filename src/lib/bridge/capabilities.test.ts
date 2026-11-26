@@ -1,0 +1,120 @@
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { NATURES, OWNER_DECISION, RUN_BLOCK_STOP, STOP_IDS } from '@tsunagi/monitoring-engine';
+import { NATURE_TOOLS, capabilities, capabilitiesMarkdown } from './capabilities';
+import { MONITORING_TOOLS } from './tools';
+import { en } from '../i18n/en';
+import { ja } from '../i18n/ja';
+
+/**
+ * The assistant's "can you…?" and "why did it stop?" come from the code (owner, 2026-11-26: Chat
+ * answered from README and docs, which were older than the code, and said "can't" to what it can).
+ *
+ * Held here: the answer covers every tool and every kind of job; each kind the owner opened to the
+ * assistant names a tool that exists; each refusal is one of the closed list of stops; and
+ * docs/CAPABILITIES.md is exactly the answer's text (WRITE_CAPABILITIES=1, npm run gen:capabilities,
+ * writes it). Then the retired claims: words that said "can't" under a rule the owner retired must not
+ * come back into the files a reader (person or assistant) takes as current.
+ */
+const ROOT = path.resolve(import.meta.dirname, '..', '..', '..');
+const DOC = path.join(ROOT, 'docs', 'CAPABILITIES.md');
+
+describe('monitoring_capabilities is built from the code', () => {
+    const c = capabilities();
+
+    it('names every tool the tab declares', () => {
+        const names = new Set(c.tools.map((t) => t.name));
+        for (const t of Object.keys(MONITORING_TOOLS)) expect(names.has(t), t).toBe(true);
+    });
+
+    it('says every kind of job, as the owner decided it', () => {
+        expect(c.owner.map((o) => o.nature)).toEqual(NATURES.map((n) => n.nature));
+        for (const o of c.owner) {
+            const d = OWNER_DECISION[o.nature];
+            expect([o.when, o.how, o.who]).toEqual([d.when, d.how, d.who]);
+        }
+    });
+
+    it('gives each kind the owner opened to the assistant a tool that exists, and none to what is off', () => {
+        for (const n of NATURES.map((x) => x.nature)) {
+            const d = OWNER_DECISION[n];
+            for (const t of NATURE_TOOLS[n]) expect(t in MONITORING_TOOLS, `${n}: ${t}`).toBe(true);
+            if (d.how === 'run' && d.who === 'ai') expect(NATURE_TOOLS[n].length, n).toBeGreaterThan(0);
+            if (d.how === 'off') expect(NATURE_TOOLS[n], n).toEqual([]);
+        }
+    });
+
+    it('maps every refusal of the gate to a stop of the closed list (docs/NO-STOP.md §2)', () => {
+        for (const [k, v] of Object.entries(RUN_BLOCK_STOP)) expect(v === 'route' || (STOP_IDS as readonly string[]).includes(v), k).toBe(true);
+        // Every refusal the screen and the assistant can say is in the map.
+        for (const k of Object.keys(en.runBlock)) expect(k in RUN_BLOCK_STOP, k).toBe(true);
+        expect(c.stops.map((s) => s.id)).toEqual([...STOP_IDS]);
+        for (const s of c.stops) expect(s.next.length, s.id).toBeGreaterThan(0);
+    });
+
+    it('fits in one answer', () => {
+        expect(Buffer.byteLength(JSON.stringify(c), 'utf-8')).toBeLessThanOrEqual(24 * 1024);
+    });
+
+    it('is what docs/CAPABILITIES.md says', () => {
+        const md = capabilitiesMarkdown();
+        if (process.env.WRITE_CAPABILITIES) writeFileSync(DOC, md);
+        expect(existsSync(DOC), 'docs/CAPABILITIES.md: run npm run gen:capabilities').toBe(true);
+        expect(readFileSync(DOC, 'utf-8'), 'docs/CAPABILITIES.md is not what the code says: run npm run gen:capabilities').toBe(md);
+    });
+});
+
+/**
+ * Claims a rule the owner retired once made, which an assistant reading the repository took as today's
+ * and answered "can't" with. Each names the decision that retired it. The history (docs/PLAN.md) and the
+ * record of what was retired (docs/NO-STOP.md) may quote them.
+ */
+const RETIRED: ReadonlyArray<{ re: RegExp; why: string }> = [
+    { re: /安全機構が揃うまで解禁しない/, why: 'actuators run under the owner’s table (2026-11-15)' },
+    { re: /既定はすべて無効/, why: 'the owner’s table opens them (2026-11-15)' },
+    { re: /1\s*ジョブずつ解禁/, why: 'per nature by the owner’s table (2026-11-15), not unlocked one by one on a car' },
+    { re: /実車に送るのは読取だけ(?!」の決まり)/, why: 'retired 2026-11-14' },
+    { re: /運営者がまだ決めていません/, why: 'the owner decided every nature (2026-11-15)' },
+    { re: /none exists for these yet/, why: 'monitoring_actuate and monitoring_procedure exist (2026-11-16)' },
+    { re: /There is no\s+\*?\s*tool for those, and the facade has no method/, why: 'monitoring_actuate exists (2026-11-16)' },
+    { re: /PRACTICE で一度動かす(まで|してから)/, why: 'practice is the build’s (2026-11-26)' },
+    { re: /練習(モード)?で一度動かしたあと/, why: 'practice is the build’s (2026-11-26)' },
+    { re: /実車で(確かめて|確認して)いないので(でき|送れ|送り)ません/, why: 'never a reason to stop (2026-11-26, NO-STOP §1)' },
+    { re: /You cannot connect to the car/, why: 'the assistant reconnects the cable already allowed (2026-10-28)' },
+    { re: /停車して画面で接続し直してください/, why: 'monitoring_connect reconnects by voice (2026-10-28)' },
+];
+
+const SCANNED_DIRS = ['docs', 'public/guide', 'src', 'packages/monitoring-engine/src'];
+const SKIP = new Set(['docs/PLAN.md', 'docs/NO-STOP.md', 'src/lib/bridge/capabilities.test.ts']);
+
+function files(): string[] {
+    const out = ['README.md', 'CLAUDE.md'];
+    const walk = (rel: string) => {
+        for (const e of readdirSync(path.join(ROOT, rel), { withFileTypes: true })) {
+            const r = `${rel}/${e.name}`;
+            if (e.isDirectory()) walk(r);
+            else if (/\.(md|ts|tsx)$/.test(e.name)) out.push(r);
+        }
+    };
+    for (const d of SCANNED_DIRS) walk(d);
+    return out.filter((f) => !SKIP.has(f));
+}
+
+describe('retired claims do not come back', () => {
+    it('no file a reader takes as current says what a retired rule said', () => {
+        const hits: string[] = [];
+        for (const f of files()) {
+            const text = readFileSync(path.join(ROOT, f), 'utf-8');
+            for (const { re, why } of RETIRED) {
+                const m = re.exec(text);
+                if (m) hits.push(`${f}: 「${m[0]}」 — ${why}`);
+            }
+        }
+        expect(hits).toEqual([]);
+    });
+
+    it('the Japanese refusal texts say no retired rule either', () => {
+        for (const [k, v] of Object.entries(ja.runBlock)) for (const { re } of RETIRED) expect(re.test(v), k).toBe(false);
+    });
+});

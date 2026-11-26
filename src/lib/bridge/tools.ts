@@ -9,8 +9,10 @@
  * a non-empty description of at most 4 KB, an `object` inputSchema, 64 tools and 64 KB in all).
  *
  * `read`: answers from what the tab already holds. `control`: changes the tab's own state, its
- * record or its screen. Neither sends anything to the car by itself; a read the tab is asked to
- * take again (`refresh` on faults) goes through runGate like any other. Descriptions carry facts
+ * record or its screen, and — `monitoring_actuate`, `monitoring_procedure`, `monitoring_stop_outputs` —
+ * starts or stops a job on the car where the owner's table opens it to the assistant, through the same
+ * gate and measurements as the screen. Every frame goes through runGate (`refresh` on faults too).
+ * What the assistant can do is answered from code by `monitoring_capabilities` (capabilities.ts). Descriptions carry facts
  * about the tool; how to use it in a conversation is the guide's.
  *
  * `monitoring_guide` is answered by the relay from the guide the tab declared, and reserved there.
@@ -56,6 +58,12 @@ export const MONITORING_TOOLS = {
         scope: 'read',
         description:
             'The tab now: the device name, the module the screen has selected (module; with ALL MODULES chosen on DIAGNOSIS it is ALL MODULES with id null and all: true, and showing is all-modules — say that, not a module name), the one module the link opens on and single-module tools act on (linkModule), the link (practice or vehicle, connected, recording), the speed the DME last reported and whether the car is measured stationary, PROBE (running, plan version, progress), the mode (manual or probe), the session on the screen and its CO-WORK line (plan version, open questions), and its PROBE board as the owner left it (part ids, kinds, titles, open or closed, in their order). No VIN.',
+        inputSchema: obj({}),
+    },
+    monitoring_capabilities: {
+        scope: 'read',
+        description:
+            "What the assistant can do here and what may stop it, built by this build from its own code: every tool, the owner's table (per kind of job: moving or parked, run or shown or off, the screen or the assistant too, and the tool that runs it), the rules over all of it, the closed list of reasons a send may be stopped (S1–S7) with the next step for each, which refusal is which stop, and what only a person does on the screen. Call it before saying something cannot be done or why something stopped: README, docs, a Skill or memory may be older, and this wins. Sends nothing.",
         inputSchema: obj({}),
     },
     monitoring_faults: {

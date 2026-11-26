@@ -71,6 +71,14 @@ describe('the tools fit what the relay accepts', () => {
         }
         expect(bytes(JSON.stringify(tools))).toBeLessThanOrEqual(64 * 1024);
     });
+
+    // The one entrance (/mcp/works, matrix-tsunagi bridge/src/works.ts directoryTools) cuts a
+    // description over 1,024 characters to its first sentences, so what follows them never reaches
+    // the assistant's tool list (monitoring_actuate lost "nothing is practised first"). Detail that
+    // does not fit goes in the schema's own descriptions, which the relay passes whole.
+    it('keeps every description within the 1,024 characters the one entrance passes whole', () => {
+        for (const t of helloTools()) expect(t.description.length, t.name).toBeLessThanOrEqual(1024);
+    });
 });
 
 describe('the guide names only tools the tab has', () => {

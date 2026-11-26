@@ -3,7 +3,7 @@ import { connectPractice, tool } from './_lib.mjs';
 /**
  * DATALOG with SMG II (operator's ask, 2026-11-12: 「データログを取って」 for SMG II). Its values are
  * channels beside the DME's — smg2:JOB:RESULT — read once per sample by SMG II's own SGBD code,
- * parked unless the owner cleared that read for a moving car.
+ * while the car moves too: status reads, in the owner's table (2026-11-15).
  */
 const HYD = 'smg2:STATUS_IO_LESEN:STAT_HYDRAULIKTEMPERATUR_WERT';
 const RPM = 'smg2:STATUS_IO_LESEN:STAT_MOTORDREHZAHL_WERT';

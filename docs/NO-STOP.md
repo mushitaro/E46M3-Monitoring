@@ -95,7 +95,9 @@
 
 - 文言の検査：画面と AI の答えの文に、止める理由として「未確認」「未検証」「not verified」「not confirmed on a car」が
   出ないこと（出所の言い添えは可）。
-- `RunBlockKey` の各値が §2 のどれかに当たることを、型の表で固定する。
+- `RunBlockKey` の各値が §2 のどれかに当たることを、型の表で固定する。**済：** `packages/monitoring-engine/src/stopReasons.ts` の
+  `RUN_BLOCK_STOP`・`NOT_SENT_STOP`（型が全部の値を求める）。AI は同じ表を `monitoring_capabilities` で、人は
+  `docs/CAPABILITIES.md`（コードから生成）で読む。廃止した決まりの言い回しが戻ると `src/lib/bridge/capabilities.test.ts` が落ちる。
 
 ## 5. なぜ止まり続けたか
 

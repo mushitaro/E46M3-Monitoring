@@ -94,8 +94,8 @@ export const NATURES: ReadonlyArray<{ nature: Nature; ja: string; en: string }> 
  * operating modes and initialisation/settings go from shown-only to `run`. `when` stays parked;
  * safety deployment and writes stay off. Every rule in OWNER_RULES still holds for the assistant —
  * it reads back and waits for "yes", reads only while moving, measures before sending, one at a time,
- * stoppable. `who: 'ai'` opens nothing by itself: the assistant reaches a run
- * only through a facade tool, and none exists for these yet.
+ * stoppable. `who: 'ai'` opens nothing by itself: the assistant reaches a run only through a facade
+ * tool — `monitoring_actuate` and `monitoring_procedure` (src/lib/bridge/capabilities.ts NATURE_TOOLS).
  */
 export const OWNER_DECISION: Readonly<Record<Nature, Decision>> = {
     r_ident: { when: 'moving', how: 'run', who: 'ai' },

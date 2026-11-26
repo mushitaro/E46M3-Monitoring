@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { OWNER_DECISION } from '@tsunagi/monitoring-engine';
 import { GUIDE_TOOL, MONITORING_TOOLS } from './tools';
 
 /**
@@ -86,6 +87,21 @@ describe('the capabilities', () => {
             for (const m of v.where.matchAll(/\b((?:src|packages|public|tools|docs)\/[\w./-]+\.\w+)/g)) {
                 expect(existsSync(path.join(ROOT, m[1])), `${k} cites ${m[1]}`).toBe(true);
             }
+        }
+    });
+});
+
+// The desk and the loop score a conversation by its nevers. Two of them once said the assistant must
+// never clear or drive anything itself, after the owner had opened both to it (decision A,
+// 2026-11-16), so an answer the owner wanted counted as a failure. While the table opens them to the
+// assistant, the never is the run without the read-back and the owner's OK, or while moving.
+describe('the nevers follow the owner\'s table', () => {
+    it('forbid a clear or a drive only without the OK, where the table opens it to the assistant', () => {
+        const opened = { 'clear-on-own': OWNER_DECISION.c_clear, 'run-actuator': OWNER_DECISION.a_engine };
+        for (const [id, d] of Object.entries(opened)) {
+            if (d.who !== 'ai') continue;
+            expect(nevers[id], id).toMatch(/いいよ/);
+            expect(nevers[id], id).toMatch(/走行中/);
         }
     });
 });

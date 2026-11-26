@@ -64,8 +64,7 @@ TUNER に無いのは自律だけなので、そこだけ足す。
 | 机 | Claude Code | `.claude/skills/monitoring-desk/SKILL.md` | 「解析して」「次の計画」「この項目を読めるように」 |
 | 自律 | 定期起動の Claude Code | `.claude/skills/monitoring-loop/SKILL.md` | scheduled task のプロンプトは「これに従う」だけ |
 
-`monitoring_guide` のトピック：drive・faults・investigate・catalog・cowork・moment・overview・
-service・tuning・session・trouble・autonomy・reactive・predictive・symptom。
+`monitoring_guide` のトピックは `public/guide/index.md` の表が言う（`guide.test.ts` が、表と置いたファイルの一致を見る）。
 
 ### 三つのモード（運営者 2026-11-01）
 
@@ -74,7 +73,7 @@ AI がオンのとき、オーナーの頼みはどれかのモードになる�
 
 | モード | 始まり | AI がすること | 続け方 |
 |---|---|---|---|
-| 事後保全 `reactive` | 故障コード（`focus` に `module:code`） | 全モジュールの故障（`monitoring_scan`）→ 関係する値を集めた計画 → 観測（`monitoring_probe`）→ 版を重ねて値を絞る → 学習のリセット・調整は画面に置く → 同じ計画で再観測して比べる（`monitoring_compare`） | 同じ記録に委任を足す（`monitoring_investigate` の `record`）。ランの番号が定点観測の系譜 |
+| 事後保全 `reactive` | 故障コード（`focus` に `module:code`） | 全モジュールの故障（`monitoring_scan`）→ 関係する値を集めた計画 → 観測（`monitoring_probe`）→ 版を重ねて値を絞る → 学習のリセット・調整は停車中に読み返して「いいよ」のあと（`monitoring_actuate`。表が画面の人に任せたものだけ画面に置く）→ 同じ計画で再観測して比べる（`monitoring_compare`） | 同じ記録に委任を足す（`monitoring_investigate` の `record`）。ランの番号が定点観測の系譜 |
 | 予兆保全 `predictive` | 故障は無い、健康診断、定期 | 全モジュールの故障、DME の全ブロック（`3:*`）と学習値（`adapt`）を合格基準（`judge`、出所つき、24 まで）で判定 → 外れを先に総評 → 前回と比べ、3 回目からは推移（`trend`）で次の一手 | 同上 |
 | 症状 `symptom` | オーナーの言葉（「パワーが落ちた」） | 症状を示す値を見繕い、起きる条件で取り（`capture`）、基準（前の予兆保全のラン）と比べて伝える | 基準は別の記録のランでもよい（`baseline`） |
 
@@ -105,8 +104,8 @@ guide が名乗るツールは `src/lib/bridge/tools.ts` の一覧だけ（`guid
 | 送るかを決めるのは `runGate.ts`（カタログの読取は `mayRun`、アプリが組む読取は `mayRunProtocolRead`）。ツールは K ラインに直接何も足さない | `packages/monitoring-engine/src/runGate.ts`、`packages/monitoring-engine/src/probe/executor.ts` | 済。実行器は全フレームでゲートに訊く（2026-10-27） |
 | モジュールには、そのモジュール自身の SGBD が送るものだけ | `packages/monitoring-engine/src/moduleProtocol.ts`、`link.to(address)` | 済（2026-10-27） |
 | どのモジュールがいるかは IDENT で選ぶ。非 M3 の車に M3 の電文を送らない。変種の分からないアドレスは「?」で IDENT だけ | `packages/monitoring-engine/src/variants.ts`（規則は `tools/sgbd/gen_variants.py`）、`Ds2Link.setSendGuard`、`packages/monitoring-engine/src/probe/scan.ts` | 0x12・0x32 は済（2026-11-10）。0x80（D_0080、KOMBI）は 2026-11-11。ほかのアドレスの規則は未 |
-| 読取は、送る直前に DME の車速が 0 と読めたときだけ。読めなければ出さない | `packages/monitoring-engine/src/link/session.ts` の事前読取（`preflight`）、`packages/monitoring-engine/src/vehicleState.ts` | 済（2026-10-27） |
-| 走行中に送ってよい読取はオーナーが決める。アプリもアシスタントも格上げしない | `packages/monitoring-engine/src/ledger.ts` の `grantMovingOk`。画面は SESSION SYNC の WHILE MOVING（`views/sessions/MovingOkSection.tsx`、確認のあと、走行中は押せない）。`monitoring_ledger` は読むだけ | 済（画面は #9、2026-10-28）。認めた分はページを開いている間だけ |
+| 停車中だけの読取（運営者の表の `r_misc`、学習値ほか）は、送る直前に DME の車速が 0 と読めたときだけ。読めなければ出さない。識別・故障・状態の値の読取は表で走行中も（2026-11-15） | `packages/monitoring-engine/src/link/session.ts` の事前読取（`preflight`）、`packages/monitoring-engine/src/vehicleState.ts` | 済（2026-10-27） |
+| 表が停車中だけにした読取を走行中にも送るかはオーナーが決める。アプリもアシスタントも格上げしない | `packages/monitoring-engine/src/ledger.ts` の `grantMovingOk`。画面は SESSION SYNC の WHILE MOVING（`views/sessions/MovingOkSection.tsx`、確認のあと、走行中は押せない）。`monitoring_ledger` は読むだけ | 済（画面は #9、2026-10-28）。認めた分はページを開いている間だけ |
 | 意味的失敗（0xB0 など）は再送しない。再送は transport の失敗だけ | `packages/ds2-core/src/link.ts` | 済（以前から） |
 | 読取以外は、運営者の表（`policy.ts`）の「誰が」に従う。画面の人のものは画面に置くだけ（`monitoring_stage`）。AI に開いたものは、AI が読み返してオーナーの「いいよ」のあと、停車中に、画面の RUN と同じ関門・測定・時間切れで始める（`monitoring_actuate`。SMG II の手順は `monitoring_procedure` が画面の手順のダイアログで最後まで走らせる）。走行中の AI は始めない。止めるは誰でもいつでも（`monitoring_stop_outputs`） | `mayRun`・`mayActuate`、`src/lib/actuation.ts`（`assistantMayStart`・`startActuation`、画面と AI が同じ道） | stage は段 3。AI の口は 2026-11-16（デモテスト S24） |
 | 値を取るジョブ（SMG II の STEUERN_STELLGLIED など）は、選んだ値の組でジョブ自身の SGBD のコードが組む電文が、EdiabasLib が同じ値で組む電文と一致する組だけを送る。画面も AI も、その組の中から組ごと選ぶ（値を一つずつ選ばせない）。オンのまま残る始めは、止める電文（同じ部品で止めの値）も一致しているときだけ、送る前に止めを手元に置く。PRACTICE と記録は部品ごと（`STEUERN_STELLGLIED(HYDROPUMPE)`） | `packages/monitoring-engine/src/sgbd/agreedFrame.ts`（`agreedFrameFrom`・`isAgreedFor`）、`mayRun`・`mayActuate` の `agreed`、`src/lib/agreedChoices.ts`、`startActuation` の `stop`。答えは `job-frames.oracle.json`（`tools/sgbd/gen_job_frames.py`） | 2026-11-17。一致を示すのは電文のバイトまで。部品が動くかは実車で |

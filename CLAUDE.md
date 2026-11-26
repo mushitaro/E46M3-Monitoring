@@ -26,6 +26,7 @@ Next.js 16 / React 19 / Tailwind v4、`output: 'export'` の静的書き出し�
 | 診断エンジンと画面の境目、GREN BLUE SUITE への渡し方 | **`docs/ENGINE.md`** |
 | 車と例題で自分を育てる仕組み（机・タブ・Matrix） | `docs/AUTONOMY.md` |
 | 「実車未確認」で止めない決まり・止めてよい理由の一覧・実車で確かめること | **`docs/NO-STOP.md`** |
+| いま何ができて、何が止めるか（コードから生成。AI は `monitoring_capabilities`） | **`docs/CAPABILITIES.md`** |
 | ライセンスとデータの出所 | `THIRD-PARTY-NOTICES.md` |
 | ///M の意匠体系 | `tsunagi-m-design` スキル（`SKILL.md` だけでなく `references/` も） |
 
@@ -87,7 +88,7 @@ Next.js 16 / React 19 / Tailwind v4、`output: 'export'` の静的書き出し�
   合わせる前の記録は `loose` で、合わせた時に同じだけ動かす。動かせなかったもの（2026 年より前か `loose`）は
   日付が確かでないものとして、時計の合ったページが見つけた時から 7 日で消す（`packages/monitoring-engine/src/journal.ts` の `expired`）。
   クラウドへ送った CO-WORK の記録で 2026 年より前のものは、サーバーが今に寄せる（`settleUndated`）。
-- **アシスタントが届くのは画面の操作まで。** Matrix から呼べるのは `src/lib/bridge/tools.ts` の一覧だけで、
+- **アシスタントに届くのは道具の一覧だけ。** Matrix から呼べるのは `src/lib/bridge/tools.ts` の一覧だけで、
   答えは `useMonitoringFacade` が組む。読取・記録の開始と停止・CO-WORK・画面の切り替え・手順を画面に置く・
   保存と送信・TUNER への切り替え。接続は、一度画面で許可したケーブルへのつなぎ直しと切断だけ（記録中は
   止める確認のあと。運営者 2026-10-28）で、選ぶ画面は出さない（`reconnectPermitted`）。AI の三つのモード
@@ -110,6 +111,12 @@ Next.js 16 / React 19 / Tailwind v4、`output: 'export'` の静的書き出し�
   外の理由の無いものが残れば試験が落ちる（`src/lib/runCoverage.test.ts`）。
 - **出所を落とさない。** 分類・訳・規定値には `provenance` が付く。分からないものは
   「分からない」と表示する。推定値を実測値の顔で出さない。
+- **「できる・できない」はコードから言う（運営者 2026-11-26）。** AI が README や docs を読んで「できない」と答えて
+  いたので、道具の一覧・運営者の表・止める理由（`packages/monitoring-engine/src/stopReasons.ts`、`NO-STOP.md` §2）から
+  `src/lib/bridge/capabilities.ts` が答えを組み、`monitoring_capabilities` と `docs/CAPABILITIES.md`（`npm run gen:capabilities`）
+  の両方に出す。README・docs に、できること・できないことの一覧を手で書かない（そこを指す）。表・道具・門を変えたら
+  生成し直す（`capabilities.test.ts` がずれと、廃止した決まりの言い回しが戻ることを止める）。新しい断りは `RUN_BLOCK_STOP`
+  の S1〜S7 のどれかに当て、当たらないなら先に運営者が決める。
 - **予約スロット**。状態が変わっても再レイアウトが起きないよう、通知行・サブアクション行などは
   空でも高さを保つ。
 

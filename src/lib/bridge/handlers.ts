@@ -11,10 +11,13 @@
  * the owner's words as the driver's — a mandate, a note, an answer, withdrawing a mandate — and
  * writes its own work as `chat` — a plan, a fact, a reading, a question, a step mark.
  *
- * NOT run a test or an adjustment, clear faults, write or flash, or allow a new device. There is no
- * tool for those, and the facade has no method that could reach them. What the assistant does
- * reach adds no new kind of frame: a scan is each module's own fault read, a module switch is the
- * screen's DISCONNECT and CONNECT, and a PROBE run sends reads through runGate.
+ * Never write or flash, deploy a safety device, or allow a new device: there is no tool for those.
+ * Tests, procedures, adjustments, clears and the like go through `monitoring_actuate` and
+ * `monitoring_procedure` where the owner's table opens them to the assistant (policy.ts, 2026-11-16),
+ * parked, after the read-back, through the same gate and measurements as the screen. A scan is each
+ * module's own fault read, a module switch is the screen's DISCONNECT and CONNECT, and a PROBE run
+ * sends reads through runGate. What the assistant can do is `monitoring_capabilities` (capabilities.ts),
+ * built from the code — say that, not this comment.
  */
 import { boardLine, place, setShow, type Board } from '../probe/board';
 import { compareRuns, trend } from '../probe/compare';
@@ -37,6 +40,7 @@ import {
     type NotebookEntry,
 } from '../notebook/rules';
 import type { MonitoringToolName } from './tools';
+import { capabilities } from './capabilities';
 
 
 /**
@@ -400,6 +404,8 @@ export function bridgeHandlers(f: TabFacade): Record<MonitoringToolName, Handler
                 ...spread(r.samples),
             };
         },
+
+        monitoring_capabilities: async () => capabilities(),
 
         monitoring_ledger: async (args) => f.ledger(optText(args.module)),
 

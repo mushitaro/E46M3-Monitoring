@@ -270,8 +270,13 @@ export interface LinkSnapshot {
     rawFaults: RawFaultRead[] | null;
     adaptations: AdaptationRead[] | null;
     lastRun: JobRunResult | null;
-    /** The last all-module scan, and how far one in progress has got. */
+    /**
+     * The last all-module scan, and how far one in progress has got. The scan stays across a module
+     * switch (DISCONNECT, CONNECT): the list and the assistant's `monitoring_faults` read it. Whether
+     * it was taken on this connection is `scanLive`; only such a scan vouches for a read (readFittedJob).
+     */
     scan: ScanRun | null;
+    scanLive: boolean;
     scanProgress: { done: number; total: number } | null;
     vehicleState: VehicleState | null;
     motion: Motion;
@@ -323,6 +328,7 @@ const INITIAL: LinkSnapshot = {
     adaptations: null,
     lastRun: null,
     scan: null,
+    scanLive: false,
     scanProgress: null,
     vehicleState: null,
     motion: 'unknown',
@@ -354,6 +360,8 @@ export class LinkSession {
     private modeNow: LinkMode = 'vehicle';
     /** The module the reads on screen came from; a connect to another one drops them. */
     private readsOf: string | null = null;
+    /** The connection the last scan was taken on (`scanLive`). */
+    private scanLink: Ds2Link | null = null;
     /**
      * What each address said to its common IDENT on this link, and which module that makes it
      * (variants). Empty at every connect: it is a fact about the car on the other end, and the
@@ -941,11 +949,13 @@ export class LinkSession {
         // What was read belongs to the module it was read from. Another module's link must not
         // show the previous one's faults as its own (a DSC switch showed the DME's 0x2C).
         if (this.readsOf !== null && this.readsOf !== this.target.moduleId) {
-            this.update({ ident: null, faults: null, quickTest: null, rawFaults: null, adaptations: null, lastRun: null, scan: null });
+            this.update({ ident: null, faults: null, quickTest: null, rawFaults: null, adaptations: null, lastRun: null });
         }
         this.readsOf = this.target.moduleId;
         this.clearError();
-        this.update({ state: 'connecting', scan: null });
+        // The scan is kept for the list and the assistant, but no longer vouches for this connection.
+        this.scanLink = null;
+        this.update({ state: 'connecting', scanLive: false });
         try {
             // PRACTICE deliberately does not go through createDs2Transport: it wraps the
             // simulated port in a REAL WebSerialTransport, so the simulator drives the actual
@@ -1339,7 +1349,8 @@ export class LinkSession {
     /** Read a catalogued job on the module this link actually scanned, without reopening the cable. */
     readonly readFittedJob = (moduleId: string, address: number, jobId: string, ledger: () => Ledger) =>
         this.run(`Read ${jobId}`, async link => {
-            const scan = this.snap.scan;
+            // Only a scan taken on this very connection says which module is here.
+            const scan = this.scanLink === link ? this.snap.scan : null;
             const result = scan?.results.find(r => Number(r.address) === address);
             const fitted = this.fitmentNow.get(address)?.moduleId ?? result?.variant?.moduleId;
             const single = result?.modules.length === 1 && result.modules[0] === moduleId;
@@ -1361,7 +1372,7 @@ export class LinkSession {
                 throw new Error('このモジュールの読み取り項目を確認できません');
             const frame = bestTelegram(table, jobId);
             const verdict = mayRun(job, frame, ledger(), { moduleId, motion: this.snap.motion, group: profile.group });
-            if (!verdict.allowed || !frame || this.link !== link || this.snap.scan !== scan || this.fitmentNow.get(address) !== currentIdentity || this.snap.lineLost)
+            if (!verdict.allowed || !frame || this.link !== link || (this.scanLink === link ? this.snap.scan : null) !== scan || this.fitmentNow.get(address) !== currentIdentity || this.snap.lineLost)
                 throw new Error('この接続で実行できる読み取りではありません');
             return this.sendJob(link, moduleProtocol(moduleId, address, table), jobId, frame.hex, verdict.requires);
         });
@@ -1966,7 +1977,8 @@ export class LinkSession {
                     const decoded = layout ? decodeByLayout(layout, r.exchanges) : null;
                     if (decoded) r.faults = decoded;
                 }
-                this.update({ scan: result });
+                this.scanLink = link;
+                this.update({ scan: result, scanLive: true });
                 // The cluster's VIN read (clusterVin): whether it was read, never what it said.
                 if (result.vin) {
                     const v = result.vin;

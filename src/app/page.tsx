@@ -991,7 +991,7 @@ export default function Home() {
         adaptation: (
             <AdaptationView
                 blocks={link.adaptations}
-                native={{ scope: String(link.scan?.startedAt ?? 'unscanned'), ready: link.state === 'connected' && !!link.scan,
+                native={{ scope: String((link.scanLive && link.scan?.startedAt) || 'unscanned'), ready: link.state === 'connected' && !!link.scan && link.scanLive,
                     read: id => catalog ? link.readFittedJob(ecuId, catalog.address, id, () => ledger) : Promise.resolve(null) }}
                 catalog={catalog}
                 ecuId={ecuId}

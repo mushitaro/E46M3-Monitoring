@@ -289,11 +289,20 @@ describe('a health check', () => {
         expect(Object.values(run.adaptations ?? {}).every((v) => v === null || typeof v === 'number')).toBe(true);
     });
 
-    it('waits with the learned values while the car moves', async () => {
+    it('waits with the learned values while the car moves, when the plan asks for them parked', async () => {
         const h = await harness({ speed: () => 40 }, 4);
         const run = await runProbe(plan([{ n: 1, do: 'learned values', kind: 'adapt', when: 'parked' }, { n: 2, do: 'speed', kind: 'sample', channels: ['19:v'] }]), h.deps);
         expect(run.exchanges.some((e) => e.what.startsWith('ADAPT_'))).toBe(false);
         expect(run.steps[0].state).toBe('pending');
+    });
+
+    // The owner's table reads status values while moving (r_status, 2026-11-15); learned values are
+    // filed there too, so the gate no longer holds them to a parked car (Q5, 2026-11-27).
+    it('reads the learned values while the car moves, when the plan allows it', async () => {
+        const h = await harness({ speed: () => 40 }, 4);
+        const run = await runProbe(plan([{ n: 1, do: 'learned values', kind: 'adapt', when: 'any' }, { n: 2, do: 'speed', kind: 'sample', channels: ['19:v'] }]), h.deps);
+        const sent = run.exchanges.filter((e) => e.outcome === 'ok' && e.what.startsWith('ADAPT_')).map((e) => e.what);
+        expect(sent).toEqual(MSS54_ADAPTATION_BLOCKS.map((b) => `ADAPT_${b.selection}`));
     });
 
     it('reads a whole block when it is named with a star', async () => {

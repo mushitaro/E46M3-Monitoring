@@ -170,10 +170,14 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('SMG II learned values', () => {
         expect(h.observed).toEqual(['smg2:ADAPTIONSWERTE_LESEN(0)', 'smg2:ADAPTIONSWERTE_LESEN(1)', 'smg2:ADAPTIONSWERTE_LESEN(2)']);
     });
 
-    it('waits, saying why, while the car moves', async () => {
+    // The same job read from the catalogue is a status read the owner's table sends while moving
+    // (r_status); the probe's gate follows the table now (docs/ASSISTANT-LAYERS.md C9, Q5).
+    it('reads them while the car moves too, as the owner\'s table reads status values', async () => {
         const h = await harness(() => 40);
         const run = await runProbe(plan([{ n: 1, do: 'SMG II learned values', kind: 'adapt', module: 'smg2', when: 'any' }]), h.deps);
-        expect(run.steps[0]).toMatchObject({ state: 'pending', waiting: 'parked only: the car was measured moving' });
-        expect(sentTo(h, 0x32)).toEqual([]);
+        expect(run.steps[0].state).toBe('done');
+        expect(sentTo(h, 0x32)).toEqual(['32 05 40 00 77', '32 05 40 01 76', '32 05 40 02 75']);
+        // Seen while moving: not a parked observation for the ledger.
+        expect(h.observed).toEqual([]);
     });
 });

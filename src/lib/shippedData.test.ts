@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { assertLoadableProfile, type EcuIndex, type EcuProfile } from '@tsunagi/monitoring-engine';
 import { STRINGS } from './i18n';
-import { isReadNature, isReadOnlyControl, mayRun, natureOf, recordPracticeRun } from '@tsunagi/monitoring-engine';
+import { isReadNature, isReadOnlyControl, mayRun, natureOf } from '@tsunagi/monitoring-engine';
 import { EMPTY_LEDGER } from '@tsunagi/monitoring-engine';
 
 /**
@@ -192,32 +192,12 @@ describe('what writes the car’s identity is never addressed to its owner', () 
     });
 });
 
-describe('nothing that drives the car runs on it before it has run in PRACTICE (owner, 2026-11-15)', () => {
-    it('refuses every job that drives something, in every module, with an empty ledger', () => {
-        // runGate.test.ts makes this assertion over three modules. The port's largest
-        // classification changes landed on the other 48, and until the telegram tables
-        // arrived those 48 were also being held back by the missing table — so this had
-        // never actually exercised the classification gate on them. Now it does: every
-        // module has a table, and the class is the only thing refusing these.
-        const allowed: string[] = [];
-        for (const [id, p] of profiles) {
-            const table = telegrams.get(id)!;
-            for (const j of p.jobs) {
-                if (isReadNature(natureOf(id, j))) continue;
-                const entries = table.jobs[j.id] ?? [];
-                const tel =
-                    entries.length === 1
-                        ? { hex: entries[0].hex, confidence: entries[0].confidence as 'single' }
-                        : null;
-                if (mayRun(j, tel as never, EMPTY_LEDGER, { moduleId: id, motion: 'parked' }).allowed) {
-                    allowed.push(`${id}.${j.id}`);
-                }
-            }
-        }
-        expect(allowed).toEqual([]);
-    });
-
-    it('once practised, runs only what the owner decided to run, parked, with terms and without arguments', () => {
+describe('what drives the car goes parked, with its terms, as the owner’s table decides (2026-11-15, 2026-11-26)', () => {
+    // Until 2026-11-26 each of these waited for a PRACTICE run on the device. That is the build's now
+    // (src/lib/practiceEveryItem.test.ts runs every item through the link on the practice car), so the
+    // shipped, empty ledger holds back none of them: what still decides is the owner's table, the
+    // frame, the car standing still and the screen's confirmation (docs/NO-STOP.md §2).
+    it('every one the gate opens from the empty ledger: parked, with terms, without arguments, and never moving', () => {
         const ran: string[] = [];
         for (const [id, p] of profiles) {
             const table = telegrams.get(id)!;
@@ -227,15 +207,14 @@ describe('nothing that drives the car runs on it before it has run in PRACTICE (
                 const entries = table.jobs[j.id] ?? [];
                 if (entries.length !== 1 || entries[0].confidence !== 'single') continue;
                 const tel = { hex: entries[0].hex, confidence: 'single' as const };
-                const practised = recordPracticeRun(EMPTY_LEDGER, `${id}:${j.id}`, '2026-11-15T00:00:00Z');
-                const v = mayRun(j, tel as never, practised, { moduleId: id, motion: 'parked', group });
+                const v = mayRun(j, tel as never, EMPTY_LEDGER, { moduleId: id, motion: 'parked', group });
                 if (!v.allowed) continue;
                 ran.push(`${id}.${j.id}`);
                 expect(v.requires).toBe('parked');
                 expect(v.actuation, `${id}.${j.id}`).toBeDefined();
                 expect(['a_safety', 'w']).not.toContain(v.actuation!.nature);
                 expect(j.args).toEqual([]);
-                expect(mayRun(j, tel as never, practised, { moduleId: id, motion: 'moving', group }).allowed).toBe(false);
+                expect(mayRun(j, tel as never, EMPTY_LEDGER, { moduleId: id, motion: 'moving', group }).allowed).toBe(false);
             }
         }
         expect(ran.length).toBeGreaterThan(0);
@@ -294,7 +273,7 @@ describe('a telegram table only ever addresses its own module', () => {
     });
 });
 
-describe('what a real car would accept today', () => {
+describe('what a real car is sent as a read today', () => {
     // Reads do not consult the ledger — mayRun's remaining gates for them are the class,
     // a certain telegram, taking no arguments, and a read-only control byte. Until the
     // telegram tables landed, 48 modules were held back by the third of those alone.
@@ -309,13 +288,15 @@ describe('what a real car would accept today', () => {
             const entries = table.jobs[j.id] ?? [];
             if (entries.length !== 1 || entries[0].confidence !== 'single') continue;
             const tel = { hex: entries[0].hex, confidence: 'single' as const };
-            if (mayRun(j, tel as never, EMPTY_LEDGER, { moduleId: id, motion: 'parked' }).allowed) {
+            // As a read: what drives something goes with its terms and the screen's confirmation (above).
+            const v = mayRun(j, tel as never, EMPTY_LEDGER, { moduleId: id, motion: 'parked' });
+            if (v.allowed && !v.actuation) {
                 allowed.push(`${id}.${j.id}`);
             }
         }
     }
 
-    it('is 135 jobs across 45 modules', () => {
+    it('is 135 jobs across 45 modules, sent as reads', () => {
         // 103 across 36 until 2026-11-11's non-M3 DMEs and GS20 arrived (six modules, 23 jobs): their own
         // read-only reads (control bytes already in `READ_ONLY_CONTROLS`). The policy did not move, and an
         // M3 is sent none of them — which module is at an address is its IDENT's to say (lib/variants).

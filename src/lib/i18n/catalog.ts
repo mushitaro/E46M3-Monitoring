@@ -201,6 +201,7 @@ export interface Localised {
     variant_otherHere: (hex: string, sgbd: string) => string;
     variant_ask: (hex: string, byYear: boolean) => string;
     variant_ruledOut: (hex: string, other: string) => string;
+    variant_absent: (hex: string) => string;
     /** The confirmation, in the order it is read: what moves, what it needs, how long, what pressing does. */
     gate_what: string;
     gate_needs: string;
@@ -219,8 +220,8 @@ export interface Localised {
     credits_supportersOthers: string;
     credits_supportersAsOf: (date: string) => string;
     gate_verified: string;
-    gate_unverified: string;
-    gate_practiceOnly: string;
+    stop_nothingOn: string;
+    stop_notAJob: string;
     args_required: (names: string) => string;
     precond_voltage_ok: string;
     precond_stationary: string;

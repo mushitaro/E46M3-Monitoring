@@ -69,18 +69,19 @@ import { moduleProtocol, type ModuleProtocol } from '../moduleProtocol.ts';
 import { loadEcuCatalog } from '../ecuCatalog.ts';
 import { bestTelegram, loadTelegrams } from '../telegrams.ts';
 import { PracticePort, setPracticeAnswers } from '../practiceEcu.ts';
-import { loadJobFramesOracle } from '../sgbd/agreedFrame.ts';
+import { loadJobFramesOracle, type JobFramesOracle } from '../sgbd/agreedFrame.ts';
 import { practiceCar, practiceDmeOf } from '../practiceCar.ts';
-import { loadPracticeFleet, practiceModelFor } from '../practiceFleet.ts';
+import { loadPracticeFleet, practiceModelFor, type PracticeFleet } from '../practiceFleet.ts';
+import { learnPracticeBattery, type PracticeBattery } from '../practiceDmeBattery.ts';
 import { ADAPTATION_READ } from '../sgbd/adaptationReads.ts';
-import { speedSourcesFor, speedFromAnswer } from '../speedSources.ts';
+import { speedSourcesFor } from '../speedSources.ts';
 import { runProbe, type ProbeDeps, type ProbePlan, type ProbeRun } from '../probe/executor.ts';
 import { modulesOf } from '../probe/plan.ts';
 import { runScan, type ScanRun, type ScanTarget } from '../probe/scan.ts';
 import { CLUSTER_VIN_UNVERIFIED } from '../clusterVin.ts';
 import { EMPTY_IDENTITY, loadIdentity, type Identity } from '../identity.ts';
 import { NO_FAULT_LAYOUTS, decodeByLayout, loadFaultLayouts, type FaultLayouts } from '../faultLayouts.ts';
-import { answerFrame, decodeFaultRead, decodeRead, telemetryValues, loadSgbdResults, type DecodedRead, type SgbdFaultRead } from '../sgbd/results.ts';
+import { answerFrame, decodeFaultRead, decodeRead, telemetryValues, loadSgbdResults, type DecodedRead, type SgbdFaultRead, type SgbdResultsTable } from '../sgbd/results.ts';
 import { hasFaultJob, readFaultsByJob, type JobFaultRead } from '../sgbd/faultRead.ts';
 import { decisionFor } from '../policy.ts';
 import type { CatalogJob } from '../ecuCatalog.ts';
@@ -296,6 +297,14 @@ export interface LinkHandlers {
     onRead?: (r: Omit<ReadRecord, 'id'>) => void;
     /** Told when a job that drives something ran in PRACTICE through this send path (policy: practice first). */
     onPracticed?: (p: { moduleId: string; jobId: string; at: string }) => void;
+    /**
+     * Whether a DME that is not the MSS54 has had its own speed job seen above 0 km/h on a car (the ledger's
+     * `speedSourceSeen`; owner, 2026-11-26, docs/NO-STOP.md D3). Until it has, its 0 is not taken as
+     * stationary: a reading that never moves proves nothing. Vehicle only; PRACTICE does not ask.
+     */
+    speedSourceSeen?: (dmeModuleId: string) => boolean;
+    /** Told when such a DME's own speed job answered above 0 on the car: the source is then the car's. Vehicle only. */
+    onSpeedSourceSeen?: (s: { moduleId: string; job: string; kmh: number; at: string }) => void;
     /** Told about every run of a job that drives something on the car, either way (policy: record runs). Vehicle only. */
     onActuated?: (r: { moduleId: string; jobId: string; kind: 'run' | 'follow' | 'stop'; telegram: string; response: string | null; outcome: 'ok' | 'rejected' | 'failed'; reason: string | null; at: string; ecuIdent?: string }) => void;
 }
@@ -397,8 +406,8 @@ export class LinkSession {
 
     constructor(options: { target: ModuleProtocol } & LinkHandlers) {
         this.target = options.target;
-        const { onFailure, onObserved, onRead, onPracticed, onActuated } = options;
-        this.handlers = { onFailure, onObserved, onRead, onPracticed, onActuated };
+        const { onFailure, onObserved, onRead, onPracticed, onActuated, speedSourceSeen, onSpeedSourceSeen } = options;
+        this.handlers = { onFailure, onObserved, onRead, onPracticed, onActuated, speedSourceSeen, onSpeedSourceSeen };
     }
 
     // -- What the screen reads -----------------------------------------------------------------
@@ -649,6 +658,66 @@ export class LinkSession {
         return next;
     }
 
+    /**
+     * A DME that is not the MSS54, asked for the car's speed, battery and engine speed by its own jobs
+     * (STATUS_GESCHWINDIGKEIT, STATUS_UBATT, STATUS_MOTORDREHZAHL; on the five DS2 DMEs carried all three
+     * send the same status frame, so it goes once). Each frame is the one EdiabasLib was seen to send for
+     * the job, and each value is read by the job's own code from the answer (sgbd/results), by its unit.
+     * Null when the DME is not identified or its jobs are not carried.
+     *
+     * `sourceOnCar`: the speed job has been seen above 0 on a car (this answer included), so its 0 means
+     * stationary (owner, 2026-11-26, docs/NO-STOP.md D3). A shipped source marked `usable` counts as seen.
+     */
+    private async readDmeState(link: Ds2Link): Promise<{ moduleId: string; speedKmh: number | null; voltageV: number | null; rpm: number | null; sourceOnCar: boolean } | null> {
+        const moduleId = this.fitmentNow.get(DME_ADDRESS)?.moduleId;
+        if (!moduleId) return null;
+        const candidate = speedSourcesFor(moduleId, null).find((x) => x.moduleId === moduleId);
+        const table = await loadSgbdResults(moduleId);
+        const oracle = await loadJobFramesOracle();
+        if (!table || !oracle) return null;
+        const frameOf = (job: string) => {
+            const cases = oracle.jobs[moduleId + ':' + job]?.cases.filter((c) => c.args.length === 0 && c.sends.length === 1);
+            return cases?.length === 1 ? cases[0].sends[0] : null;
+        };
+        const wanted = [
+            { what: 'speed' as const, job: candidate?.job ?? 'STATUS_GESCHWINDIGKEIT', unit: /^km\/h$/i },
+            { what: 'voltage' as const, job: 'STATUS_UBATT', unit: /^v$/i },
+            { what: 'rpm' as const, job: 'STATUS_MOTORDREHZAHL', unit: /^(1\/min|u\/min|rpm|min-1|min\^-1)$/i },
+        ];
+        const answers = new Map<string, Uint8Array | null>();
+        const out: Record<'speed' | 'voltage' | 'rpm', number | null> = { speed: null, voltage: null, rpm: null };
+        for (const w of wanted) {
+            const hex = frameOf(w.job);
+            const request = hex ? telegramBytes(hex) : null;
+            if (!hex || !request || request[0] !== DME_ADDRESS || request[2] !== Ds2Control.READ_IO_STATUS) continue;
+            if (!answers.has(hex)) {
+                try {
+                    const frame = await this.readFrame(link.to(DME), moduleId, w.job, request[2], request.slice(3, -1));
+                    answers.set(hex, isPositiveResponse(frame) ? answerFrame(frame.address, frame.controlOrStatus, frame.payload) : null);
+                } catch {
+                    answers.set(hex, null);
+                }
+            }
+            const answer = answers.get(hex);
+            if (!answer) continue;
+            const v = telemetryValues(table, w.job, hex, answer).find((x) => w.unit.test(x.unit ?? ''))?.value;
+            out[w.what] = typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null;
+        }
+        if (this.link !== link || this.fitmentNow.get(DME_ADDRESS)?.moduleId !== moduleId) return null;
+        let sourceOnCar = !!candidate?.usable || (this.handlers.speedSourceSeen?.(moduleId) ?? false);
+        if (this.modeNow === 'vehicle' && out.speed !== null && out.speed > 0 && !sourceOnCar) {
+            sourceOnCar = true;
+            this.append('rx', `${moduleId}'s own speed reading moved (${out.speed} km/h): it now attests the car stationary at 0`);
+            this.handlers.onSpeedSourceSeen?.({ moduleId, job: candidate?.job ?? 'STATUS_GESCHWINDIGKEIT', kmh: out.speed, at: new Date(appNow()).toISOString() });
+        }
+        return { moduleId, speedKmh: out.speed, voltageV: out.voltage, rpm: out.rpm, sourceOnCar };
+    }
+
+    /** Why the last motion measurement was not `parked`, when there is more to say than the motion. */
+    private motionWhy: string | null = null;
+    /** Beats since a non-M3 DME's speed was last read on a quiet line (heartbeat). */
+    private beatsSinceSpeed = 0;
+
     /** Let go of the timer the session keeps (the motion lapse). The link itself is left as it is. */
     readonly dispose = (): void => {
         if (this.motionTimer) clearTimeout(this.motionTimer);
@@ -663,26 +732,20 @@ export class LinkSession {
      * no DME, a refusal, a short block, a speed above zero — is not `parked`.
      */
     private async measureMotion(link: Ds2Link): Promise<Motion> {
+        // Which DME answers decides how it is measured: the common IDENT first, when this connection has not asked yet.
+        if (!this.fitmentNow.has(DME_ADDRESS) && this.identity.identOk.has(DME_ADDRESS)) await this.identify(link, DME_ADDRESS).catch(() => null);
         // Block 19 has MSS54 semantics. A different or unidentified DME cannot attest stationary this way.
         if (this.fitmentNow.has(DME_ADDRESS) && !isM3(this.fitmentNow)) {
-            const moduleId = this.fitmentNow.get(DME_ADDRESS)?.moduleId;
-            if (!moduleId) return 'unknown';
-            const candidate = speedSourcesFor(moduleId, null).find(s => s.moduleId === moduleId);
-            if (!candidate || (!candidate.usable && this.modeNow !== 'practice')) return 'unknown';
-            const table = await loadSgbdResults(moduleId);
-            if (!candidate.usable && table?.practiceLearned?.module !== moduleId) return 'unknown';
-            const frames = (await loadJobFramesOracle())?.jobs[moduleId + ':' + candidate.job]?.cases
-                .filter(c => c.args.length === 0 && c.sends.length === 1);
-            if (!candidate.usable && frames?.length !== 1) return 'unknown';
-            const source = candidate.usable ? candidate : { ...candidate, frame: frames![0].sends[0] };
-            const request = telegramBytes(source.frame);
-            if (!request || request[0] !== DME_ADDRESS || request[2] !== Ds2Control.READ_IO_STATUS) return 'unknown';
-            const frame = await this.readFrame(link.to(DME), moduleId, source.job, request[2], request.slice(3, -1));
-            if (!isPositiveResponse(frame)) return 'unknown';
-            const speed = speedFromAnswer(source, table, answerFrame(frame.address, frame.controlOrStatus, frame.payload));
-            if (speed === null || this.link !== link || this.fitmentNow.get(DME_ADDRESS)?.moduleId !== moduleId) return 'unknown';
-            const state = this.noteVehicleState({ speedKmh: speed, speedCanKmh: null, rpm: null, voltageV: null, at: appNow() });
-            return motionOf(state, state.at);
+            const state = await this.readDmeState(link);
+            if (!state || state.speedKmh === null) return 'unknown';
+            const noted = this.noteVehicleState({ speedKmh: state.speedKmh, speedCanKmh: null, rpm: state.rpm, voltageV: state.voltageV, at: appNow() });
+            const motion = motionOf(noted, noted.at);
+            // A 0 from a speed job never seen moving on a car proves nothing about the car (D3): not parked yet.
+            if (motion === 'parked' && this.modeNow === 'vehicle' && !state.sourceOnCar) {
+                this.motionWhy = `${state.moduleId}'s own speed reading has not been seen above 0 on this car yet: it is trusted once the car has moved a little with the cable connected (it reads every 10 s while connected)`;
+                return 'unknown';
+            }
+            return motion;
         }
         // With no cached identity, readFrame identifies the DME on this connection before transmitting.
         const block = blockBySelection(SPEED_BLOCK);
@@ -713,13 +776,14 @@ export class LinkSession {
      */
     private async preflight(link: Ds2Link, what: string, requires: SendRequirement): Promise<Motion | null> {
         if (requires !== 'parked') return null;
+        this.motionWhy = null;
         const measured = await this.measureMotion(link);
         if (measured !== 'parked') {
             throw new NotSentError(
                 what,
                 measured === 'moving' ? 'moving' : 'link',
                 `the car could not be shown to be stationary (${measured}). ` +
-                    'No verified stationary reading from the fitted DME',
+                    (this.motionWhy ?? 'No stationary reading from the fitted DME'),
                 { motion: measured, speedKmh: measured === 'moving' ? (this.vehicleNow?.speedKmh ?? null) : null },
             );
         }
@@ -737,7 +801,16 @@ export class LinkSession {
         const wanted = engine ?? undefined;
         const notSent = (reason: 'link' | 'voltage' | 'engine', why: string, measured: { voltageV?: number | null; rpm?: number | null } = {}) =>
             new NotSentError(what, reason, why, { ...measured, ...(wanted ? { engineWanted: wanted } : {}), minVoltageV: MIN_RUN_VOLTAGE });
-        if (!isM3(this.fitmentNow) || !block) throw notSent('link', 'no verified battery and engine measurement for this DME');
+        if (this.fitmentNow.has(DME_ADDRESS) && !isM3(this.fitmentNow)) {
+            // Another E46's DME: its own battery and engine-speed jobs, read by their own code (D3).
+            this.append('tx', 'Battery and engine preflight (the DME\'s own jobs)');
+            const state = await this.readDmeState(link);
+            const measured = { voltageV: state?.voltageV ?? null, rpm: state?.rpm ?? null };
+            if (!state) throw notSent('link', 'the battery and the engine could not be measured (the DME did not answer its own status jobs)');
+            this.append('rx', `battery ${measured.voltageV ?? '—'} V, engine ${measured.rpm ?? '—'} rpm`);
+            return this.judgeRun(measured, engine, notSent);
+        }
+        if (!isM3(this.fitmentNow) || !block) throw notSent('link', 'the DME has not been identified, so the battery and the engine cannot be measured');
         const req = liveBlockRequest(ENGINE_BLOCK);
         this.append('tx', `Battery and engine preflight (DME block ${ENGINE_BLOCK})`);
         let values: LiveValues;
@@ -752,7 +825,16 @@ export class LinkSession {
         const ub = values[`${ENGINE_BLOCK}:ub`] ?? null;
         const rpm = values[`${ENGINE_BLOCK}:n`] ?? null;
         this.append('rx', `battery ${ub ?? '—'} V, engine ${rpm ?? '—'} rpm`);
-        const measured = { voltageV: ub, rpm };
+        this.judgeRun({ voltageV: ub, rpm }, engine, notSent);
+    }
+
+    /** The battery and the engine against what a run needs (policy OWNER_RULES.measureBeforeSend). */
+    private judgeRun(
+        measured: { voltageV: number | null; rpm: number | null },
+        engine: 'off' | 'run' | null,
+        notSent: (reason: 'link' | 'voltage' | 'engine', why: string, measured?: { voltageV?: number | null; rpm?: number | null }) => NotSentError,
+    ): void {
+        const { voltageV: ub, rpm } = measured;
         if (ub === null || !Number.isFinite(ub)) throw notSent('voltage', 'the battery voltage could not be read', measured);
         if (ub < MIN_RUN_VOLTAGE) throw notSent('voltage', `the battery reads ${ub.toFixed(1)} V, under ${MIN_RUN_VOLTAGE} V`, measured);
         if (engine === 'off' && (rpm === null || rpm > 0)) throw notSent('engine', `its SGBD asks for the engine stopped, and it reads ${rpm ?? '—'} rpm`, measured);
@@ -883,7 +965,8 @@ export class LinkSession {
                                   const ident = practiceCar.idents[DME_ADDRESS];
                                   const dme = practiceModelFor(fleet, ident)?.module ?? practiceDmeOf(ident);
                                   const table = dme ? await loadSgbdResults(dme) : null;
-                                  return new PracticePort([address, ...practiceCar.fitted], table?.practiceLearned, fleet);
+                                  const model = practiceModelFor(fleet, ident);
+                                  return new PracticePort([address, ...practiceCar.fitted], table?.practiceLearned, fleet, model && table ? practiceBatteryOf(model, table, await loadJobFramesOracle()) : null);
                               },
                           }),
                       }
@@ -2021,6 +2104,26 @@ export class LinkSession {
     readonly heartbeat = (): void => {
         if (this.busy || this.polling || this.beating) return;
         const link = this.link;
+        // Another E46's DME whose own speed job has not been seen moving on this car: read it every
+        // fifth beat (10 s) on a quiet line, so a short drive with the cable in opens it (D3). A read
+        // the owner decided goes while moving (r_status). Not in PRACTICE, not once it has been seen.
+        if (link && this.modeNow === 'vehicle' && this.fitmentNow.has(DME_ADDRESS) && !isM3(this.fitmentNow) && !link.isBusy) {
+            const dme = this.fitmentNow.get(DME_ADDRESS)?.moduleId;
+            const seen = !dme || speedSourcesFor(dme, null).some((x) => x.moduleId === dme && x.usable) || (this.handlers.speedSourceSeen?.(dme) ?? false);
+            if (!seen && ++this.beatsSinceSpeed >= 5) {
+                this.beatsSinceSpeed = 0;
+                this.beating = true;
+                void this.readDmeState(link)
+                    .then((st) => {
+                        if (st && st.speedKmh !== null && this.link === link) this.noteVehicleState({ speedKmh: st.speedKmh, speedCanKmh: null, rpm: st.rpm, voltageV: st.voltageV, at: appNow() });
+                    })
+                    .catch(() => undefined)
+                    .finally(() => {
+                        this.beating = false;
+                    });
+                return;
+            }
+        }
         const at = this.sessionAddress;
         const target = this.target;
         if (!link || at === null || target.address !== at) return;
@@ -2118,4 +2221,23 @@ export class LinkSession {
         this.logLines = [];
         this.update({ log: [] });
     };
+}
+
+/**
+ * Another E46's DME on the practice car: its battery, where its own STATUS_UBATT reads it in the block
+ * the practice car answers (practiceDmeBattery), so the battery preflight measures 12.5 V parked and
+ * 13.9 V running as it would on such a car.
+ */
+function practiceBatteryOf(model: PracticeFleet['models'][string], table: SgbdResultsTable, oracle: JobFramesOracle | null): PracticeBattery | null {
+    const sends = oracle?.jobs[model.module + ':STATUS_UBATT']?.cases.find((c) => c.args.length === 0 && c.sends.length === 1)?.sends[0];
+    const request = sends ? telegramBytes(sends) : null;
+    if (!sends || !request || request[2] !== Ds2Control.READ_IO_STATUS) return null;
+    const learned = table.practiceLearned?.module === model.module ? table.practiceLearned : undefined;
+    const block = request[3];
+    const base = learned && block === learned.speedBlock ? Uint8Array.from(learned.payload) : new Uint8Array(model.rpm?.length ?? 32);
+    const keep = [
+        ...(model.rpm ? Array.from({ length: model.rpm.width }, (_, k) => model.rpm!.offset + k) : []),
+        ...(learned && block === learned.speedBlock ? [learned.speedOffset] : []),
+    ];
+    return learnPracticeBattery(table, 'STATUS_UBATT', sends, base, keep);
 }

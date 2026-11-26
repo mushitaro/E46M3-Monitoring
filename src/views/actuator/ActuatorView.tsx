@@ -323,7 +323,11 @@ function VariantRow({ variant, onConfirm }: { variant: Exclude<VariantState, { s
     return (
         <div className="mb-2 border-b border-slate-800 pb-2">
             <p className="text-[11px] leading-relaxed text-amber-400">
-                {variant.state === 'ruledOut' ? t.variant_ruledOut(variant.hex, variant.other) : t.variant_ask(variant.hex, decidedByYear(variant.candidates))}
+                {variant.state === 'ruledOut'
+                    ? variant.absent
+                        ? t.variant_absent(variant.hex)
+                        : t.variant_ruledOut(variant.hex, variant.other)
+                    : t.variant_ask(variant.hex, decidedByYear(variant.candidates))}
             </p>
             {variant.state === 'ask' && (
                 <div className="mt-1.5 flex flex-wrap gap-4">

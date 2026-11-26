@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { mayActuate } from '../actuationGate.ts';
 import type { CatalogJob, EcuProfile } from '../ecuCatalog.ts';
-import { EMPTY_LEDGER, recordPracticeRun } from '../ledger.ts';
+import { EMPTY_LEDGER } from '../ledger.ts';
 import { mayRun } from '../runGate.ts';
 import { HAVE_SHIPPED_DATA, readShipped } from '../testing/shipped.ts';
 import { agreedCasesFrom, agreedFrameFrom, isAgreedFor, runName, telegramOfAgreed, type JobFramesOracle } from './agreedFrame.ts';
@@ -73,16 +73,14 @@ describe.skipIf(!HAVE_SHIPPED_DATA)('the frames a job that takes values may send
         expect(mayActuate(job(), telegramOfAgreed(f), EMPTY_LEDGER, { ...ctx, args: ['HYDROPUMPE', 'AKTIV', '1'], agreed: f }).allowed).toBe(false);
     });
 
-    it('on a car, wants this part practised, not another', () => {
+    it('on a car, runs these values parked, with their terms, and not others', () => {
         const r = agreedFrameFrom(oracle(), smg2(), 'smg2', 0x32, 'STEUERN_STELLGLIED', HYDRO);
         if (!r.ok) throw new Error(r.why);
         const f = r.frame;
         const ctx = { moduleId: 'smg2', motion: 'parked' as const, group: 'drivetrain', args: HYDRO, agreed: f };
-        expect(mayRun(job(), telegramOfAgreed(f), EMPTY_LEDGER, ctx)).toMatchObject({ allowed: false, reason: 'run_block_practiceFirst' });
-        const other = recordPracticeRun(EMPTY_LEDGER, 'smg2:STEUERN_STELLGLIED(MAGNETVENTIL_KUPPLUNG)', '2026-11-17T00:00:00Z');
-        expect(mayRun(job(), telegramOfAgreed(f), other, ctx)).toMatchObject({ allowed: false, reason: 'run_block_practiceFirst' });
-        const practised = recordPracticeRun(EMPTY_LEDGER, 'smg2:STEUERN_STELLGLIED(HYDROPUMPE)', '2026-11-17T00:00:00Z');
-        expect(mayRun(job(), telegramOfAgreed(f), practised, ctx)).toMatchObject({ allowed: true, requires: 'parked' });
-        expect(mayRun(job(), telegramOfAgreed(f), practised, { ...ctx, motion: 'moving' })).toMatchObject({ allowed: false, reason: 'run_block_moving' });
+        // PRACTICE first is the build's, for every part (owner, 2026-11-26: src/lib/practiceEveryItem.test.ts).
+        expect(mayRun(job(), telegramOfAgreed(f), EMPTY_LEDGER, ctx)).toMatchObject({ allowed: true, requires: 'parked', actuation: { nature: 'a_smg' } });
+        expect(mayRun(job(), telegramOfAgreed(f), EMPTY_LEDGER, { ...ctx, motion: 'moving' })).toMatchObject({ allowed: false, reason: 'run_block_moving' });
+        expect(mayRun(job(), telegramOfAgreed(f), EMPTY_LEDGER, { ...ctx, args: ['HYDROPUMPE', 'AKTIV', '1'] }).allowed).toBe(false);
     });
 });

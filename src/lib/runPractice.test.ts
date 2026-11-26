@@ -5,10 +5,10 @@ import { practiceBus, practiceKwpAnswer, setPracticeAnswers, type EcuIndex, type
 import { runCoverage } from './runCoverage';
 
 /**
- * Every job that runs, runs in PRACTICE first (owner, 2026-11-15; completion criteria, 2026-11-18): the
- * practice car answers every frame of it, and of its stop, positively — what EdiabasLib's simulation
- * answered, for a frame it was run with. A frame PRACTICE refuses is a job that could never be practised,
- * and so never run on a car.
+ * Every job that runs, runs in PRACTICE first (owner, 2026-11-15; completion criteria, 2026-11-18; since
+ * 2026-11-26 the build does it, src/lib/practiceEveryItem.test.ts): the practice car answers every frame of
+ * it, and of its stop, positively — what EdiabasLib's simulation answered, for a frame it was run with. A
+ * frame PRACTICE refuses is a job the build could not practise, and the build would not ship.
  */
 const DATA = path.resolve(import.meta.dirname, '..', '..', 'public', 'ecu-data');
 const HAVE = existsSync(path.join(DATA, 'job-frames.oracle.json'));

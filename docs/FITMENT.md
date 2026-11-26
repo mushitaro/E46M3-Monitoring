@@ -202,8 +202,10 @@ GREN BLUE SUITE）は分け、どちらにも車種を選ぶ操作は置かな�
 
 - アドレスは `dump_modules.py` の実送信 IDENT（`12 04 00`・`32 04 00`）。`fit` は `nonm3`（「M3 以外の E46」）。
 - 送るのは今までどおり、選ばれたモジュール自身の SGBD の電文だけ。M3 にこれらの電文は行かない。
-- 読取は `runGate` の判断のまま。これらの車の速度源（MS42・MS43 は DME か KOMBI、M43 は KOMBI）は実車で
-  確かめるまで使わないので、停車を要る読取・故障の消去は閉じたまま（IDENT と故障の読み取りは速度を待たない）。
+- 読取は `runGate` の判断のまま。これらの車の停車・電圧・エンジンは、その DME 自身のジョブ（STATUS_GESCHWINDIGKEIT・
+  STATUS_UBATT・STATUS_MOTORDREHZAHL。電文は EdiabasLib と一致したもの）で測る（`session.ts` の `readDmeState`）。
+  車速の 0 を停車の証にするのは、その車でケーブルをつないだまま一度 0 より上を見てから（アプリが端末に記録する。
+  運営者 2026-11-26、`docs/NO-STOP.md` §4 D3）。人が `usable` を書き換えるのを待たない。
 - 故障の文：`tools/sgbd/gen_fault_layouts.py` が、各モジュール自身の FS_LESEN を EdiabasLib の模擬で走らせて
   故障コードの場所を確かめ（`fault-layouts.json`）、その SGBD の FORTTEXTE で名前を付ける。KOMBI46・46R・
   DSC_E46・ASCMK20・MS42・MS43・BMS43・BMS46（DS0・DS1）・GS20。**実車ではまだ確かめていない**（画面と点検報告が

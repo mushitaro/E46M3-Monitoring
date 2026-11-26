@@ -19,7 +19,7 @@ import { takeLeftRunning, useActuatorArming, type LeftRunning } from '@/hooks/us
 import type { Stopped } from '@/lib/arming';
 import { partName, partTable } from '@/lib/partName';
 import { notSentLine } from '@/lib/notSentText';
-import { carKey, choiceFor, decidedByYear, identifiedAt, readChoices, variantRefusal, variantState, withChoice, VARIANT_CHOICE_KEY, type VariantChoices } from '@/lib/variantChoice';
+import { carKey, choiceFor, decidedByYear, identifiedAt, readChoices, silentAt, variantRefusal, variantState, withChoice, VARIANT_CHOICE_KEY, type VariantChoices, type VariantState } from '@/lib/variantChoice';
 import type { ProcedureEnd } from '@/lib/procedureEnd';
 import { procedureReason } from '@/lib/procedureEnd';
 import { loadVariantRules, ruleFor, type VariantRules } from '@tsunagi/monitoring-engine';
@@ -85,6 +85,7 @@ import { SyncPanel } from '@/views/sessions/SyncPanel';
 import { useJournal } from '@/views/sessions/useJournal';
 import { useE2EDoor } from '@/lib/e2e';
 import { useFailureNotes, useSessions } from '@/views/sessions/useSessions';
+import { readSpeedSourcesSeen, writeSpeedSourcesSeen } from '@/lib/speedSourcesSeen';
 
 /** Below 900, the window that is not up: still laid out, neither seen nor touched. From 900 all are up. */
 const NARROW_HIDDEN = 'invisible pointer-events-none min-[900px]:visible min-[900px]:pointer-events-auto';
@@ -261,9 +262,9 @@ export default function Home() {
             ),
         [],
     );
-    // A job that drives something, run in PRACTICE through the real send path: the evidence the
-    // owner's rule asks for before it goes to the car (policy: practice first). And every run on the
-    // car, either way, into the ledger (policy: record runs).
+    // A job that drives something, run in PRACTICE through the real send path: kept in the ledger as
+    // practice (the rule itself is the build's since 2026-11-26: src/lib/practiceEveryItem.test.ts).
+    // And every run on the car, either way, into the ledger (policy: record runs).
     const onPracticed = useCallback(
         (p: { moduleId: string; jobId: string; at: string }) => setObserved((l) => recordPracticeRun(l, `${p.moduleId}:${p.jobId}`, p.at)),
         [],
@@ -273,6 +274,17 @@ export default function Home() {
             setObserved((l) => recordVehicleRun(l, `${r.moduleId}:${r.jobId}`, { at: r.at, telegram: r.telegram, response: r.response, outcome: r.outcome, ecuIdent: r.ecuIdent })),
         [],
     );
+    // Another E46's DME whose own speed job has been seen above 0 on a car (D3, owner 2026-11-26): its 0
+    // then means stationary. Kept on this device by the DME's module id (a fact about that DME's job,
+    // not about one car), so a short drive with the cable in opens it once.
+    const [speedSeen, setSpeedSeen] = useState<ReadonlySet<string>>(() => new Set(readSpeedSourcesSeen()));
+    const speedSourceSeen = useCallback((dme: string) => speedSeen.has(dme), [speedSeen]);
+    const onSpeedSourceSeen = useCallback((s: { moduleId: string }) => setSpeedSeen((all) => {
+        if (all.has(s.moduleId)) return all;
+        const next = new Set(all).add(s.moduleId);
+        writeSpeedSourcesSeen([...next]);
+        return next;
+    }), []);
     // The owner's press in SESSION SYNC → WHILE MOVING, after the confirmation. grantMovingOk refuses
     // anything without enough stationary answers, so a stale screen cannot clear more than it showed.
     const onGrantMovingOk = useCallback(
@@ -280,7 +292,7 @@ export default function Home() {
         [],
     );
     // Every read sent to the car, either way, is a read record in the WORKS build (lib/sync/readRecords).
-    const link = useDs2Link({ onFailure: failures.onFailure, target, onObserved, onRead: sessionsEnabled ? recordRead : undefined, onPracticed, onActuated });
+    const link = useDs2Link({ onFailure: failures.onFailure, target, onObserved, onRead: sessionsEnabled ? recordRead : undefined, onPracticed, onActuated, speedSourceSeen, onSpeedSourceSeen });
 
     // The kill list: fetched when the page opens and every ten minutes, from this origin. It can
     // only withdraw, never grant (lib/ledger), and a failed fetch leaves the last list standing.
@@ -796,6 +808,7 @@ export default function Home() {
                 hasRule: !!variantRules && !!ruleFor(variantRules, entry.address),
                 identified: identifiedAt(entry.address, link.fitment, link.scan),
                 chosen: choiceFor(variantChoices, car, entry.address),
+                silent: silentAt(entry.address, link.scan),
                 nameOf: (m) => moduleName(ecuIndex, m) ?? m,
             });
         },
@@ -822,6 +835,23 @@ export default function Home() {
         (id: string) => variantRefusal(variantOf(id), moduleName(ecuIndex, id) ?? id),
         [variantOf, ecuIndex],
     );
+    // The owner's words, recorded by the assistant where the screen's choice goes (monitoring_variant, D2).
+    const recordVariant = useCallback(
+        (id: string): { ok: true; address: number } | { ok: false; reason: string } => {
+            const entry = ecuIndex?.modules.find((m) => m.id === id);
+            if (!entry) return { ok: false, reason: `${id} is not a module of this app.` };
+            const v = variantOf(id);
+            if (v.state === 'ruledOut' && !v.absent) return { ok: false, reason: variantRefusal(v, moduleName(ecuIndex, id) ?? id)! };
+            if (v.state === 'ok' && choiceFor(variantChoices, car, entry.address) !== id) {
+                return { ok: false, reason: `Which module answers at 0x${entry.address.toString(16).toUpperCase().padStart(2, '0')} is not the owner's to say: its IDENT decides, or no other module of this app shares it.` };
+            }
+            confirmVariant(entry.address, id);
+            return { ok: true, address: entry.address };
+        },
+        [ecuIndex, variantOf, variantChoices, car, confirmVariant],
+    );
+    const variantLine = (v: Exclude<VariantState, { state: 'ok' }>) =>
+        v.state === 'ruledOut' ? (v.absent ? t.variant_absent(v.hex) : t.variant_ruledOut(v.hex, v.other)) : t.variant_ask(v.hex, decidedByYear(v.candidates));
 
     // Modules the car's IDENT (or the owner) ruled out at their address: not offered on the select (SC10 F01).
     const ruledOutModules = useMemo(
@@ -829,7 +859,7 @@ export default function Home() {
         [ecuIndex, ecuId, variantOf],
     );
 
-    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, probeSessions, mode, tab, changeTab, showPane: setPane, selectJob, arming, startProcedure, workflows, switchModule, startScan, updateWaiting, allModules: scopeAll, syncInvestigations, defaultDevice: t.assistant_defaultDevice, noteSentOnce, pickSet, variantUnconfirmed, leftRunning, lastProcedure });
+    const facade = useMonitoringFacade({ link, ecuId, ecuIndex, catalog, target, ledger, datalog, sessions, probe, probeSessions, mode, tab, changeTab, showPane: setPane, selectJob, arming, startProcedure, workflows, switchModule, startScan, updateWaiting, allModules: scopeAll, syncInvestigations, defaultDevice: t.assistant_defaultDevice, noteSentOnce, pickSet, variantUnconfirmed, recordVariant, leftRunning, lastProcedure });
     // The end-to-end scenarios' door to the same tools (lib/e2e): a test build only.
     useE2EDoor(facade);
     const assistant = useAssistantBridge({
@@ -882,7 +912,7 @@ export default function Home() {
         confirmRun: () => {
             // Which module answers at this address is the IDENT's, or the owner's to say on ACTUATOR, first.
             const v = variantOf(ecuId);
-            if (v.state !== 'ok') return setScreenNotice(v.state === 'ruledOut' ? t.variant_ruledOut(v.hex, v.other) : t.variant_ask(v.hex, decidedByYear(v.candidates)));
+            if (v.state !== 'ok') return setScreenNotice(variantLine(v));
             if (selectedJob && runVerdict?.allowed) setServiceGate({ job: selectedJob, verdict: runVerdict });
         },
         probe: probe.progress ? { progress: probe.progress, stop: probe.stop, moduleName: (id) => moduleName(ecuIndex, id) ?? id } : undefined,
@@ -1266,7 +1296,13 @@ export default function Home() {
                                 has no release job, and a disabled STOP would imply
                                 one exists. */}
                             {tab === 'service' && selectedJob && hasStopControl(operationFor(selectedJob)) && (
-                                <TextButton disabled tone="destructive" Icon={Square} title={t.gate_practiceOnly}>
+                                <TextButton
+                                    tone="destructive"
+                                    Icon={Square}
+                                    disabled={!arming.anyArmed}
+                                    title={arming.anyArmed ? undefined : t.stop_nothingOn}
+                                    onClick={() => void stopAll('stop')}
+                                >
                                     {operationFor(selectedJob).kind === 'procedure' ? t.op_abort : t.op_stop}
                                 </TextButton>
                             )}

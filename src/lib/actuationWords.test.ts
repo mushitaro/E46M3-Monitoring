@@ -3,7 +3,7 @@ import type { CatalogJob, NotSent } from '@tsunagi/monitoring-engine';
 import { assistantMayStart, notAnOk, tableRefusal } from './actuation';
 import { notSentLine, notSentSentence, type NotSentWords } from './notSentText';
 import { partName } from './partName';
-import { carKey, choiceFor, variantRefusal, variantState, withChoice } from './variantChoice';
+import { carKey, choiceFor, silentAt, variantRefusal, variantState, withChoice } from './variantChoice';
 import type { Smg2Workflows } from './smg2Workflows';
 
 const job = (id: string, cls: CatalogJob['class'] = 'test'): CatalogJob => ({ id, class: cls, args: [], op: {} }) as unknown as CatalogJob;
@@ -88,5 +88,19 @@ describe('which module answers at an address (IJ F01, SC10 F01)', () => {
         const v = variantState({ ...base, candidates: [], hasRule: true, moduleId: 'smg2', address: 0x32, identified: { moduleId: 'gs20', sgbd: 'GS20' }, nameOf: () => 'GS20' });
         expect(v).toMatchObject({ state: 'ruledOut', other: 'GS20' });
         expect(variantRefusal(v, 'SMG II')).toMatch(/0x32 is GS20/);
+    });
+    it('takes an address where nothing answered in the last scan as not fitted, not a question (D2, 2026-11-26)', () => {
+        const scan = { results: [{ address: '0x56', modules: ['ascmk20', 'dsc_e46'], outcome: 'silent', exchanges: [] }] } as never;
+        expect(silentAt(0x56, scan)).toBe(true);
+        expect(silentAt(0x60, scan)).toBe(false);
+        const v = variantState({ ...base, moduleId: 'dsc_e46', address: 0x56, silent: true });
+        expect(v).toMatchObject({ state: 'ruledOut', absent: true });
+        expect(variantRefusal(v, 'DSC')).toMatch(/not fitted/);
+        // The owner's word wins over a silent scan.
+        const chosen = choiceFor(withChoice({}, 'car', 0x56, 'dsc_e46'), 'car', 0x56);
+        expect(variantState({ ...base, moduleId: 'dsc_e46', address: 0x56, silent: true, chosen }).state).toBe('ok');
+    });
+    it('tells the assistant to ask the owner and record their words (monitoring_variant)', () => {
+        expect(variantRefusal(variantState({ ...base, moduleId: 'dsc_e46', address: 0x56 }), 'DSC')).toMatch(/monitoring_variant/);
     });
 });

@@ -10,10 +10,11 @@
  * editing code. That is the wrong shape twice over: verification is per-job and
  * it is EVIDENCE, so it belongs in data, next to the evidence.
  *
- * Nothing in this module gates a write today, because the app has no write
- * paths. It exists first so that the answer to "may this run on a car?" is
- * already a lookup by the time there is something to ask it about — retrofitting
- * a gate around code that already runs is how gates end up with holes.
+ * What it records is evidence, and the app records it by itself (docs/NO-STOP.md §1.3): reads that
+ * answered parked, practice runs, and every run on the car (`recordVehicleRun`). It does not hold back
+ * what has not been confirmed: "candidate" is provenance to say alongside, never a refusal (owner,
+ * 2026-11-26). What it does stop is the owner's own withdrawal (`withdrawn`, the kill switch) — the
+ * only thing here the run gate (`runGate.mayRun`) reads as a no.
  */
 import { appNow, learnServerTime } from './clock.ts';
 
@@ -70,8 +71,8 @@ export interface VerificationRecord {
     faultsBefore?: number | null;
     faultsAfter?: number | null;
     /**
-     * A job that drives something, run in PRACTICE on this device through the app's own send path
-     * (policy OWNER_RULES.practiceFirst: nothing goes to the car that has not run in PRACTICE first).
+     * A job that drives something, run in PRACTICE on this device through the app's own send path.
+     * A record only: practice first is the build's (policy OWNER_RULES.practiceFirst, 2026-11-26).
      */
     practiced?: number;
     practicedAt?: string;
@@ -124,7 +125,7 @@ export function recordParkedObservation(
 }
 
 /**
- * Records a PRACTICE run of a job that drives something (policy OWNER_RULES.practiceFirst).
+ * Records a PRACTICE run of a job that drives something (a record; the gate no longer asks for it).
  *
  * Evidence about this app, not about the car: the send path, the frame and the stop ran against the
  * simulated ECU. It changes no status — a withdrawn job stays withdrawn, and the gate still decides.

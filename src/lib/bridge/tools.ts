@@ -274,7 +274,7 @@ export const MONITORING_TOOLS = {
     monitoring_actuate: {
         scope: 'control',
         description:
-            "Start one job that makes the car do something — only those the owner's table opens to the assistant (the rest: monitoring_stage, for a person on the screen). Before calling: read back to the owner what will move, on which module, and its preconditions, and wait for their OK; pass their words as owner_said. Parked only: refused while the car moves. The same gate as the screen's RUN, the car measured (standstill, battery 12 V or more, engine state) just before it is sent, one output on at a time, each stopping by itself after its time-out. phase start leaves the output on until its stop (monitoring_stop_outputs, the screen's STOP, or the time-out); pulse sends it once. A job that stays on until its stop (SMG II's STEUERN_STELLGLIED) always starts that way, whatever phase is passed. Only for the module in session; practised first on PRACTICE before it runs on a car. A job that takes values (SMG II's STEUERN_STELLGLIED: which part, how, how much) runs only with a whole set its own SGBD code and EdiabasLib build the same frame for: call it without values to get those sets, read back the one meant, and pass it as values.",
+            "Start one job that makes the car do something — only those the owner's table opens to the assistant (the rest: monitoring_stage, for a person on the screen). Before calling: read back to the owner what will move, on which module, and its preconditions, and wait for their OK; pass their words as owner_said. Parked only: refused while the car moves. The same gate as the screen's RUN, the car measured (standstill, battery 12 V or more, engine state) just before it is sent, one output on at a time, each stopping by itself after its time-out. phase start leaves the output on until its stop (monitoring_stop_outputs, the screen's STOP, or the time-out); pulse sends it once. A job that stays on until its stop (SMG II's STEUERN_STELLGLIED) always starts that way, whatever phase is passed. Only for the module in session. Nothing is asked to be practised on this device first: the build has run every item through this same path on the practice car (owner, 2026-11-26), so 'not confirmed on a car' is said alongside, never a reason to stop. A job that takes values (SMG II's STEUERN_STELLGLIED: which part, how, how much) runs only with a whole set its own SGBD code and EdiabasLib build the same frame for: call it without values to get those sets, read back the one meant, and pass it as values.",
         inputSchema: obj(
             {
                 module: MODULE,
@@ -295,7 +295,7 @@ export const MONITORING_TOOLS = {
     monitoring_procedure: {
         scope: 'control',
         description:
-            "Start one of SMG II's guided procedures (its test programs: bleeding, clutch bite point, valve characteristics, accumulator pressure, gear positions, a complete gearbox adaptation…), where the owner's table opens procedures to the assistant. Before calling: read back the procedure, every precondition its dialog lists and what will move, wait for the owner's OK, and pass their words as owner_said. Parked only, with SMG II on the screen and connected. The screen opens the procedure's dialog with its preconditions ticked on the owner's word and runs it through the same gate as its START: practised first on PRACTICE, the car measured (standstill, battery, engine as the procedure asks), the test program stopped first and last. It runs to its end; the screen's ABORT or monitoring_stop_outputs ends it sooner.",
+            "Start one of SMG II's guided procedures (its test programs: bleeding, clutch bite point, valve characteristics, accumulator pressure, gear positions, a complete gearbox adaptation…), where the owner's table opens procedures to the assistant. Before calling: read back the procedure, every precondition its dialog lists and what will move, wait for the owner's OK, and pass their words as owner_said. Parked only, with SMG II on the screen and connected. The screen opens the procedure's dialog with its preconditions ticked on the owner's word and runs it through the same gate as its START: the car measured (standstill, battery, engine as the procedure asks), the test program stopped first and last. It runs to its end; the screen's ABORT or monitoring_stop_outputs ends it sooner.",
         inputSchema: obj(
             {
                 procedure: str('Its program number, as monitoring_catalog lists it (0x01 … 0x15).'),
@@ -303,6 +303,18 @@ export const MONITORING_TOOLS = {
                 owner_said: str("The owner's own words of OK, given after the read-back."),
             },
             ['procedure', 'owner_said'],
+        ),
+    },
+    monitoring_variant: {
+        scope: 'control',
+        description:
+            "Record which of this app's modules is fitted at an address several share with no IDENT rule to tell them apart (0x56: ASC MK20 on an early car or DSC on a late one; the board monitors at 0xF0, the navigation computers at 0x7F, and others) — in the owner's own words, kept where the screen's ACTUATOR choice goes, once per car. Sends nothing. Until it is known, nothing that drives goes to that address (monitoring_actuate says so); an address where nothing answered in the last scan is taken as not fitted. Ask the owner which is fitted (by name, or by the car's year for 0x56) and pass their words. Refused where the car's IDENT already says which module is there.",
+        inputSchema: obj(
+            {
+                module: str('The module the owner says is fitted, as monitoring_modules lists it (dsc_e46, ascmk20, …).'),
+                owner_said: str("The owner's own words saying it is fitted."),
+            },
+            ['module', 'owner_said'],
         ),
     },
     monitoring_stop_outputs: {

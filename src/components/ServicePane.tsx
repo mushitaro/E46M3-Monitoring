@@ -398,13 +398,10 @@ function RiskPill({ risk }: { risk: Risk }) {
  */
 function VerifiedBadge({ verified, reason }: { verified: boolean; reason: string }) {
     const { t } = useLang();
-    if (!verified) {
-        return (
-            <span title={reason} className={`shrink-0 ${LABEL} text-slate-600`}>
-                {t.gate_unverified}
-            </span>
-        );
-    }
+    // Only what a car has shown. A row the ledger has nothing for says nothing: "not confirmed on a
+    // car" on every row read as a stop sign, and it never decided whether anything is sent
+    // (owner, 2026-11-26: docs/NO-STOP.md §1).
+    if (!verified) return null;
     return (
         <Pill tone="ok" title={reason}>
             {t.gate_verified}

@@ -5,9 +5,12 @@
  *     this one out (SC10 F01: on a car whose 0x32 is a GS20, SMG II is not offered and nothing of
  *     SMG II's is sent there).
  *   - An address several of this app's modules share with no group rule to tell them apart (0x56:
- *     ASC MK20 on an early car, DSC on a late one) is the owner's to say, once per car, on the screen
- *     (IJ F01). Until then nothing that drives goes there; reads stay as they are (variants: on an M3,
- *     the common frames).
+ *     ASC MK20 on an early car, DSC on a late one) is the owner's to say, once per car — on the screen
+ *     (IJ F01), or in words to the assistant, which records them in the same place (`monitoring_variant`,
+ *     owner 2026-11-26: docs/NO-STOP.md §4 D2). Until then nothing that drives goes there; reads stay
+ *     as they are (variants: on an M3, the common frames).
+ *   - An address where nothing answered in the last scan has none of them fitted (`absent`): not a
+ *     question for the owner.
  *
  * The owner's answer is kept on this device per car — by a digest of the VIN's last seven, never the
  * characters themselves (the VIN stays in the scan's own field only, U8) — or under one key while no
@@ -20,7 +23,7 @@ import type { Fitment, ScanRun } from '@tsunagi/monitoring-engine';
 export type VariantState =
     | { state: 'ok' }
     | { state: 'ask'; address: number; hex: string; candidates: { id: string; name: string; nameJa?: string }[] }
-    | { state: 'ruledOut'; address: number; hex: string; other: string };
+    | { state: 'ruledOut'; address: number; hex: string; other: string; absent?: true };
 
 /** The owner's answers: car key → address → module id. */
 export type VariantChoices = Record<string, Record<string, string>>;
@@ -59,15 +62,18 @@ export function variantState(input: {
     identified: { moduleId: string | null; sgbd: string | null } | null;
     /** The owner's answer for this car and address, if given. */
     chosen: string | null;
+    /** Nothing answered at the address in the last scan (`silentAt`). */
+    silent?: boolean;
     nameOf: (id: string) => string;
 }): VariantState {
-    const { moduleId, address, candidates, hasRule, identified, chosen, nameOf } = input;
+    const { moduleId, address, candidates, hasRule, identified, chosen, silent, nameOf } = input;
     const hex = hex2(address);
     if (identified && identified.moduleId !== moduleId) {
         return { state: 'ruledOut', address, hex, other: identified.moduleId ? nameOf(identified.moduleId) : (identified.sgbd ?? '?') };
     }
     if (hasRule || candidates.length < 2) return { state: 'ok' };
     if (chosen === moduleId) return { state: 'ok' };
+    if (!chosen && silent) return { state: 'ruledOut', address, hex, other: 'nothing', absent: true };
     if (chosen) return { state: 'ruledOut', address, hex, other: nameOf(chosen) };
     return { state: 'ask', address, hex, candidates };
 }
@@ -82,12 +88,20 @@ export function decidedByYear(candidates: readonly { id: string }[]): boolean {
     return ids.has('ascmk20') && ids.has('dsc_e46');
 }
 
+/** Whether the last scan asked the address and nothing answered. */
+export function silentAt(address: number, scan: ScanRun | null): boolean {
+    const r = scan?.results.find((x) => String(x.address).toLowerCase() === hex2(address).toLowerCase() || Number(x.address) === address);
+    return r?.outcome === 'silent';
+}
+
 /** The assistant's sentence for a state that is not ok, or null. */
 export function variantRefusal(v: VariantState, moduleName: string): string | null {
+    if (v.state === 'ruledOut' && v.absent)
+        return `On this car nothing answered at ${v.hex} in the last scan: ${moduleName} is taken as not fitted, and nothing of it is offered. If the owner says it is fitted, record their words with monitoring_variant.`;
     if (v.state === 'ruledOut')
         return `On this car ${v.hex} is ${v.other}, not ${moduleName}: ${moduleName}'s jobs are not run here, and nothing of it is offered. Say so to the owner.`;
     if (v.state === 'ask')
-        return `${v.hex} may be ${v.candidates.map((c) => c.name).join(' or ')} (${decidedByYear(v.candidates) ? "the car's year decides, and " : ''}no IDENT rule tells them apart). Nothing that drives is sent there until the owner has said which, once, on the screen (ACTUATOR asks). Reads go on as before.`;
+        return `${v.hex} may be ${v.candidates.map((c) => c.name).join(' or ')} (${decidedByYear(v.candidates) ? "the car's year decides, and " : ''}no IDENT rule tells them apart). Nothing that drives is sent there until the owner has said which: ask them which is fitted, and record their answer with monitoring_variant (or they choose on ACTUATOR). Once per car. Reads go on as before.`;
     return null;
 }
 

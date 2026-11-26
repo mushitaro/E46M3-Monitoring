@@ -131,7 +131,7 @@ function StopControl({ hydraulics }: { hydraulics: DscHydraulics }) {
     return (
         <Section title={t.dsc_stop} actions={<Provenance>{t.dsc_appConstruct}</Provenance>}>
             <div className="flex flex-wrap items-center gap-3">
-                <TextButton disabled tone="destructive" Icon={AlertTriangle} title={t.gate_practiceOnly}>
+                <TextButton disabled tone="destructive" Icon={AlertTriangle} title={t.stop_notAJob}>
                     {t.dsc_allOutputsOff}
                 </TextButton>
             </div>

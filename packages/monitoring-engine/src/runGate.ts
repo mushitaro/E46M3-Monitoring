@@ -55,10 +55,15 @@
  * nature a when (moving / parked), a how far (run / show / off) and a who (screen / assistant).
  * A read goes as before, its frame carrying a read control byte, and goes while moving where the
  * owner said so. A job that drives something goes when its nature is `run`, its frame is certain
- * and takes no arguments, it has run in PRACTICE on this device, and the car is not moving; the
+ * and takes no arguments, and the car is not moving; the
  * verdict carries its terms and `permitFor` the permit the link checks against the exact bytes,
  * before measuring the car (stationary, battery, engine) and sending. `show` is on the screen and
  * never sent; `off` is not on the screen.
+ *
+ * PRACTICE first is the build's, not each device's (owner, 2026-11-26, docs/NO-STOP.md D1): every item
+ * the owner's table runs is run through the link session on the practice car by CI
+ * (src/lib/practiceEveryItem.test.ts) before a build is delivered, so the send path never first runs on
+ * a car. The ledger still records the PRACTICE runs a device makes; it no longer holds a run back.
  *
  * Fault-memory clearing is the exception and it is handled separately — see
  * `clearFaultsCommand`.
@@ -66,7 +71,7 @@
 
 import { Ds2Control } from '@tsunagi/ds2-core';
 import type { CatalogJob } from './ecuCatalog.ts';
-import { hasPracticed, mayReadWhileMoving, withdrawn, type Ledger } from './ledger.ts';
+import { mayReadWhileMoving, withdrawn, type Ledger } from './ledger.ts';
 import { DEFAULT_RUN_TIMEOUT_S, decisionFor, isReadNature, type Nature, type PolicyWho } from './policy.ts';
 import { isAgreedFor, runName, type AgreedFrame } from './sgbd/agreedFrame.ts';
 import { telegramIsCertain, type Telegram } from './telegrams.ts';
@@ -151,12 +156,10 @@ export type RunBlockKey =
     | 'run_block_needsArgs'
     | 'run_block_notRead'
     | 'run_block_controlWrites'
-    | 'run_block_notVerified'
     | 'run_block_revoked'
     | 'run_block_moving'
     | 'run_block_policyShow'
-    | 'run_block_policyOff'
-    | 'run_block_practiceFirst';
+    | 'run_block_policyOff';
 
 /**
  * What the link must measure immediately before the bytes go.
@@ -254,9 +257,10 @@ export function permitCovers(permit: ActuationPermit, moduleId: string, jobId: s
 
 /**
  * A module's own procedure — SMG II's TESTPRG_STARTEN with a program number — under the owner's
- * decision (`p_smg`, 2026-11-15): run, parked, once it has run in PRACTICE on this device. The
- * ledger keeps each program apart (`smg2:TESTPRG_STARTEN(0x01)`): practising one bleeds nothing
- * else open. Its frame is built from the job's own arguments (lib/procedureRun).
+ * decision (`p_smg`, 2026-11-15): run, parked. Each program has run in PRACTICE in the build
+ * (src/lib/practiceEveryItem.test.ts; owner, 2026-11-26). The ledger keeps each program apart
+ * (`smg2:TESTPRG_STARTEN(0x01)`), so a withdrawal of one stops only that one. Its frame is built from
+ * the job's own arguments (lib/procedureRun).
  */
 export function mayRunProcedure(
     moduleId: string,
@@ -270,7 +274,6 @@ export function mayRunProcedure(
     if (decision.how === 'show') return { allowed: false, reason: 'run_block_policyShow' };
     const id = `${moduleId}:${startJob.id}(${program})`;
     if (withdrawn(ledger, id) || withdrawn(ledger, `${moduleId}:${startJob.id}`)) return { allowed: false, reason: 'run_block_revoked' };
-    if (!hasPracticed(ledger, id)) return { allowed: false, reason: 'run_block_practiceFirst' };
     if (motion === 'moving') return { allowed: false, reason: 'run_block_moving' };
     return { allowed: true, id };
 }
@@ -420,10 +423,9 @@ function mayDrive(job: CatalogJob, telegram: Telegram | null, ledger: Ledger, ct
     const bytes = telegramBytes(telegram.hex);
     if (!bytes) return { allowed: false, reason: 'run_block_noTelegram' };
     const id = `${ctx.moduleId}:${job.id}`;
-    // A job that takes values is practised and recorded per part it drives (agreedFrame.runName).
+    // A job that takes values is withdrawn and recorded per part it drives (agreedFrame.runName).
     const runId = `${ctx.moduleId}:${runName(job.id, job.args.length ? ctx.args : undefined)}`;
     if (withdrawn(ledger, id) || withdrawn(ledger, runId)) return { allowed: false, reason: 'run_block_revoked' };
-    if (!hasPracticed(ledger, runId)) return { allowed: false, reason: 'run_block_practiceFirst' };
     // A job whose own SGBD asks for the car stationary goes parked whatever is decided
     // (OWNER_RULES.sgbdStationaryWins): measured again at the wire before it is sent.
     return { allowed: true, telegram, control: bytes[2], requires: 'parked', actuation: actuationTerms(job, decision), ...(job.args.length ? { args: [...(ctx.args ?? [])] } : {}) };

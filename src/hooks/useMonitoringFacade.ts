@@ -203,6 +203,8 @@ export function useMonitoringFacade(input: {
     pickSet: (moduleId: string, jobId: string, args: readonly string[] | null) => void;
     /** Why a module's jobs may not be started until the owner says which module answers at its address, or null. */
     variantUnconfirmed: (moduleId: string) => string | null;
+    /** Record the owner's words on which module answers at a shared address, where the screen's choice goes. */
+    recordVariant: (moduleId: string) => { ok: true; address: number } | { ok: false; reason: string };
     /** What the page before this one left on when it went away (useActuatorArming `leave`). */
     leftRunning: readonly LeftRunning[];
     /** How the last procedure ended (views/service/WizardDialog), or null. */
@@ -837,8 +839,19 @@ export function useMonitoringFacade(input: {
                 name: job.en,
                 mode: link.mode,
                 ownerSaid,
-                note: 'Its dialog is on the screen and runs it through the gate; it may still refuse there (not practised, not measured parked, battery, engine), or the module may refuse a step, and the dialog says why. It ends by itself, or with ABORT or monitoring_stop_outputs. monitoring_status lastProcedure says how it ended.',
+                note: 'Its dialog is on the screen and runs it through the gate; it may still refuse there (not measured parked, battery, engine), or the module may refuse a step, and the dialog says why. It ends by itself, or with ABORT or monitoring_stop_outputs. monitoring_status lastProcedure says how it ended.',
             };
+        },
+
+        variant: ({ module, ownerSaid }) => {
+            // The owner's own statement of the car's equipment: nothing is sent, and their words are what is recorded.
+            const said = ownerSaid.trim();
+            if (!said) return { recorded: false, reason: "Ask the owner which module is fitted and pass their words as owner_said." };
+            const r = input.recordVariant(module);
+            if (!r.ok) return { recorded: false, reason: r.reason };
+            const hex = `0x${r.address.toString(16).toUpperCase().padStart(2, '0')}`;
+            const others = (ecuIndex?.modules ?? []).filter((m) => m.address === r.address && m.id !== module).map((m) => m.id);
+            return { recorded: true, address: hex, module, ownerSaid: said, ruledOut: others, note: `Kept on this device for this car, as the screen keeps it. ${moduleName(module)} at ${hex}: what drives goes there through the same gate as any other module's.` };
         },
 
         stopOutputs: async () => {

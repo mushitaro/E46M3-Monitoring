@@ -140,6 +140,17 @@ describe('the intake report from a scan of the practice car', () => {
         expect(withVin).toMatchObject({ vin: VIN, vinShort: 'JR12345' });
         const two = buildIntakeCheck(input(await practiceScan({ kombi: [...ascii(VIN), 0x00, ...ascii('WBSBL93060JR99999')] }))).report;
         expect(two).toMatchObject({ vin: null, vinShort: null });
+        // Seventeen VIN characters that are not a VIN — a part number, sixteen digits and a letter, as
+        // a real car's identification answers spelled on 2026-11-26 — are neither the VIN nor its last seven.
+        const partNo = buildIntakeCheck(input(await practiceScan({ kombi: [0x01, ...ascii('7834511229876543A'), 0x00] }))).report;
+        expect(partNo).toMatchObject({ vin: null, vinShort: null });
+    });
+
+    it('takes the odometer from the cluster’s own read (scan.odometer)', async () => {
+        const scan = await practiceScan();
+        const km = (value: number | null) => ({ address: '0x80', moduleId: 'kombi46', job: 'AIF_GWSZ_LESEN', outcome: 'answered' as const, km: value });
+        expect(buildIntakeCheck(input({ ...scan, odometer: km(153728) })).report.odometerKm).toBe(153728);
+        expect(buildIntakeCheck(input({ ...scan, odometer: km(null) })).report.odometerKm).toBeNull();
     });
 
     it('takes the short VIN from the cluster’s own read (scan.vin), and nothing where the bytes disagree', async () => {

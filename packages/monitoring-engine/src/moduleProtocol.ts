@@ -19,6 +19,7 @@
  */
 
 import { CLUSTER_VIN_BLOCK, CLUSTER_VIN_CONTROL, CLUSTER_VIN_JOBS } from './clusterVin.ts';
+import { CLUSTER_ODOMETER_BLOCK, CLUSTER_ODOMETER_CONTROL, CLUSTER_ODOMETER_JOBS } from './clusterOdometer.ts';
 import { kwpFrameOf, type KwpFrame } from './kwpOnDs2.ts';
 import { telegramBytes } from './runGate.ts';
 import type { TelegramTable } from './telegrams.ts';
@@ -49,6 +50,8 @@ export interface ModuleProtocol {
      * (lib/probe/scan).
      */
     vin: (ProtocolFrame & { job: string }) | null;
+    /** The cluster's odometer read (lib/clusterOdometer): AIF block 1, `80 05 02 01`. Same rules as `vin`. */
+    odometer?: (ProtocolFrame & { job: string }) | null;
     /** Which decoder reads this module's answers. Null: none, and the bytes are the answer. */
     decoder: 'mss54' | null;
     /**
@@ -112,6 +115,7 @@ export function moduleProtocol(moduleId: string, address: number, table: Telegra
             keepAlive: null,
             endSession: null,
             vin: null,
+            odometer: null,
             decoder: null,
             kwp: { ident: frames('IDENT', 0x1a)[0] ?? null, faults: frames('FS_LESEN', 0x18) },
         };
@@ -121,6 +125,15 @@ export function moduleProtocol(moduleId: string, address: number, table: Telegra
     const vinFrame = (): (ProtocolFrame & { job: string }) | null => {
         for (const job of CLUSTER_VIN_JOBS[moduleId] ?? []) {
             const f = find([job], CLUSTER_VIN_CONTROL, 1).find((x) => x.payload.length === 1 && x.payload[0] === CLUSTER_VIN_BLOCK);
+            if (f) return { ...f, job };
+        }
+        return null;
+    };
+
+    // The same, for the odometer: AIF block 1.
+    const odometerFrame = (): (ProtocolFrame & { job: string }) | null => {
+        for (const job of CLUSTER_ODOMETER_JOBS[moduleId] ?? []) {
+            const f = find([job], CLUSTER_ODOMETER_CONTROL, 1).find((x) => x.payload.length === 1 && x.payload[0] === CLUSTER_ODOMETER_BLOCK);
             if (f) return { ...f, job };
         }
         return null;
@@ -141,6 +154,7 @@ export function moduleProtocol(moduleId: string, address: number, table: Telegra
                 : (find(['DIAGNOSE_AUFRECHT'], C.KEEP_ALIVE, 0)[0] ?? null),
         endSession: find(['DIAGNOSE_ENDE'], C.END_SESSION, 0)[0] ?? null,
         vin: vinFrame(),
+        odometer: odometerFrame(),
         decoder: moduleId === 'mss54' ? 'mss54' : null,
         kwp: null,
     };

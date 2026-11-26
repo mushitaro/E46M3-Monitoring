@@ -228,8 +228,10 @@ export function PlanSteps({ plan, datalog }: { plan: DatalogPlan; datalog: PlanR
           let state: string;
           let windows: Array<{ from: number; to: number; hit: number }> = [];
           if (s.kind === "capture") {
-            windows = captureWindows(selectedRows, s.condition, s.preS, s.postS, sinceS);
-            const caught = windows.length;
+            // Every stretch of the record goes to the comparison (the pull before the plan is the
+            // 「1 回目」 the next one is laid on); only those since the plan count as caught.
+            windows = captureWindows(selectedRows, s.condition, s.preS, s.postS);
+            const caught = windows.filter((w) => w.hit >= sinceS).length;
             state = caught > 0 ? t.datalog_planCaught(caught) : t.datalog_planWaiting;
           } else if (s.kind === "sample") {
             state = datalog.running ? t.datalog_planRecording : "—";

@@ -5,7 +5,8 @@
  * Pure. It reads only what the scan already read: nothing here is sent to the car, and nothing is
  * guessed. Where the scan does not know something, the report says null:
  *
- *   - the odometer: the scan does not read it;
+ *   - the odometer: the km the scan read from the instrument cluster itself (`scan.odometer`,
+ *     ../clusterOdometer; operator, 2026-11-26), null where it did not answer;
  *   - the VIN: the short one (last seven) is what the scan read from the instrument cluster itself
  *     (`scan.vin`, ../clusterVin; operator, 2026-11-10 A). A whole VIN is taken only from the bytes
  *     the scan read (and anything else the page read in the same episode), by the rule the desk's
@@ -163,12 +164,25 @@ function findingsOf(x: ScanResult, input: IntakeInput): IntakeFinding[] {
 }
 
 /** The one VIN the bytes spell, full and short; null where none or more than one is spelled. */
+/**
+ * A run of 17 VIN characters that can be a VIN (ISO 3779): a manufacturer code (WMI) with at least two
+ * letters, and letters beyond it. The masking rule (../investigation/redact) is wider on purpose: it
+ * hides anything that might be one. But a VIN is TAKEN only when it looks like one. On 2026-11-26 a
+ * real car's identification answers spelled a part number of sixteen digits and one letter, which
+ * the intake then reported as the car's VIN, and its last seven as the short VIN.
+ */
+export function plausibleVin(v: string): boolean {
+    if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(v)) return false;
+    const letters = (s: string) => (s.match(/[A-Z]/g) ?? []).length;
+    return letters(v.slice(0, 3)) >= 2 && letters(v) >= 4;
+}
+
 function vinOf(hexes: readonly string[]): { vin: string | null; vinShort: string | null } {
     const full = new Set<string>();
     const short = new Set<string>();
     for (const h of hexes) {
         const v = vinsInHex(h);
-        v.full.forEach((x) => full.add(x));
+        v.full.filter(plausibleVin).forEach((x) => full.add(x));
         v.short.forEach((x) => short.add(x));
     }
     const vin = full.size === 1 ? [...full][0] : null;
@@ -202,7 +216,7 @@ export function buildIntakeCheck(input: IntakeInput): { report: IntakeCheckRepor
         measuredAt: iso(scan.endedAt),
         clock: input.clockSet ? 'server' : 'device',
         scan: { startedAt: iso(scan.startedAt), end: scan.end },
-        odometerKm: null,
+        odometerKm: scan.odometer?.km ?? null,
         ...vinFields(scan, vinOf(read)),
         modules,
         findings: scan.results.flatMap((x) => findingsOf(x, input)).slice(0, 500),

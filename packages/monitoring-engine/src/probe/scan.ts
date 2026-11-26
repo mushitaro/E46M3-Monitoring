@@ -87,6 +87,7 @@
 import { isDs2Error, isPositiveResponse, toHex, type Ds2Frame, type RetryOptions } from '@tsunagi/ds2-core';
 import type { Ledger } from '../ledger.ts';
 import { clusterVinShort } from '../clusterVin.ts';
+import { clusterOdometerKm } from '../clusterOdometer.ts';
 import type { DecodedFault } from '../faultLayouts.ts';
 import { parseDtcsByStatus, type KwpDtc, type KwpFrame } from '../kwpOnDs2.ts';
 import type { ModuleProtocol, ProtocolFrame } from '../moduleProtocol.ts';
@@ -105,6 +106,8 @@ export interface ScanTarget {
     byModule: Record<string, ProtocolFrame[]>;
     /** Each candidate's own VIN read (the cluster's; lib/clusterVin), where it has one. */
     vinByModule?: Record<string, ProtocolFrame & { job: string }>;
+    /** Each candidate's own odometer read (the cluster's; lib/clusterOdometer), where it has one. */
+    odometerByModule?: Record<string, ProtocolFrame & { job: string }>;
     /** The IDENT every candidate's table carries, sent before the read on the M3 fitment. Null: they differ or have none. */
     ident: ProtocolFrame | null;
     /** The MSS54's own decoder. Null: the module's own SGBD code reads it where it can (`decodeBySgbd`). */
@@ -178,6 +181,17 @@ export interface ScanVinRead {
     reason?: string;
 }
 
+/** The cluster's odometer read in a scan (lib/clusterOdometer): the km only, never the bytes. */
+export interface ScanOdometerRead {
+    address: string;
+    moduleId: string;
+    /** `AIF_GWSZ_LESEN`, `STATUS_AIF_GWSZ_LESEN`. */
+    job: string;
+    outcome: 'answered' | 'rejected' | 'silent' | 'refused';
+    km: number | null;
+    reason?: string;
+}
+
 export interface ScanRun {
     startedAt: number;
     endedAt: number;
@@ -186,6 +200,8 @@ export interface ScanRun {
     results: ScanResult[];
     /** The cluster's VIN read, when one was sent; absent on scans kept before it (2026-11-11). */
     vin?: ScanVinRead | null;
+    /** The cluster's odometer read, when one was sent; absent on scans kept before it (2026-11-26). */
+    odometer?: ScanOdometerRead | null;
 }
 
 export interface ScanIdentity {
@@ -253,6 +269,7 @@ export function scanTargets(protocols: readonly ModuleProtocol[]): ScanTarget[] 
             frames,
             byModule: Object.fromEntries(group.map((p) => [p.moduleId, p.faults])),
             ...(group.some((p) => p.vin) ? { vinByModule: Object.fromEntries(group.flatMap((p) => (p.vin ? [[p.moduleId, p.vin]] : []))) } : {}),
+            ...(group.some((p) => p.odometer) ? { odometerByModule: Object.fromEntries(group.flatMap((p) => (p.odometer ? [[p.moduleId, p.odometer]] : []))) } : {}),
             ident: first.ident && rest.every((p) => p.ident?.hex === first.ident!.hex) ? first.ident : null,
             // The MSS54 is decoded wherever it is a candidate: its IDENT says whether it is the one here
             // (since 2026-11-11 0x12 also carries the non-M3 DMEs), and only then are its entries decoded.
@@ -265,7 +282,7 @@ export function scanTargets(protocols: readonly ModuleProtocol[]): ScanTarget[] 
 }
 
 export async function runScan(targets: readonly ScanTarget[], deps: ScanDeps): Promise<ScanRun> {
-    const run: ScanRun = { startedAt: deps.now(), endedAt: deps.now(), end: 'done', results: [], vin: null };
+    const run: ScanRun = { startedAt: deps.now(), endedAt: deps.now(), end: 'done', results: [], vin: null, odometer: null };
     const push = (r: ScanResult) => {
         run.results.push(r);
         deps.onResult?.(r);
@@ -370,6 +387,9 @@ export async function runScan(targets: readonly ScanTarget[], deps: ScanDeps): P
         const vinAfter = async (outcome: ScanOutcome) => {
             const vinFrame = verdict.basis === 'identified' ? t.vinByModule?.[chosen] : undefined;
             if (vinFrame && run.vin === null && outcome === 'answered') run.vin = await readVin(t.address, chosen, vinFrame, deps);
+            // The odometer, the same way (lib/clusterOdometer).
+            const kmFrame = verdict.basis === 'identified' ? t.odometerByModule?.[chosen] : undefined;
+            if (kmFrame && run.odometer == null && outcome === 'answered') run.odometer = await readOdometer(t.address, chosen, kmFrame, deps);
         };
 
         const blocked = modules.map((m) => mayRunProtocolRead(`${m}:FS_LESEN`, 'fault-read', deps.ledger(), 'unknown')).find((g) => !g.allowed) as
@@ -506,6 +526,22 @@ export async function runScan(targets: readonly ScanTarget[], deps: ScanDeps): P
     }
     run.endedAt = deps.now();
     return run;
+}
+
+/** One odometer read: the km, or why there are none. Never throws; never keeps the bytes. */
+async function readOdometer(address: number, moduleId: string, f: ProtocolFrame & { job: string }, deps: ScanDeps): Promise<ScanOdometerRead> {
+    const base = { address: hex2(address), moduleId, job: f.job };
+    const gate = mayRunProtocolRead(`${moduleId}:${f.job}`, 'identity-read', deps.ledger(), 'unknown');
+    if (!gate.allowed) return { ...base, outcome: 'refused', km: null, reason: gate.reason };
+    try {
+        const frame = await deps.exchange(address, moduleId, f.job, f, { attempts: 2 });
+        if (!isPositiveResponse(frame)) return { ...base, outcome: 'rejected', km: null, reason: `status 0x${frame.controlOrStatus.toString(16).padStart(2, '0')}` };
+        const km = clusterOdometerKm(frame.payload);
+        return { ...base, outcome: 'answered', km, ...(km === null ? { reason: 'the answer does not hold the odometer where the SGBD reads it' } : {}) };
+    } catch (e) {
+        const outcome = isDs2Error(e) && e.code === 'NEGATIVE_RESPONSE' ? 'rejected' : isDs2Error(e) && e.code === 'NOT_SENT' ? 'refused' : 'silent';
+        return { ...base, outcome, km: null, reason: isDs2Error(e) ? e.code : 'error' };
+    }
 }
 
 /** One VIN read: the seven characters, or why there are none. Never throws; never keeps the bytes. */

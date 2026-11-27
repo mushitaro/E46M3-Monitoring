@@ -23,7 +23,7 @@ description: 'The desk side of E46M3 /// MONITORING (DS2 diagnosis of a BMW E46 
 | 台帳（停車中に答えた・走行中に読んでよい） | `packages/monitoring-engine/src/ledger.ts` |
 | ジョブのカタログ（BMW SGBD 由来） | `public/ecu-data/`（private の `E46M3-Monitoring-data` から置く） |
 | 任された調査（アカウントの写し） | `npm run desk -- list`・`pull <record>`・`run <record> <n>`（`workers/desk` を通す。オーナーの ID と VIN は出ない。取ったものは `desk-work/` に置き、コミットしない） |
-| 車 | Matrix MONITORING WORKS（`monitoring_*`）。TUNER の RAM の名前は `tuner_ram` |
+| 車 | Matrix MONITORING WORKS（`monitoring_*`）。MAPPING（TUNER）の RAM の名前は `mapping_ram` |
 
 ## 先に読む
 
@@ -48,7 +48,7 @@ description: 'The desk side of E46M3 /// MONITORING (DS2 diagnosis of a BMW E46 
 
 1. **症状を一文に**：ドライバーの言葉のまま。
 2. **仮説を複数**：各々に、それを**否定する観察**を書く（`plan.ts` の `refutedBy` が必須なのはこのため）。
-3. **証拠は安い順**：故障とフリーズフレーム → 停車中の状態 → 停車中のライブ値 → 走行中の捕捉（条件で取る。運転は指示しない） → DME の RAM（master の窓、`tuner_ram`） → 作動テスト・システムチェック・手順（停車中に、AI がオーナーに読み返して「いいよ」のあと `monitoring_actuate`・`monitoring_procedure`。表が画面の人に任せたものだけ画面で。どれがどちらかは `monitoring_capabilities`）。
+3. **証拠は安い順**：故障とフリーズフレーム → 停車中の状態 → 停車中のライブ値 → 走行中の捕捉（条件で取る。運転は指示しない） → DME の RAM（master の窓、`mapping_ram`） → 作動テスト・システムチェック・手順（停車中に、AI がオーナーに読み返して「いいよ」のあと `monitoring_actuate`・`monitoring_procedure`。表が画面の人に任せたものだけ画面で。どれがどちらかは `monitoring_capabilities`）。
 4. **計画を書く**：委任の範囲の読み取りだけ。手順は 12 まで（`faults`・`read`・`sample`（`3:*` でブロックごと）・`adapt`・`ram`・`capture`）、判定（`judge`、24 まで）には基準値の**出所**（sgbd・inpa・authored・observed）。出所の無い値は `authored` と書き、そう言う。書く前に catalog と runGate で**送れるか**を確かめる。送れないものを計画に入れても、タブが断るだけ。
 5. **読む**：タブの判定をそのまま使う。計算し直さない。`fact` は区間と値と読み方つき、`read` は確かさつき。
    書くのは `npm run desk -- write <record> <file>`（`[{ "body": … }]`）。`desk` として、サーバーの時刻で書き足される。全部通るか一つも書かないかで、拒否はどの項目がどの規則に当たったかを言う — その文のまま直す。

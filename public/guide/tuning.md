@@ -3,7 +3,7 @@
 原因が DME や SMG のキャリブレーション（マップや設定の値）にあると分かったとき、または「アイドル回転を上げたい」「VANOS の目標を変えたい」と言われたとき。
 
 1. **MONITORING ではマップを変えない。** 変えるのは TUNER（DME）と SMG2 MAPPING（SMG）。
-2. TUNER WORKS のコネクタがあれば、その手順に従う：`mapping_guide` の topic calibration → `mapping_recipes` → `mapping_calibration`（中継が古ければ `tuner_` で始まる同じ名前）。値を決めるのはオーナー、書き込むのは画面で人。
+2. TUNER WORKS のコネクタがあれば、その手順に従う：`mapping_guide` の topic calibration → `mapping_recipes` → `mapping_calibration`。値を決めるのはオーナー、書き込むのは画面で人。
    このタブを TUNER に移してほしいと言われたら（「TUNER を開いて」）、`monitoring_open_tuner`（`confirmed: true`）。同じタブで移り、ケーブルは先に放す。記録中・PROBE の実行中は先に止める（復唱して「はい」）。保存していないものがあると言われたら、保存するか、何が消えるかを復唱して「はい」のあとに `discard_unsaved: true`。移ったあとは TUNER の道具で話す。
 3. コネクタが無ければ、どのアプリで何を見るかを一文で伝え、分かったことを CO-WORK に `read` として残す。
 4. **変えたら確かめる。** 同じ条件の計画を MONITORING で立て直す（topic investigate）。

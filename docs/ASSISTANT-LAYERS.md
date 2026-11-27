@@ -290,6 +290,9 @@ export const refusal = (stop: …, sentence: string, next?: string): Refusal => 
 
 ## 6. 段取り
 
+**状況（2026-11-27）**：第 1 段は取り込み済み（#97、matrix-tsunagi-dev#10・#11）。第 2〜4 段と Q5 は運営者の「推奨で直してください」で入れた（#99、matrix-tsunagi-dev#12）。
+T1〜T9 はすべて検査にある。残るのは中継のデプロイ、Skill の上げ直し、Q1・Q4（claude.ai の設定で、運営者がする）。
+
 | 段 | 中身 | リポジトリ | 承認・配信 |
 |---|---|---|---|
 | **1. 古い文を直す**（すぐ） | A1・A2・A4〜A11・A13・B2・B3・B5 を直す。`monitoring_actuate`・`monitoring_show` を 1,024 字以内にし、はみ出た分を guide（service・board）へ。T1・T2・T3 を足す | E46M3-Monitoring | guide の前提・言わないことは人（運営者）、ほかは自動（`monitoring-desk` の表） |

@@ -1,5 +1,7 @@
 # UX 修正案（O）— 2026-11-20
 
+> **開発者向けの文書。** 車の操作で AI ができること・止める理由は、`monitoring_capabilities`（＝[`docs/CAPABILITIES.md`](CAPABILITIES.md)、コードから生成）が答える。ここと食い違ったら、そちらが正しい。
+
 `DESIGN-REVIEW.md`（同日、仮想車両で合格した回の撮影 206 枚から）の所見を、`VIRTUAL-CAR-TESTS.md` の O に従って案にした。
 画面ごとに集め、同じ原因はまとめ、**消す・まとめる・奥へ・揃える**を先に出した。足す案は、消しても足りない理由を書いた。
 順は、走行中に見る画面（HUB・DATALOG・PROBE）→ 車を動かす前の確認 → 毎回通る画面（STARTUP・DIAGNOSIS・ヘッダ）→ たまに使う画面。

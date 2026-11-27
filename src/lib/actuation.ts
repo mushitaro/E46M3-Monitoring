@@ -106,17 +106,17 @@ export function tableRefusal(
     job: Pick<CatalogJob, 'id' | 'class'>,
     group: string | undefined,
     args?: readonly string[],
-): { reason: string; screen: boolean } | null {
+): { reason: string; screen: boolean; stop: 'route' | 'S6' } | null {
     const d = decisionFor(moduleId, job, group, args);
-    if (isReadNature(d.nature)) return { reason: `${job.id} reads; it is read with the read tools (monitoring_read and the rest), not started.`, screen: false };
+    if (isReadNature(d.nature)) return { reason: `${job.id} reads; it is read with the read tools (monitoring_read and the rest), not started.`, screen: false, stop: 'route' };
     if (d.how === 'off') {
         // Said by what it is (MM02 F26): a safety device's deployment, a write — then the owner's rule.
         const what = d.nature === 'a_safety' ? `${job.id} deploys a safety device` : d.nature === 'w' ? `${job.id} writes to the module (coding, programming, identity or flash)` : null;
-        return { reason: `${what ? `${what}: ` : ''}the owner keeps ${what ? 'it' : job.id} off, and it is not run from here at all. Tell the owner it cannot be done.`, screen: false };
+        return { reason: `${what ? `${what}: ` : ''}the owner keeps ${what ? 'it' : job.id} off, and it is not run from here at all. Tell the owner it cannot be done.`, screen: false, stop: 'S6' };
     }
-    if (d.how === 'show') return { reason: `The owner shows ${job.id} on the screen only: it is not run.`, screen: false };
+    if (d.how === 'show') return { reason: `The owner shows ${job.id} on the screen only: it is not run.`, screen: false, stop: 'S6' };
     if (d.who !== 'ai')
-        return { reason: `The owner's table keeps ${job.id} for a person on the screen. It has been put on the screen for them to press: say so.`, screen: true };
+        return { reason: `The owner's table keeps ${job.id} for a person on the screen. It has been put on the screen for them to press: say so.`, screen: true, stop: 'route' };
     return null;
 }
 
@@ -155,11 +155,11 @@ export function assistantMayStart(
     ownerSaid: string,
     /** The values chosen, for a job whose nature depends on one (SMG II's lamps against its valves). */
     args?: readonly string[],
-): { ok: true } | { ok: false; reason: string; screen?: boolean } {
+): { ok: true } | { ok: false; reason: string; stop: 'route' | 'S1' | 'S3' | 'S6'; screen?: boolean } {
     const table = tableRefusal(moduleId, job, group, args);
-    if (table) return { ok: false, reason: table.reason, ...(table.screen ? { screen: true } : {}) };
-    if (motion === 'moving') return { ok: false, reason: 'The car is moving: the assistant only reads while it moves. Ask again parked.' };
+    if (table) return { ok: false, reason: table.reason, stop: table.stop, ...(table.screen ? { screen: true } : {}) };
+    if (motion === 'moving') return { ok: false, reason: 'The car is moving: the assistant only reads while it moves. Ask again parked.', stop: 'S1' };
     const words = notAnOk(ownerSaid);
-    if (words) return { ok: false, reason: words };
+    if (words) return { ok: false, reason: words, stop: 'S3' };
     return { ok: true };
 }

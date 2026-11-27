@@ -1,5 +1,7 @@
 # 車と例題で自分を育てる仕組み
 
+> **開発者向けの文書。** 車の操作で AI ができること・止める理由は、`monitoring_capabilities`（＝[`docs/CAPABILITIES.md`](CAPABILITIES.md)、コードから生成）が答える。ここと食い違ったら、そちらが正しい。
+
 ヘッドユニットの MONITORING WORKS に K+DCAN を挿したまま運営者が用事で走る間に、ドライバーの問い
 （「低速カーブで DSC が早く効く気がする。原因と対策を」）を燃料に、**診断**と**道具の開発**が勝手に
 進む仕組み。Matrix↔TUNER（CO-WORK・OBSERVE・`tuner_*`）の延長に置く。運営者の依頼は 2026-10-23、

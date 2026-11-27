@@ -1,5 +1,7 @@
 # 診断エンジン — `@tsunagi/monitoring-engine`
 
+> **開発者向けの文書。** 車の操作で AI ができること・止める理由は、`monitoring_capabilities`（＝[`docs/CAPABILITIES.md`](CAPABILITIES.md)、コードから生成）が答える。ここと食い違ったら、そちらが正しい。
+
 E46M3 /// MONITORING の診断エンジンを、画面から切り離した部品。この文書がエンジンと画面の境目の正本。
 
 ## 1. 何のために（運営者 2026-11-11）

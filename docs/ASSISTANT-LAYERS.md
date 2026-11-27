@@ -1,5 +1,7 @@
 # AI が読むもの — 指示・Skill・Guide の棚卸しと組み替えの設計
 
+> **開発者向けの文書。** 車の操作で AI ができること・止める理由は、`monitoring_capabilities`（＝[`docs/CAPABILITIES.md`](CAPABILITIES.md)、コードから生成）が答える。ここと食い違ったら、そちらが正しい。
+
 運営者の依頼（2026-11-26）：「指示、Skill、Guide は中継と MONITORING それぞれにあると思うが、それぞれの構造と
 役割、中身を網羅的に説明して。矛盾・漏れ・欠陥も見つけて。メンテナンス性の観点でも評価し、どう組み替えるかを
 網羅的かつ構造的に設計して」。
@@ -288,6 +290,9 @@ export const refusal = (stop: …, sentence: string, next?: string): Refusal => 
 
 ## 6. 段取り
 
+**状況（2026-11-27）**：第 1 段は取り込み済み（#97、matrix-tsunagi-dev#10・#11）。第 2〜4 段と Q5 は運営者の「推奨で直してください」で入れた（#99、matrix-tsunagi-dev#12）。
+T1〜T9 はすべて検査にある。残るのは中継のデプロイ、Skill の上げ直し、Q1・Q4（claude.ai の設定で、運営者がする）。
+
 | 段 | 中身 | リポジトリ | 承認・配信 |
 |---|---|---|---|
 | **1. 古い文を直す**（すぐ） | A1・A2・A4〜A11・A13・B2・B3・B5 を直す。`monitoring_actuate`・`monitoring_show` を 1,024 字以内にし、はみ出た分を guide（service・board）へ。T1・T2・T3 を足す | E46M3-Monitoring | guide の前提・言わないことは人（運営者）、ほかは自動（`monitoring-desk` の表） |
@@ -310,7 +315,7 @@ export const refusal = (stop: …, sentence: string, next?: string): Refusal => 
 | Q2 | Skill の「読めないときの決まり」を消して 2 行にするか | **消す** | 古い Skill が古い決まりを言う（C3）。読めないときは「読めない」と言えば足りる |
 | Q3 | 評価の `run-actuator`・`clear-on-own` を「読み返しと『いいよ』の前に動かす」に変えるか | **変える** | 決定 A（2026-11-16）と合わせる。今は許された振る舞いが減点される（A3） |
 | Q4 | Chat のプロジェクトの指示（C1）に一行足すか：「MONITORING で何ができるか・なぜ止まったかは、`monitoring_capabilities` とタブの答えだけで言う」 | **足す** | claude.ai はプロジェクトの指示を強く扱う。中継の指示より先に効く |
-| Q5 | 学習値の読取（MSS54 の ADAPT、SMG II の学習値）を、走行中も読む「状態の値」に入れるか、停車中だけの読取にするか（C9） | **停車中だけ**のまま表に書く（性質を一つ足すか `r_misc` に入れる） | 学習値は走行中に変わる値ではなく、停車中に読めば足りる。門を `mayRun` 一つにすることが先 |
+| Q5 | 学習値の読取（MSS54 の ADAPT、SMG II の学習値）を、走行中も読む「状態の値」に入れるか、停車中だけの読取にするか（C9） | **表に通し、表のとおり走行中も**（2026-11-27 に改めた。最初は「停車中だけ」を推したが、非 M3 の DME の学習の状態など 48 の読取に新しい止めが増え、「止めるな」に反する） | SMG II の学習値は表の上ですでに `r_status`。古い門のほうを表に合わせる。実装：`mayRunProtocolRead` の `status-read`（`OWNER_DECISION.r_status.when` に従う） |
 
 ---
 
@@ -320,13 +325,15 @@ export const refusal = (stop: …, sentence: string, next?: string): Refusal => 
 |---|---|
 | `catalog.md` 4 と例、`reactive.md` 1・6 と例、`faults.md` 3・4 と例（`dsc_mk60`）、`autonomy.md` 4 | A1・A2・A7・A8・A10 の半分・A11・B2 |
 | `monitoring_faults`・`monitoring_scan`・`monitoring_log_channels`・`monitoring_plan` の説明 | A6・A9・A10 |
-| `monitoring_actuate`（1,298→1,000 字）と `monitoring_show`（1,987→約 760 字）：はみ出た分を入力の欄の説明へ（中継は欄の説明を切らない） | C2 |
+| `monitoring_actuate`（1,298→1,000 字）と `monitoring_show`（1,987→711 字）：はみ出た分を入力の欄の説明へ（中継は欄の説明を切らない） | C2 |
 | `docs/AUTONOMY.md` §3 の表と §4、トピックの一覧は index を指す | A4・A9・B3 |
 | `monitoring-desk` の Skill、`CLAUDE.md` の見出し | A5・A13 |
 | `scenarios/cases.json` の `nevers`（`run-actuator`・`clear-on-own`）と 5 件の答え、`capabilities.json` の `service.run`（missing→built）と `actuate.assistant` | A3、§3 に無かった `service.run` の「missing」 |
 | 検査：T1（説明 1,024 字、`guide.test.ts`）、T2（「人だけ」を言う行、`capabilities.test.ts`。直す前の 4 か所を全部捕まえることを確かめた）、T4（`nevers` が表に従う、`scenarios.test.ts`） | D1・D2・D3 |
 
-残り：A12・B1・B3（Skill）と T6 は中継の側（matrix-tsunagi-dev PR #10 に積む）。B4・B5、段 2〜4、C9 は次。
+中継の側（matrix-tsunagi-dev PR #10）：A12（INSTALL の en・ja）、B1（`mcp.ts`・`guide.ts`）、B3（Skill のトピック一覧）を直し、T6 を `bridge/verify/stale.test.mjs` として足した。
+
+残り：B4・B5、C1・C3〜C8、段 2〜4。C9 は 2026-11-27 に、学習値の読取を表に通して閉じた（Q5）。
 
 ## 付録 A. 道具の説明の長さ（`/mcp/works` で 1,024 字を超えると切られる）
 

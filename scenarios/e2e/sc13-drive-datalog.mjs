@@ -549,7 +549,13 @@ const scenario = {
                         if (lag > worst) [worst, at] = [lag, s['35:n']];
                     }
                     st.lag2 = { worst, at };
-                    return Math.abs(worst - 6) <= 0.5 && at >= 3900 && at <= 4300 ? true : `遅れ ${worst.toFixed(2)}° @ ${at}`;
+                    // The lag is a triangle 0.26 s each side of its 6° peak (pull above), and the recording
+                    // sees it only at its samples: with the SMG II channel added the rate falls, so the
+                    // highest sample can sit up to half an interval from the peak (Deploy WORKS #165 saw
+                    // 5.40° at ~19 Hz). What the samples could have missed is allowed, nothing more.
+                    const dt = r?.samples > 1 && r?.seconds > 0 ? r.seconds / (r.samples - 1) : 0.1;
+                    const least = 6 * (1 - Math.min(1, dt / 2 / 0.26)) - 0.2;
+                    return worst >= least && worst <= 6.5 && at >= 3900 && at <= 4300 ? true : `遅れ ${worst.toFixed(2)}° @ ${at}（サンプル間隔 ${dt.toFixed(3)} s なら ${least.toFixed(2)}° 以上）`;
                 },
             },
         },

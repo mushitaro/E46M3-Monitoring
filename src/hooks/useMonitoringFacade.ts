@@ -40,6 +40,8 @@ import type { Datalog } from '@/views/datalog/useDatalog';
 import type { Sessions } from '@/views/sessions/useSessions';
 import { appNow, isModuleChannel, monoNow } from '@tsunagi/monitoring-engine';
 import { mayActuate } from '@tsunagi/monitoring-engine';
+import { NOT_SENT_STOP, RUN_BLOCK_STOP } from '@tsunagi/monitoring-engine';
+import { refusal, type Refusal } from '@/lib/refusal';
 import { assistantMayStart, startActuation, tableRefusal } from '@/lib/actuation';
 import { MIN_RUN_VOLTAGE, actuationTerms, operationFor } from '@tsunagi/monitoring-engine';
 import type { Stopped } from '@/lib/arming';
@@ -160,6 +162,23 @@ const SYNC_STOPPED: Record<string, string> = {
     noDestination: 'This build has nowhere to send to (HTTP 404: no server behind it). The sessions are kept on this device; the WORKS build with the owner signed in sends them.',
     refused: 'Where sessions go answered and did not take them (see status). They are kept on this device.',
 };
+
+
+/** The next step for a module the owner has not said is fitted (variantChoice.ts). */
+const VARIANT_NEXT = 'Ask the owner which module is fitted at the address and record it with monitoring_variant (or they choose on ACTUATOR); once per car.';
+/** The next step while the link is not connected and idle. */
+const LINK_NEXT = 'monitoring_connect reconnects the cable already allowed; or wait until the job or the reading going ends (monitoring_status).';
+
+/** The gate's refusal, as the stop it is (engine stopReasons.ts RUN_BLOCK_STOP). */
+function gateRefusal(key: RunBlockKey): Refusal {
+    const stop = RUN_BLOCK_STOP[key];
+    return stop === 'route' ? refusal('route', en.runBlock[key], 'Use the tool the sentence names.') : refusal(stop, en.runBlock[key]);
+}
+
+/** The assistant's own pre-gate refusal (actuation.ts assistantMayStart), as the stop it is. */
+function mayRefusal(may: { reason: string; stop: 'route' | 'S1' | 'S3' | 'S6'; screen?: boolean }): Refusal {
+    return may.stop === 'route' ? refusal('route', may.reason, may.screen ? 'A person presses it on the screen.' : 'Read it with the read tools.') : refusal(may.stop, may.reason);
+}
 
 export function useMonitoringFacade(input: {
     link: ReturnType<typeof useDs2Link>;
@@ -715,19 +734,19 @@ export function useMonitoringFacade(input: {
 
         actuate: async ({ module, job: jobId, phase, ownerSaid, values, query }) => {
             if (module !== ecuId) {
-                return { started: false, reason: `The screen is on ${moduleName(ecuId)}. Put ${moduleName(module)} on it first (monitoring_module).` };
+                return refusal('route', `The screen is on ${moduleName(ecuId)}. Put ${moduleName(module)} on it first (monitoring_module).`, `monitoring_module ${module}, then ask again.`);
             }
             const job = catalog?.jobs.find((j) => j.id === jobId);
-            if (!job) return { started: false, reason: `${jobId} is not a job of ${moduleName(module)}.` };
+            if (!job) return refusal('route', `${jobId} is not a job of ${moduleName(module)}.`, `monitoring_catalog ${module} lists its jobs.`);
             // A test program is a procedure: stopped first and last, followed to its end by its dialog.
             if (isProcedureStart(module, job.id))
-                return { started: false, reason: `${job.id} is started as a procedure: monitoring_procedure with its program number (monitoring_catalog lists the procedures).` };
+                return refusal('route', `${job.id} is started as a procedure: monitoring_procedure with its program number (monitoring_catalog lists the procedures).`, 'monitoring_procedure with its program number.');
             // The owner's table first, before any value (IJ F08): a write is refused as a write, an item
             // kept for a person on the screen is put there for them.
             const table = tableRefusal(module, job, catalog?.group);
             if (table) {
                 const staged = table.screen ? await stageOnScreen(module, job) : false;
-                return { started: false, reason: table.reason, ...(staged ? { staged: true } : {}) };
+                return { ...mayRefusal(table), ...(staged ? { staged: true } : {}) };
             }
             // An address several modules may answer at (0x56: ASC MK20 on an early car, DSC on a late one)
             // gets nothing but the common frames until the owner has said which, once, on the screen.
@@ -735,23 +754,23 @@ export function useMonitoringFacade(input: {
             // A job without values whose frame every candidate at the address carries byte for byte (a
             // fault-memory clear, mostly) is the common frame the house rule allows: whichever module is
             // fitted, the bytes are its own (MM01: the sunroof's clear).
-            if (unconfirmed && !(job.args.length === 0 && catalog && (await commonToCandidates(catalog.address, job.id)))) return { started: false, reason: unconfirmed };
+            if (unconfirmed && !(job.args.length === 0 && catalog && (await commonToCandidates(catalog.address, job.id)))) return refusal('S5', unconfirmed, VARIANT_NEXT);
             // The phase and the set of values (lib/agreedChoices: the screen and the coverage count ask
             // the same; a job that stays on until its stop always starts with it armed).
             const choices = job.args.length > 0 && catalog ? await loadChoices(module, catalog.address, job, catalog.jobs as CatalogJob[]) : [];
             const pick = assistantPick(job, choices, phase, values, (args) => decisionFor(module, job, catalog?.group, args).who === 'ai');
-            if (!pick.ok) return { started: false, reason: pick.reason, ...(pick.sets ? setsAnswer(module, job, pick.sets, query, values) : {}), readBack: readBackOf(module, job) };
+            if (!pick.ok) return { ...(pick.stop === 'S4' ? refusal('S4', pick.reason) : refusal('route', pick.reason, 'Read back the set meant, wait for the OK, and pass it as values.')), ...(pick.sets ? setsAnswer(module, job, pick.sets, query, values) : {}), readBack: readBackOf(module, job) };
             const { runPhase, choice } = pick;
             const args = choice?.start.args;
             const may = assistantMayStart(module, job, catalog?.group, link.motion, ownerSaid, args);
             if (!may.ok) {
                 const staged = may.screen ? await stageOnScreen(module, job) : false;
-                return { started: false, reason: may.reason, ...(staged ? { staged: true } : {}), readBack: readBackOf(module, job, args) };
+                return { ...mayRefusal(may), ...(staged ? { staged: true } : {}), readBack: readBackOf(module, job, args) };
             }
-            if (link.lineLost) return { started: false, reason: 'The line is lost (the module stopped answering): nothing starts until it is back.' };
-            if (link.state !== 'connected') return { started: false, reason: `The link is ${link.state}; a job starts from connected and idle.` };
+            if (link.lineLost) return refusal('state', 'The line is lost (the module stopped answering): nothing starts until it is back.', 'Wait for the line to come back (monitoring_status), or reconnect with monitoring_connect.');
+            if (link.state !== 'connected') return refusal('state', `The link is ${link.state}; a job starts from connected and idle.`, LINK_NEXT);
             // One thing driven at a time (the owner's rule, 2026-11-15), said by the part that is on.
-            if (input.arming.anyArmed) return { started: false, reason: `${onNow()} is on. Stop it first (monitoring_stop_outputs).`, on: armedNow() };
+            if (input.arming.anyArmed) return { ...refusal('S7', `${onNow()} is on. Stop it first (monitoring_stop_outputs).`), on: armedNow() };
             const telegrams = await loadTelegrams(module);
             // The very gate ACTUATOR's row asks, with the same inputs.
             const v = mayActuate(job, choice ? telegramOfAgreed(choice.start) : bestTelegram(telegrams, job.id), ledger, {
@@ -761,7 +780,7 @@ export function useMonitoringFacade(input: {
                 group: catalog?.group,
                 ...(choice ? { args, agreed: choice.start } : {}),
             });
-            if (!v.allowed) return { started: false, reason: en.runBlock[v.reason], refused: v.reason, readBack: readBackOf(module, job, args) };
+            if (!v.allowed) return { ...gateRefusal(v.reason), refused: v.reason, readBack: readBackOf(module, job, args) };
             // Everything the app decides has passed: the job's row is put on the screen with its set, so
             // the owner sees it measured and started there — or, if the car refuses at the wire, why.
             input.pickSet(module, job.id, args ?? null);
@@ -786,11 +805,12 @@ export function useMonitoringFacade(input: {
                 // volts), read straight after the await — not the render's `link.error`, which is older.
                 const ns = link.lastNotSent();
                 return {
-                    started: false,
+                    ...(ns
+                        ? refusal(NOT_SENT_STOP[ns.reason], notSentSentence(ns))
+                        : refusal('state', link.lastError() ?? 'Not sent: the link refused or the module did not answer.', 'monitoring_status says the link’s state; ask again once it answers.')),
                     job: job.id,
                     part: part.part,
                     partNameJa: part.ja,
-                    reason: ns ? notSentSentence(ns) : (link.lastError() ?? 'Not sent: the link refused or the module did not answer.'),
                     ...(ns ? { why: ns.reason, measured: ns.measured } : {}),
                 };
             }
@@ -814,24 +834,24 @@ export function useMonitoringFacade(input: {
         },
 
         procedure: async ({ procedure, gear, ownerSaid }) => {
-            if (ecuId !== 'smg2') return { started: false, reason: `Procedures are SMG II's. Put SMG II on the screen first (monitoring_module).` };
+            if (ecuId !== 'smg2') return refusal('route', `Procedures are SMG II's. Put SMG II on the screen first (monitoring_module).`, 'monitoring_module smg2, then ask again.');
             const want = procedure.trim().toLowerCase();
             const p = input.workflows?.procedures.find((x) => x.id.toLowerCase() === want || x.testprg.toLowerCase() === want);
             const job = p ? procedureAsJob(p) : undefined;
             const startJob = catalog?.jobs.find((j) => j.id === 'TESTPRG_STARTEN');
-            if (!job || !startJob) return { started: false, reason: `${procedure} is not one of SMG II's procedures (monitoring_catalog lists them).` };
+            if (!job || !startJob) return refusal('route', `${procedure} is not one of SMG II's procedures (monitoring_catalog lists them).`, 'monitoring_catalog smg2 lists the procedures.');
             const program = job.id.slice(PROCEDURE_PREFIX.length);
             const unconfirmed = input.variantUnconfirmed(ecuId);
-            if (unconfirmed) return { started: false, reason: unconfirmed };
+            if (unconfirmed) return refusal('S5', unconfirmed, VARIANT_NEXT);
             const may = assistantMayStart(ecuId, startJob, catalog?.group, link.motion, ownerSaid, [program]);
-            if (!may.ok) return { started: false, reason: may.reason };
+            if (!may.ok) return mayRefusal(may);
             // A procedure that engages a gear the owner picks does not start on a default (SC08 F07).
             if (p?.auswahl && gear === undefined)
-                return { started: false, reason: `${p.name.en} engages the gear the owner chooses: ask which (「何速ですか？」: 0 neutral, 1–6, 7 reverse) and pass it as gear.`, takesGear: true };
-            if (link.state !== 'connected') return { started: false, reason: `The link is ${link.state}; a procedure starts from connected and idle.` };
-            if (input.arming.anyArmed) return { started: false, reason: `${onNow()} is on. Stop it first (monitoring_stop_outputs).`, on: armedNow() };
+                return { ...refusal('route', `${p.name.en} engages the gear the owner chooses: ask which (「何速ですか？」: 0 neutral, 1–6, 7 reverse) and pass it as gear.`, 'Ask the owner which gear, and pass it as gear.'), takesGear: true };
+            if (link.state !== 'connected') return refusal('state', `The link is ${link.state}; a procedure starts from connected and idle.`, LINK_NEXT);
+            if (input.arming.anyArmed) return { ...refusal('S7', `${onNow()} is on. Stop it first (monitoring_stop_outputs).`), on: armedNow() };
             const g = gear === undefined ? undefined : Number(gear);
-            if (g !== undefined && !Number.isInteger(g)) return { started: false, reason: `${gear} is not a gear its dialog offers.` };
+            if (g !== undefined && !Number.isInteger(g)) return refusal('route', `${gear} is not a gear its dialog offers.`, 'Pass a gear its dialog offers: 0 neutral, 1–6, 7 reverse.');
             input.startProcedure(job, ownerSaid, g);
             return {
                 started: true,
@@ -1047,7 +1067,7 @@ export function useMonitoringFacade(input: {
 
         scan: async () => {
             const r = await input.startScan();
-            if (typeof r === 'string') return { started: false, reason: r };
+            if (typeof r === 'string') return refusal('state', r, 'monitoring_status says what the tab is doing; ask again once it is idle and connected.');
             show('diagnosis', 'list');
             return {
                 started: true,
@@ -1069,7 +1089,7 @@ export function useMonitoringFacade(input: {
         },
 
         probe: async (record) => {
-            if (link.state !== 'connected') return { started: false, reason: `The link is ${link.state}; PROBE starts from connected and idle.` };
+            if (link.state !== 'connected') return refusal('state', `The link is ${link.state}; PROBE starts from connected and idle.`, LINK_NEXT);
             const r = await probe.start(record);
             if (r.started) {
                 // Its board, with the values and the trace (show() lets a run keep it from here on).
@@ -1084,7 +1104,7 @@ export function useMonitoringFacade(input: {
                 forked: 'Two plans rewrite the same one; the driver chooses which to keep.',
                 'mandate-ended': 'The mandate has ended (withdrawn or expired); carry the record on with monitoring_investigate and record.',
             };
-            return { started: false, reason: why[r.reason] };
+            return refusal('state', why[r.reason], r.reason === 'none' || r.reason === 'mandate-ended' ? 'monitoring_plan or monitoring_investigate, as the sentence says.' : r.reason === 'running' ? 'monitoring_stop_log ends the run going, after a read-back.' : r.reason === 'forked' ? 'Ask the driver which plan to keep.' : 'Reload the page; the module index loads with it.');
         },
 
         runs: (record) => listRuns(record).catch(() => []),

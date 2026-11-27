@@ -1,5 +1,7 @@
 # 参照物の所在
 
+> **開発者向けの文書。** 車の操作で AI ができること・止める理由は、`monitoring_capabilities`（＝[`docs/CAPABILITIES.md`](CAPABILITIES.md)、コードから生成）が答える。ここと食い違ったら、そちらが正しい。
+
 このリポジトリが依存している「正」がどこにあるか。**5 つは repo の外にある。**
 
 散らばっていたので 1 枚にした。以前は `tools/*.py` の定数と `.csproj` の

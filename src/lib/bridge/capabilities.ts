@@ -20,7 +20,18 @@ import {
     NOT_SENT_STOP,
     STOP_IDS,
     STOP_REASONS,
+    DME_ADDRESS,
+    M3_DME_SGBD,
+    loadEcuIndex,
+    loadFaultLayouts,
+    loadVariantRules,
+    mayModuleBeSent,
+    ruleFor,
+    type EcuIndex,
+    type FaultLayouts,
+    type Fitment,
     type Nature,
+    type VariantRules,
 } from '@tsunagi/monitoring-engine';
 import { MONITORING_TOOLS, GUIDE_TOOL, RELAY_DEV_TOOLS, type MonitoringToolName } from './tools';
 
@@ -107,6 +118,70 @@ export interface Capabilities {
     refusals: Record<string, string>;
     screenOnly: string[];
     more: string;
+    /** Every module this build carries (ecu-data), with how it is told apart and how its faults are read.
+     *  Only in the tab's answer and its hello: docs/CAPABILITIES.md is built without the data. */
+    modules?: ModuleCapability[];
+    moduleRules?: string[];
+}
+
+/** One module, as the assistant needs it to say what can be read there (ASSISTANT-LAYERS.md 5.3). */
+export interface ModuleCapability {
+    id: string;
+    name: string;
+    address: string;
+    /** Which cars have it (index.json `fit`: std, late, smg, nonm3, …). */
+    fit: string;
+    /** How the app knows it is the one at its address: `ident` (the address's IDENT, by the group file's
+     *  rule), `m3` (fitted on an M3 by the module list, sent once 0x12 answered MSS54), `owner` (several
+     *  of this app's modules share the address and no rule tells them apart: the owner says which, with
+     *  monitoring_variant, before anything that drives goes there), `ident-only` (its rule is not
+     *  available: only the common IDENT is sent). */
+    chosenBy: 'ident' | 'm3' | 'owner' | 'ident-only';
+    /** How its fault memory is read: `decoder` (MSS54's own decoder), `layout` (where its own SGBD's
+     *  FS_LESEN reads, fault-layouts.json), `own` (its own SGBD's FS_LESEN job where it has one, else the
+     *  answer's bytes kept as the answer). Read in every case; none of them is "cannot read". */
+    faults: 'decoder' | 'layout' | 'own';
+}
+
+const MODULE_RULES = [
+    'Every module listed is read: its IDENT, and its fault memory — moving or parked (owner’s table). `faults` says by what; bytes kept as the answer are still an answer, never "cannot read".',
+    'Which module is at an address: `chosenBy`. For `owner`, ask the owner once per car and record it with monitoring_variant; reads go on meanwhile. On a car that is not an M3, `m3` modules get only the common IDENT.',
+    'What one module offers now (its jobs, whether each may go, the gate’s reason): monitoring_catalog with its id.',
+];
+
+/** An M3 as the variant rules see it: 0x12 answered MSS54, nothing else identified yet. */
+const M3_FITMENT: Fitment = new Map([[DME_ADDRESS, { address: DME_ADDRESS, answer: '', sgbd: M3_DME_SGBD, moduleId: 'mss54' }]]);
+
+/** Modules of cars that are not an M3: at an address with no rule, nothing but the common IDENT goes. */
+const NOT_M3 = new Set(['nonm3', 'unknown']);
+
+/** The modules part, from the catalogue's index, the variant rules and the fault layouts. Pure. */
+export function moduleRoster(index: EcuIndex, rules: VariantRules, layouts: FaultLayouts): ModuleCapability[] {
+    const at = new Map<number, number>();
+    for (const m of index.modules) at.set(m.address, (at.get(m.address) ?? 0) + 1);
+    return index.modules.map((m) => {
+        const chosenBy: ModuleCapability['chosenBy'] = ruleFor(rules, m.address)
+            ? 'ident'
+            : NOT_M3.has(m.fit) || !mayModuleBeSent(m.address, m.id, M3_FITMENT, rules).ok
+              ? 'ident-only'
+              : (at.get(m.address) ?? 0) > 1
+                ? 'owner'
+                : 'm3';
+        const faults: ModuleCapability['faults'] = m.id === 'mss54' ? 'decoder' : layouts.modules[m.id] ? 'layout' : 'own';
+        return { id: m.id, name: m.name_en, address: m.addressHex, fit: m.fit, chosenBy, faults };
+    });
+}
+
+/** The whole answer, modules included: what monitoring_capabilities returns and the hello carries. */
+export async function capabilitiesNow(): Promise<Capabilities> {
+    const c = capabilities();
+    try {
+        const [index, rules, layouts] = await Promise.all([loadEcuIndex(), loadVariantRules(), loadFaultLayouts()]);
+        return { ...c, modules: moduleRoster(index, rules, layouts), moduleRules: MODULE_RULES };
+    } catch (e) {
+        // Without the catalogue the rest still holds; say the module list is missing rather than leave it out silently.
+        return { ...c, moduleRules: [`The module list could not be read (${(e as Error).message}): ask monitoring_catalog per module.`] };
+    }
 }
 
 /** Whether the assistant may start a nature, said plainly. */
@@ -127,7 +202,7 @@ export function capabilities(): Capabilities {
         what: firstSentence(d.description),
     }));
     tools.push(
-        { name: GUIDE_TOOL, scope: 'read', what: 'The procedure for the conversation (held by the relay, there while the tab sleeps).' },
+        { name: GUIDE_TOOL, scope: 'read', what: 'The procedure for the conversation (held by the relay, there while the tab sleeps; so is this answer).' },
         ...RELAY_DEV_TOOLS.map((name) => ({ name, scope: 'control' as const, what: name.endsWith('request') ? "The operator's words to MONITORING's development, without the tab." : "Development's answers to the operator's requests." })),
     );
     return {
@@ -146,6 +221,9 @@ export function capabilities(): Capabilities {
         refusals: {
             ...Object.fromEntries(Object.entries(RUN_BLOCK_STOP).map(([k, v]) => [k, v === 'route' ? 'not a stop: another tool runs it (the answer names which)' : v])),
             ...Object.fromEntries(Object.entries(NOT_SENT_STOP).map(([k, v]) => [`notSent:${k}`, v])),
+            // What a tool's "not started" carries besides S1–S7 (src/lib/refusal.ts): every answer has `stop` and `next`.
+            route: 'not a stop: another tool or another way runs it; `next` names it',
+            state: 'not a stop on the car: the tab’s own state (the line lost, the link not connected, a job on, a run going); `next` says what passes it',
         },
         screenOnly: SCREEN_ONLY.map((x) => x.en),
         more: 'monitoring_status: the tab now (link, speed, stationary or not). monitoring_catalog: one module’s jobs and whether each may go now, with the gate’s reason. A refusal that fits no stop here is a fault in the tool: ask the desk (monitoring_finding ask, to: desk).',
@@ -164,6 +242,8 @@ export function capabilitiesMarkdown(): string {
     L.push('この文書は、このビルドのコード（道具の一覧 `src/lib/bridge/tools.ts`、運営者の表 `policy.ts` の `OWNER_DECISION`、');
     L.push('止める理由の閉じた一覧 `stopReasons.ts`＝`docs/NO-STOP.md` §2）から作る。AI は同じ中身を `monitoring_capabilities` で読む。');
     L.push('**README・ほかの docs・Skill・記憶と食い違ったら、こちら（とタブの答え）が正しい。** ここかタブの断りが言わない限り「できない」と言わない。');
+    L.push('タブは同じ答えを hello に載せ、中継が持つので、タブが寝ていても `monitoring_capabilities` は答える。タブの答えには、ここに無い');
+    L.push('モジュールごとの表（`modules`：どれを読み、アドレスで何が決め、故障を何で読むか）が足される。ecu-data から作るので、この文書には載せない。');
     L.push('');
     L.push('## 運営者の表（項目の性質ごと）');
     L.push('');

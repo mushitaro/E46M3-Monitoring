@@ -1,5 +1,7 @@
 # E46M3///Diagnosis — 実車運用・本番リリース計画
 
+> **開発者向けの文書。** 車の操作で AI ができること・止める理由は、`monitoring_capabilities`（＝[`docs/CAPABILITIES.md`](CAPABILITIES.md)、コードから生成）が答える。ここと食い違ったら、そちらが正しい。
+
 > **2026-08-30 追記**: 本文中の `C:\EC-APPS\OldBMW-Diag-PWA`（前身の PWA）は
 > `C:\Users\kazuh\OldBMW-Diag-PWA` へ移動した。以下は計画時点の記述で、経緯として残してある。
 > 外部参照物の現在地は `docs/REFERENCES.md`。

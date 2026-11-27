@@ -72,7 +72,7 @@
 import { Ds2Control } from '@tsunagi/ds2-core';
 import type { CatalogJob } from './ecuCatalog.ts';
 import { mayReadWhileMoving, withdrawn, type Ledger } from './ledger.ts';
-import { DEFAULT_RUN_TIMEOUT_S, decisionFor, isReadNature, type Nature, type PolicyWho } from './policy.ts';
+import { DEFAULT_RUN_TIMEOUT_S, OWNER_DECISION, decisionFor, isReadNature, type Nature, type PolicyWho } from './policy.ts';
 import { isAgreedFor, runName, type AgreedFrame } from './sgbd/agreedFrame.ts';
 import { telegramIsCertain, type Telegram } from './telegrams.ts';
 import type { Motion } from './vehicleState.ts';
@@ -465,10 +465,15 @@ export function actuationTerms(job: CatalogJob, decision: { nature: Nature; who:
  *     the car to stop, and a withdrawal stops it. Its control byte (0x02) is NOT a read on every
  *     module — on SMG II it starts a learning procedure — so it is never added to
  *     READ_ONLY_CONTROLS: it goes only as the cluster's own frame, picked by moduleProtocol.
- *   - `module`: anything else built from the protocol — the MSS54's learned values. Read on a
- *     moving car only once the owner has cleared it in the ledger, exactly like a catalogue read.
+ *   - `status-read`: learned values read by the probe — the MSS54's adaptation blocks, SMG II's
+ *     ADAPTIONSWERTE_LESEN. The owner's table files them where a catalogue read of the same values
+ *     goes (`r_status`, policy.ts), so they follow its `when` like that read does: before
+ *     2026-11-27 they were held to a parked car by this gate alone, while the same SMG II job read
+ *     from the catalogue went while moving (docs/ASSISTANT-LAYERS.md C9, Q5).
+ *   - `module`: anything else built from the protocol. Read on a moving car only once the owner
+ *     has cleared it in the ledger, exactly like a catalogue read.
  */
-export type ProtocolReadEvidence = 'dme-measured' | 'fault-read' | 'identity-read' | 'module';
+export type ProtocolReadEvidence = 'dme-measured' | 'fault-read' | 'identity-read' | 'status-read' | 'module';
 
 /**
  * The gate for a read the app builds from the protocol rather than takes from the catalogue: the
@@ -487,6 +492,7 @@ export function mayRunProtocolRead(
 ): { allowed: true; requires: SendRequirement } | { allowed: false; reason: RunBlockKey } {
     if (withdrawn(ledger, id)) return { allowed: false, reason: 'run_block_revoked' };
     if (evidence === 'dme-measured' || evidence === 'fault-read' || evidence === 'identity-read' || mayReadWhileMoving(ledger, id)) return { allowed: true, requires: 'none' };
+    if (evidence === 'status-read' && OWNER_DECISION.r_status.when === 'moving') return { allowed: true, requires: 'none' };
     if (motion === 'moving') return { allowed: false, reason: 'run_block_moving' };
     return { allowed: true, requires: 'parked' };
 }

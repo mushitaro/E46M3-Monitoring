@@ -492,7 +492,7 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
             if (reason) st.reason = reason;
             deps.onStep?.(s.n, state);
         };
-        const gates = MSS54_ADAPTATION_BLOCKS.map((b) => ({ block: b, gate: mayRunProtocolRead(`mss54:ADAPT_${b.selection}`, 'module', deps.ledger(), motion) }));
+        const gates = MSS54_ADAPTATION_BLOCKS.map((b) => ({ block: b, gate: mayRunProtocolRead(`mss54:ADAPT_${b.selection}`, 'status-read', deps.ledger(), motion) }));
         const blocked = gates.find((g) => !g.gate.allowed);
         if (blocked && !blocked.gate.allowed) {
             // A moving car is not a refusal: the step waits for the car to stop.
@@ -634,7 +634,7 @@ export async function runProbe(plan: ProbePlan, deps: ProbeDeps): Promise<ProbeR
             return;
         }
         const results = mod.results;
-        const gates = ['0', '1', '2'].map((arg) => ({ arg, gate: mayRunProtocolRead(`smg2:${job}:${arg}`, 'module', deps.ledger(), motion) }));
+        const gates = ['0', '1', '2'].map((arg) => ({ arg, gate: mayRunProtocolRead(`smg2:${job}:${arg}`, 'status-read', deps.ledger(), motion) }));
         const blocked = gates.find((g) => !g.gate.allowed);
         if (blocked && !blocked.gate.allowed) {
             if (blocked.gate.reason === 'run_block_moving') {

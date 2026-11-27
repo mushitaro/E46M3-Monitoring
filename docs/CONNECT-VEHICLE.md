@@ -1,5 +1,7 @@
 # 実車に繋ぐ — E46 M3 / K+DCAN / DS2
 
+> **開発者向けの文書。** 車の操作で AI ができること・止める理由は、`monitoring_capabilities`（＝[`docs/CAPABILITIES.md`](CAPABILITIES.md)、コードから生成）が答える。ここと食い違ったら、そちらが正しい。
+
 ブラウザから直接ケーブルに話す。**サーバもローカルホストも .NET も要らない**——理由は
 `README.md`。デスクトップは Web Serial、Android は WebUSB。
 

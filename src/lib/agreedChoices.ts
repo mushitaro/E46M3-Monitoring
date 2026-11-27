@@ -86,7 +86,7 @@ export async function loadChoices(moduleId: string, address: number, job: Catalo
 
 export type AssistantPick =
     | { ok: true; runPhase: 'start' | 'pulse'; choice?: AgreedChoice }
-    | { ok: false; reason: string; sets?: string[][] };
+    | { ok: false; reason: string; stop: 'S4' | 'route'; sets?: string[][] };
 
 /**
  * What the assistant's start of a job comes to, before any gate: the phase it runs in and the set of
@@ -104,9 +104,9 @@ export function assistantPick(
     const runPhase = op.kind === 'hold' && op.stopJob ? 'start' : phase;
     if (job.args.length === 0) return { ok: true, runPhase };
     const agreed = choices.filter((c) => runPhase === 'start' || !c.stop);
-    if (!agreed.length) return { ok: false, reason: `No set of values for ${job.id} has been compared with EdiabasLib: it is not run.` };
+    if (!agreed.length) return { ok: false, reason: `No set of values for ${job.id} has been compared with EdiabasLib: it is not run.`, stop: 'S4' };
     const sets = agreed.filter((c) => openToAssistant(c.start.args));
-    if (!sets.length) return { ok: false, reason: `The owner's table keeps every set of ${job.id} for a person on the screen. monitoring_stage puts it there for them to press.` };
+    if (!sets.length) return { ok: false, reason: `The owner's table keeps every set of ${job.id} for a person on the screen. monitoring_stage puts it there for them to press.`, stop: 'route' };
     const choice = values ? sets.find((c) => c.start.args.length === values.length && c.start.args.every((x, i) => x === values[i])) : undefined;
     if (!choice) {
         return {
@@ -114,6 +114,7 @@ export function assistantPick(
             reason: values
                 ? `${job.id}(${values.join(', ')}) is not one of the sets compared with EdiabasLib. Choose one of these.`
                 : `${job.id} takes values (${job.args.map((a) => a.name).join(', ')}). Read back the set meant, wait for the OK, and pass it as values.`,
+            stop: 'route',
             sets: sets.map((c) => [...c.start.args]),
         };
     }

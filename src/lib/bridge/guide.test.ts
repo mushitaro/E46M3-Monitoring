@@ -8,8 +8,9 @@ import { GUIDE_TOOL, RELAY_DEV_TOOLS, MONITORING_TOOLS, helloTools } from './too
  * The procedure the voice assistant follows (`monitoring_guide`), checked the way the relay will
  * check it and against the tools the tab declares.
  *
- * The relay refuses a hello whose guide breaks its limits (matrix-tsunagi 0.11.0: index and each
- * topic ≤ 16 KB, ≤ 16 topics, ≤ 160 KB in all, topic names ^[a-z0-9][a-z0-9-]{0,31}$). A refused
+ * The relay refuses a hello whose guide breaks its limits (matrix-tsunagi-dev bridge/src/catalog.ts
+ * `LIMITS`, as of 2026-11-27: index and each topic ≤ 16 KB, ≤ 16 topics, ≤ 160 KB in all, topic names
+ * ^[a-z0-9][a-z0-9-]{0,31}$; the capabilities answer ≤ 48 KB, capabilities.test.ts). A refused
  * hello leaves the assistant with the previous guide, or none — so the limits are a build failure
  * here rather than a surprise in the car.
  */
@@ -69,6 +70,7 @@ describe('the tools fit what the relay accepts', () => {
             expect(t.inputSchema.type).toBe('object');
             expect(['read', 'control']).toContain(t.scope);
         }
+        // The relay takes 192 KB of tools (catalog.ts LIMITS); this build keeps to a third of it.
         expect(bytes(JSON.stringify(tools))).toBeLessThanOrEqual(64 * 1024);
     });
 

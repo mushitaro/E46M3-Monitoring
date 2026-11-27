@@ -1,5 +1,7 @@
 # 画面のデザイン確認（N）— 2026-11-20
 
+> **開発者向けの文書。** 車の操作で AI ができること・止める理由は、`monitoring_capabilities`（＝[`docs/CAPABILITIES.md`](CAPABILITIES.md)、コードから生成）が答える。ここと食い違ったら、そちらが正しい。
+
 仮想車両（練習の車）で 52 シナリオが合格した回（2026-11-20 04:55 UTC）の撮影 206 枚だけを見て判定した。
 コードは読んでいない。オーナーが見るものだけで判じている。拠りどころは `VIRTUAL-CAR-TESTS.md` の N（D1〜D3）、
 `tsunagi-m-design`、`tsunagi-m-ux`。

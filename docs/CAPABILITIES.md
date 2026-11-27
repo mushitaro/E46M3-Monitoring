@@ -73,6 +73,8 @@
 - `notSent:voltage` → S2
 - `notSent:engine` → S2
 - `notSent:permission` → S4
+- `route` → not a stop: another tool or another way runs it; `next` names it
+- `state` → not a stop on the car: the tab’s own state (the line lost, the link not connected, a job on, a run going); `next` says what passes it
 
 ## 画面の人だけがすること
 

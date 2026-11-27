@@ -1,5 +1,7 @@
 # 再生成できない資産の台帳
 
+> **開発者向けの文書。** 車の操作で AI ができること・止める理由は、`monitoring_capabilities`（＝[`docs/CAPABILITIES.md`](CAPABILITIES.md)、コードから生成）が答える。ここと食い違ったら、そちらが正しい。
+
 三つのコードベース（`E46M3-Diagnosis` / `C:\EC-APPS\OldBMW-Diag-PWA` / `E46M3CSL_TuningTool`）を
 このリポジトリに統合するにあたって、**失うと取り返しがつかないもの**を一箇所に列挙する。
 

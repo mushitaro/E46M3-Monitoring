@@ -1,5 +1,7 @@
 # E46M3 /// MONITORING
 
+> **開発者向けの文書。** 車の操作で AI ができること・止める理由は、`monitoring_capabilities`（＝[`docs/CAPABILITIES.md`](docs/CAPABILITIES.md)、コードから生成）が答える。ここと食い違ったら、そちらが正しい。
+
 （旧称 E46M3///Diagnosis。リポジトリ名は E46M3-Monitoring）
 
 E46 M3 の診断・データログ・キャリブレーションを、**ブラウザから直接** DS2 / K-line で行うツール。

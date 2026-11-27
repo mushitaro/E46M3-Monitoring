@@ -140,6 +140,33 @@ describe('retired claims do not come back', () => {
         expect(hits).toEqual([]);
     });
 
+    // T3 (ASSISTANT-LAYERS.md 5.5): a guide topic that says a module "cannot be read", is "bytes only",
+    // "parked only" or "estimated" goes stale the day the app learns more (A6–A10: "DSC has no way to be
+    // read" outlived the MK60 read). Which module is read, how and when is monitoring_capabilities'
+    // `modules` and the tools' answers; a line may point there, but not say it itself.
+    it('no guide topic states what a module can be read by, or when', () => {
+        const MODULE = /DSC|SMG|MSS54|MK60|ASC|DME|GS20|EWS|KOMBI|メーター|エアバッグ|dsc_|smg2|mss54/;
+        const FACT = /読めない|読めません|バイトのまま|停車中だけ|推定|読み方が無い/;
+        const hits: string[] = [];
+        for (const f of readdirSync(path.join(ROOT, 'public/guide')).filter((x) => x.endsWith('.md'))) {
+            for (const line of readFileSync(path.join(ROOT, 'public/guide', f), 'utf-8').split('\n')) {
+                if (MODULE.test(line) && FACT.test(line) && !/monitoring_capabilities/.test(line)) hits.push(`${f}: ${line.trim().slice(0, 120)}`);
+            }
+        }
+        expect(hits).toEqual([]);
+    });
+
+    // M5 (ASSISTANT-LAYERS.md 5.2): README and docs are for development. An assistant that reads one
+    // (from GitHub, or pasted) is told at the top where what it can do is answered.
+    it('every README and doc says at its top that it is for developers and points at the capabilities', () => {
+        const files = ['README.md', ...readdirSync(path.join(ROOT, 'docs')).filter((f) => f.endsWith('.md') && f !== 'CAPABILITIES.md').map((f) => `docs/${f}`)];
+        const missing = files.filter((f) => {
+            const head = readFileSync(path.join(ROOT, f), 'utf-8').split('\n').slice(0, 6).join('\n');
+            return !(/開発者向けの文書。/.test(head) && /monitoring_capabilities/.test(head) && /CAPABILITIES\.md/.test(head));
+        });
+        expect(missing).toEqual([]);
+    });
+
     it('the Japanese refusal texts say no retired rule either', () => {
         for (const [k, v] of Object.entries(ja.runBlock)) for (const { re } of RETIRED) expect(re.test(v), k).toBe(false);
     });

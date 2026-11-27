@@ -221,6 +221,9 @@ export function capabilities(): Capabilities {
         refusals: {
             ...Object.fromEntries(Object.entries(RUN_BLOCK_STOP).map(([k, v]) => [k, v === 'route' ? 'not a stop: another tool runs it (the answer names which)' : v])),
             ...Object.fromEntries(Object.entries(NOT_SENT_STOP).map(([k, v]) => [`notSent:${k}`, v])),
+            // What a tool's "not started" carries besides S1–S7 (src/lib/refusal.ts): every answer has `stop` and `next`.
+            route: 'not a stop: another tool or another way runs it; `next` names it',
+            state: 'not a stop on the car: the tab’s own state (the line lost, the link not connected, a job on, a run going); `next` says what passes it',
         },
         screenOnly: SCREEN_ONLY.map((x) => x.en),
         more: 'monitoring_status: the tab now (link, speed, stationary or not). monitoring_catalog: one module’s jobs and whether each may go now, with the gate’s reason. A refusal that fits no stop here is a fault in the tool: ask the desk (monitoring_finding ask, to: desk).',

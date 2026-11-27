@@ -4,9 +4,11 @@
  *
  * One list, so the guide (public/guide/*.md) cannot name a tool that does not exist — guide.test.ts
  * checks every `monitoring_*` it mentions against this — and so the relay's split between reading
- * and acting is declared here rather than inferred (matrix-tsunagi 0.11.0 marks `read` tools
- * readOnlyHint, and refuses a hello whose tools break its rules: name ^monitoring_[a-z0-9_]{1,52}$,
- * a non-empty description of at most 4 KB, an `object` inputSchema, 64 tools and 64 KB in all).
+ * and acting is declared here rather than inferred (the relay marks `read` tools readOnlyHint, and
+ * refuses a hello whose tools break its rules — matrix-tsunagi-dev bridge/src/catalog.ts `LIMITS`, as
+ * of 2026-11-27: name ^monitoring_[a-z0-9_]{1,52}$, a non-empty description of at most 4 KB, an
+ * `object` inputSchema, 64 tools and 192 KB in all. The one entrance then cuts a description over
+ * 1,024 characters to its first sentences (works.ts), so each stays within that: guide.test.ts).
  *
  * `read`: answers from what the tab already holds. `control`: changes the tab's own state, its
  * record or its screen, and — `monitoring_actuate`, `monitoring_procedure`, `monitoring_stop_outputs` —
@@ -341,10 +343,10 @@ export const MONITORING_TOOLS = {
     monitoring_log_channels: {
         scope: 'control',
         description:
-            "DATALOG's channels: the MSS54's live values, named block:symbol (3:n engine speed, 3:toel oil temperature, 3:ub battery voltage, 35:evan1_ist / 35:evan1_soll intake VANOS actual and target, 35:avan1_ist / 35:avan1_soll exhaust VANOS) — and SMG II's read values, named smg2:JOB:RESULT (smg2:STATUS_IO_LESEN:STAT_HYDRAULIKTEMPERATUR_WERT), read once per sample by SMG II's own SGBD code, while the car moves too (status reads, in the owner's table). query: find channels by words in any language the catalogue carries (vanos, oil, 油温), with name, unit and block. channels: choose them — the whole selection, replacing the last; refused while recording. A block is one round trip whichever of its values are chosen, so values of one block cost nothing extra. Use these, not catalogue read jobs, for values to watch over time.",
+            "DATALOG's channels: the MSS54's live values, named block:symbol (3:n engine speed, 3:toel oil temperature, 3:ub battery voltage, 35:evan1_ist / 35:evan1_soll intake VANOS actual and target, 35:avan1_ist / 35:avan1_soll exhaust VANOS) — and other modules' read values, named module:JOB:RESULT (smg2:STATUS_IO_LESEN:STAT_HYDRAULIKTEMPERATUR_WERT), wherever that module's own SGBD code for the read ships (query finds them), read once per sample by that code, while the car moves too (status reads, in the owner's table). query: find channels by words in any language the catalogue carries (vanos, oil, 油温), with name, unit and block. channels: choose them — the whole selection, replacing the last; refused while recording. A block is one round trip whichever of its values are chosen, so values of one block cost nothing extra. Use these, not catalogue read jobs, for values to watch over time.",
         inputSchema: obj({
             query: str('Words to find channels by.'),
-            channels: { type: 'array', items: { type: 'string' }, maxItems: 24, description: 'The channels to record, block:symbol (3:toel), or smg2:JOB:RESULT.' },
+            channels: { type: 'array', items: { type: 'string' }, maxItems: 24, description: 'The channels to record, block:symbol (3:toel), or module:JOB:RESULT.' },
         }),
     },
     monitoring_datalog: {

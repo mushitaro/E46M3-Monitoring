@@ -1,5 +1,7 @@
 # 装備 — どの SGBD を載せ、どれを載せないか
 
+> **開発者向けの文書。** 車の操作で AI ができること・止める理由は、`monitoring_capabilities`（＝[`docs/CAPABILITIES.md`](CAPABILITIES.md)、コードから生成）が答える。ここと食い違ったら、そちらが正しい。
+
 `$SGBD_DUMP_DIR` には ECU のダンプが **63** ある。アプリが持つモジュールは **51**。
 差の 12 について、この文書と `tools/sgbd/fitment.py` が理由を持つ。
 

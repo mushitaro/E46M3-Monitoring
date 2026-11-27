@@ -25,6 +25,7 @@ export * from './vehicleState.ts';
 export * from './policy.ts';
 export * from './runGate.ts';
 export * from './stopReasons.ts';
+export * from './capabilities.ts';
 export * from './actuationGate.ts';
 export * from './practiceCar.ts';
 export * from './practiceEcu.ts';

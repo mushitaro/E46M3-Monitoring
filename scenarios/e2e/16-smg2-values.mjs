@@ -13,11 +13,12 @@ const overview = (page) => tool(page, 'monitoring_run_overview');
 
 const scenario = {
     id: 'S16',
-    title: 'SMG II の値：走行中も入出力と故障を読む（運営者 2026-11-15）→ 学習値は止まってから → 値と単位で返る',
+    title: 'SMG II の値：走行中も入出力・故障・学習値を読む（運営者 2026-11-15・11-27）→ 計画が停車中と言う段は止まってから → 値と単位で返る',
     story:
         '40 km/h で走りながら、SMG II の入出力の値・故障メモリ・油温の記録・学習値の計画を回す。状態の値は走行中も読むと運営者が決めた' +
-        '（2026-11-15）ので、入出力の読み取りと故障読取は走行中に済み、油温も記録される。学習値は「停車中だけ」と理由を付けて待ち、' +
-        '止まると読まれる（クラッチ・変速機・変速機データ）。エンジン回転数などは名前と単位つきで返る。',
+        '（2026-11-15）ので、入出力の読み取りと故障読取は走行中に済み、油温も記録される。学習値の読取も状態の値として表に通る' +
+        '（運営者 2026-11-27「推奨で直してください」、ASSISTANT-LAYERS.md Q5）ので走行中に済む。計画が「停車中」と書いた段だけが' +
+        '止まるのを待ち、止まると読まれる。エンジン回転数などは名前と単位つきで返る。',
     car: { dmeFaults: [], speedKmh: 40 },
     steps: [
         { say: WORDS },
@@ -36,21 +37,23 @@ const scenario = {
                 { n: 2, do: 'SMG II の故障メモリ', kind: 'faults', module: 'smg2', when: 'any' },
                 { n: 3, do: '油圧ユニットの温度を記録', kind: 'sample', channels: ['smg2:STATUS_IO_LESEN:STAT_HYDRAULIKTEMPERATUR_WERT'] },
                 { n: 4, do: 'SMG II の学習値', kind: 'adapt', module: 'smg2', when: 'any' },
+                { n: 5, do: 'SMG II の学習値（止まってから、もう一度）', kind: 'adapt', module: 'smg2', when: 'parked' },
             ],
         }),
         startProbe,
         { wait: 3000 },
         {
             check: {
-                desc: '走行中：入出力と故障読取は済み、学習値だけ「停車中だけ」と待つ',
+                desc: '走行中：入出力・故障読取・学習値は済み、計画が「停車中」と書いた段だけが止まるのを待つ',
                 run: async (page) => {
                     const o = await overview(page);
-                    const [read, faults, , adapt] = o.steps ?? [];
+                    const [read, faults, , adapt, adaptParked] = o.steps ?? [];
                     const ok =
                         o.running &&
                         read?.state === 'done' &&
                         faults?.state === 'done' &&
-                        adapt?.state === 'pending' && /parked only/.test(adapt.waiting ?? '');
+                        adapt?.state === 'done' &&
+                        adaptParked?.state === 'pending' && adaptParked.sent === 0;
                     return ok ? true : JSON.stringify(o).slice(0, 600);
                 },
             },
@@ -58,11 +61,11 @@ const scenario = {
         { car: { speedKmh: 0 }, means: '車が止まる' },
         {
             check: {
-                desc: '止まると：入出力が読まれ、エンジン回転数が 1/min つきで返る。学習値も読まれる',
+                desc: '止まると：入出力が読まれ、エンジン回転数が 1/min つきで返る。停車中の段の学習値も読まれる',
                 run: async (page) => {
                     for (let i = 0; i < 40; i++) {
                         const o = await overview(page);
-                        const [read, , , adapt] = o.steps ?? [];
+                        const [read, , , , adapt] = o.steps ?? [];
                         const x = (o.recent ?? []).find((e) => e.what === 'STATUS_IO_LESEN' && e.outcome === 'ok' && e.values);
                         const rpm = x?.values.find((v) => v.name === 'STAT_MOTORDREHZAHL_WERT');
                         if (read?.state === 'done' && adapt?.state === 'done' && rpm?.unit === '1/min') return true;

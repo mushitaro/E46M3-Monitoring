@@ -8,7 +8,13 @@ import { json, ownerOf, unauthorized } from '../../_owner-gate/owner';
  * matrix-tsunagi/bridge) verifies the ticket the tab hands it in the WebSocket subprotocol list
  * (never the URL):
  *
- *     v1.<base64url(JSON {o: owner id, a: 'monitoring', e: expiry, n: nonce})>.<base64url(HMAC-SHA256)>
+ *     v1.<base64url(JSON {o: owner id, a: 'monitoring', s: Mainstay, e: expiry, n: nonce})>.<base64url(HMAC-SHA256)>
+ *
+ * `s` is the Mainstay this deployment serves (`M_MAINSTAY` in wrangler.jsonc, `m3`; the same slug the
+ * engine-data door's tickets carry). m3 counts as one Mainstay on the M platform (operator,
+ * 2026-11-27): once the platform checks the tabs' tickets (the relay's PLATFORM_APPS), the room is
+ * `monitoring@<s>:<account>`, and the platform passes a v1 ticket with `s` added as it is. Until then
+ * the relay ignores `s` for this app. Left out when `M_MAINSTAY` is not a slug.
  *
  * The copy of this format that VERIFIES is matrix-tsunagi/bridge/src/ticket.ts; change both. The
  * relay picks its secret by `a` (BRIDGE_TICKET_SECRET_MONITORING there), so a secret leaked from
@@ -26,6 +32,8 @@ interface BridgeEnv {
     BRIDGE_TICKET_SECRET?: string;
     /** The relay's tab socket. A var in wrangler.jsonc; without it the bridge is off for everyone. */
     BRIDGE_TAB_URL?: string;
+    /** The Mainstay's slug, the ticket's `s` (wrangler.jsonc: `m3`). */
+    M_MAINSTAY?: string;
 }
 
 const TTL_S = 60;
@@ -38,9 +46,13 @@ const b64url = (bytes: Uint8Array) => {
     return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 };
 
-export async function mintTicket(secret: string, owner: string, nowSec: number): Promise<string> {
+/** The platform's slug shape (tsunagi-m-platform's door.ts: `SLUG`). */
+const SLUG = /^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]$/;
+
+export async function mintTicket(secret: string, owner: string, nowSec: number, mainstay?: string): Promise<string> {
     const n = b64url(crypto.getRandomValues(new Uint8Array(9)));
-    const payload = b64url(enc.encode(JSON.stringify({ o: owner, a: 'monitoring', e: Math.floor(nowSec) + TTL_S, n })));
+    const s = mainstay && SLUG.test(mainstay) ? { s: mainstay } : {};
+    const payload = b64url(enc.encode(JSON.stringify({ o: owner, a: 'monitoring', ...s, e: Math.floor(nowSec) + TTL_S, n })));
     const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
     const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(`v1.${payload}`)));
     return `v1.${payload}.${b64url(sig)}`;
@@ -52,5 +64,5 @@ export const onRequestPost = async ({ env, data }: { env: BridgeEnv; data: Recor
     const secret = env.BRIDGE_TICKET_SECRET;
     // Not configured is said as such, so the panel can tell "this build has no bridge" from "down".
     if (!secret || secret.length < 32 || !env.BRIDGE_TAB_URL) return json({ error: 'bridge_unavailable' }, 503);
-    return json({ ticket: await mintTicket(secret, owner.id, Date.now() / 1000), url: SOCKET_PATH, ttl: TTL_S });
+    return json({ ticket: await mintTicket(secret, owner.id, Date.now() / 1000, env.M_MAINSTAY), url: SOCKET_PATH, ttl: TTL_S });
 };

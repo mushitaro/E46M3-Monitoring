@@ -201,8 +201,8 @@ describe.skipIf(!HAVE_DATA)('monitoring_capabilities: the modules, from the cata
         expect(by.get('ascmk20')?.chosenBy).toBe('owner');
         expect(by.get('dsc_e46')?.chosenBy).toBe('owner');
         // MK60 is read on an M3 (KWP on the DS2 line, CLAUDE.md).
-        expect(by.get('dsc_mk60')?.chosenBy).toBe('m3');
-        expect(by.get('lws5')?.chosenBy).toBe('m3');
+        expect(by.get('dsc_mk60')?.chosenBy).toBe('profile-default');
+        expect(by.get('lws5')?.chosenBy).toBe('profile-default');
     });
 
     it('says every module\'s faults are read, and by what', () => {

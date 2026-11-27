@@ -82,6 +82,7 @@ MSS54 の表と解読は `packages/ds2-mss54`。エンジンはこの二つに�
 | 電文 | `loadTelegrams`、`bestTelegram`、`moduleProtocol`、`noProtocol`、`hasIdent`、`hasFaultRead`、`mayTryFaultRead`、`kwpFrameOf`、`kwpExchange`、`parseDtcsByStatus` |
 | 送るかの判断 | `mayRun`、`mayRunProtocolRead`、`mayJobSend`、`telegramBytes`、`clearFaultsCommand`、`READ_ONLY_CONTROLS`、`isReadOnlyControl`、`mayActuate`、`whyNotSendable`、`permitFor`、`stopPermit`、`permitCovers`、`actuationTerms` |
 | 運営者の決定 | `OWNER_DECISION`、`OWNER_RULES`、`natureOf`、`decisionFor`、`isReadNature`、`NATURES`、`MIN_RUN_VOLTAGE`、`DEFAULT_RUN_TIMEOUT_S` |
+| 能力の答えと断り（2026-11-27、GREN BLUE の頼み 2-1・2-2） | `moduleRoster`・型 `ModuleCapability`（`chosenBy`：`ident`・`profile-default`・`owner`・`ident-only`）、`ownerRules({ stopTool, wordsArg })`、`assistantMay`・`assistantLine`・`assistantLineJa`・`ownerTable(toolsFor)`、`stopList`・`refusalKinds`、`refusal`・型 `Refusal`・`RefusalKind`。道具の名前は持たず、使う側が渡す（WORKS は `monitoring_*`、SUITE は `maintenance_*`）。WORKS の `monitoring_capabilities` と `docs/CAPABILITIES.md` はこれで組む |
 | SGBD のジョブ | `loadSgbdResults`、`runSgbdJob`、`decodeRead`、`decodeFaultRead`（ジョブのコードで故障の答えを読む）、`readFaultsByJob`、`hasFaultJob`、`moduleLogReads`・`moduleChannels`・`moduleLogGate` |
 | 台帳 | `EMPTY_LEDGER`、`recordParkedObservation`、`recordClear`、`grantMovingOk`、`mayReadWhileMoving`、`applyKillList`、`fetchKillList`、`mayRunOnVehicle`、`recordPracticeRun`、`hasPracticed`、`recordVehicleRun` |
 | 車の状態 | `vehicleStateFrom`、`motionOf`、`VEHICLE_STATE_MAX_AGE_MS` |

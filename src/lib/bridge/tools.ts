@@ -378,7 +378,7 @@ export const MONITORING_TOOLS = {
     monitoring_connect: {
         scope: 'control',
         description:
-            "Connect again to the car through the cable this device has already been allowed — the one a person connected on the screen before (operator, 2026-10-28). Never asks for a new device: with none allowed yet the answer says so, and the first connection is made on the screen. Connects to the car (not PRACTICE), to the module the screen has selected. The owner's own words ('つないで') are the yes: confirmed: true.",
+            "Connect again to the car through the cable this device has already been allowed — the one a person connected on the screen before (operator, 2026-10-28). Never asks for a new device: with none allowed yet the answer says so, and the first connection is made on the screen. Connects to the car (not PRACTICE), to the module the screen has selected; with ALL MODULES chosen on DIAGNOSIS it opens on linkModule (monitoring_status), and the scan reads every module through it — say which module before you connect and again after (the answer's note). The owner's own words ('つないで') are the yes: confirmed: true.",
         inputSchema: obj({ confirmed: CONFIRMED }, ['confirmed']),
     },
     monitoring_disconnect: {

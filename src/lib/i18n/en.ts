@@ -243,6 +243,7 @@ export const en: Localised = {
     precond_stationary: 'Stationary',
     precond_engine_off: 'Engine off',
     module: 'Module',
+    module_linkTitle: (name) => `The link opens on ${name}. ALL MODULES reads every module's faults through it, one after another.`,
     faultRef: 'Fault text reference',
     faultRef_info: 'The SGBD\'s fault-text table (FORTTEXTE). A fault that is read gets its text from here. Search it by code, translation or the German original.',
     catalog_jobs: (n: number) => `${n} job${n === 1 ? '' : 's'}`,

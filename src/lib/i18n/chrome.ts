@@ -32,6 +32,8 @@ export const CHROME = {
     disconnect: 'Disconnect',
     // The module select's first choice on DIAGNOSIS: every module's fault memory, one after another.
     module_all: 'ALL MODULES',
+    // Beside the ALL MODULES list's title: the one module the link opens on (and single-module tools act on).
+    module_link: 'LINK',
     // The sub-action under the scan: put the chosen module on the screen.
     open_module: 'Open',
     practice: 'PRACTICE',

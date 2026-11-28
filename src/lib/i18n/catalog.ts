@@ -227,6 +227,8 @@ export interface Localised {
     precond_stationary: string;
     precond_engine_off: string;
     module: string;
+    /** ALL MODULES chosen: what the readout beside it means — the one module the link opens on. */
+    module_linkTitle: (name: string) => string;
     faultRef: string;
     faultRef_info: string;
     catalog_jobs: (n: number) => string;

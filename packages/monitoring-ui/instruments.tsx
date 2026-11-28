@@ -48,6 +48,7 @@ const shopChrome = {
     tab_log: '通信ログ',
     disconnect: '切断',
     module_all: '全モジュール',
+    module_link: '回線',
     open_module: '開く',
     practice: '練習',
     practice_engine: 'エンジン',

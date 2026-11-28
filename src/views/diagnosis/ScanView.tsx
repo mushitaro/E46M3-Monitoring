@@ -29,6 +29,8 @@ export interface ScanShown {
     idleHint?: string;
     /** The module the owner said answers at an address no IDENT rule decides (0x56 ASC or DSC; lib/variantChoice). */
     ownerChose?: (address: number) => string | null;
+    /** The one module the link opens on (and single-module tools act on), said beside the title. */
+    linkModule?: string;
 }
 
 /**
@@ -139,6 +141,28 @@ function useProfiles(run: ScanRun | null, mss54: EcuProfile | null): ReadonlyMap
 const hhmm = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 /**
+ * ALL MODULES on the screen, and the link opens on one module: which one, beside the title.
+ *
+ * The scan reaches every address on that one link, so opening on MSS54 is right; what was wrong was
+ * that nothing said so — CONNECT under ALL MODULES went to MSS54 and the screen still read ALL
+ * MODULES (owner, 2026-11-28). Shown connected and not, since it is where CONNECT goes too. Here
+ * and not on the module row, which has no room beside the select on a head unit once connected.
+ * The name before its parenthesis; the whole name and what it means are the title.
+ */
+function LinkTarget({ index, module }: { index: EcuIndex | null; module: string }) {
+    const { lang, t } = useLang();
+    const entry = index?.modules.find((e) => e.id === module);
+    const full = entry ? (lang === 'ja' ? entry.name || entry.name_en : entry.name_en || entry.name) : module;
+    return (
+        // One line of text, not three boxes: the list's own rows are address, name, tag on lines of
+        // their own, and a readout laid out the same way would read as a fourth row for 0x12.
+        <span className="min-w-0 truncate font-mono text-[10px] text-slate-500" title={t.module_linkTitle(full)} data-testid="link-target">
+            {[t.module_link, entry?.addressHex, full.split(' (')[0]].filter(Boolean).join(' ')}
+        </span>
+    );
+}
+
+/**
  * DIAGNOSIS with ALL MODULES: one row per address the scan asked, the address in the code column
  * and the module's name where a name goes. Pressing a row opens what it said — the codes with their
  * names, whether each is there now, and the conditions recorded with it; another module's bytes as
@@ -146,7 +170,7 @@ const hhmm = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digi
  * module of the row opened last on the screen. Rows open and close on their own, so two modules'
  * faults can be read side by side (SC02 step 2).
  */
-export const ScanList = memo(function ScanList({ run, progress, index, mss54, selected, onSelect, idleHint, ownerChose }: ScanShown) {
+export const ScanList = memo(function ScanList({ run, progress, index, mss54, selected, onSelect, idleHint, ownerChose, linkModule }: ScanShown) {
     const { lang, t } = useLang();
     const nameOf = (id: string) => {
         const m = index?.modules.find((x) => x.id === id);
@@ -179,6 +203,7 @@ export const ScanList = memo(function ScanList({ run, progress, index, mss54, se
             count={run?.results.length}
             note={run && summary ? `${t.scan_summary(summary.modules, summary.faults)} · ${t.scan_note(hhmm(run.endedAt))}` : undefined}
             info={t.scan_info}
+            actions={linkModule ? <LinkTarget index={index} module={linkModule} /> : undefined}
         >
             {!run ? (
                 <p className="py-2 font-mono text-xs text-slate-600">

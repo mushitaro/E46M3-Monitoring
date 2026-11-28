@@ -44,3 +44,44 @@ describe('monitoring_status: the module is the screen’s selection', () => {
         expect((s.module as { all?: boolean }).all).toBeUndefined();
     });
 });
+
+/**
+ * monitoring_connect under ALL MODULES (owner, 2026-11-28): the link opened on MSS54 and nothing said
+ * so, so the owner heard "connected" beside a screen that still said ALL MODULES. The answer now
+ * names the module the link opened on and says the screen stays on ALL MODULES.
+ */
+function connect(over: { tab: string; allModules: boolean }) {
+    const link = { mode: 'vehicle', state: 'disconnected', reconnectPermitted: async () => null, vehicleState: null, motion: 'unknown', fitment: new Map(), scanProgress: null, scan: null, error: null, faults: null, rawFaults: null, ident: null };
+    const input = {
+        link,
+        ecuId: 'mss54',
+        ecuIndex: { modules: [{ id: 'mss54', name_en: 'MSS54 (S54 / E46 M3 Engine)' }] },
+        catalog: null,
+        target: noProtocol('mss54', 0x12),
+        ledger: EMPTY_LEDGER,
+        datalog: { current: () => [], isRunning: () => false, snapshot: () => ({ samples: [], segments: [] }) },
+        sessions: {},
+        probe: { progress: null, available: null },
+        probeSessions: {},
+        mode: 'manual',
+        updateWaiting: false,
+        defaultDevice: { headUnit: 'ナビ', phone: '電話', desktop: 'PC', tablet: 'タブレット' },
+        ...over,
+    };
+    return monitoringFacade(input as unknown as Parameters<typeof monitoringFacade>[0]).connect() as Promise<Record<string, unknown>>;
+}
+
+describe('monitoring_connect: which module the link opened on', () => {
+    it('ALL MODULES on DIAGNOSIS: names the link’s module and says the screen stays on ALL MODULES', async () => {
+        const a = await connect({ tab: 'diagnosis', allModules: true });
+        expect(a).toMatchObject({ connected: true, module: { id: 'mss54', name: 'MSS54 (S54 / E46 M3 Engine)' }, showing: 'all-modules' });
+        expect(a.note).toMatch(/ALL MODULES/);
+        expect(a.note).toMatch(/MSS54/);
+        expect(a.note).toMatch(/monitoring_scan/);
+    });
+
+    it('a module chosen: that module, and no note', async () => {
+        const a = await connect({ tab: 'diagnosis', allModules: false });
+        expect(a).toEqual({ connected: true, module: { id: 'mss54', name: 'MSS54 (S54 / E46 M3 Engine)' } });
+    });
+});

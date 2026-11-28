@@ -245,6 +245,7 @@ export const ja: Localised = {
     // beside it. The chrome tokens of this panel are one vocabulary; a lone
     // katakana word in that row read as a different app's control.
     module: 'MODULE',
+    module_linkTitle: (name) => `回線は ${name} に開きます。全モジュールの故障は、この回線で順に読みます。`,
     faultRef: '故障本文リファレンス',
     faultRef_info: 'SGBD の故障本文表（FORTTEXTE）です。読み取った故障には、ここの本文が付きます。コード・訳文・独語原文で引けます。',
     catalog_jobs: (n: number) => `${n} 件`,

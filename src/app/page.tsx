@@ -983,6 +983,7 @@ export default function Home() {
                 onSelect={setScanOpen}
                 idleHint={link.state === 'disconnected' ? t.start_hint : undefined}
                 ownerChose={(address) => choiceFor(variantChoices, car, address)}
+                linkModule={ecuId}
             />
         ) : (
             <DiagnosisView ident={link.ident} faults={link.faults} rawFaults={link.rawFaults} catalog={catalog} />

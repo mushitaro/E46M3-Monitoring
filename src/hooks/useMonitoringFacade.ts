@@ -1025,7 +1025,19 @@ export function useMonitoringFacade(input: {
         connect: async () => {
             if (link.state !== 'disconnected') return { connected: link.state !== 'connecting', reason: `The link is ${link.state}.` };
             const reason = await link.reconnectPermitted();
-            return reason === null ? { connected: true, module: { id: ecuId, name: moduleName(ecuId) } } : { connected: false, reason };
+            if (reason !== null) return { connected: false, reason };
+            const opened = { id: ecuId, name: moduleName(ecuId) };
+            // ALL MODULES on the screen, one module on the link (owner, 2026-11-28: the screen said ALL
+            // MODULES and the link had quietly opened on MSS54). Say both, so the assistant does too.
+            if (tab === 'diagnosis' && input.allModules) {
+                return {
+                    connected: true,
+                    module: opened,
+                    showing: 'all-modules',
+                    note: `The screen stays on ALL MODULES; the link opened on ${opened.name} (linkModule, shown as LINK beside the ALL MODULES title). monitoring_scan reads every module's faults through this link; single-module tools act on ${opened.name}. Tell the owner both.`,
+                };
+            }
+            return { connected: true, module: opened };
         },
 
         disconnect: async (stopRecording) => {

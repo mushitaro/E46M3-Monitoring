@@ -30,7 +30,7 @@ E46M3 /// MONITORING の診断エンジンを、画面から切り離した部�
 | 電文の台帳と送るかの判断 | `telegrams.ts`、`moduleProtocol.ts`、`kwpOnDs2.ts`、`policy.ts`、`runGate.ts`、`stopReasons.ts`、`actuationGate.ts`、`ledger.ts`、`vehicleState.ts` |
 | SGBD の分類を読む（`classify.py` の結果） | `ecuCatalog.ts`、`jobOps.ts`、`humanName.ts` |
 | 変種の選び方 | `variants.ts`、`identity.ts` |
-| 全モジュールの走査、故障の読み・解読 | `probe/scan.ts`、`probe/modules.ts`、（PROBE の実行器）`probe/executor.ts`・`plan.ts`・`criteria.ts`、（ランの比べ・計画の版の項目・値の広がり）`probe/compare.ts`・`items.ts`・`runStats.ts` |
+| 全モジュールの走査、故障の読み・解読 | `probe/scan.ts`、`probe/modules.ts`、（PROBE の実行器）`probe/executor.ts`・`plan.ts`・`criteria.ts`、（ランの比べ・計画の版の項目・値の広がり）`probe/compare.ts`・`items.ts`・`runStats.ts`、（PROBE の盤の部品とグラフ）`probe/board.ts`・`graph.ts` |
 | 各モジュール自身の SGBD のジョブを動かす：故障読取 FS_LESEN を実車相手に進める・答えを値と単位に読む・データログの値（`<id>.results.json`。main の #48〜#58 で入り、ここに置いた） | `sgbd/vm.ts`、`sgbd/results.ts`、`sgbd/faultRead.ts`、`sgbd/logChannels.ts` |
 | MSS54 以外の故障コードの読み方（各モジュール自身の SGBD が読む場所。`fault-layouts.json`、実車未確認）。ジョブのコードが無いモジュール（非 M3 の DME・GS20 ほか）で使う | `faultLayouts.ts` |
 | 記録の形 | `journal.ts`、`sync/session.ts`、`investigation/readRecord.ts`、`investigation/redact.ts`、`logText.ts` |
@@ -53,7 +53,7 @@ MSS54 の表と解読は `packages/ds2-mss54`。エンジンはこの二つに�
   返すものは前と同じ形。
 - M3 だけの機能の画面：作動テスト・調整・手順（`actuatorArgs`・`argFrame`・`procedure*`・`wizardSteps`・
   `smg2Workflows`・`adaptationReset`・`dscHydraulics`）、PROBE の盤・セッション
-  （`probe/board`・`graph`・`sessions`・`runStore`・`boardStore`。比べはエンジンの `probe/compare`・`items`・`runStats`）、CO-WORK
+  （`probe/sessions`・`runStore`・`boardStore`。比べはエンジンの `probe/compare`・`items`・`runStats`、盤の部品とグラフはエンジンの `probe/board`・`graph`）、CO-WORK
   （`notebook/`）、調査の委任（`investigation/share.ts`）、SYNC（`sync/` のうち `session.ts` 以外）、
   ファイルを渡す `download.ts`（文の形はエンジンの `logText.ts` を再輸出）。
 
@@ -92,6 +92,7 @@ MSS54 の表と解読は `packages/ds2-mss54`。エンジンはこの二つに�
 | 故障の読み方 | `loadFaultLayouts`、`decodeByLayout(layout, reads)` → `DecodedFault[]`（`{ code: '0x2A', count, present }`）。読取の `RawFaultRead.decoded`、走査の `ScanResult.faults` に入る |
 | PROBE | `runProbe`、`probeBlocks`、`loadProbeModules`、`judge`、`stepsProblem`・`judgesProblem`・`hypothesesProblem` |
 | ランの比べ（前と後、2026-11-28、GREN BLUE SUITE の頼み §7.2 の 3） | `compareRuns`・`trend`・`channelStats`・`runRef`（型 `Comparison`・`RunRef`・`ChannelStats`）、計画の版の項目 `formItems`・`diffForms`・`judgeKey`・`measures`（型 `Form`・`ItemDiff`）、値の広がり `runStats`。純粋な関数で、ランの記録（`ProbeRun`）を渡す |
+| PROBE の盤（2026-11-28、GREN BLUE SUITE の頼み §7.2 の 3） | 部品 `PART_KINDS`・`place`・`setShow`・`toggle`・`move`・`emptyBoard`・`partProblem`・`boardLine`・`BOARD_LIMITS`（型 `Board`・`Part`・`PartSpec`・`PartKind`）、グラフ `graphOf`・`readoutsOf`・`READOUTS`・`defaultReadouts`（型 `Readout`・`GraphTone`）。純粋な関数で、盤の保存（`boardStore`）は画面の側 |
 | 記録の形 | `episodes`、`toSession`、`expired`、`SavedSession`・`FailureNote`・`excerpt`・`isSavedSession`、`ReadRecord`・`readRecordProblem`、`redactText`・`redactHex`・`redactResponse`・`redactDeep`、`logLine`、`datalogCsv` |
 | 点検報告 | `buildIntakeCheck`、`intakeCheckReport`（zod）、`INTAKE_CHECK_SCHEMA`、`decodeIdent`、`sha256Hex`、`intakeFileName`、`clusterVinShort` |
 | 練習の車 | `practiceCar`、`resetPracticeCar`、`smg2PhydBytes`、`PracticePort`、`practiceBus` |

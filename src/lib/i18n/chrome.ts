@@ -166,7 +166,7 @@ export const CHROME = {
     tab_probe: 'PROBE',
     new_session: 'New session',
     next_session: 'Next',
-    // The board's parts (lib/probe/board), named as instrument tokens like the tabs.
+    // The board's parts (the engine's probe/board), named as instrument tokens like the tabs.
     part_message: 'AI',
     part_faults: 'FAULTS',
     part_scan: 'ALL MODULES',

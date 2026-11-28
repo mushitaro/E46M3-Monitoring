@@ -42,6 +42,8 @@ export * from './probe/modules.ts';
 export * from './probe/items.ts';
 export * from './probe/compare.ts';
 export * from './probe/runStats.ts';
+export * from './probe/board.ts';
+export * from './probe/graph.ts';
 export * from './sgbd/vm.ts';
 export * from './sgbd/results.ts';
 export * from './sgbd/faultRead.ts';

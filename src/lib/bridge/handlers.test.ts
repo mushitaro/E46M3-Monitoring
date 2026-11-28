@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { addProblem, mergeEntries, runnablePlan, type NotebookEntry } from '../notebook/rules';
-import { emptyBoard, type Board } from '../probe/board';
+import { emptyBoard, type Board } from '@tsunagi/monitoring-engine';
 import type { ProbeLive, StoredRun } from '../probe/runStore';
 import type { Mode } from '../tabs';
 import { bridgeHandlers, pickRecord, type TabFacade } from './handlers';

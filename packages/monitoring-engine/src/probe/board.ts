@@ -8,7 +8,7 @@
  * and it is drawn as the assistant's, so an estimate never wears a measurement's face.
  *
  * A board belongs to a session (a CO-WORK record) and is kept on this device only, beside MEMORY's
- * journal (lib/probe/boardStore.ts). With nothing placed, the board is empty.
+ * journal (the app's src/lib/probe/boardStore.ts). With nothing placed, the board is empty.
  *
  * Pure: the bridge and the view apply the same rules.
  */

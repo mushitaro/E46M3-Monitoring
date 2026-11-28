@@ -153,7 +153,7 @@ export function JapaneseInstruments({ children }: { children: ReactNode }) {
     return <EmbeddedLanguage.Provider value={japanese}>{children}</EmbeddedLanguage.Provider>;
 }
 
-export { emptyBoard, place as placeBoardParts, setShow as setBoardReadouts, boardLine, partProblem, type Board as InstrumentBoard, type Part as InstrumentPart } from '../../src/lib/probe/board';
+export { emptyBoard, place as placeBoardParts, setShow as setBoardReadouts, boardLine, partProblem, type Board as InstrumentBoard, type Part as InstrumentPart } from '@tsunagi/monitoring-engine';
 export { DiagnosticFooter } from '../../src/components/DiagnosticFooter';
 export { ControlPanel as InstrumentControlPanel } from '../../src/components/shell/ControlPanel';
 export { TextButton as InstrumentTextButton } from '../../src/components/ui';

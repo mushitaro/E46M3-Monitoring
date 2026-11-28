@@ -11,7 +11,7 @@ import { text as resolveText, type EcuProfile } from '@tsunagi/monitoring-engine
 import { normCode } from '@/lib/faultCode';
 import { useLang } from '@/lib/i18n';
 import { currentPlan } from '@/lib/notebook/rules';
-import { type Part, type PartKind } from '@/lib/probe/board';
+import { type Part, type PartKind } from '@tsunagi/monitoring-engine';
 import { ComparePanel } from './ComparePanel';
 import { channelStats, compareRuns, type Comparison } from '@tsunagi/monitoring-engine';
 import { ProbeGraph } from './ProbeGraph';
@@ -60,7 +60,7 @@ const clock = (ms: number) => {
 
 /**
  * PROBE — the board (operator, 2026-11-02): the parts the assistant placed for the session on the
- * screen, in the owner's order. Each part is drawn from the tab's own data (lib/probe/board says
+ * screen, in the owner's order. Each part is drawn from the tab's own data (the engine's probe/board says
  * why); the owner opens, closes and moves them. With nothing placed, nothing is drawn.
  */
 export function BoardView({ s, data }: { s: ProbeSessions; data: BoardData }) {

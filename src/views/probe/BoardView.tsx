@@ -13,7 +13,7 @@ import { useLang } from '@/lib/i18n';
 import { currentPlan } from '@/lib/notebook/rules';
 import { type Part, type PartKind } from '@/lib/probe/board';
 import { ComparePanel } from './ComparePanel';
-import { channelStats, compareRuns, type Comparison } from '@/lib/probe/compare';
+import { channelStats, compareRuns, type Comparison } from '@tsunagi/monitoring-engine';
 import { ProbeGraph } from './ProbeGraph';
 import type { ProbeLive, StoredRun } from '@/lib/probe/runStore';
 import type { ScanRun } from '@tsunagi/monitoring-engine';

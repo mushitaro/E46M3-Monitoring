@@ -20,9 +20,9 @@
  * built from the code — say that, not this comment.
  */
 import { boardLine, place, setShow, type Board } from '../probe/board';
-import { compareRuns, trend } from '../probe/compare';
+import { compareRuns, trend } from '@tsunagi/monitoring-engine';
 import type { ProbeExchange, ProbeSample } from '@tsunagi/monitoring-engine';
-import { runStats } from '../probe/runStats';
+import { runStats } from '@tsunagi/monitoring-engine';
 import type { ProbeLive, StoredRun } from '../probe/runStore';
 import { formOf, lineage, nextSession, type NextRefusal } from '../probe/sessions';
 import { TAB_ORDER, type Mode, type Tab } from '../tabs';

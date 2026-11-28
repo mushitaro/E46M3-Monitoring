@@ -7,7 +7,7 @@
  *
  * Pure: the bridge hands in the run's samples.
  */
-import type { ProbeSample } from '@tsunagi/monitoring-engine';
+import type { ProbeSample } from './criteria.ts';
 
 export interface ChannelSpread {
     n: number;

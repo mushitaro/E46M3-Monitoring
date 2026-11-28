@@ -1,7 +1,7 @@
 'use client';
 import { MSS54_CHANNELS, type ChannelId } from '@tsunagi/ds2-mss54';
 import { useLang } from '../../lib/i18n';
-import { channelStats } from '../../lib/probe/compare';
+import { channelStats } from '@tsunagi/monitoring-engine';
 import type { ProbeLive } from '../../lib/probe/runStore';
 
 const num = (v: number | null | undefined) => v == null ? '—' : String(Math.round(v * 100) / 100);

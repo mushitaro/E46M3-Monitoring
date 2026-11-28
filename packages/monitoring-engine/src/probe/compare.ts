@@ -13,8 +13,8 @@
  *
  * Pure: the bridge's compare and the desk read the same numbers.
  */
-import type { ProbeFault, ProbeRun } from '@tsunagi/monitoring-engine';
-import { diffForms, judgeKey, measures, type Form, type ItemDiff } from './items';
+import type { ProbeFault, ProbeRun } from './executor.ts';
+import { diffForms, judgeKey, measures, type Form, type ItemDiff } from './items.ts';
 
 export interface RunRef {
     record: string;

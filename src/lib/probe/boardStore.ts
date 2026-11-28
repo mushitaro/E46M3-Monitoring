@@ -9,7 +9,7 @@
  * WORKS-only, like lib/sync.
  */
 import { inTransaction, JOURNAL_META } from '../sync/db';
-import { emptyBoard, type Board } from './board';
+import { emptyBoard, type Board } from '@tsunagi/monitoring-engine';
 
 const key = (record: string) => `board:${record}`;
 

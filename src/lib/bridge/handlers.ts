@@ -19,7 +19,7 @@
  * sends reads through runGate. What the assistant can do is `monitoring_capabilities` (capabilities.ts),
  * built from the code — say that, not this comment.
  */
-import { boardLine, place, setShow, type Board } from '../probe/board';
+import { boardLine, place, setShow, type Board } from '@tsunagi/monitoring-engine';
 import { compareRuns, trend } from '@tsunagi/monitoring-engine';
 import type { ProbeExchange, ProbeSample } from '@tsunagi/monitoring-engine';
 import { runStats } from '@tsunagi/monitoring-engine';
@@ -147,7 +147,7 @@ export interface TabFacade {
     openSaved(id: string): Promise<{ opened: string; label: string; screen: 'memory' } | null>;
     /** NEW SESSION: an empty session opened on the screen; its id. */
     newSession(): string;
-    /** A session's PROBE board, and keeping it (lib/probe/board). */
+    /** A session's PROBE board, and keeping it (the engine's probe/board). */
     board(record: string): Promise<Board>;
     putBoard(board: Board): Promise<void>;
 }

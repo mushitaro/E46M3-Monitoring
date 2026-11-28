@@ -6,8 +6,8 @@
  * Pure: the view hands in the run's samples and draws what comes back. Every number is the run's
  * own; the one number of the assistant's is the band, and the view says so.
  */
-import type { ProbeSample } from '@tsunagi/monitoring-engine';
-import type { Readout } from './board';
+import type { ProbeSample } from './criteria.ts';
+import type { Readout } from './board.ts';
 
 export interface GraphSpec {
     /** The value to watch. */

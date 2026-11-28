@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { currentPlan, mergeEntries, runnablePlan, type NotebookEntry } from '@/lib/notebook/rules';
 import { listAllEntries } from '@/lib/notebook/store';
-import { emptyBoard, move, toggle, type Board } from '@/lib/probe/board';
+import { emptyBoard, move, toggle, type Board } from '@tsunagi/monitoring-engine';
 import { getBoard, probeChanges, putBoard } from '@/lib/probe/boardStore';
 import { listRuns, type StoredRun } from '@/lib/probe/runStore';
 import { lineage, nextSession, probeSessions, type NextRefusal } from '@/lib/probe/sessions';

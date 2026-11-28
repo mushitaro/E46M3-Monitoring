@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BOARD_LIMITS, boardLine, defaultReadouts, emptyBoard, move, partProblem, place, setShow, toggle } from './board';
+import { BOARD_LIMITS, boardLine, defaultReadouts, emptyBoard, move, partProblem, place, setShow, toggle } from './board.ts';
 
 describe('placing parts', () => {
     it('numbers them in order placed and never reuses a number', () => {

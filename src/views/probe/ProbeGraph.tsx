@@ -3,9 +3,9 @@
 import type { ProbeSample } from '@tsunagi/monitoring-engine';
 import { Provenance } from '../../components/ui';
 import { useLang } from '../../lib/i18n';
-import { BOARD_LIMITS, defaultReadouts, type Part, type Readout } from '../../lib/probe/board';
+import { BOARD_LIMITS, defaultReadouts, type Part, type Readout } from '@tsunagi/monitoring-engine';
 import { channelStats } from '@tsunagi/monitoring-engine';
-import { graphOf, readoutsOf, type GraphTone } from '../../lib/probe/graph';
+import { graphOf, readoutsOf, type GraphTone } from '@tsunagi/monitoring-engine';
 import { channelLabel } from './ValueCards';
 
 type T = ReturnType<typeof useLang>['t'];

@@ -143,16 +143,18 @@ const hhmm = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digi
 /**
  * ALL MODULES on the screen, and the link opens on one module: which one, beside the title.
  *
- * The scan reaches every address on that one link, so opening on MSS54 is right; what was wrong was
+ * The scan reaches every address on that one link, so opening on 0x12 is right; what was wrong was
  * that nothing said so — CONNECT under ALL MODULES went to MSS54 and the screen still read ALL
  * MODULES (owner, 2026-11-28). Shown connected and not, since it is where CONNECT goes too. Here
  * and not on the module row, which has no room beside the select on a head unit once connected.
  * The name before its parenthesis; the whole name and what it means are the title.
  */
-function LinkTarget({ index, module }: { index: EcuIndex | null; module: string }) {
+function LinkTarget({ index, module, named }: { index: EcuIndex | null; module: string; named: (address: number) => string | null }) {
     const { lang, t } = useLang();
     const entry = index?.modules.find((e) => e.id === module);
-    const full = entry ? (lang === 'ja' ? entry.name || entry.name_en : entry.name_en || entry.name) : module;
+    // Once the scan has asked the address, the name its IDENT chose (on an E46 that is not an M3,
+    // 0x12 is the MS43, not the MSS54); before it, the catalogue's.
+    const full = (entry && named(entry.address)) || (entry ? (lang === 'ja' ? entry.name || entry.name_en : entry.name_en || entry.name) : module);
     return (
         // One line of text, not three boxes: the list's own rows are address, name, tag on lines of
         // their own, and a readout laid out the same way would read as a fourth row for 0x12.
@@ -203,7 +205,10 @@ export const ScanList = memo(function ScanList({ run, progress, index, mss54, se
             count={run?.results.length}
             note={run && summary ? `${t.scan_summary(summary.modules, summary.faults)} · ${t.scan_note(hhmm(run.endedAt))}` : undefined}
             info={t.scan_info}
-            actions={linkModule ? <LinkTarget index={index} module={linkModule} /> : undefined}
+            actions={linkModule ? <LinkTarget index={index} module={linkModule} named={(address) => {
+                const r = run?.results.find((x) => parseInt(String(x.address), 16) === address);
+                return r ? rowName(r, nameOf, t, ownerChose) : null;
+            }} /> : undefined}
         >
             {!run ? (
                 <p className="py-2 font-mono text-xs text-slate-600">

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { channelStats } from './compare';
+import { channelStats } from '@tsunagi/monitoring-engine';
 import { graphOf, readoutsOf } from './graph';
 
 const run = (n: number, f: (t: number) => Record<string, number | null>) => Array.from({ length: n }, (_, i) => ({ t: i, values: f(i) }));

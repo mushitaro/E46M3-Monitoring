@@ -4,7 +4,7 @@ import type { ProbeSample } from '@tsunagi/monitoring-engine';
 import { Provenance } from '../../components/ui';
 import { useLang } from '../../lib/i18n';
 import { BOARD_LIMITS, defaultReadouts, type Part, type Readout } from '../../lib/probe/board';
-import { channelStats } from '../../lib/probe/compare';
+import { channelStats } from '@tsunagi/monitoring-engine';
 import { graphOf, readoutsOf, type GraphTone } from '../../lib/probe/graph';
 import { channelLabel } from './ValueCards';
 

@@ -11,7 +11,7 @@
  *
  * The form a run took its data under never changes, because a record is only added to. An item the
  * assistant adds or removes as the series goes on is a new plan version in the session it is
- * written in, counted from the next run (lib/probe/items.ts says how the versions compare).
+ * written in, counted from the next run (the engine's probe/items.ts says how the versions compare).
  *
  * Pure.
  */

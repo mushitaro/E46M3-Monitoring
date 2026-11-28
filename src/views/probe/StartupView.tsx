@@ -1,7 +1,7 @@
 'use client';
 
 import { StartupSeries } from './StartupSeries';
-import { diffForms, type Form } from '../../lib/probe/items';
+import { diffForms, type Form } from '@tsunagi/monitoring-engine';
 import type { NotebookEntry } from '../../lib/notebook/rules';
 import type { ProbeSessions } from './useProbeSessions';
 

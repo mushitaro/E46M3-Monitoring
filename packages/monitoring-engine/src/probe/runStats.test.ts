@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { runStats } from './runStats';
+import { runStats } from './runStats.ts';
 
 const samples = [
     { t: 0, values: { '3:ub': 13.6, '35:evan1_ist': 10 } },
